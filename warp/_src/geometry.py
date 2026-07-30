@@ -1,0 +1,632 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+from __future__ import annotations
+
+import enum
+import math
+from typing import TYPE_CHECKING
+
+import warp as wp
+from warp._src.types import type_repr, types_equal
+
+if TYPE_CHECKING:
+    from warp._src.context import DeviceLike
+
+##########################################################################
+## Functions that operate on local elements (reusable within kernels)
+##########################################################################
+
+
+@wp.func
+def corner_half_angle(x: wp.vec3, y: wp.vec3, z: wp.vec3) -> wp.float32:
+    # Interior angle at ``y`` between edges ``y->x`` and ``y->z``. Uses Kahan's
+    # numerically stable half-angle formula, which stays accurate for angles near
+    # 0 and pi where ``acos(dot(...))`` loses precision.
+    a = wp.normalize(x - y)
+    b = wp.normalize(z - y)
+    return wp.atan2(wp.length(a - b), wp.length(a + b))
+
+
+@wp.func
+def triangle_normal(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3, normalized: bool = False) -> wp.vec3:
+    n = wp.cross(v1 - v0, v2 - v0)
+    if normalized:
+        n = wp.normalize(n)
+    return n
+
+
+@wp.func
+def triangle_corner_half_angles(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.vec3:
+    return wp.vec3(
+        corner_half_angle(v2, v0, v1),
+        corner_half_angle(v0, v1, v2),
+        corner_half_angle(v1, v2, v0),
+    )
+
+
+@wp.func
+def triangle_double_area(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.float32:
+    n = triangle_normal(v0, v1, v2, normalized=False)
+    return wp.length(n)
+
+
+##########################################################################
+## Raw kernels
+##########################################################################
+
+
+@wp.kernel
+def vertex_gaussian_curvature_kernel(
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    out_curvature: wp.array(dtype=wp.float32),  # pre-initialized to 2*pi per vertex
+):
+    tri = wp.tid()
+
+    i0 = indices[tri * 3 + 0]
+    i1 = indices[tri * 3 + 1]
+    i2 = indices[tri * 3 + 2]
+    v0 = points[i0]
+    v1 = points[i1]
+    v2 = points[i2]
+
+    # Subtract each incident interior angle from the vertex's running angle defect.
+    neg_angles = -2.0 * triangle_corner_half_angles(v0, v1, v2)
+
+    wp.atomic_add(out_curvature, i0, neg_angles[0])
+    wp.atomic_add(out_curvature, i1, neg_angles[1])
+    wp.atomic_add(out_curvature, i2, neg_angles[2])
+
+
+@wp.kernel
+def triangle_corner_angles_kernel(
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    out_angles: wp.array(dtype=wp.vec3),
+):
+    tri = wp.tid()
+    v0 = points[indices[tri * 3 + 0]]
+    v1 = points[indices[tri * 3 + 1]]
+    v2 = points[indices[tri * 3 + 2]]
+    out_angles[tri] = 2.0 * triangle_corner_half_angles(v0, v1, v2)
+
+
+@wp.kernel
+def triangle_areas_kernel(
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    out_areas: wp.array(dtype=wp.float32),
+):
+    tri = wp.tid()
+    v0 = points[indices[tri * 3 + 0]]
+    v1 = points[indices[tri * 3 + 1]]
+    v2 = points[indices[tri * 3 + 2]]
+    out_areas[tri] = 0.5 * triangle_double_area(v0, v1, v2)
+
+
+@wp.kernel
+def triangle_normals_kernel(
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    normalized: bool,
+    out_normals: wp.array(dtype=wp.vec3),
+):
+    tri = wp.tid()
+    v0 = points[indices[tri * 3 + 0]]
+    v1 = points[indices[tri * 3 + 1]]
+    v2 = points[indices[tri * 3 + 2]]
+    out_normals[tri] = triangle_normal(v0, v1, v2, normalized=normalized)
+
+
+class VertexNormalWeighting(enum.IntEnum):
+    """Weighting scheme for accumulating incident face normals into a vertex normal.
+
+    ``IntEnum`` members are integers, so a value can be passed straight into a
+    kernel launch (Warp kernels cannot take a ``str`` parameter).
+    """
+
+    AREA = 0
+    """Weight each incident triangle by its area (unnormalized face normals)."""
+    UNIFORM = 1
+    """Weight every incident triangle equally (unit face normals)."""
+    ANGLE = 2
+    """Weight every incident triangle by incident angle."""
+
+
+@wp.kernel
+def vertex_normals_kernel(
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    weighting: int,
+    out_vertex_normals: wp.array(dtype=wp.vec3),
+):
+    tri = wp.tid()
+    i0 = indices[tri * 3 + 0]
+    i1 = indices[tri * 3 + 1]
+    i2 = indices[tri * 3 + 2]
+    v0 = points[i0]
+    v1 = points[i1]
+    v2 = points[i2]
+
+    n = triangle_normal(v0, v1, v2)
+
+    # Per-corner contribution weights. They are equal for the 'area' and 'uniform'
+    # schemes; 'angle' weighting is the only one that differs per corner.
+    weights = wp.vec3(1.0, 1.0, 1.0)
+    if weighting == wp.static(int(VertexNormalWeighting.UNIFORM)):
+        # Unit face normals -> every incident face contributes equally.
+        n = wp.normalize(n)
+    elif weighting == wp.static(int(VertexNormalWeighting.ANGLE)):
+        # Unit face normals weighted by each triangle's interior angle at the vertex.
+        n = wp.normalize(n)
+        weights = triangle_corner_half_angles(v0, v1, v2)
+    # VertexNormalWeighting.AREA: leave n unnormalized so its magnitude (2 * area) weights by area.
+
+    wp.atomic_add(out_vertex_normals, i0, n * weights[0])
+    wp.atomic_add(out_vertex_normals, i1, n * weights[1])
+    wp.atomic_add(out_vertex_normals, i2, n * weights[2])
+
+
+@wp.kernel
+def normalize_kernel(
+    in_vectors: wp.array(dtype=wp.vec3),
+    out_vectors: wp.array(dtype=wp.vec3),
+):
+    i = wp.tid()
+    out_vectors[i] = wp.normalize(in_vectors[i])
+
+
+@wp.kernel
+def accumulate_moments(
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    out0: wp.array(dtype=float),  # volume
+    out1: wp.array(dtype=wp.vec3),  # first moment (centroid * volume)
+    raw2: wp.array(dtype=wp.mat33),  # raw second moment accumulators
+):
+    tri = wp.tid()
+
+    p0 = points[indices[3 * tri + 0]]
+    p1 = points[indices[3 * tri + 1]]
+    p2 = points[indices[3 * tri + 2]]
+
+    x0, y0, z0 = p0[0], p0[1], p0[2]
+    x1, y1, z1 = p1[0], p1[1], p1[2]
+    x2, y2, z2 = p2[0], p2[1], p2[2]
+
+    # Six times the signed volume of the tetrahedron (origin, p0, p1, p2).
+    v = x0 * (y1 * z2 - y2 * z1) - x1 * (y0 * z2 - y2 * z0) + x2 * (y0 * z1 - y1 * z0)
+
+    x3, y3, z3 = x0 + x1 + x2, y0 + y1 + y2, z0 + z1 + z2
+
+    xx = v * (x0 * x0 + x1 * x1 + x2 * x2 + x3 * x3)
+    yy = v * (y0 * y0 + y1 * y1 + y2 * y2 + y3 * y3)
+    zz = v * (z0 * z0 + z1 * z1 + z2 * z2 + z3 * z3)
+    yx = v * (y0 * x0 + y1 * x1 + y2 * x2 + y3 * x3)
+    zx = v * (z0 * x0 + z1 * x1 + z2 * x2 + z3 * x3)
+    zy = v * (z0 * y0 + z1 * y1 + z2 * y2 + z3 * y3)
+
+    wp.atomic_add(out0, 0, v / 6.0)
+    wp.atomic_add(out1, 0, v * wp.vec3(x3, y3, z3) / 24.0)
+    wp.atomic_add(raw2, 0, wp.mat33(xx, yx, zx, yx, yy, zy, zx, zy, zz))
+
+
+@wp.kernel
+def finalize_moments(
+    m0: wp.array(dtype=float),
+    m1: wp.array(dtype=wp.vec3),
+    raw2: wp.array(dtype=wp.mat33),
+    out2: wp.array(dtype=wp.mat33),  # inertia tensor about the centroid
+):
+    mass = m0[0]
+    first = m1[0]
+    R = raw2[0]
+    r = 1.0 / 120.0
+
+    xx = R[0, 0] * r - first[0] * first[0] / mass
+    yy = R[1, 1] * r - first[1] * first[1] / mass
+    zz = R[2, 2] * r - first[2] * first[2] / mass
+    yx = first[1] * first[0] / mass - R[1, 0] * r
+    zx = first[2] * first[0] / mass - R[2, 0] * r
+    zy = first[2] * first[1] / mass - R[2, 1] * r
+
+    out2[0] = wp.mat33(yy + zz, yx, zx, yx, xx + zz, zy, zx, zy, xx + yy)
+
+
+##########################################################################
+## Exposed functions
+##########################################################################
+
+
+def _validate_output(out: wp.array, name: str, length: int, dtype, device: DeviceLike) -> None:
+    """Check that a caller-supplied output array matches the expected dtype, device, and length."""
+    if not types_equal(out.dtype, dtype):
+        raise ValueError(f"`{name}` must have dtype {type_repr(dtype)}, but got {type_repr(out.dtype)}.")
+    if out.device != device:
+        raise ValueError(f"`{name}` must be on device '{device}', but got '{out.device}'.")
+    if out.shape[0] < length:
+        raise ValueError(f"`{name}` must have length at least {length}, but got {out.shape[0]}.")
+
+
+def triangle_corner_angles(
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    out_angles: wp.array(dtype=wp.vec3) | None = None,
+    *,
+    device: DeviceLike | None = None,
+) -> wp.array(dtype=wp.vec3):
+    """Compute the three interior angles of each triangle in a triangle mesh.
+
+    Each entry of the returned array holds the interior angles, in radians, at the
+    triangle's three corners in vertex order ``(v0, v1, v2)``; the three angles of a
+    triangle sum to ``pi``. The operation is differentiable with respect to
+    ``points``: launch it inside a :class:`warp.Tape` with ``requires_grad`` arrays
+    to obtain gradients.
+
+    Args:
+        points: Array of vertex positions of type :class:`warp.vec3`.
+        indices: Flat array of triangle vertex indices, with three consecutive
+            entries per triangle (length ``3 * num_triangles``).
+        out_angles: Optional output array of length ``num_triangles`` to store the
+            per-triangle corner angles. If ``None``, a new array is allocated with
+            the same ``requires_grad`` setting as ``points``.
+        device: Device on which to run. Defaults to the device of ``points``.
+
+    Returns:
+        The ``out_angles`` array, containing the three corner angles of each triangle.
+
+    Raises:
+        ValueError: If ``out_angles`` is provided but its dtype, device, or length
+            does not match the expected output.
+    """
+    device = wp.get_device(device) if device is not None else points.device
+    num_triangles = indices.shape[0] // 3
+
+    if out_angles is None:
+        out_angles = wp.empty(
+            num_triangles,
+            dtype=wp.vec3,
+            device=device,
+            requires_grad=points.requires_grad,
+        )
+    else:
+        _validate_output(out_angles, "out_angles", num_triangles, wp.vec3, device)
+
+    wp.launch(
+        triangle_corner_angles_kernel,
+        dim=num_triangles,
+        inputs=[points, indices],
+        outputs=[out_angles],
+        device=device,
+    )
+
+    return out_angles
+
+
+def triangle_areas(
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    out_areas: wp.array(dtype=wp.float32) | None = None,
+    *,
+    device: DeviceLike | None = None,
+) -> wp.array(dtype=wp.float32):
+    """Compute the area of each triangle in a triangle mesh.
+
+    Each triangle area is half the magnitude of the cross product of two of its
+    edge vectors. The operation is differentiable with respect to ``points``:
+    launch it inside a :class:`warp.Tape` with ``requires_grad`` arrays to obtain
+    gradients.
+
+    Args:
+        points: Array of vertex positions of type :class:`warp.vec3`.
+        indices: Flat array of triangle vertex indices, with three consecutive
+            entries per triangle (length ``3 * num_triangles``).
+        out_areas: Optional output array of length ``num_triangles`` to store the
+            per-triangle areas. If ``None``, a new array is allocated with the same
+            ``requires_grad`` setting as ``points``.
+        device: Device on which to run. Defaults to the device of ``points``.
+
+    Returns:
+        The ``out_areas`` array, containing the area of each triangle.
+
+    Raises:
+        ValueError: If ``out_areas`` is provided but its dtype, device, or length
+            does not match the expected output.
+    """
+    device = wp.get_device(device) if device is not None else points.device
+    num_triangles = indices.shape[0] // 3
+
+    if out_areas is None:
+        out_areas = wp.empty(
+            num_triangles,
+            dtype=wp.float32,
+            device=device,
+            requires_grad=points.requires_grad,
+        )
+    else:
+        _validate_output(out_areas, "out_areas", num_triangles, wp.float32, device)
+
+    wp.launch(
+        triangle_areas_kernel,
+        dim=num_triangles,
+        inputs=[points, indices],
+        outputs=[out_areas],
+        device=device,
+    )
+
+    return out_areas
+
+
+def triangle_normals(
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    out_normals: wp.array(dtype=wp.vec3) | None = None,
+    *,
+    normalized: bool = False,
+    device: DeviceLike | None = None,
+) -> wp.array(dtype=wp.vec3):
+    """Compute the normal of each triangle in a triangle mesh.
+
+    Each triangle normal is the cross product of two of its edge vectors. By
+    default the result is unnormalized, so its magnitude equals twice the triangle
+    area; pass ``normalized=True`` to obtain unit normals. The operation is
+    differentiable with respect to ``points``: launch it inside a
+    :class:`warp.Tape` with ``requires_grad`` arrays to obtain gradients.
+
+    Args:
+        points: Array of vertex positions of type :class:`warp.vec3`.
+        indices: Flat array of triangle vertex indices, with three consecutive
+            entries per triangle (length ``3 * num_triangles``).
+        out_normals: Optional output array of length ``num_triangles`` to store the
+            per-triangle normals. If ``None``, a new array is allocated with the same
+            ``requires_grad`` setting as ``points``.
+        normalized: If ``True``, each normal is scaled to unit length.
+        device: Device on which to run. Defaults to the device of ``points``.
+
+    Returns:
+        The ``out_normals`` array, containing the normal of each triangle.
+
+    Raises:
+        ValueError: If ``out_normals`` is provided but its dtype, device, or length
+            does not match the expected output.
+    """
+    device = wp.get_device(device) if device is not None else points.device
+    num_triangles = indices.shape[0] // 3
+
+    if out_normals is None:
+        out_normals = wp.empty(
+            num_triangles,
+            dtype=wp.vec3,
+            device=device,
+            requires_grad=points.requires_grad,
+        )
+    else:
+        _validate_output(out_normals, "out_normals", num_triangles, wp.vec3, device)
+
+    wp.launch(
+        triangle_normals_kernel,
+        dim=num_triangles,
+        inputs=[points, indices, normalized],
+        outputs=[out_normals],
+        device=device,
+    )
+
+    return out_normals
+
+
+def vertex_normals(
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    out_normals: wp.array(dtype=wp.vec3) | None = None,
+    *,
+    weighting: VertexNormalWeighting = VertexNormalWeighting.AREA,
+    normalized: bool = False,
+    device: DeviceLike | None = None,
+) -> wp.array(dtype=wp.vec3):
+    """Compute a normal for each vertex of a triangle mesh.
+
+    Each vertex normal is a weighted sum of the normals of its incident triangles.
+    The ``weighting`` scheme sets how much each triangle contributes, and
+    ``normalized`` optionally rescales the final vertex normals to unit length. The
+    operation is differentiable with respect to ``points``: launch it inside a
+    :class:`warp.Tape` with ``requires_grad`` arrays to obtain gradients.
+
+    Args:
+        points: Array of vertex positions of type :class:`warp.vec3`.
+        indices: Flat array of triangle vertex indices, with three consecutive
+            entries per triangle (length ``3 * num_triangles``).
+        out_normals: Optional output array of length ``len(points)`` to store the
+            per-vertex normals. If ``None``, a new array is allocated with the same
+            ``requires_grad`` setting as ``points``.
+        weighting: How each incident triangle is weighted, as a
+            :class:`VertexNormalWeighting` member. :attr:`VertexNormalWeighting.AREA`
+            weights by triangle area (unnormalized face normals);
+            :attr:`VertexNormalWeighting.UNIFORM` weights every incident triangle
+            equally (unit face normals); :attr:`VertexNormalWeighting.ANGLE` weights
+            each incident triangle by its interior angle at the vertex (unit face
+            normals).
+        normalized: If ``True``, each summed vertex normal is scaled to unit length.
+        device: Device on which to run. Defaults to the device of ``points``.
+
+    Returns:
+        The ``out_normals`` array, containing the normal of each vertex.
+
+    Raises:
+        ValueError: If ``out_normals`` is provided but its dtype, device, or length
+            does not match the expected output.
+    """
+    weighting_code = int(VertexNormalWeighting(weighting))
+
+    device = wp.get_device(device) if device is not None else points.device
+    num_triangles = indices.shape[0] // 3
+    num_vertices = points.shape[0]
+
+    if out_normals is None:
+        out_normals = wp.empty(num_vertices, dtype=wp.vec3, device=device, requires_grad=points.requires_grad)
+    else:
+        _validate_output(out_normals, "out_normals", num_vertices, wp.vec3, device)
+
+    # Face normals are scattered onto vertices with atomic_add, so the accumulation
+    # target must start at zero. When normalizing, accumulate into a separate buffer
+    # and normalize out-of-place into out_normals to keep the pass differentiable.
+    accum = (
+        wp.zeros(num_vertices, dtype=wp.vec3, device=device, requires_grad=points.requires_grad)
+        if normalized
+        else out_normals
+    )
+    if not normalized:
+        accum.zero_()
+
+    wp.launch(
+        vertex_normals_kernel,
+        dim=num_triangles,
+        inputs=[points, indices, weighting_code],
+        outputs=[accum],
+        device=device,
+    )
+
+    if normalized:
+        wp.launch(
+            normalize_kernel,
+            dim=num_vertices,
+            inputs=[accum],
+            outputs=[out_normals],
+            device=device,
+        )
+
+    return out_normals
+
+
+def moments(
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    out_volume: wp.array(dtype=wp.float32) | None = None,
+    out_first_moment: wp.array(dtype=wp.vec3) | None = None,
+    out_inertia: wp.array(dtype=wp.mat33) | None = None,
+    *,
+    device: DeviceLike | None = None,
+) -> tuple[wp.array, wp.array, wp.array]:
+    """Compute the volume, first moment, and inertia tensor of a closed triangle mesh.
+
+    The mesh is assumed to bound a solid region of uniform unit density. Each
+    quantity is accumulated over the tetrahedra spanned by the origin and each
+    triangle, so the mesh must be closed and consistently oriented. The operation
+    is differentiable with respect to ``points``: launch it inside a
+    :class:`warp.Tape` with ``requires_grad`` arrays to obtain gradients.
+
+    Args:
+        points: Array of vertex positions of type :class:`warp.vec3`.
+        indices: Flat array of triangle vertex indices, with three consecutive
+            entries per triangle (length ``3 * num_triangles``).
+        out_volume: Optional length-1 output array for the enclosed volume. If
+            ``None``, a new array is allocated.
+        out_first_moment: Optional length-1 output array for the first moment
+            (centroid scaled by volume). If ``None``, a new array is allocated.
+        out_inertia: Optional length-1 output array for the inertia tensor about
+            the centroid. If ``None``, a new array is allocated.
+        device: Device on which to run. Defaults to the device of ``points``.
+
+    Returns:
+        A tuple ``(volume, first_moment, inertia)`` of length-1 arrays.
+
+    Raises:
+        ValueError: If any provided output array's dtype, device, or length does
+            not match the expected output.
+    """
+    device = wp.get_device(device) if device is not None else points.device
+    num_triangles = indices.shape[0] // 3
+
+    # Volume and first moment are accumulated with atomic_add, so they must start at zero.
+    if out_volume is None:
+        out_volume = wp.zeros(1, dtype=wp.float32, device=device, requires_grad=points.requires_grad)
+    else:
+        _validate_output(out_volume, "out_volume", 1, wp.float32, device)
+        out_volume.zero_()
+
+    if out_first_moment is None:
+        out_first_moment = wp.zeros(1, dtype=wp.vec3, device=device, requires_grad=points.requires_grad)
+    else:
+        _validate_output(out_first_moment, "out_first_moment", 1, wp.vec3, device)
+        out_first_moment.zero_()
+
+    # Inertia is written outright by finalize_moments, so it does not need to be zeroed.
+    if out_inertia is None:
+        out_inertia = wp.empty(1, dtype=wp.mat33, device=device, requires_grad=points.requires_grad)
+    else:
+        _validate_output(out_inertia, "out_inertia", 1, wp.mat33, device)
+
+    # Raw second-moment accumulator is an internal temporary.
+    raw2 = wp.zeros(1, dtype=wp.mat33, device=device, requires_grad=points.requires_grad)
+
+    wp.launch(
+        accumulate_moments,
+        dim=num_triangles,
+        inputs=[points, indices, out_volume, out_first_moment, raw2],
+        device=device,
+    )
+    wp.launch(
+        finalize_moments,
+        dim=1,
+        inputs=[out_volume, out_first_moment, raw2, out_inertia],
+        device=device,
+    )
+
+    return out_volume, out_first_moment, out_inertia
+
+
+def vertex_gaussian_curvature(
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    out_curvature: wp.array(dtype=wp.float32) | None = None,
+    *,
+    device: DeviceLike | None = None,
+) -> wp.array(dtype=wp.float32):
+    """Compute the discrete Gaussian curvature at each vertex of a triangle mesh.
+
+    The curvature is the angle defect ``2*pi - sum(theta)``, where ``theta`` ranges
+    over the interior triangle angles incident to the vertex. This is the *integrated*
+    Gaussian curvature over the vertex's dual cell (it is not divided by area), so by
+    the Gauss-Bonnet theorem the values sum to ``2*pi*chi`` for a closed mesh (for
+    example ``4*pi`` for any genus-0 surface). Boundary vertices are not treated
+    specially. The operation is differentiable with respect to ``points``: launch it
+    inside a :class:`warp.Tape` with ``requires_grad`` arrays to obtain gradients.
+
+    Args:
+        points: Array of vertex positions of type :class:`warp.vec3`.
+        indices: Flat array of triangle vertex indices, with three consecutive
+            entries per triangle (length ``3 * num_triangles``).
+        out_curvature: Optional output array of length ``len(points)`` to store the
+            per-vertex curvature. If ``None``, a new array is allocated with the same
+            ``requires_grad`` setting as ``points``.
+        device: Device on which to run. Defaults to the device of ``points``.
+
+    Returns:
+        The ``out_curvature`` array, containing the angle defect at each vertex.
+
+    Raises:
+        ValueError: If ``out_curvature`` is provided but its dtype, device, or length
+            does not match the expected output.
+    """
+    device = wp.get_device(device) if device is not None else points.device
+    num_triangles = indices.shape[0] // 3
+    num_vertices = points.shape[0]
+
+    if out_curvature is None:
+        out_curvature = wp.empty(num_vertices, dtype=wp.float32, device=device, requires_grad=points.requires_grad)
+    else:
+        _validate_output(out_curvature, "out_curvature", num_vertices, wp.float32, device)
+
+    # Angle defect: start each vertex at 2*pi, then the kernel subtracts the incident
+    # interior angles with atomic_add.
+    out_curvature.fill_(2.0 * math.pi)
+
+    wp.launch(
+        vertex_gaussian_curvature_kernel,
+        dim=num_triangles,
+        inputs=[points, indices],
+        outputs=[out_curvature],
+        device=device,
+    )
+
+    return out_curvature
