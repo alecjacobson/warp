@@ -4,6 +4,13 @@
 
 ### Added
 
+- Speed up and tighten `wp.geometry.oriented_bounding_box()` for large point sets. Candidate orientations are now
+  scored over a strided subsample bounded by the new `max_search_points` argument (the winning orientation's box is
+  still measured exactly over every point), and a new on-device coarse-to-fine local search controlled by
+  `refine_iters`/`refine_batch` refines the best orientation without adding a host synchronization. A small
+  `num_samples` with refinement now matches or beats a much larger one, and fitting boxes to million-vertex meshes is
+  several times faster. Pass `refine_iters=0` and `max_search_points=None` to recover the previous behavior.
+
 - Add rebuildable NanoVDB volumes through `wp.Volume.allocate_by_tiles(..., rebuildable=True)`,
   `wp.Volume.allocate_by_voxels(..., rebuildable=True)`, and `wp.Volume.rebuild()`. Support fixed capacities, optional
   point masks, CPU execution, CUDA graph-capturable allocation and rebuilding, and in-place refreshes of rebuildable

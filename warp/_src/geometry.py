@@ -52,6 +52,34 @@ def super_fibonacci(i: int, n: int) -> wp.quat:
     return wp.quat(r * wp.sin(alpha), r * wp.cos(alpha), R * wp.sin(beta), R * wp.cos(beta))
 
 
+_SF_PLASTIC = wp.constant(wp.float64(0.7548776662466927))
+"""Reciprocal of the plastic number, a low-discrepancy step for the refine angles."""
+
+_GOLDEN_ANGLE = wp.constant(wp.float32(2.399963229728653))
+"""Golden angle in radians, spacing successive refine axes on a Fibonacci sphere."""
+
+
+@wp.func
+def small_rotation(i: int, n: int, radius: wp.float32) -> wp.quat:
+    # A deterministic small rotation used to probe orientations near a current best.
+    # The axis is the i-th point of a Fibonacci sphere (near-uniform directions) and the
+    # signed angle is a low-discrepancy value in ``[-radius, radius]``; together the batch
+    # samples a shrinking spherical neighborhood of rotations without any host randomness.
+    u = (wp.float32(i) + 0.5) / wp.float32(n)
+    z = 1.0 - 2.0 * u
+    r = wp.sqrt(wp.max(0.0, 1.0 - z * z))
+    phi = _GOLDEN_ANGLE * wp.float32(i)
+    axis = wp.vec3(r * wp.cos(phi), r * wp.sin(phi), z)
+
+    t = wp.float64(i) * _SF_PLASTIC
+    frac = wp.float32(t - wp.floor(t))
+    angle = radius * (2.0 * frac - 1.0)
+
+    half = 0.5 * angle
+    s = wp.sin(half)
+    return wp.quat(axis[0] * s, axis[1] * s, axis[2] * s, wp.cos(half))
+
+
 @wp.func
 def corner_half_angle(x: wp.vec3, y: wp.vec3, z: wp.vec3) -> wp.float32:
     # Interior angle at ``y`` between edges ``y->x`` and ``y->z``. Uses Kahan's
@@ -108,6 +136,15 @@ class OBBMeasureType(enum.IntEnum):
 _OBB_POINT_CHUNKS = 256
 """Threads each candidate OBB orientation splits its point loop across."""
 
+_OBB_REFINE_RADIUS0 = 0.35
+"""Initial angular radius (radians) of the local search around the best orientation."""
+
+_OBB_REFINE_SHRINK = 0.72
+"""Factor by which the refine radius shrinks each round, focusing the local search."""
+
+_OBB_REFINE_BATCH = 128
+"""Default number of orientations probed per refinement round."""
+
 
 @wp.kernel(enable_backward=False)
 def oriented_bounding_box_samples_kernel(num_samples: int, rotations: wp.array(dtype=wp.quat)):
@@ -115,6 +152,21 @@ def oriented_bounding_box_samples_kernel(num_samples: int, rotations: wp.array(d
     # written into the slots past ``num_samples`` by the kernels below.
     i = wp.tid()
     rotations[i] = super_fibonacci(i, num_samples)
+
+
+@wp.kernel(enable_backward=False)
+def oriented_bounding_box_subsample_kernel(
+    points: wp.array(dtype=wp.vec3),
+    stride: int,
+    out_points: wp.array(dtype=wp.vec3),
+):
+    # Gather every ``stride``-th point. The orientation that minimizes the box is a
+    # property of the cloud's shape, which a strided subsample captures; scoring the
+    # candidates on it instead of every point makes the search cost independent of the
+    # (possibly millions of) input points. The winner's bounds are later recomputed
+    # exactly over the full set, so the returned box is unchanged.
+    i = wp.tid()
+    out_points[i] = points[i * stride]
 
 
 @wp.kernel(enable_backward=False)
@@ -239,6 +291,76 @@ def oriented_bounding_box_measure_kernel(
     measures[i] = measure
     extents[i] = dims
     transforms[i] = wp.transform(world_center, wp.quat_inverse(rot))
+
+
+@wp.kernel(enable_backward=False)
+def oriented_bounding_box_refine_generate_kernel(
+    champion: wp.array(dtype=wp.quat),
+    radius: float,
+    batch: int,
+    rot_batch: wp.array(dtype=wp.quat),
+):
+    # Each thread proposes one orientation in a shrinking neighborhood of the current
+    # champion, so the batch performs a parallel local search around it.
+    i = wp.tid()
+    rot_batch[i] = wp.normalize(small_rotation(i, batch, radius) * champion[0])
+
+
+@wp.kernel(enable_backward=False)
+def oriented_bounding_box_argmin_value_kernel(
+    measures: wp.array(dtype=wp.float32),
+    out_min: wp.array(dtype=wp.float32),
+):
+    # Smallest measure over the candidates, reduced with an exact float atomic min so no
+    # host synchronization is needed to find it.
+    i = wp.tid()
+    wp.atomic_min(out_min, 0, measures[i])
+
+
+@wp.kernel(enable_backward=False)
+def oriented_bounding_box_argmin_index_kernel(
+    measures: wp.array(dtype=wp.float32),
+    out_min: wp.array(dtype=wp.float32),
+    out_index: wp.array(dtype=wp.int32),
+):
+    # Lowest index attaining the minimum measure. The equality is exact: ``out_min`` was
+    # filled by atomic-min of these very values, so the winner compares bit-equal. Taking
+    # the smallest such index breaks ties deterministically.
+    i = wp.tid()
+    if measures[i] == out_min[0]:
+        wp.atomic_min(out_index, 0, i)
+
+
+@wp.kernel(enable_backward=False)
+def oriented_bounding_box_champion_update_kernel(
+    src_rotations: wp.array(dtype=wp.quat),
+    round_min: wp.array(dtype=wp.float32),
+    round_index: wp.array(dtype=wp.int32),
+    champion: wp.array(dtype=wp.quat),
+    champion_measure: wp.array(dtype=wp.float32),
+):
+    # A single thread commits the round's best if it beats the champion, so the champion
+    # quaternion is written atomically (never torn between two competing threads).
+    if round_min[0] < champion_measure[0]:
+        champion_measure[0] = round_min[0]
+        champion[0] = src_rotations[round_index[0]]
+
+
+@wp.kernel(enable_backward=False)
+def oriented_bounding_box_refine_reset_kernel(
+    b_min: wp.array(dtype=wp.vec3),
+    b_max: wp.array(dtype=wp.vec3),
+    round_min: wp.array(dtype=wp.float32),
+    round_index: wp.array(dtype=wp.int32),
+):
+    # Reset a refinement round's scratch buffers in a single launch: the per-candidate
+    # bounds accumulators to an empty interval, and the round's argmin reducers.
+    i = wp.tid()
+    b_min[i] = wp.vec3(wp.inf, wp.inf, wp.inf)
+    b_max[i] = wp.vec3(-wp.inf, -wp.inf, -wp.inf)
+    if i == 0:
+        round_min[0] = wp.float32(wp.inf)
+        round_index[0] = wp.int32(2147483647)
 
 
 @wp.kernel
@@ -824,6 +946,9 @@ def oriented_bounding_box(
     *,
     include_axis_aligned: bool = True,
     include_pca: bool = True,
+    max_search_points: int | None = 100_000,
+    refine_iters: int = 4,
+    refine_batch: int | None = None,
     device: DeviceLike | None = None,
 ) -> tuple[wp.transform, wp.vec3, float]:
     """Approximate an oriented bounding box (OBB) of a point set by sampling orientations.
@@ -857,6 +982,21 @@ def oriented_bounding_box(
             values give a tighter box at higher cost.
         include_axis_aligned: Whether to also evaluate the identity rotation.
         include_pca: Whether to also evaluate the principal axes of ``points``.
+        max_search_points: Upper bound on how many points are used to *score* candidate
+            orientations. When ``points`` is larger, the candidates are evaluated over a
+            deterministic strided subsample of this size; the winning orientation's bounds,
+            extents, and measure are then recomputed over the full point set, so the
+            returned box is exact. The subsample only affects which orientation is chosen,
+            for which a shape-representative subset is enough. Pass ``None`` to always score
+            over every point.
+        refine_iters: Number of coarse-to-fine refinement rounds run after the initial
+            candidate search. Each round probes a batch of orientations in a shrinking
+            neighborhood of the current best and keeps any improvement, so a small
+            ``num_samples`` can reach the quality of a much larger one. The refinement runs
+            entirely on device and does not add a host synchronization. Pass ``0`` to
+            disable it and return the best sampled orientation directly.
+        refine_batch: Orientations probed per refinement round. Defaults to a small
+            constant. Ignored when ``refine_iters`` is ``0``.
         device: Device on which to run. Defaults to the device of ``points``.
 
     Returns:
@@ -889,6 +1029,25 @@ def oriented_bounding_box(
     measure_code = int(OBBMeasureType(measure_type))
     device = wp.get_device(device) if device is not None else points.device
 
+    # Points used to *score* candidate orientations. For a large cloud a strided
+    # subsample is enough to choose the orientation -- it is a property of the shape, not
+    # of every point -- and it makes the search cost independent of the point count. The
+    # winner's box is recomputed over the full set below, so the returned box is exact.
+    if max_search_points is not None and num_points > max_search_points:
+        stride = (num_points + max_search_points - 1) // max_search_points
+        num_search_points = (num_points + stride - 1) // stride
+        search_points = wp.empty(num_search_points, dtype=wp.vec3, device=device)
+        wp.launch(
+            oriented_bounding_box_subsample_kernel,
+            dim=num_search_points,
+            inputs=[points, stride],
+            outputs=[search_points],
+            device=device,
+        )
+    else:
+        search_points = points
+        num_search_points = num_points
+
     # Candidate orientations: the spiral first, then any extras in the trailing slots.
     num_candidates = num_samples + int(include_axis_aligned) + int(include_pca)
     rotations = wp.empty(num_candidates, dtype=wp.quat, device=device)
@@ -909,9 +1068,13 @@ def oriented_bounding_box(
     if include_pca:
         point_sum = wp.zeros(1, dtype=wp.vec3, device=device)
         covariance = wp.zeros(1, dtype=wp.mat33, device=device)
-        wp.launch(point_sum_kernel, dim=num_points, inputs=[points], outputs=[point_sum], device=device)
+        wp.launch(point_sum_kernel, dim=num_search_points, inputs=[search_points], outputs=[point_sum], device=device)
         wp.launch(
-            point_covariance_kernel, dim=num_points, inputs=[points, point_sum], outputs=[covariance], device=device
+            point_covariance_kernel,
+            dim=num_search_points,
+            inputs=[search_points, point_sum],
+            outputs=[covariance],
+            device=device,
         )
         wp.launch(
             oriented_bounding_box_pca_kernel, dim=1, inputs=[covariance, slot], outputs=[rotations], device=device
@@ -921,7 +1084,7 @@ def oriented_bounding_box(
     # Threads per orientation. The candidate count alone is far too little parallelism
     # to fill a GPU, so the point loop is split as well; the cap keeps the atomic
     # contention on each orientation's bounds low.
-    num_chunks = max(1, min(num_points, _OBB_POINT_CHUNKS))
+    num_chunks = max(1, min(num_search_points, _OBB_POINT_CHUNKS))
 
     # Seeded to an empty interval so the atomic min/max reduction can only shrink it.
     min_bounds = wp.full(num_candidates, wp.vec3(math.inf, math.inf, math.inf), dtype=wp.vec3, device=device)
@@ -930,7 +1093,7 @@ def oriented_bounding_box(
     wp.launch(
         oriented_bounding_box_bounds_kernel,
         dim=(num_candidates, num_chunks),
-        inputs=[points, rotations, num_chunks],
+        inputs=[search_points, rotations, num_chunks],
         outputs=[min_bounds, max_bounds],
         device=device,
     )
@@ -948,18 +1111,141 @@ def oriented_bounding_box(
         device=device,
     )
 
-    # Select the sampled orientation whose box minimizes the measure. The candidate
-    # count is small, so the argmin runs on the host.
-    measures_np = measures.numpy()
-    best = int(np.argmin(measures_np))
+    # Choose the winning orientation. ``exact_needed`` marks the cases where the winner's
+    # box must be re-measured over the full point set before being returned: after a
+    # subsample search, or after refinement produced an orientation that is not one of the
+    # scored candidates.
+    if refine_iters and refine_iters > 0:
+        # Coarse-to-fine local search, run entirely on device so the function still
+        # synchronizes with the host exactly once (at the end). The champion starts at the
+        # best initial candidate; each round probes a shrinking neighborhood and keeps any
+        # improvement.
+        batch = refine_batch if refine_batch is not None else _OBB_REFINE_BATCH
 
-    row = transforms.numpy()[best]
+        champion = wp.empty(1, dtype=wp.quat, device=device)
+        champion_measure = wp.full(1, wp.float32(math.inf), dtype=wp.float32, device=device)
+        round_min = wp.empty(1, dtype=wp.float32, device=device)
+        round_index = wp.empty(1, dtype=wp.int32, device=device)
+
+        def absorb(src_rotations, src_measures, count):
+            # Fold a scored batch into the champion: find its best measure and lowest
+            # attaining index, then commit if it beats the champion. Assumes ``round_min``
+            # and ``round_index`` were reset by the caller.
+            wp.launch(
+                oriented_bounding_box_argmin_value_kernel,
+                dim=count,
+                inputs=[src_measures],
+                outputs=[round_min],
+                device=device,
+            )
+            wp.launch(
+                oriented_bounding_box_argmin_index_kernel,
+                dim=count,
+                inputs=[src_measures, round_min],
+                outputs=[round_index],
+                device=device,
+            )
+            wp.launch(
+                oriented_bounding_box_champion_update_kernel,
+                dim=1,
+                inputs=[src_rotations, round_min, round_index],
+                outputs=[champion, champion_measure],
+                device=device,
+            )
+
+        # Seed the champion from the best initial candidate.
+        round_min.fill_(math.inf)
+        round_index.fill_(2147483647)
+        absorb(rotations, measures, num_candidates)
+
+        rot_batch = wp.empty(batch, dtype=wp.quat, device=device)
+        b_min = wp.empty(batch, dtype=wp.vec3, device=device)
+        b_max = wp.empty(batch, dtype=wp.vec3, device=device)
+        b_measure = wp.empty(batch, dtype=wp.float32, device=device)
+        b_transform = wp.empty(batch, dtype=wp.transform, device=device)
+        b_extent = wp.empty(batch, dtype=wp.vec3, device=device)
+
+        radius = _OBB_REFINE_RADIUS0
+        for _ in range(refine_iters):
+            wp.launch(
+                oriented_bounding_box_refine_reset_kernel,
+                dim=batch,
+                inputs=[],
+                outputs=[b_min, b_max, round_min, round_index],
+                device=device,
+            )
+            wp.launch(
+                oriented_bounding_box_refine_generate_kernel,
+                dim=batch,
+                inputs=[champion, radius, batch],
+                outputs=[rot_batch],
+                device=device,
+            )
+            wp.launch(
+                oriented_bounding_box_bounds_kernel,
+                dim=(batch, num_chunks),
+                inputs=[search_points, rot_batch, num_chunks],
+                outputs=[b_min, b_max],
+                device=device,
+            )
+            wp.launch(
+                oriented_bounding_box_measure_kernel,
+                dim=batch,
+                inputs=[rot_batch, b_min, b_max, measure_code],
+                outputs=[b_measure, b_transform, b_extent],
+                device=device,
+            )
+            absorb(rot_batch, b_measure, batch)
+            radius *= _OBB_REFINE_SHRINK
+
+        winner_rot = champion
+        exact_needed = True
+    else:
+        # No refinement: pick the best sampled orientation on the host.
+        measures_np = measures.numpy()
+        best = int(np.argmin(measures_np))
+        exact_needed = search_points is not points
+        if exact_needed:
+            best_rot_np = rotations.numpy()[best]
+            winner_rot = wp.array(
+                [wp.quat(float(best_rot_np[0]), float(best_rot_np[1]), float(best_rot_np[2]), float(best_rot_np[3]))],
+                dtype=wp.quat,
+                device=device,
+            )
+
+    if exact_needed:
+        full_chunks = max(1, min(num_points, _OBB_POINT_CHUNKS))
+        w_min = wp.full(1, wp.vec3(math.inf, math.inf, math.inf), dtype=wp.vec3, device=device)
+        w_max = wp.full(1, wp.vec3(-math.inf, -math.inf, -math.inf), dtype=wp.vec3, device=device)
+        wp.launch(
+            oriented_bounding_box_bounds_kernel,
+            dim=(1, full_chunks),
+            inputs=[points, winner_rot, full_chunks],
+            outputs=[w_min, w_max],
+            device=device,
+        )
+        w_measure = wp.empty(1, dtype=wp.float32, device=device)
+        w_transform = wp.empty(1, dtype=wp.transform, device=device)
+        w_extent = wp.empty(1, dtype=wp.vec3, device=device)
+        wp.launch(
+            oriented_bounding_box_measure_kernel,
+            dim=1,
+            inputs=[winner_rot, w_min, w_max, measure_code],
+            outputs=[w_measure, w_transform, w_extent],
+            device=device,
+        )
+        row = w_transform.numpy()[0]
+        ext = w_extent.numpy()[0]
+        best_measure = float(w_measure.numpy()[0])
+    else:
+        row = transforms.numpy()[best]
+        ext = extents.numpy()[best]
+        best_measure = float(measures_np[best])
+
     best_transform = wp.transform(
         wp.vec3(float(row[0]), float(row[1]), float(row[2])),
         wp.quat(float(row[3]), float(row[4]), float(row[5]), float(row[6])),
     )
-    ext = extents.numpy()[best]
     best_extents = wp.vec3(float(ext[0]), float(ext[1]), float(ext[2]))
-    best_measure = float(measures_np[best])
 
     return best_transform, best_extents, best_measure
