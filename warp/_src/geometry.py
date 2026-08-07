@@ -52,24 +52,18 @@ def super_fibonacci(i: int, n: int) -> wp.quat:
     R = wp.sqrt(1.0 - t)
     return wp.quat(r * wp.sin(alpha), r * wp.cos(alpha), R * wp.sin(beta), R * wp.cos(beta))
 
-@wp.func
-def triangle_edge_length_sq(
-        v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.vec3:
-    return wp.vec3(
-        wp.length_sq( v2 - v1 ),
-        wp.length_sq( v0 - v2 ),
-        wp.length_sq( v1 - v0 ))
 
 @wp.func
-def triangle_cotmatrix_coefficients(
-        v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.vec3:
-    l2 = triangle_edge_length_sq(v0,v1,v2)
-    A8 = triangle_double_area(v0,v1,v2) * 4.0
+def triangle_edge_length_sq(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.vec3:
+    return wp.vec3(wp.length_sq(v2 - v1), wp.length_sq(v0 - v2), wp.length_sq(v1 - v0))
 
-    return wp.vec3(
-        l2[1] + l2[2] - l2[0],
-        l2[2] + l2[0] - l2[1],
-        l2[0] + l2[1] - l2[2]) / A8
+
+@wp.func
+def triangle_cotmatrix_coefficients(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.vec3:
+    l2 = triangle_edge_length_sq(v0, v1, v2)
+    A8 = triangle_double_area(v0, v1, v2) * 4.0
+
+    return wp.vec3(l2[1] + l2[2] - l2[0], l2[2] + l2[0] - l2[1], l2[0] + l2[1] - l2[2]) / A8
 
 
 @wp.func
@@ -111,13 +105,15 @@ def triangle_double_area(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.float32:
 ## are not intended to be called directly by users.
 ##########################################################################
 
+
 @wp.kernel(enable_backward=False)
 def cotmatrix_triplets(
-    points : wp.array[wp.vec3],
-    indices : wp.array[int],
-    rows : wp.array[int],
-    columns : wp.array[int],
-    values : wp.array[float]):
+    points: wp.array[wp.vec3],
+    indices: wp.array[int],
+    rows: wp.array[int],
+    columns: wp.array[int],
+    values: wp.array[float],
+):
 
     tri = wp.tid()
     i0 = indices[tri * 3 + 0]
