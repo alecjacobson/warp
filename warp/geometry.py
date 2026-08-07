@@ -23,6 +23,7 @@ Usage:
 from warp._src.geometry import OBBMeasureType as OBBMeasureType
 from warp._src.geometry import VertexNormalWeighting as VertexNormalWeighting
 from warp._src.geometry import corner_half_angle as corner_half_angle
+from warp._src.geometry import cotmatrix as cotmatrix
 from warp._src.geometry import moments as moments
 from warp._src.geometry import oriented_bounding_box as oriented_bounding_box
 from warp._src.geometry import super_fibonacci as super_fibonacci

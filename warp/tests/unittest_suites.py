@@ -193,6 +193,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
     from warp.tests.test_func_parameter_targets import TestFuncParameterTargets
     from warp.tests.test_future_annotations import TestFutureAnnotations
     from warp.tests.test_generics import TestGenerics
+    from warp.tests.test_geometry import TestGeometry
     from warp.tests.test_grad import TestGrad
     from warp.tests.test_grad_customs import TestGradCustoms
     from warp.tests.test_grad_debug import TestGradDebug
@@ -351,6 +352,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
         TestFuncParameterTargets,
         TestFutureAnnotations,
         TestGenerics,
+        TestGeometry,
         TestGrad,
         TestGradCustoms,
         TestGradDebug,

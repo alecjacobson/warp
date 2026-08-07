@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 import warp as wp
+from warp._src.sparse import BsrMatrix, bsr_from_triplets
 from warp._src.types import type_repr, types_equal
 
 if TYPE_CHECKING:
@@ -51,6 +52,25 @@ def super_fibonacci(i: int, n: int) -> wp.quat:
     R = wp.sqrt(1.0 - t)
     return wp.quat(r * wp.sin(alpha), r * wp.cos(alpha), R * wp.sin(beta), R * wp.cos(beta))
 
+@wp.func
+def triangle_edge_length_sq(
+        v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.vec3:
+    return wp.vec3(
+        wp.length_sq( v2 - v1 ),
+        wp.length_sq( v0 - v2 ),
+        wp.length_sq( v1 - v0 ))
+
+@wp.func
+def triangle_cotmatrix_coefficients(
+        v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.vec3:
+    l2 = triangle_edge_length_sq(v0,v1,v2)
+    A8 = triangle_double_area(v0,v1,v2) * 4.0
+
+    return wp.vec3(
+        l2[1] + l2[2] - l2[0],
+        l2[2] + l2[0] - l2[1],
+        l2[0] + l2[1] - l2[2]) / A8
+
 
 @wp.func
 def corner_half_angle(x: wp.vec3, y: wp.vec3, z: wp.vec3) -> wp.float32:
@@ -90,6 +110,65 @@ def triangle_double_area(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.float32:
 ## "implementation details" for the public-facing functions below. They
 ## are not intended to be called directly by users.
 ##########################################################################
+
+@wp.kernel(enable_backward=False)
+def cotmatrix_triplets(
+    points : wp.array[wp.vec3],
+    indices : wp.array[int],
+    rows : wp.array[int],
+    columns : wp.array[int],
+    values : wp.array[float]):
+
+    tri = wp.tid()
+    i0 = indices[tri * 3 + 0]
+    i1 = indices[tri * 3 + 1]
+    i2 = indices[tri * 3 + 2]
+
+    c = triangle_cotmatrix_coefficients(points[i0], points[i1], points[i2])
+
+    base = tri * 9
+
+    # Off-diagonal entries: one symmetric pair per edge, weighted by the
+    # cotangent of the angle opposite that edge.
+    rows[base + 0] = i1
+    columns[base + 0] = i2
+    values[base + 0] = c[0]
+
+    rows[base + 1] = i2
+    columns[base + 1] = i1
+    values[base + 1] = c[0]
+
+    rows[base + 2] = i2
+    columns[base + 2] = i0
+    values[base + 2] = c[1]
+
+    rows[base + 3] = i0
+    columns[base + 3] = i2
+    values[base + 3] = c[1]
+
+    rows[base + 4] = i0
+    columns[base + 4] = i1
+    values[base + 4] = c[2]
+
+    rows[base + 5] = i1
+    columns[base + 5] = i0
+    values[base + 5] = c[2]
+
+    # Diagonal entries: each vertex accumulates the negated cotangents of
+    # its two incident edges within this triangle. Pre-summing here instead
+    # of emitting two separate triplets per vertex is valid because
+    # addition is associative, and it halves the diagonal triplet count.
+    rows[base + 6] = i0
+    columns[base + 6] = i0
+    values[base + 6] = -(c[1] + c[2])
+
+    rows[base + 7] = i1
+    columns[base + 7] = i1
+    values[base + 7] = -(c[0] + c[2])
+
+    rows[base + 8] = i2
+    columns[base + 8] = i2
+    values[base + 8] = -(c[0] + c[1])
 
 
 class OBBMeasureType(enum.IntEnum):
@@ -815,6 +894,51 @@ def vertex_gaussian_curvature(
     )
 
     return out_curvature
+
+
+def cotmatrix(
+    points: wp.array[wp.vec3],
+    indices: wp.array[int],
+    *,
+    device: DeviceLike | None = None,
+) -> BsrMatrix:
+    """Assemble the cotangent Laplacian of a triangle mesh.
+
+    Each triangle contributes, for every edge, a symmetric off-diagonal pair
+    weighted by the cotangent of the angle opposite that edge, and subtracts the
+    same weight from the diagonal entries of the edge's two endpoints. This
+    matches the convention of libigl's ``igl::cotmatrix``: the result is symmetric
+    and negative semi-definite, with each row summing to zero.
+
+    This operation is not differentiable with respect to ``points``.
+
+    Args:
+        points: Array of vertex positions of type :class:`warp.vec3`.
+        indices: Flat array of triangle vertex indices, with three consecutive
+            entries per triangle (length ``3 * num_triangles``).
+        device: Device on which to run. Defaults to the device of ``points``.
+
+    Returns:
+        A square sparse matrix of shape ``(len(points), len(points))`` with
+        scalar (1x1) blocks.
+    """
+    device = wp.get_device(device) if device is not None else points.device
+    num_triangles = indices.shape[0] // 3
+    num_points = points.shape[0]
+
+    nnz = num_triangles * 9
+    rows = wp.empty(nnz, dtype=wp.int32, device=device)
+    columns = wp.empty(nnz, dtype=wp.int32, device=device)
+    values = wp.empty(nnz, dtype=wp.float32, device=device)
+
+    wp.launch(
+        cotmatrix_triplets,
+        dim=num_triangles,
+        inputs=[points, indices, rows, columns, values],
+        device=device,
+    )
+
+    return bsr_from_triplets(num_points, num_points, rows, columns, values)
 
 
 def oriented_bounding_box(
