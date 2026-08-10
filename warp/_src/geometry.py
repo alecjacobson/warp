@@ -118,7 +118,10 @@ def triangle_edge_length_sq(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.vec3:
 
 
 @wp.func
-def triangle_cotmatrix_coefficients(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.vec3:
+def triangle_cotangent_weights(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.vec3:
+    # Half the cotangent of each corner angle, indexed so that entry ``k`` weights
+    # the edge opposite vertex ``k``. Positive for acute angles; the Laplacian's
+    # sign convention is applied where these are assembled, not here.
     l2 = triangle_edge_length_sq(v0, v1, v2)
     A8 = triangle_double_area(v0, v1, v2) * 4.0
 
@@ -186,8 +189,28 @@ def simplex_barycenters_kernel(
     out_barycenters[simplex] = barycenter / wp.float32(simplex_size)
 
 
+class LaplacianWeighting(enum.IntEnum):
+    """Edge weighting used to assemble a mesh Laplacian.
+
+    ``IntEnum`` members are integers, so a value can be passed straight into a
+    kernel launch (Warp kernels cannot take a ``str`` parameter).
+    """
+
+    COTANGENT = 0
+    """Weight each edge by half the sum of the cotangents of the angles opposite it.
+
+    This is the P1 finite-element Laplacian, which depends on vertex positions.
+    """
+    UNIFORM = 1
+    """Weight every edge equally.
+
+    This is the graph Laplacian ``D - A`` of the mesh's edge graph, which depends
+    only on connectivity. Each edge counts once however many triangles share it.
+    """
+
+
 @wp.kernel
-def cotmatrix_triplets(
+def laplacian_triplets(
     points: wp.array[wp.vec3],
     indices: wp.array[int],
     rows: wp.array[int],
@@ -203,7 +226,7 @@ def cotmatrix_triplets(
         indices[3 * tri + 2],
     )
 
-    c = triangle_cotmatrix_coefficients(
+    c = triangle_cotangent_weights(
         points[v[0]],
         points[v[1]],
         points[v[2]],
@@ -213,6 +236,8 @@ def cotmatrix_triplets(
     #   - c[k] weights the edge opposite k
     #   - emit both symmetric off-diagonal entries
     #   - emit the diagonal entry for vertex k
+    # Off-diagonals are negated and the diagonal is positive, which is what makes
+    # the assembled operator positive semi-definite.
     for k in range(3):
         i = (k + 1) % 3
         j = (k + 2) % 3
@@ -220,30 +245,30 @@ def cotmatrix_triplets(
 
         rows[out + 0] = v[i]
         columns[out + 0] = v[j]
-        values[out + 0] = c[k]
+        values[out + 0] = -c[k]
 
         rows[out + 1] = v[j]
         columns[out + 1] = v[i]
-        values[out + 1] = c[k]
+        values[out + 1] = -c[k]
 
         rows[out + 2] = v[k]
         columns[out + 2] = v[k]
-        values[out + 2] = -(c[i] + c[j])
+        values[out + 2] = c[i] + c[j]
 
 
-@wp.kernel(enable_backward=False)
-def cotmatrix_row_counts(indices: wp.array[int], counts: wp.array[int]):
-    # Reserved storage for row ``v`` is three entries per incident triangle: the
-    # triangle's contribution to that vertex's diagonal, plus its two
-    # off-diagonals to the other two vertices. Counting incidences needs no edge
+@wp.kernel
+def vertex_row_counts(indices: wp.array[int], entries_per_incidence: int, counts: wp.array[int]):
+    # Reserved storage for row ``v`` is a fixed number of entries per incident
+    # triangle: two off-diagonals to the triangle's other two vertices, plus a
+    # diagonal entry when the caller wants one. Counting incidences needs no edge
     # enumeration and makes no manifoldness assumption.
     tri = wp.tid()
     for k in range(3):
-        wp.atomic_add(counts, indices[3 * tri + k], 3)
+        wp.atomic_add(counts, indices[3 * tri + k], entries_per_incidence)
 
 
 @wp.kernel(enable_backward=False)
-def cotmatrix_row_entries(
+def laplacian_row_entries(
     points: wp.array[wp.vec3],
     indices: wp.array[int],
     offsets: wp.array[int],
@@ -259,13 +284,13 @@ def cotmatrix_row_entries(
         indices[3 * tri + 2],
     )
 
-    c = triangle_cotmatrix_coefficients(
+    c = triangle_cotangent_weights(
         points[v[0]],
         points[v[1]],
         points[v[2]],
     )
 
-    # Same contributions as ``cotmatrix_triplets``, but grouped by the row they
+    # Same contributions as ``laplacian_triplets``, but grouped by the row they
     # land in so that they can be written straight into that row's reserved
     # span. ``cursors`` starts at zero and doubles as the per-row write cursor
     # and the final active count for each row.
@@ -276,13 +301,156 @@ def cotmatrix_row_entries(
         base = offsets[row] + wp.atomic_add(cursors, row, 3)
 
         columns[base + 0] = row
-        values[base + 0] = -(c[i] + c[j])
+        values[base + 0] = c[i] + c[j]
 
         columns[base + 1] = v[j]
-        values[base + 1] = c[i]
+        values[base + 1] = -c[i]
 
         columns[base + 2] = v[i]
-        values[base + 2] = c[j]
+        values[base + 2] = -c[j]
+
+
+##########################################################################
+## Connectivity-only assembly. These kernels build the sparsity pattern
+## coupling vertices that share a triangle edge, and fill it from the
+## pattern itself. They read no positions and write only integers or
+## constants, so their adjoints are empty and they stay usable inside a
+## warp.Tape without disabling backward passes.
+##########################################################################
+
+
+@wp.kernel
+def connectivity_triplets(
+    indices: wp.array[int],
+    rows: wp.array[int],
+    columns: wp.array[int],
+):
+    # Six entries per triangle: both directions of each of its three edges. Only
+    # the pattern is emitted, because a uniform weight cannot be accumulated per
+    # triangle -- an interior edge would then be counted once per incident
+    # triangle. The values are filled from the deduplicated pattern instead.
+    tri = wp.tid()
+    base = 6 * tri
+
+    v = wp.vec3i(
+        indices[3 * tri],
+        indices[3 * tri + 1],
+        indices[3 * tri + 2],
+    )
+
+    for k in range(3):
+        i = (k + 1) % 3
+        j = (k + 2) % 3
+        out = base + 2 * k
+
+        rows[out + 0] = v[i]
+        columns[out + 0] = v[j]
+
+        rows[out + 1] = v[j]
+        columns[out + 1] = v[i]
+
+
+@wp.kernel
+def connectivity_diagonal_triplets(
+    indices: wp.array[int],
+    offset: int,
+    rows: wp.array[int],
+    columns: wp.array[int],
+):
+    # Three diagonal entries per triangle, written past the off-diagonal block
+    # emitted by ``connectivity_triplets``. Emitting them per triangle rather
+    # than per vertex keeps the pattern identical to the cotangent one, which
+    # also leaves a vertex belonging to no triangle out of the matrix.
+    tri = wp.tid()
+    for k in range(3):
+        out = offset + 3 * tri + k
+        v = indices[3 * tri + k]
+        rows[out] = v
+        columns[out] = v
+
+
+@wp.kernel
+def connectivity_row_entries(
+    indices: wp.array[int],
+    include_diagonal: int,
+    offsets: wp.array[int],
+    cursors: wp.array[int],
+    columns: wp.array[int],
+    values: wp.array[float],
+):
+    # Same entries as ``connectivity_triplets``, grouped by the row they land in
+    # so they can be written straight into that row's reserved span. The values
+    # are placeholders that the caller's fill kernel overwrites.
+    tri = wp.tid()
+
+    v = wp.vec3i(
+        indices[3 * tri],
+        indices[3 * tri + 1],
+        indices[3 * tri + 2],
+    )
+
+    stride = 2 + include_diagonal
+
+    for k in range(3):
+        i = (k + 1) % 3
+        j = (k + 2) % 3
+        row = v[k]
+        base = offsets[row] + wp.atomic_add(cursors, row, stride)
+
+        columns[base + 0] = v[i]
+        values[base + 0] = 1.0
+
+        columns[base + 1] = v[j]
+        values[base + 1] = 1.0
+
+        if include_diagonal != 0:
+            columns[base + 2] = row
+            values[base + 2] = 1.0
+
+
+@wp.kernel
+def uniform_laplacian_values(
+    offsets: wp.array[int],
+    columns: wp.array[int],
+    values: wp.array[float],
+):
+    # ``D - A`` read off the deduplicated pattern: every off-diagonal is -1 and
+    # the diagonal is the number of distinct neighbors. Taking the degree from
+    # the pattern rather than from triangle incidences is what makes an interior
+    # edge count once rather than twice.
+    row = wp.tid()
+
+    diagonal = int(-1)
+    degree = float(0.0)
+
+    for k in range(offsets[row], offsets[row + 1]):
+        if columns[k] == row:
+            diagonal = k
+        else:
+            values[k] = -1.0
+            degree += 1.0
+
+    if diagonal != -1:
+        values[diagonal] = degree
+
+
+@wp.kernel
+def adjacency_values(
+    offsets: wp.array[int],
+    columns: wp.array[int],
+    values: wp.array[float],
+):
+    # One for every vertex pair in the pattern. A diagonal entry can only be
+    # present when the caller supplied a pattern that has one, and a vertex is
+    # not adjacent to itself, so it is zeroed rather than set.
+    row = wp.tid()
+    for k in range(offsets[row], offsets[row + 1]):
+        values[k] = wp.where(columns[k] == row, 0.0, 1.0)
+
+
+@wp.kernel
+def max_vertex_index(indices: wp.array[int], out_max: wp.array[int]):
+    wp.atomic_max(out_max, 0, indices[wp.tid()])
 
 
 class OBBMeasureType(enum.IntEnum):
@@ -639,6 +807,109 @@ def _validate_output_matrix(out: BsrMatrix, name: str, shape: tuple[int, int], d
         raise ValueError(f"`{name}` must be on device '{device}', but got '{out.device}'.")
     if out.shape != shape:
         raise ValueError(f"`{name}` must have shape {shape}, but got {out.shape}.")
+
+
+def _resolve_num_points(
+    points: wp.array | None,
+    indices: wp.array,
+    num_points: int | None,
+    out_matrix: BsrMatrix | None,
+    device: DeviceLike,
+) -> int:
+    """Determine the vertex count of a mesh, which fixes the size of its matrices.
+
+    Sources are tried in order of decreasing certainty: the positions array, an
+    explicit count, the shape of a caller-supplied output matrix, and finally the
+    largest index in ``indices``. Only the last requires a device readback.
+    """
+    if points is not None:
+        if num_points is not None and num_points != points.shape[0]:
+            raise ValueError(
+                f"`num_points` is {num_points} but `points` holds {points.shape[0]} positions. Pass only one of them."
+            )
+        return points.shape[0]
+
+    if num_points is not None:
+        if num_points < 0:
+            raise ValueError(f"`num_points` must be non-negative, but got {num_points}.")
+        return num_points
+
+    if out_matrix is not None:
+        return out_matrix.shape[0]
+
+    if indices.shape[0] == 0:
+        return 0
+
+    largest = wp.zeros(1, dtype=wp.int32, device=device)
+    wp.launch(max_vertex_index, dim=indices.shape[0], inputs=[indices], outputs=[largest], device=device)
+    return int(largest.numpy()[0]) + 1
+
+
+def _connectivity_matrix(
+    indices: wp.array[int],
+    num_points: int,
+    out_matrix: BsrMatrix | None,
+    construction: str,
+    reuse_topology: bool,
+    include_diagonal: bool,
+    device: DeviceLike,
+) -> BsrMatrix:
+    """Build the sparsity pattern coupling every pair of vertices that share a triangle edge.
+
+    The values of the returned matrix are meaningless; the caller fills them from
+    the pattern. Mirrors the two construction policies of the cotangent path.
+    """
+    if reuse_topology:
+        return out_matrix
+
+    num_triangles = indices.shape[0] // 3
+    entries_per_incidence = 3 if include_diagonal else 2
+
+    if construction == "row_compress":
+        nnz = num_triangles * 3 * entries_per_incidence
+        counts = wp.zeros(num_points, dtype=wp.int32, device=device)
+        wp.launch(vertex_row_counts, dim=num_triangles, inputs=[indices, entries_per_incidence, counts], device=device)
+
+        if out_matrix is None:
+            target = bsr_zeros(num_points, num_points, wp.float32, device=device, row_capacity=counts, nnz_capacity=nnz)
+        else:
+            target = out_matrix
+            bsr_set_zero(target, topology="padded", row_capacity=counts, nnz_capacity=nnz)
+
+        wp.launch(
+            connectivity_row_entries,
+            dim=num_triangles,
+            inputs=[
+                indices,
+                int(include_diagonal),
+                target.offsets,
+                target.row_counts,
+                target.columns,
+                target.values,
+            ],
+            device=device,
+        )
+        return bsr_compress(target, inplace=True, prune_numerical_zeros=False)
+
+    nnz = num_triangles * (6 + 3 * int(include_diagonal))
+    rows = wp.empty(nnz, dtype=wp.int32, device=device)
+    columns = wp.empty(nnz, dtype=wp.int32, device=device)
+
+    wp.launch(connectivity_triplets, dim=num_triangles, inputs=[indices], outputs=[rows, columns], device=device)
+    if include_diagonal:
+        wp.launch(
+            connectivity_diagonal_triplets,
+            dim=num_triangles,
+            inputs=[indices, 6 * num_triangles],
+            outputs=[rows, columns],
+            device=device,
+        )
+
+    target = bsr_zeros(num_points, num_points, wp.float32, device=device) if out_matrix is None else out_matrix
+    # Passing no values builds the topology alone, leaving the value array
+    # allocated but uninitialized for the caller's fill kernel.
+    bsr_set_from_triplets(target, rows, columns, None, topology="compact")
+    return target
 
 
 def simplex_barycenters(
@@ -1068,36 +1339,65 @@ def vertex_gaussian_curvature(
     return out_curvature
 
 
-def cotmatrix(
-    points: wp.array[wp.vec3],
+def laplacian(
+    points: wp.array[wp.vec3] | None,
     indices: wp.array[int],
-    out_cotmatrix: BsrMatrix | None = None,
+    out_laplacian: BsrMatrix | None = None,
     *,
+    weighting: LaplacianWeighting = LaplacianWeighting.COTANGENT,
+    num_points: int | None = None,
     construction: str = "triplets",
     reuse_topology: bool = False,
     device: DeviceLike | None = None,
 ) -> BsrMatrix:
-    """Assemble the cotangent Laplacian of a triangle mesh.
+    """Assemble the Laplacian of a triangle mesh.
 
-    Each triangle contributes, for every edge, a symmetric off-diagonal pair
-    weighted by the cotangent of the angle opposite that edge, and subtracts the
-    same weight from the diagonal entries of the edge's two endpoints. This
-    matches the convention of libigl's ``igl::cotmatrix``: the result is symmetric
-    and negative semi-definite, with each row summing to zero.
+    Both weightings produce a symmetric positive semi-definite operator whose
+    rows sum to zero, coupling exactly the vertex pairs that share an edge.
+    They differ in what an edge is worth.
 
-    With the default ``construction="triplets"``, the operation is
-    differentiable with respect to ``points``: launch it inside a
+    With :attr:`LaplacianWeighting.COTANGENT`, each triangle contributes, for
+    every edge, a symmetric off-diagonal pair weighted by the negated cotangent
+    of the angle opposite that edge, and adds the same weight to the diagonal
+    entries of the edge's two endpoints. This is the P1 finite-element stiffness
+    matrix of the Laplacian bilinear form ``int(grad(u) . grad(v))``.
+
+    With :attr:`LaplacianWeighting.UNIFORM`, every off-diagonal is ``-1`` and
+    every diagonal is the vertex's number of neighbors, giving the graph
+    Laplacian ``D - A`` of the mesh's edge graph. An edge counts once however
+    many triangles share it, so a boundary edge weighs the same as an interior
+    one. This depends only on ``indices``, so ``points`` may be ``None``.
+
+    Note:
+        The sign convention is the opposite of libigl's ``igl::cotmatrix``,
+        which returns a negative semi-definite operator. Code ported from
+        libigl needs ``laplacian() == -igl::cotmatrix()``.
+
+    With cotangent weighting and the default ``construction="triplets"``, the
+    operation is differentiable with respect to ``points``: launch it inside a
     :class:`warp.Tape` with ``points.requires_grad`` set to obtain gradients.
     The gradient of a triangle's contribution is undefined where its area
     vanishes, so degenerate triangles will produce non-finite gradients.
-    ``construction="row_compress"`` is not differentiable.
+    ``construction="row_compress"`` is not differentiable. The uniform Laplacian
+    is a function of connectivity alone, so its derivative with respect to
+    ``points`` is zero rather than unavailable, and every construction policy is
+    accepted.
 
     Args:
-        points: Array of vertex positions of type :class:`warp.vec3`.
+        points: Array of vertex positions of type :class:`warp.vec3`. May be
+            ``None`` only with :attr:`LaplacianWeighting.UNIFORM`, which reads
+            no positions.
         indices: Flat array of triangle vertex indices, with three consecutive
             entries per triangle (length ``3 * num_triangles``).
-        out_cotmatrix: Optional output matrix of shape
-            ``(len(points), len(points))`` with scalar (1x1) blocks and
+        weighting: Edge weighting, as a :class:`LaplacianWeighting` member.
+        num_points: Number of vertices, which fixes the size of the matrix.
+            Needed only when ``points`` is ``None``; passing it alongside
+            ``points`` is an error. When it is omitted and ``points`` is
+            ``None``, the count is taken from ``out_laplacian`` if one is given,
+            and otherwise from the largest entry of ``indices``, which costs a
+            device readback and prevents CUDA graph capture.
+        out_laplacian: Optional output matrix of shape
+            ``(num_points, num_points)`` with scalar (1x1) blocks and
             :class:`warp.float32` coefficients. Any blocks it already holds are
             discarded. Its storage is reused when large enough, and grown
             otherwise, so repeated calls on a mesh of fixed topology stop
@@ -1114,69 +1414,111 @@ def cotmatrix(
             per incident triangle, writes the contributions directly into those
             spans, and compresses each row independently. It avoids the global
             sort and is substantially faster, but is not differentiable, and is
-            rejected when ``points`` requires gradients.
+            rejected when ``points`` requires gradients and the weighting is
+            cotangent.
 
             Both produce the same matrix. Ignored when ``reuse_topology`` is
             set, since no pattern is built in that case.
-        reuse_topology: If ``True``, keep the sparsity pattern ``out_cotmatrix``
+        reuse_topology: If ``True``, keep the sparsity pattern ``out_laplacian``
             already holds and overwrite only its coefficients. Requires
-            ``out_cotmatrix``. This skips the sort and deduplication that
+            ``out_laplacian``. This skips the sort and deduplication that
             dominate assembly, and is several times faster, but it is only
             correct when that pattern already covers every vertex pair the mesh
             couples: contributions landing outside it are silently dropped. Pass
-            it a matrix returned by an earlier call on the same ``indices``.
-        device: Device on which to run. Defaults to the device of ``points``.
+            it a matrix returned by an earlier call on the same ``indices``,
+            with either weighting -- the pattern depends only on connectivity,
+            never on the values, so a coefficient that happens to vanish still
+            keeps its entry.
+
+            With :attr:`LaplacianWeighting.UNIFORM` the pattern must match the
+            mesh exactly rather than merely cover it, because the degrees are
+            counted from the pattern: a surplus entry inflates a diagonal
+            instead of staying zero.
+        device: Device on which to run. Defaults to the device of ``points``,
+            or of ``indices`` when ``points`` is ``None``.
 
     Returns:
-        A square sparse matrix of shape ``(len(points), len(points))`` with
-        scalar (1x1) blocks, which is ``out_cotmatrix`` when it is provided.
+        A square sparse matrix of shape ``(num_points, num_points)`` with
+        scalar (1x1) blocks, which is ``out_laplacian`` when it is provided.
 
     Raises:
-        ValueError: If ``out_cotmatrix`` is provided but its scalar type, block
+        ValueError: If ``out_laplacian`` is provided but its scalar type, block
             shape, device, or shape does not match the expected output, if
-            ``reuse_topology`` is set without a populated ``out_cotmatrix``, or
-            if ``construction`` is not a recognized policy. Also raised when
-            ``points`` requires gradients but the requested combination cannot
-            deliver them: ``construction="row_compress"``, or an
-            ``out_cotmatrix`` that does not itself require gradients.
+            ``reuse_topology`` is set without a populated ``out_laplacian``, if
+            ``construction`` is not a recognized policy, if ``weighting`` is not
+            a recognized member, or if ``points`` is ``None`` with cotangent
+            weighting. Also raised when ``num_points`` disagrees with ``points``,
+            and when ``points`` requires gradients but the requested cotangent
+            combination cannot deliver them: ``construction="row_compress"``, or
+            an ``out_laplacian`` that does not itself require gradients.
     """
     if construction not in ("triplets", "row_compress"):
         raise ValueError(f"Unsupported `construction` policy: {construction!r}. Expected 'triplets' or 'row_compress'.")
 
-    device = wp.get_device(device) if device is not None else points.device
-    num_triangles = indices.shape[0] // 3
-    num_points = points.shape[0]
+    weighting = LaplacianWeighting(weighting)
 
-    if out_cotmatrix is not None:
-        _validate_output_matrix(out_cotmatrix, "out_cotmatrix", (num_points, num_points), device)
+    if points is None and weighting == LaplacianWeighting.COTANGENT:
+        raise ValueError(
+            "`points` is required for cotangent weighting, which is a function of vertex positions. Pass positions, "
+            "or request `weighting=LaplacianWeighting.UNIFORM` for the connectivity-only Laplacian."
+        )
+
+    device = wp.get_device(device) if device is not None else (indices if points is None else points).device
+    num_triangles = indices.shape[0] // 3
+    num_points = _resolve_num_points(points, indices, num_points, out_laplacian, device)
+
+    if out_laplacian is not None:
+        _validate_output_matrix(out_laplacian, "out_laplacian", (num_points, num_points), device)
 
     # Reject the combinations that would run happily and hand back zero
-    # gradients, which is harder to notice than a failure.
-    if points.requires_grad:
+    # gradients, which is harder to notice than a failure. Uniform weighting is
+    # exempt: it does not read positions, so a zero gradient is the true answer.
+    if weighting == LaplacianWeighting.COTANGENT and points.requires_grad:
         if construction == "row_compress":
             raise ValueError(
                 "`construction='row_compress'` is not differentiable, because it places entries with an "
                 "atomic write cursor that the backward pass cannot replay. Use the default "
                 "`construction='triplets'` to differentiate with respect to `points`."
             )
-        if out_cotmatrix is not None and not out_cotmatrix.requires_grad:
+        if out_laplacian is not None and not out_laplacian.requires_grad:
             raise ValueError(
-                "`points` requires gradients but `out_cotmatrix` does not, so no gradient would reach "
-                "`points`. Set `out_cotmatrix.values.requires_grad = True`."
+                "`points` requires gradients but `out_laplacian` does not, so no gradient would reach "
+                "`points`. Set `out_laplacian.values.requires_grad = True`."
             )
 
     if reuse_topology:
-        if out_cotmatrix is None:
-            raise ValueError("`reuse_topology` requires `out_cotmatrix`, whose sparsity pattern it reuses.")
+        if out_laplacian is None:
+            raise ValueError("`reuse_topology` requires `out_laplacian`, whose sparsity pattern it reuses.")
         # An empty matrix has no pattern to reuse, so every contribution would be
         # dropped and the result would be silently zero. Catching that here costs
         # nothing, unlike verifying that a non-empty pattern is the right one,
         # which would need a device readback.
-        if out_cotmatrix.nnz == 0:
+        if out_laplacian.nnz == 0:
             raise ValueError(
-                "`reuse_topology` requires `out_cotmatrix` to already hold the sparsity pattern of the "
-                "cotangent Laplacian, but it is empty. Call `cotmatrix()` without `reuse_topology` first."
+                "`reuse_topology` requires `out_laplacian` to already hold the sparsity pattern of the "
+                "Laplacian, but it is empty. Call `laplacian()` without `reuse_topology` first."
             )
+
+    if weighting == LaplacianWeighting.UNIFORM:
+        # The uniform weights cannot be accumulated per triangle, so the pattern
+        # is built first and the values are then read off it.
+        target = _connectivity_matrix(
+            indices,
+            num_points,
+            out_laplacian,
+            construction,
+            reuse_topology,
+            include_diagonal=True,
+            device=device,
+        )
+        wp.launch(
+            uniform_laplacian_values,
+            dim=num_points,
+            inputs=[target.offsets, target.columns],
+            outputs=[target.values],
+            device=device,
+        )
+        return target
 
     nnz = num_triangles * 9
 
@@ -1184,21 +1526,21 @@ def cotmatrix(
     # through the triplet path regardless of the construction policy.
     if construction == "row_compress" and not reuse_topology:
         counts = wp.zeros(num_points, dtype=wp.int32, device=device)
-        wp.launch(cotmatrix_row_counts, dim=num_triangles, inputs=[indices, counts], device=device)
+        wp.launch(vertex_row_counts, dim=num_triangles, inputs=[indices, 3, counts], device=device)
 
-        if out_cotmatrix is None:
+        if out_laplacian is None:
             target = bsr_zeros(num_points, num_points, wp.float32, device=device, row_capacity=counts, nnz_capacity=nnz)
         else:
-            target = out_cotmatrix
+            target = out_laplacian
             bsr_set_zero(target, topology="padded", row_capacity=counts, nnz_capacity=nnz)
 
         wp.launch(
-            cotmatrix_row_entries,
+            laplacian_row_entries,
             dim=num_triangles,
             inputs=[points, indices, target.offsets, target.row_counts, target.columns, target.values],
             device=device,
         )
-        return bsr_compress(target, inplace=True)
+        return bsr_compress(target, inplace=True, prune_numerical_zeros=False)
 
     rows = wp.empty(nnz, dtype=wp.int32, device=device)
     columns = wp.empty(nnz, dtype=wp.int32, device=device)
@@ -1208,23 +1550,120 @@ def cotmatrix(
     values = wp.empty(nnz, dtype=wp.float32, device=device, requires_grad=points.requires_grad)
 
     wp.launch(
-        cotmatrix_triplets,
+        laplacian_triplets,
         dim=num_triangles,
         inputs=[points, indices, rows, columns, values],
         device=device,
     )
 
-    if out_cotmatrix is None:
-        return bsr_from_triplets(num_points, num_points, rows, columns, values)
+    # The sparsity pattern must stay purely topological. Pruning entries that
+    # happen to be numerically zero would drop an edge whose opposite angles are
+    # both right angles -- ubiquitous on grid meshes -- and `reuse_topology`
+    # would then silently discard that edge once the mesh deforms.
+    if out_laplacian is None:
+        return bsr_from_triplets(num_points, num_points, rows, columns, values, prune_numerical_zeros=False)
 
     bsr_set_from_triplets(
-        out_cotmatrix,
+        out_laplacian,
         rows,
         columns,
         values,
+        prune_numerical_zeros=False,
         topology="masked" if reuse_topology else "compact",
     )
-    return out_cotmatrix
+    return out_laplacian
+
+
+def vertex_adjacency_matrix(
+    indices: wp.array[int],
+    out_adjacency: BsrMatrix | None = None,
+    *,
+    num_points: int | None = None,
+    construction: str = "triplets",
+    reuse_topology: bool = False,
+    device: DeviceLike | None = None,
+) -> BsrMatrix:
+    """Assemble the vertex adjacency matrix of a triangle mesh.
+
+    Entry ``(i, j)`` is ``1`` when vertices ``i`` and ``j`` are joined by a
+    triangle edge and absent otherwise, so the result is symmetric, has a zero
+    diagonal, and holds one entry per directed edge. An edge counts once however
+    many triangles share it.
+
+    This is the ``A`` of the uniform Laplacian ``D - A``, and is built from the
+    same sparsity pattern, minus its diagonal. Reach for
+    :func:`laplacian` with :attr:`LaplacianWeighting.UNIFORM` when the degrees
+    are wanted too.
+
+    Args:
+        indices: Flat array of triangle vertex indices, with three consecutive
+            entries per triangle (length ``3 * num_triangles``).
+        out_adjacency: Optional output matrix of shape
+            ``(num_points, num_points)`` with scalar (1x1) blocks and
+            :class:`warp.float32` coefficients. Any blocks it already holds are
+            discarded. Its storage is reused when large enough, and grown
+            otherwise. If ``None``, a new matrix is allocated.
+        num_points: Number of vertices, which fixes the size of the matrix. When
+            omitted, the count is taken from ``out_adjacency`` if one is given,
+            and otherwise from the largest entry of ``indices``, which costs a
+            device readback and prevents CUDA graph capture.
+        construction: How the sparsity pattern is built, either ``"triplets"``
+            or ``"row_compress"``. Both produce the same matrix; see
+            :func:`laplacian` for the trade-off. Ignored when
+            ``reuse_topology`` is set.
+        reuse_topology: If ``True``, keep the sparsity pattern ``out_adjacency``
+            already holds and overwrite only its coefficients. Requires
+            ``out_adjacency``, whose pattern must match the mesh: a surplus
+            entry becomes a spurious ``1`` rather than staying zero. Pass it a
+            matrix returned by an earlier call on the same ``indices``.
+        device: Device on which to run. Defaults to the device of ``indices``.
+
+    Returns:
+        A square sparse matrix of shape ``(num_points, num_points)`` with
+        scalar (1x1) blocks, which is ``out_adjacency`` when it is provided.
+
+    Raises:
+        ValueError: If ``out_adjacency`` is provided but its scalar type, block
+            shape, device, or shape does not match the expected output, if
+            ``reuse_topology`` is set without a populated ``out_adjacency``, or
+            if ``construction`` is not a recognized policy.
+    """
+    if construction not in ("triplets", "row_compress"):
+        raise ValueError(f"Unsupported `construction` policy: {construction!r}. Expected 'triplets' or 'row_compress'.")
+
+    device = wp.get_device(device) if device is not None else indices.device
+    num_points = _resolve_num_points(None, indices, num_points, out_adjacency, device)
+
+    if out_adjacency is not None:
+        _validate_output_matrix(out_adjacency, "out_adjacency", (num_points, num_points), device)
+
+    if reuse_topology:
+        if out_adjacency is None:
+            raise ValueError("`reuse_topology` requires `out_adjacency`, whose sparsity pattern it reuses.")
+        if out_adjacency.nnz == 0:
+            raise ValueError(
+                "`reuse_topology` requires `out_adjacency` to already hold the sparsity pattern of the "
+                "adjacency matrix, but it is empty. Call `vertex_adjacency_matrix()` without "
+                "`reuse_topology` first."
+            )
+
+    target = _connectivity_matrix(
+        indices,
+        num_points,
+        out_adjacency,
+        construction,
+        reuse_topology,
+        include_diagonal=False,
+        device=device,
+    )
+    wp.launch(
+        adjacency_values,
+        dim=num_points,
+        inputs=[target.offsets, target.columns],
+        outputs=[target.values],
+        device=device,
+    )
+    return target
 
 
 def oriented_bounding_box(

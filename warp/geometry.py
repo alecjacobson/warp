@@ -20,10 +20,11 @@ Usage:
 
 # isort: skip_file
 
+from warp._src.geometry import LaplacianWeighting as LaplacianWeighting
 from warp._src.geometry import OBBMeasureType as OBBMeasureType
 from warp._src.geometry import VertexNormalWeighting as VertexNormalWeighting
 from warp._src.geometry import corner_half_angle as corner_half_angle
-from warp._src.geometry import cotmatrix as cotmatrix
+from warp._src.geometry import laplacian as laplacian
 from warp._src.geometry import moments as moments
 from warp._src.geometry import oriented_bounding_box as oriented_bounding_box
 from warp._src.geometry import super_fibonacci as super_fibonacci
@@ -33,5 +34,6 @@ from warp._src.geometry import triangle_corner_half_angles as triangle_corner_ha
 from warp._src.geometry import triangle_double_area as triangle_double_area
 from warp._src.geometry import triangle_normal as triangle_normal
 from warp._src.geometry import triangle_normals as triangle_normals
+from warp._src.geometry import vertex_adjacency_matrix as vertex_adjacency_matrix
 from warp._src.geometry import vertex_gaussian_curvature as vertex_gaussian_curvature
 from warp._src.geometry import vertex_normals as vertex_normals

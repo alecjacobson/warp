@@ -7,21 +7,20 @@ The cotangent Laplacian of a triangle mesh is, from the physics point of view,
 the P1 finite-element stiffness matrix of the Laplacian bilinear form
 ``int(grad(u) . grad(v))``. So the same operator can be assembled two ways:
 
-  - :func:`warp.geometry.cotmatrix`, which evaluates the closed-form cotangent
+  - :func:`warp.geometry.laplacian`, which evaluates the closed-form cotangent
     weights per triangle and pushes them straight into COO triplets;
   - :func:`warp.fem.integrate`, which builds a function space over the mesh and
     integrates the bilinear form with quadrature.
 
-The two agree up to sign: ``cotmatrix`` follows libigl in returning a negative
-semi-definite operator, while the FEM stiffness matrix is positive
-semi-definite.
+Both return the operator in the same positive semi-definite sign convention, so
+the two agree outright.
 
 Keeping the comparison fair takes some care, because most of the runtime of
 either path is neither cotangents nor quadrature -- it is the shared
 ``warp.sparse`` assembly underneath. This benchmark therefore:
 
   - matches the accumulation precision. ``fem.integrate`` accumulates in
-    ``float64`` by default, while ``cotmatrix`` is ``float32`` throughout, so
+    ``float64`` by default, while ``laplacian`` is ``float32`` throughout, so
     the FEM side is asked for ``float32``;
   - matches the topology policy, timing a compact rebuild against a compact
     rebuild and a pattern refill against a pattern refill, rather than
@@ -67,7 +66,7 @@ RESOLUTIONS = [64, 256, 1024]  # Grid resolution per side; the mesh has 2 * res^
 ITERATIONS = 20  # Number of timed iterations per variant
 WARM_UP = 3  # Number of untimed warm-up iterations
 
-# Match cotmatrix, which computes and stores float32 throughout.
+# Match laplacian, which computes and stores float32 throughout.
 ACCUMULATE_DTYPE = wp.float32
 
 
@@ -118,7 +117,7 @@ def make_fem_fields(points: wp.array, indices_2d: wp.array):
 
 
 def relative_discrepancy(L, K, device) -> float:
-    """Return the relative discrepancy between ``L`` and ``-K``, via a matrix-vector product.
+    """Return the relative discrepancy between ``L`` and ``K``, via a matrix-vector product.
 
     Comparing the action on a random vector avoids densifying matrices that
     reach a million rows at the larger resolutions.
@@ -130,7 +129,7 @@ def relative_discrepancy(L, K, device) -> float:
     Kx = warp.sparse.bsr_mv(K, x).numpy()
 
     scale = np.abs(Lx).max()
-    return float(np.abs(Lx + Kx).max() / scale) if scale > 0.0 else float("inf")
+    return float(np.abs(Lx - Kx).max() / scale) if scale > 0.0 else float("inf")
 
 
 def time_variant(fn, device) -> tuple[float, float]:
@@ -173,12 +172,12 @@ def run_resolution(res: int, device) -> None:
     # Correctness first: comparing the performance of two operators is only
     # meaningful once they are known to be the same operator.
     L = warp.sparse.bsr_zeros(num_points, num_points, wp.float32, device=device)
-    warp.geometry.cotmatrix(points, indices, L)
+    warp.geometry.laplacian(points, indices, L)
     K = fem.integrate(stiffness_form, fields=fem_fields, accumulate_dtype=ACCUMULATE_DTYPE)
 
     print(f"\n  resolution {res}: {num_points} vertices, {num_triangles} triangles")
     print(f"    nnz: geometry {L.nnz_sync()}, fem {K.nnz_sync()}")
-    print(f"    max relative discrepancy of (L + K) x: {relative_discrepancy(L, K, device):.3e}")
+    print(f"    max relative discrepancy of (L - K) x: {relative_discrepancy(L, K, device):.3e}")
 
     def integrate(output, **bsr_options):
         return fem.integrate(
@@ -203,9 +202,9 @@ def run_resolution(res: int, device) -> None:
     report(
         "cold -- nothing precomputed",
         {
-            "geometry.cotmatrix()": time_variant(lambda: warp.geometry.cotmatrix(points, indices), device),
-            "geometry.cotmatrix(construction='row_compress')": time_variant(
-                lambda: warp.geometry.cotmatrix(points, indices, construction="row_compress"), device
+            "geometry.laplacian()": time_variant(lambda: warp.geometry.laplacian(points, indices), device),
+            "geometry.laplacian(construction='row_compress')": time_variant(
+                lambda: warp.geometry.laplacian(points, indices, construction="row_compress"), device
             ),
             "fem: Trimesh3D + space + fields + integrate": time_variant(fem_cold, device),
         },
@@ -218,9 +217,9 @@ def run_resolution(res: int, device) -> None:
     report(
         "warm rebuild -- FEM setup reused, sparsity pattern rebuilt",
         {
-            "geometry.cotmatrix(out=)": time_variant(lambda: warp.geometry.cotmatrix(points, indices, L), device),
-            "geometry.cotmatrix(out=, construction='row_compress')": time_variant(
-                lambda: warp.geometry.cotmatrix(points, indices, L, construction="row_compress"), device
+            "geometry.laplacian(out=)": time_variant(lambda: warp.geometry.laplacian(points, indices, L), device),
+            "geometry.laplacian(out=, construction='row_compress')": time_variant(
+                lambda: warp.geometry.laplacian(points, indices, L, construction="row_compress"), device
             ),
             "fem.integrate(output=)": time_variant(lambda: integrate(K_rebuild), device),
             "fem.integrate(output=, construction='auto')": time_variant(
@@ -237,8 +236,8 @@ def run_resolution(res: int, device) -> None:
     report(
         "topology reuse -- existing pattern refilled",
         {
-            "geometry.cotmatrix(out=, reuse_topology=True)": time_variant(
-                lambda: warp.geometry.cotmatrix(points, indices, L, reuse_topology=True), device
+            "geometry.laplacian(out=, reuse_topology=True)": time_variant(
+                lambda: warp.geometry.laplacian(points, indices, L, reuse_topology=True), device
             ),
             "fem.integrate(output=, topology='masked')": time_variant(
                 lambda: integrate(K_masked, topology="masked"), device
