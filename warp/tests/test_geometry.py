@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import contextlib
 import unittest
 
 import numpy as np
@@ -156,6 +157,99 @@ def test_cotmatrix_out(test, device):
     warp.sparse.bsr_set_diag(out, 1.0)
     warp.geometry.cotmatrix(points, indices, out)
     assert_np_equal(_bsr_to_dense(out), expected, tol=1e-6)
+
+
+@wp.kernel
+def _weighted_value_sum(
+    values: wp.array(dtype=wp.float32),
+    weights: wp.array(dtype=wp.float32),
+    count: int,
+    out_loss: wp.array(dtype=wp.float32),
+):
+    k = wp.tid()
+    if k < count:
+        wp.atomic_add(out_loss, 0, values[k] * weights[k])
+
+
+def test_cotmatrix_gradient(test, device):
+    """Gradients through the triplet path match central finite differences.
+
+    The loss is a fixed random combination of the matrix coefficients, which
+    depends on every triangle and so exercises the whole assembly rather than a
+    single entry.
+    """
+    rng = np.random.default_rng(11)
+    points_np = _OCTAHEDRON_POINTS + 0.05 * rng.standard_normal(_OCTAHEDRON_POINTS.shape).astype(np.float32)
+    indices = wp.array(_OCTAHEDRON_INDICES.flatten(), dtype=wp.int32, device=device)
+
+    # The sparsity pattern is fixed by connectivity, so one weight vector stays
+    # valid across the perturbed evaluations below.
+    probe = warp.geometry.cotmatrix(wp.array(points_np, dtype=wp.vec3, device=device), indices)
+    count = probe.nnz_sync()
+    weights = wp.array(rng.standard_normal(count).astype(np.float32), dtype=wp.float32, device=device)
+
+    def loss_of(positions_np: np.ndarray, tape: wp.Tape | None = None):
+        points = wp.array(positions_np, dtype=wp.vec3, device=device, requires_grad=tape is not None)
+        loss = wp.zeros(1, dtype=wp.float32, device=device, requires_grad=tape is not None)
+
+        context = tape if tape is not None else contextlib.nullcontext()
+        with context:
+            L = warp.geometry.cotmatrix(points, indices)
+            wp.launch(
+                _weighted_value_sum,
+                dim=count,
+                inputs=[L.values, weights, count],
+                outputs=[loss],
+                device=device,
+            )
+        return points, loss
+
+    tape = wp.Tape()
+    points, loss = loss_of(points_np, tape)
+    tape.backward(loss=loss)
+
+    analytic = points.grad.numpy()
+    test.assertTrue(np.isfinite(analytic).all(), "gradient contains non-finite entries")
+    test.assertGreater(np.abs(analytic).max(), 0.0, "gradient is identically zero")
+
+    eps = 1e-3
+    numeric = np.zeros_like(points_np)
+    for i in range(points_np.shape[0]):
+        for c in range(3):
+            forward = points_np.copy()
+            backward = points_np.copy()
+            forward[i, c] += eps
+            backward[i, c] -= eps
+            hi = loss_of(forward)[1].numpy()[0]
+            lo = loss_of(backward)[1].numpy()[0]
+            numeric[i, c] = (hi - lo) / (2.0 * eps)
+
+    # Loose tolerance: the finite differences are taken in float32.
+    assert_np_equal(analytic, numeric, tol=2e-2)
+
+
+def test_cotmatrix_gradient_guards(test, device):
+    """Combinations that cannot deliver gradients are rejected, not silently zeroed."""
+    num_points = _OCTAHEDRON_POINTS.shape[0]
+    points = wp.array(_OCTAHEDRON_POINTS, dtype=wp.vec3, device=device, requires_grad=True)
+    indices = wp.array(_OCTAHEDRON_INDICES.flatten(), dtype=wp.int32, device=device)
+
+    with test.assertRaisesRegex(ValueError, "not differentiable"):
+        warp.geometry.cotmatrix(points, indices, construction="row_compress")
+
+    with test.assertRaisesRegex(ValueError, "no gradient would reach"):
+        out = warp.sparse.bsr_zeros(num_points, num_points, wp.float32, device=device)
+        warp.geometry.cotmatrix(points, indices, out)
+
+    # The same call succeeds once the output can carry gradients.
+    out = warp.sparse.bsr_zeros(num_points, num_points, wp.float32, device=device)
+    out.values.requires_grad = True
+    warp.geometry.cotmatrix(points, indices, out)
+
+    # Neither guard fires when gradients were never requested.
+    plain = wp.array(_OCTAHEDRON_POINTS, dtype=wp.vec3, device=device)
+    warp.geometry.cotmatrix(plain, indices, construction="row_compress")
+    warp.geometry.cotmatrix(plain, indices, warp.sparse.bsr_zeros(num_points, num_points, wp.float32, device=device))
 
 
 def test_cotmatrix_row_compress(test, device):
@@ -324,6 +418,8 @@ class TestGeometry(unittest.TestCase):
 add_function_test(TestGeometry, "test_cotmatrix", test_cotmatrix, devices=devices)
 add_function_test(TestGeometry, "test_cotmatrix_out", test_cotmatrix_out, devices=devices)
 add_function_test(TestGeometry, "test_cotmatrix_out_validation", test_cotmatrix_out_validation, devices=devices)
+add_function_test(TestGeometry, "test_cotmatrix_gradient", test_cotmatrix_gradient, devices=devices)
+add_function_test(TestGeometry, "test_cotmatrix_gradient_guards", test_cotmatrix_gradient_guards, devices=devices)
 add_function_test(TestGeometry, "test_cotmatrix_row_compress", test_cotmatrix_row_compress, devices=devices)
 add_function_test(
     TestGeometry,

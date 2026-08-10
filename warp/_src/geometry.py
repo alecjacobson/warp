@@ -186,7 +186,7 @@ def simplex_barycenters_kernel(
     out_barycenters[simplex] = barycenter / wp.float32(simplex_size)
 
 
-@wp.kernel(enable_backward=False)
+@wp.kernel
 def cotmatrix_triplets(
     points: wp.array[wp.vec3],
     indices: wp.array[int],
@@ -1085,7 +1085,12 @@ def cotmatrix(
     matches the convention of libigl's ``igl::cotmatrix``: the result is symmetric
     and negative semi-definite, with each row summing to zero.
 
-    This operation is not differentiable with respect to ``points``.
+    With the default ``construction="triplets"``, the operation is
+    differentiable with respect to ``points``: launch it inside a
+    :class:`warp.Tape` with ``points.requires_grad`` set to obtain gradients.
+    The gradient of a triangle's contribution is undefined where its area
+    vanishes, so degenerate triangles will produce non-finite gradients.
+    ``construction="row_compress"`` is not differentiable.
 
     Args:
         points: Array of vertex positions of type :class:`warp.vec3`.
@@ -1108,8 +1113,8 @@ def cotmatrix(
             ``"row_compress"`` instead reserves each vertex row three entries
             per incident triangle, writes the contributions directly into those
             spans, and compresses each row independently. It avoids the global
-            sort and is substantially faster, but compresses in place and is
-            not differentiable.
+            sort and is substantially faster, but is not differentiable, and is
+            rejected when ``points`` requires gradients.
 
             Both produce the same matrix. Ignored when ``reuse_topology`` is
             set, since no pattern is built in that case.
@@ -1130,7 +1135,10 @@ def cotmatrix(
         ValueError: If ``out_cotmatrix`` is provided but its scalar type, block
             shape, device, or shape does not match the expected output, if
             ``reuse_topology`` is set without a populated ``out_cotmatrix``, or
-            if ``construction`` is not a recognized policy.
+            if ``construction`` is not a recognized policy. Also raised when
+            ``points`` requires gradients but the requested combination cannot
+            deliver them: ``construction="row_compress"``, or an
+            ``out_cotmatrix`` that does not itself require gradients.
     """
     if construction not in ("triplets", "row_compress"):
         raise ValueError(f"Unsupported `construction` policy: {construction!r}. Expected 'triplets' or 'row_compress'.")
@@ -1141,6 +1149,21 @@ def cotmatrix(
 
     if out_cotmatrix is not None:
         _validate_output_matrix(out_cotmatrix, "out_cotmatrix", (num_points, num_points), device)
+
+    # Reject the combinations that would run happily and hand back zero
+    # gradients, which is harder to notice than a failure.
+    if points.requires_grad:
+        if construction == "row_compress":
+            raise ValueError(
+                "`construction='row_compress'` is not differentiable, because it places entries with an "
+                "atomic write cursor that the backward pass cannot replay. Use the default "
+                "`construction='triplets'` to differentiate with respect to `points`."
+            )
+        if out_cotmatrix is not None and not out_cotmatrix.requires_grad:
+            raise ValueError(
+                "`points` requires gradients but `out_cotmatrix` does not, so no gradient would reach "
+                "`points`. Set `out_cotmatrix.values.requires_grad = True`."
+            )
 
     if reuse_topology:
         if out_cotmatrix is None:
@@ -1179,7 +1202,10 @@ def cotmatrix(
 
     rows = wp.empty(nnz, dtype=wp.int32, device=device)
     columns = wp.empty(nnz, dtype=wp.int32, device=device)
-    values = wp.empty(nnz, dtype=wp.float32, device=device)
+    # The triplet values carry the gradient: warp.sparse propagates
+    # ``requires_grad`` from here onto the assembled matrix and accumulates them
+    # with differentiable kernels.
+    values = wp.empty(nnz, dtype=wp.float32, device=device, requires_grad=points.requires_grad)
 
     wp.launch(
         cotmatrix_triplets,
