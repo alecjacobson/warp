@@ -7,6 +7,7 @@ import unittest
 import numpy as np
 
 import warp as wp
+import warp.fem as fem
 import warp.geometry
 import warp.sparse
 from warp.tests.unittest_utils import *
@@ -95,6 +96,29 @@ def _grid_surface(n: int) -> tuple[np.ndarray, np.ndarray]:
         ]
     ).astype(np.int32)
     return points, indices
+
+
+@fem.integrand
+def _stiffness_form(s: fem.Sample, u: fem.Field, v: fem.Field):
+    """Laplacian bilinear form, whose P1 stiffness matrix is the cotangent Laplacian."""
+    return wp.dot(fem.grad(u, s), fem.grad(v, s))
+
+
+def _fem_stiffness(points: wp.array, indices: np.ndarray, device) -> "warp.sparse.BsrMatrix":
+    """Assemble the P1 Laplacian stiffness matrix for the same mesh via ``warp.fem``."""
+    geo = fem.Trimesh3D(
+        tri_vertex_indices=wp.array(indices, dtype=int, device=device),
+        positions=points,
+    )
+    space = fem.make_polynomial_space(geo, degree=1)
+    domain = fem.Cells(geometry=geo)
+    return fem.integrate(
+        _stiffness_form,
+        fields={
+            "u": fem.make_trial(space=space, domain=domain),
+            "v": fem.make_test(space=space, domain=domain),
+        },
+    )
 
 
 def _bsr_to_dense(bsr) -> np.ndarray:
@@ -407,6 +431,36 @@ def test_cotmatrix_capturability(test, device):
     assert_np_equal(_bsr_to_dense(out), expected, tol=1e-6)
 
 
+def test_cotmatrix_matches_fem_stiffness(test, device):
+    """The cotangent Laplacian is the negated P1 Laplacian stiffness matrix.
+
+    Seen as a bilinear form, ``cotmatrix`` assembles ``-int(grad(u) . grad(v))``
+    over the mesh. ``warp.fem`` assembles the same form from the physics side,
+    with the opposite sign convention: ``cotmatrix`` follows libigl in returning
+    a negative semi-definite operator, while the FEM stiffness matrix is
+    positive semi-definite.
+    """
+    points_np, indices_np = _grid_surface(6)
+
+    points = wp.array(points_np, dtype=wp.vec3, device=device)
+    indices = wp.array(indices_np.flatten(), dtype=wp.int32, device=device)
+
+    L = warp.geometry.cotmatrix(points, indices)
+    K = _fem_stiffness(points, indices_np, device)
+
+    test.assertEqual(L.shape, K.shape)
+    # Both operators couple exactly the vertex pairs that share an edge, so the
+    # sparsity patterns must agree and not merely the dense values.
+    test.assertEqual(L.nnz_sync(), K.nnz_sync())
+
+    dense_L = _bsr_to_dense(L)
+    dense_K = _bsr_to_dense(K)
+
+    assert_np_equal(dense_L, -dense_K, tol=1e-4)
+    # Guard against both being trivially zero, which would satisfy the above.
+    test.assertGreater(np.abs(dense_L).max(), 1.0)
+
+
 devices = get_test_devices()
 cuda_devices_with_mempool = get_selected_cuda_test_devices_with_mempool()
 
@@ -438,6 +492,12 @@ add_function_test(
     TestGeometry,
     "test_cotmatrix_reuse_topology_validation",
     test_cotmatrix_reuse_topology_validation,
+    devices=devices,
+)
+add_function_test(
+    TestGeometry,
+    "test_cotmatrix_matches_fem_stiffness",
+    test_cotmatrix_matches_fem_stiffness,
     devices=devices,
 )
 add_function_test(
