@@ -21,6 +21,57 @@ if TYPE_CHECKING:
 ## of warp as they write their own kernels.
 ##########################################################################
 
+@wp.func
+def line_segment_barycenter(v0: wp.vec3, v1: wp.vec3) -> wp.vec3:
+    # Barycenter of a line segment, which is its midpoint.
+    return (v0 + v1) * 0.5
+
+@wp.func
+def triangle_barycenter(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.vec3:
+    # Barycenter of a triangle, which is the average of its three vertices.
+    return (v0 + v1 + v2) / 3.0
+
+@wp.func
+def tetrahedron_barycenter(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3, v3: wp.vec3) -> wp.vec3:
+    # Barycenter of a tetrahedron, which is the average of its four vertices.
+    return (v0 + v1 + v2 + v3) / 4.0
+
+@wp.func
+def line_segment_barycentric_coordinates(
+        v0: wp.vec3, v1: wp.vec3, p: wp.vec3
+        ) -> wp.vec2:
+    # Barycentric coordinates of a point ``p`` with respect to a line segment
+    # ``(v0, v1)``. The coordinates are in ``[0, 1]`` if ``p`` is on the
+    # segment.
+    d = v1 - v0
+    t = wp.dot(p - v0, d) / wp.dot(d, d)
+    return wp.vec2(1.0 - t, t)
+
+@wp.func
+def triangle_barycentric_coordinates(
+        v0: wp.vec3, v1: wp.vec3, v2: wp.vec3, p: wp.vec3
+        ) -> wp.vec3:
+    # Barycentric coordinates of a point ``p`` with respect to a triangle
+    # ``(v0, v1, v2)``. The coordinates are in ``[0, 1]`` if ``p`` is on the
+    # triangle.
+    d0 = v1 - v0
+    d1 = v2 - v0
+    d2 = p - v0
+
+    d00 = wp.dot(d0, d0)
+    d01 = wp.dot(d0, d1)
+    d11 = wp.dot(d1, d1)
+    d20 = wp.dot(d2, d0)
+    d21 = wp.dot(d2, d1)
+
+    denom = d00 * d11 - d01 * d01
+
+    v = (d11 * d20 - d01 * d21) / denom
+    w = (d00 * d21 - d01 * d20) / denom
+    u = 1.0 - v - w
+
+    return wp.vec3(u, v, w)
+
 
 _SF_PHI = wp.constant(wp.float64(1.0 / math.sqrt(2.0)))
 """First Super-Fibonacci spiral constant, ``1 / sqrt(2)``."""
@@ -90,6 +141,26 @@ def triangle_double_area(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.float32:
 ## "implementation details" for the public-facing functions below. They
 ## are not intended to be called directly by users.
 ##########################################################################
+
+@wp.kernel
+def simplex_barycenters_kernel(
+        points: wp.array(dtype=wp.vec3),
+        indices: wp.array(dtype=wp.int32),
+        simplex_size: int,
+        out_barycenters: wp.array(dtype=wp.vec3),
+        ):
+    # Doesn't actually call line_segment_barycenter, triangle_barycenter,
+    # tetrahedron_barycenter
+    simplex = wp.tid()
+    base = simplex * simplex_size
+
+    barycenter = wp.vec3(0.0)
+
+    for local_vertex in range(simplex_size):
+        vertex = points[indices[base + local_vertex]]
+        barycenter += vertex
+
+    out_barycenters[simplex] = barycenter / wp.float32(simplex_size)
 
 
 class OBBMeasureType(enum.IntEnum):
@@ -432,6 +503,49 @@ def _validate_output(out: wp.array, name: str, length: int, dtype, device: Devic
         raise ValueError(f"`{name}` must be on device '{device}', but got '{out.device}'.")
     if out.shape[0] < length:
         raise ValueError(f"`{name}` must have length at least {length}, but got {out.shape[0]}.")
+
+def simplex_barycenters(
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    simplex_size: int,
+    out_barycenters: wp.array(dtype=wp.vec3) | None = None,
+    *,
+    device: DeviceLike | None = None,
+) -> wp.array(dtype=wp.vec3):
+    """Compute the barycenter of each simplex in a mesh.
+
+    Args:
+        points: Array of vertex positions of type :class:`warp.vec3`.
+        indices: Flat array of simplex vertex indices, with ``simplex_size ``
+            consecutive entries per simplex (length ``(simplex_size ) * num_simplices``).
+        simplex_size: Number of vertices per simplex (2 for line segments, 3 for triangles, 4 for tetrahedra).
+        out_barycenters: Optional output array of length ``num_simplices`` to store the
+            per-simplex barycenters. If ``None``, a new array is allocated with the same
+            ``requires_grad`` setting as ``points``.
+        device: Device on which to run. Defaults to the device of ``points``.
+    """
+    device = wp.get_device(device) if device is not None else points.device
+    num_simplices = indices.shape[0] // (simplex_size)
+
+    if out_barycenters is None:
+        out_barycenters = wp.empty(
+            num_simplices,
+            dtype=wp.vec3,
+            device=device,
+            requires_grad=points.requires_grad,
+        )
+    else:
+        _validate_output(out_barycenters, "out_barycenters", num_simplices, wp.vec3, device)
+
+    wp.launch(
+        simplex_barycenters_kernel,
+        dim=num_simplices,
+        inputs=[points, indices, simplex_size],
+        outputs=[out_barycenters],
+        device=device,
+    )
+
+    return out_barycenters
 
 
 def triangle_corner_angles(
