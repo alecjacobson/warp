@@ -10,7 +10,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 import warp as wp
-from warp._src.sparse import BsrMatrix, bsr_from_triplets, bsr_set_from_triplets
+from warp._src.sparse import (
+    BsrMatrix,
+    bsr_compress,
+    bsr_from_triplets,
+    bsr_set_from_triplets,
+    bsr_set_zero,
+    bsr_zeros,
+)
 from warp._src.types import type_repr, types_equal
 
 if TYPE_CHECKING:
@@ -222,6 +229,60 @@ def cotmatrix_triplets(
         rows[out + 2] = v[k]
         columns[out + 2] = v[k]
         values[out + 2] = -(c[i] + c[j])
+
+
+@wp.kernel(enable_backward=False)
+def cotmatrix_row_counts(indices: wp.array[int], counts: wp.array[int]):
+    # Reserved storage for row ``v`` is three entries per incident triangle: the
+    # triangle's contribution to that vertex's diagonal, plus its two
+    # off-diagonals to the other two vertices. Counting incidences needs no edge
+    # enumeration and makes no manifoldness assumption.
+    tri = wp.tid()
+    for k in range(3):
+        wp.atomic_add(counts, indices[3 * tri + k], 3)
+
+
+@wp.kernel(enable_backward=False)
+def cotmatrix_row_entries(
+    points: wp.array[wp.vec3],
+    indices: wp.array[int],
+    offsets: wp.array[int],
+    cursors: wp.array[int],
+    columns: wp.array[int],
+    values: wp.array[float],
+):
+    tri = wp.tid()
+
+    v = wp.vec3i(
+        indices[3 * tri],
+        indices[3 * tri + 1],
+        indices[3 * tri + 2],
+    )
+
+    c = triangle_cotmatrix_coefficients(
+        points[v[0]],
+        points[v[1]],
+        points[v[2]],
+    )
+
+    # Same contributions as ``cotmatrix_triplets``, but grouped by the row they
+    # land in so that they can be written straight into that row's reserved
+    # span. ``cursors`` starts at zero and doubles as the per-row write cursor
+    # and the final active count for each row.
+    for k in range(3):
+        i = (k + 1) % 3
+        j = (k + 2) % 3
+        row = v[k]
+        base = offsets[row] + wp.atomic_add(cursors, row, 3)
+
+        columns[base + 0] = row
+        values[base + 0] = -(c[i] + c[j])
+
+        columns[base + 1] = v[j]
+        values[base + 1] = c[i]
+
+        columns[base + 2] = v[i]
+        values[base + 2] = c[j]
 
 
 class OBBMeasureType(enum.IntEnum):
@@ -1012,6 +1073,8 @@ def cotmatrix(
     indices: wp.array[int],
     out_cotmatrix: BsrMatrix | None = None,
     *,
+    construction: str = "triplets",
+    reuse_topology: bool = False,
     device: DeviceLike | None = None,
 ) -> BsrMatrix:
     """Assemble the cotangent Laplacian of a triangle mesh.
@@ -1035,6 +1098,28 @@ def cotmatrix(
             otherwise, so repeated calls on a mesh of fixed topology stop
             reallocating the matrix after the first one. If ``None``, a new
             matrix is allocated.
+        construction: How the sparsity pattern is built.
+
+            ``"triplets"`` emits nine coordinate-oriented entries per triangle
+            and lets :mod:`warp.sparse` sort and deduplicate them globally. Its
+            values are accumulated with differentiable kernels, so this is the
+            path to keep if gradients through assembly are ever wanted.
+
+            ``"row_compress"`` instead reserves each vertex row three entries
+            per incident triangle, writes the contributions directly into those
+            spans, and compresses each row independently. It avoids the global
+            sort and is substantially faster, but compresses in place and is
+            not differentiable.
+
+            Both produce the same matrix. Ignored when ``reuse_topology`` is
+            set, since no pattern is built in that case.
+        reuse_topology: If ``True``, keep the sparsity pattern ``out_cotmatrix``
+            already holds and overwrite only its coefficients. Requires
+            ``out_cotmatrix``. This skips the sort and deduplication that
+            dominate assembly, and is several times faster, but it is only
+            correct when that pattern already covers every vertex pair the mesh
+            couples: contributions landing outside it are silently dropped. Pass
+            it a matrix returned by an earlier call on the same ``indices``.
         device: Device on which to run. Defaults to the device of ``points``.
 
     Returns:
@@ -1043,8 +1128,13 @@ def cotmatrix(
 
     Raises:
         ValueError: If ``out_cotmatrix`` is provided but its scalar type, block
-            shape, device, or shape does not match the expected output.
+            shape, device, or shape does not match the expected output, if
+            ``reuse_topology`` is set without a populated ``out_cotmatrix``, or
+            if ``construction`` is not a recognized policy.
     """
+    if construction not in ("triplets", "row_compress"):
+        raise ValueError(f"Unsupported `construction` policy: {construction!r}. Expected 'triplets' or 'row_compress'.")
+
     device = wp.get_device(device) if device is not None else points.device
     num_triangles = indices.shape[0] // 3
     num_points = points.shape[0]
@@ -1052,7 +1142,41 @@ def cotmatrix(
     if out_cotmatrix is not None:
         _validate_output_matrix(out_cotmatrix, "out_cotmatrix", (num_points, num_points), device)
 
+    if reuse_topology:
+        if out_cotmatrix is None:
+            raise ValueError("`reuse_topology` requires `out_cotmatrix`, whose sparsity pattern it reuses.")
+        # An empty matrix has no pattern to reuse, so every contribution would be
+        # dropped and the result would be silently zero. Catching that here costs
+        # nothing, unlike verifying that a non-empty pattern is the right one,
+        # which would need a device readback.
+        if out_cotmatrix.nnz == 0:
+            raise ValueError(
+                "`reuse_topology` requires `out_cotmatrix` to already hold the sparsity pattern of the "
+                "cotangent Laplacian, but it is empty. Call `cotmatrix()` without `reuse_topology` first."
+            )
+
     nnz = num_triangles * 9
+
+    # Refilling an existing pattern writes no topology, so it always goes
+    # through the triplet path regardless of the construction policy.
+    if construction == "row_compress" and not reuse_topology:
+        counts = wp.zeros(num_points, dtype=wp.int32, device=device)
+        wp.launch(cotmatrix_row_counts, dim=num_triangles, inputs=[indices, counts], device=device)
+
+        if out_cotmatrix is None:
+            target = bsr_zeros(num_points, num_points, wp.float32, device=device, row_capacity=counts, nnz_capacity=nnz)
+        else:
+            target = out_cotmatrix
+            bsr_set_zero(target, topology="padded", row_capacity=counts, nnz_capacity=nnz)
+
+        wp.launch(
+            cotmatrix_row_entries,
+            dim=num_triangles,
+            inputs=[points, indices, target.offsets, target.row_counts, target.columns, target.values],
+            device=device,
+        )
+        return bsr_compress(target, inplace=True)
+
     rows = wp.empty(nnz, dtype=wp.int32, device=device)
     columns = wp.empty(nnz, dtype=wp.int32, device=device)
     values = wp.empty(nnz, dtype=wp.float32, device=device)
@@ -1067,7 +1191,13 @@ def cotmatrix(
     if out_cotmatrix is None:
         return bsr_from_triplets(num_points, num_points, rows, columns, values)
 
-    bsr_set_from_triplets(out_cotmatrix, rows, columns, values)
+    bsr_set_from_triplets(
+        out_cotmatrix,
+        rows,
+        columns,
+        values,
+        topology="masked" if reuse_topology else "compact",
+    )
     return out_cotmatrix
 
 

@@ -72,6 +72,30 @@ def _reference_cotmatrix(points: np.ndarray, indices: np.ndarray) -> np.ndarray:
     return L
 
 
+def _grid_surface(n: int) -> tuple[np.ndarray, np.ndarray]:
+    """An ``n`` by ``n`` grid of quads split into triangles, lifted out of the plane.
+
+    The lift keeps the surface genuinely three-dimensional, so the comparison
+    against ``warp.fem`` exercises tangential gradients rather than a flat 2D
+    special case, and gives triangles a range of shapes.
+    """
+    x = np.linspace(0.0, 1.0, n + 1)
+    xx, yy = np.meshgrid(x, x, indexing="ij")
+    zz = 0.3 * np.sin(3.0 * xx) * np.cos(2.0 * yy)
+    points = np.stack([xx, yy, zz], axis=-1).reshape(-1, 3).astype(np.float32)
+
+    idx = np.arange((n + 1) * (n + 1)).reshape(n + 1, n + 1)
+    lower, upper = idx[:-1, :-1], idx[1:, 1:]
+    right, above = idx[1:, :-1], idx[:-1, 1:]
+    indices = np.concatenate(
+        [
+            np.stack([lower, right, upper], axis=-1).reshape(-1, 3),
+            np.stack([lower, upper, above], axis=-1).reshape(-1, 3),
+        ]
+    ).astype(np.int32)
+    return points, indices
+
+
 def _bsr_to_dense(bsr) -> np.ndarray:
     dense = np.zeros(bsr.shape, dtype=np.float32)
     offsets = bsr.offsets.numpy()
@@ -134,6 +158,117 @@ def test_cotmatrix_out(test, device):
     assert_np_equal(_bsr_to_dense(out), expected, tol=1e-6)
 
 
+def test_cotmatrix_row_compress(test, device):
+    """Row-compressed construction produces the same matrix as the triplet path."""
+    points_np, indices_np = _grid_surface(5)
+    num_points = points_np.shape[0]
+
+    points = wp.array(points_np, dtype=wp.vec3, device=device)
+    indices = wp.array(indices_np.flatten(), dtype=wp.int32, device=device)
+
+    expected = warp.geometry.cotmatrix(points, indices)
+    compressed = warp.geometry.cotmatrix(points, indices, construction="row_compress")
+
+    test.assertEqual(compressed.shape, expected.shape)
+    # The reserved per-row capacity is an upper bound, so the compression must
+    # actually pack the rows back down to the true non-zero count.
+    test.assertEqual(compressed.nnz_sync(), expected.nnz_sync())
+    assert_np_equal(_bsr_to_dense(compressed), _bsr_to_dense(expected), tol=1e-5)
+
+    # Same again, writing into a caller-supplied matrix.
+    out = warp.sparse.bsr_zeros(num_points, num_points, wp.float32, device=device)
+    result = warp.geometry.cotmatrix(points, indices, out, construction="row_compress")
+
+    test.assertIs(result, out)
+    test.assertEqual(out.nnz_sync(), expected.nnz_sync())
+    assert_np_equal(_bsr_to_dense(out), _bsr_to_dense(expected), tol=1e-5)
+
+
+def test_cotmatrix_row_compress_irregular(test, device):
+    """The row-compressed path assumes nothing about manifoldness or valence.
+
+    Row capacity comes from counting triangle incidences, so a mesh with a
+    boundary, a non-manifold edge, and a wide range of vertex valences must
+    still assemble exactly as the triplet path does.
+    """
+    points_np = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, 1.0, 0.0],
+            [0.5, -1.0, 0.2],
+            [0.5, 0.2, 1.0],
+            [2.0, 0.5, 0.5],
+        ],
+        dtype=np.float32,
+    )
+    # Edge (0, 1) is shared by three triangles, making it non-manifold; every
+    # other edge is a boundary edge; vertex 5 touches a single triangle.
+    indices_np = np.array([[0, 1, 2], [0, 1, 3], [0, 1, 4], [1, 5, 2]], dtype=np.int32)
+
+    points = wp.array(points_np, dtype=wp.vec3, device=device)
+    indices = wp.array(indices_np.flatten(), dtype=wp.int32, device=device)
+
+    expected = warp.geometry.cotmatrix(points, indices)
+    compressed = warp.geometry.cotmatrix(points, indices, construction="row_compress")
+
+    test.assertEqual(compressed.nnz_sync(), expected.nnz_sync())
+    assert_np_equal(_bsr_to_dense(compressed), _bsr_to_dense(expected), tol=1e-5)
+
+
+def test_cotmatrix_construction_validation(test, device):
+    """An unrecognized construction policy is rejected rather than ignored."""
+    points = wp.array(_OCTAHEDRON_POINTS, dtype=wp.vec3, device=device)
+    indices = wp.array(_OCTAHEDRON_INDICES.flatten(), dtype=wp.int32, device=device)
+
+    with test.assertRaisesRegex(ValueError, "Unsupported `construction` policy"):
+        warp.geometry.cotmatrix(points, indices, construction="sort")
+
+
+def test_cotmatrix_reuse_topology(test, device):
+    """Refilling an existing pattern reproduces a full rebuild, including after the mesh moves."""
+    points_np = _OCTAHEDRON_POINTS
+    num_points = points_np.shape[0]
+
+    points = wp.array(points_np, dtype=wp.vec3, device=device)
+    indices = wp.array(_OCTAHEDRON_INDICES.flatten(), dtype=wp.int32, device=device)
+
+    # Seed the pattern with a full rebuild, then refill it.
+    out = warp.sparse.bsr_zeros(num_points, num_points, wp.float32, device=device)
+    warp.geometry.cotmatrix(points, indices, out)
+    expected = _bsr_to_dense(out)
+
+    out.values.zero_()
+    warp.geometry.cotmatrix(points, indices, out, reuse_topology=True)
+    assert_np_equal(_bsr_to_dense(out), expected, tol=1e-6)
+
+    # The pattern depends only on connectivity, so deforming the mesh must still
+    # give the same answer as a rebuild -- this is the case the option exists for.
+    rng = np.random.default_rng(7)
+    moved_np = points_np + 0.1 * rng.standard_normal(points_np.shape).astype(np.float32)
+    moved = wp.array(moved_np, dtype=wp.vec3, device=device)
+
+    warp.geometry.cotmatrix(moved, indices, out, reuse_topology=True)
+    rebuilt = warp.geometry.cotmatrix(moved, indices)
+
+    assert_np_equal(_bsr_to_dense(out), _bsr_to_dense(rebuilt), tol=1e-6)
+
+
+def test_cotmatrix_reuse_topology_validation(test, device):
+    """Reusing a pattern that cannot exist yet is rejected rather than silently zeroing."""
+    num_points = _OCTAHEDRON_POINTS.shape[0]
+
+    points = wp.array(_OCTAHEDRON_POINTS, dtype=wp.vec3, device=device)
+    indices = wp.array(_OCTAHEDRON_INDICES.flatten(), dtype=wp.int32, device=device)
+
+    with test.assertRaisesRegex(ValueError, "requires `out_cotmatrix`"):
+        warp.geometry.cotmatrix(points, indices, reuse_topology=True)
+
+    with test.assertRaisesRegex(ValueError, "it is empty"):
+        empty = warp.sparse.bsr_zeros(num_points, num_points, wp.float32, device=device)
+        warp.geometry.cotmatrix(points, indices, empty, reuse_topology=True)
+
+
 def test_cotmatrix_out_validation(test, device):
     """A mismatched output matrix is rejected rather than silently misused."""
     num_points = _OCTAHEDRON_POINTS.shape[0]
@@ -189,6 +324,26 @@ class TestGeometry(unittest.TestCase):
 add_function_test(TestGeometry, "test_cotmatrix", test_cotmatrix, devices=devices)
 add_function_test(TestGeometry, "test_cotmatrix_out", test_cotmatrix_out, devices=devices)
 add_function_test(TestGeometry, "test_cotmatrix_out_validation", test_cotmatrix_out_validation, devices=devices)
+add_function_test(TestGeometry, "test_cotmatrix_row_compress", test_cotmatrix_row_compress, devices=devices)
+add_function_test(
+    TestGeometry,
+    "test_cotmatrix_row_compress_irregular",
+    test_cotmatrix_row_compress_irregular,
+    devices=devices,
+)
+add_function_test(
+    TestGeometry,
+    "test_cotmatrix_construction_validation",
+    test_cotmatrix_construction_validation,
+    devices=devices,
+)
+add_function_test(TestGeometry, "test_cotmatrix_reuse_topology", test_cotmatrix_reuse_topology, devices=devices)
+add_function_test(
+    TestGeometry,
+    "test_cotmatrix_reuse_topology_validation",
+    test_cotmatrix_reuse_topology_validation,
+    devices=devices,
+)
 add_function_test(
     TestGeometry,
     "test_cotmatrix_capturability",
