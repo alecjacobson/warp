@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 import warp as wp
-from warp._src.sparse import BsrMatrix, bsr_from_triplets
+from warp._src.sparse import BsrMatrix, bsr_from_triplets, bsr_set_from_triplets
 from warp._src.types import type_repr, types_equal
 
 if TYPE_CHECKING:
@@ -22,25 +22,27 @@ if TYPE_CHECKING:
 ## of warp as they write their own kernels.
 ##########################################################################
 
+
 @wp.func
 def line_segment_barycenter(v0: wp.vec3, v1: wp.vec3) -> wp.vec3:
     # Barycenter of a line segment, which is its midpoint.
     return (v0 + v1) * 0.5
+
 
 @wp.func
 def triangle_barycenter(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.vec3:
     # Barycenter of a triangle, which is the average of its three vertices.
     return (v0 + v1 + v2) / 3.0
 
+
 @wp.func
 def tetrahedron_barycenter(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3, v3: wp.vec3) -> wp.vec3:
     # Barycenter of a tetrahedron, which is the average of its four vertices.
     return (v0 + v1 + v2 + v3) / 4.0
 
+
 @wp.func
-def line_segment_barycentric_coordinates(
-        v0: wp.vec3, v1: wp.vec3, p: wp.vec3
-        ) -> wp.vec2:
+def line_segment_barycentric_coordinates(v0: wp.vec3, v1: wp.vec3, p: wp.vec3) -> wp.vec2:
     # Barycentric coordinates of a point ``p`` with respect to a line segment
     # ``(v0, v1)``. The coordinates are in ``[0, 1]`` if ``p`` is on the
     # segment.
@@ -48,10 +50,9 @@ def line_segment_barycentric_coordinates(
     t = wp.dot(p - v0, d) / wp.dot(d, d)
     return wp.vec2(1.0 - t, t)
 
+
 @wp.func
-def triangle_barycentric_coordinates(
-        v0: wp.vec3, v1: wp.vec3, v2: wp.vec3, p: wp.vec3
-        ) -> wp.vec3:
+def triangle_barycentric_coordinates(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3, p: wp.vec3) -> wp.vec3:
     # Barycentric coordinates of a point ``p`` with respect to a triangle
     # ``(v0, v1, v2)``. The coordinates are in ``[0, 1]`` if ``p`` is on the
     # triangle.
@@ -156,13 +157,14 @@ def triangle_double_area(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> wp.float32:
 ## are not intended to be called directly by users.
 ##########################################################################
 
+
 @wp.kernel
 def simplex_barycenters_kernel(
-        points: wp.array(dtype=wp.vec3),
-        indices: wp.array(dtype=wp.int32),
-        simplex_size: int,
-        out_barycenters: wp.array(dtype=wp.vec3),
-        ):
+    points: wp.array(dtype=wp.vec3),
+    indices: wp.array(dtype=wp.int32),
+    simplex_size: int,
+    out_barycenters: wp.array(dtype=wp.vec3),
+):
     # Doesn't actually call line_segment_barycenter, triangle_barycenter,
     # tetrahedron_barycenter
     simplex = wp.tid()
@@ -185,57 +187,41 @@ def cotmatrix_triplets(
     columns: wp.array[int],
     values: wp.array[float],
 ):
-
     tri = wp.tid()
-    i0 = indices[tri * 3 + 0]
-    i1 = indices[tri * 3 + 1]
-    i2 = indices[tri * 3 + 2]
+    base = 9 * tri
 
-    c = triangle_cotmatrix_coefficients(points[i0], points[i1], points[i2])
+    v = wp.vec3i(
+        indices[3 * tri],
+        indices[3 * tri + 1],
+        indices[3 * tri + 2],
+    )
 
-    base = tri * 9
+    c = triangle_cotmatrix_coefficients(
+        points[v[0]],
+        points[v[1]],
+        points[v[2]],
+    )
 
-    # Off-diagonal entries: one symmetric pair per edge, weighted by the
-    # cotangent of the angle opposite that edge.
-    rows[base + 0] = i1
-    columns[base + 0] = i2
-    values[base + 0] = c[0]
+    # For each vertex k:
+    #   - c[k] weights the edge opposite k
+    #   - emit both symmetric off-diagonal entries
+    #   - emit the diagonal entry for vertex k
+    for k in range(3):
+        i = (k + 1) % 3
+        j = (k + 2) % 3
+        out = base + 3 * k
 
-    rows[base + 1] = i2
-    columns[base + 1] = i1
-    values[base + 1] = c[0]
+        rows[out + 0] = v[i]
+        columns[out + 0] = v[j]
+        values[out + 0] = c[k]
 
-    rows[base + 2] = i2
-    columns[base + 2] = i0
-    values[base + 2] = c[1]
+        rows[out + 1] = v[j]
+        columns[out + 1] = v[i]
+        values[out + 1] = c[k]
 
-    rows[base + 3] = i0
-    columns[base + 3] = i2
-    values[base + 3] = c[1]
-
-    rows[base + 4] = i0
-    columns[base + 4] = i1
-    values[base + 4] = c[2]
-
-    rows[base + 5] = i1
-    columns[base + 5] = i0
-    values[base + 5] = c[2]
-
-    # Diagonal entries: each vertex accumulates the negated cotangents of
-    # its two incident edges within this triangle. Pre-summing here instead
-    # of emitting two separate triplets per vertex is valid because
-    # addition is associative, and it halves the diagonal triplet count.
-    rows[base + 6] = i0
-    columns[base + 6] = i0
-    values[base + 6] = -(c[1] + c[2])
-
-    rows[base + 7] = i1
-    columns[base + 7] = i1
-    values[base + 7] = -(c[0] + c[2])
-
-    rows[base + 8] = i2
-    columns[base + 8] = i2
-    values[base + 8] = -(c[0] + c[1])
+        rows[out + 2] = v[k]
+        columns[out + 2] = v[k]
+        values[out + 2] = -(c[i] + c[j])
 
 
 class OBBMeasureType(enum.IntEnum):
@@ -578,6 +564,21 @@ def _validate_output(out: wp.array, name: str, length: int, dtype, device: Devic
         raise ValueError(f"`{name}` must be on device '{device}', but got '{out.device}'.")
     if out.shape[0] < length:
         raise ValueError(f"`{name}` must have length at least {length}, but got {out.shape[0]}.")
+
+
+def _validate_output_matrix(out: BsrMatrix, name: str, shape: tuple[int, int], device: DeviceLike) -> None:
+    """Check that a caller-supplied output matrix matches the expected block type, device, and shape."""
+    if not types_equal(out.scalar_type, wp.float32):
+        raise ValueError(
+            f"`{name}` must have scalar type {type_repr(wp.float32)}, but got {type_repr(out.scalar_type)}."
+        )
+    if out.block_shape != (1, 1):
+        raise ValueError(f"`{name}` must have scalar (1x1) blocks, but got blocks of shape {out.block_shape}.")
+    if out.device != device:
+        raise ValueError(f"`{name}` must be on device '{device}', but got '{out.device}'.")
+    if out.shape != shape:
+        raise ValueError(f"`{name}` must have shape {shape}, but got {out.shape}.")
+
 
 def simplex_barycenters(
     points: wp.array(dtype=wp.vec3),
@@ -1009,6 +1010,7 @@ def vertex_gaussian_curvature(
 def cotmatrix(
     points: wp.array[wp.vec3],
     indices: wp.array[int],
+    out_cotmatrix: BsrMatrix | None = None,
     *,
     device: DeviceLike | None = None,
 ) -> BsrMatrix:
@@ -1026,15 +1028,29 @@ def cotmatrix(
         points: Array of vertex positions of type :class:`warp.vec3`.
         indices: Flat array of triangle vertex indices, with three consecutive
             entries per triangle (length ``3 * num_triangles``).
+        out_cotmatrix: Optional output matrix of shape
+            ``(len(points), len(points))`` with scalar (1x1) blocks and
+            :class:`warp.float32` coefficients. Any blocks it already holds are
+            discarded. Its storage is reused when large enough, and grown
+            otherwise, so repeated calls on a mesh of fixed topology stop
+            reallocating the matrix after the first one. If ``None``, a new
+            matrix is allocated.
         device: Device on which to run. Defaults to the device of ``points``.
 
     Returns:
         A square sparse matrix of shape ``(len(points), len(points))`` with
-        scalar (1x1) blocks.
+        scalar (1x1) blocks, which is ``out_cotmatrix`` when it is provided.
+
+    Raises:
+        ValueError: If ``out_cotmatrix`` is provided but its scalar type, block
+            shape, device, or shape does not match the expected output.
     """
     device = wp.get_device(device) if device is not None else points.device
     num_triangles = indices.shape[0] // 3
     num_points = points.shape[0]
+
+    if out_cotmatrix is not None:
+        _validate_output_matrix(out_cotmatrix, "out_cotmatrix", (num_points, num_points), device)
 
     nnz = num_triangles * 9
     rows = wp.empty(nnz, dtype=wp.int32, device=device)
@@ -1048,7 +1064,11 @@ def cotmatrix(
         device=device,
     )
 
-    return bsr_from_triplets(num_points, num_points, rows, columns, values)
+    if out_cotmatrix is None:
+        return bsr_from_triplets(num_points, num_points, rows, columns, values)
+
+    bsr_set_from_triplets(out_cotmatrix, rows, columns, values)
+    return out_cotmatrix
 
 
 def oriented_bounding_box(
