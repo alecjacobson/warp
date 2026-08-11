@@ -64,7 +64,7 @@ def spring_gradient(p0: wp.vec3, p1: wp.vec3, r: float):
     d = p0 - p1
     n = d / wp.length(d)
     g = STIFFNESS * (wp.length(d) - r) * n
-    return {0: g, 1: -g}
+    return {0: g, 1: -g}  # skipping derivative w.r.t. r
 
 
 @wp.summand_hessian(spring_energy)
@@ -74,7 +74,7 @@ def spring_hessian(p0: wp.vec3, p1: wp.vec3, r: float):
     n = d / l
     ident = wp.identity(n=3, dtype=float)
     h = STIFFNESS * ((1.0 - r / l) * ident + (r / l) * wp.outer(n, n))
-    return {(0, 0): h, (0, 1): -h, (1, 1): h}  # upper triangle only
+    return {(0, 0): h, (0, 1): -h, (1, 1): h}  # upper triangle only, skipping r
 
 
 @wp.summand
@@ -140,6 +140,14 @@ class Example:
     def energy(self):
         return self._total().value
 
+    def residual_norm(self):
+        # Newton residual for reporting: the gradient with the pinned endpoints
+        # removed. Kept out of step() so the solver stays pure device work.
+        g = self._total().gradient[self.positions].numpy()
+        g[0] = 0.0
+        g[-1] = 0.0
+        return float(np.linalg.norm(g))
+
     def step(self):
         with wp.ScopedDevice(self.device):
             total = self._total()
@@ -156,7 +164,7 @@ class Example:
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--device", type=str, default=None, help="Override the default Warp device.")
-    parser.add_argument("--num-steps", type=int, default=16, help="Number of Newton iterations.")
+    parser.add_argument("--num-steps", type=int, default=5, help="Number of Newton iterations.")
     parser.add_argument("--headless", action="store_true", help="Do not display a plot.")
     parser.add_argument("--stage-path", type=str, default=None, help="Unused; accepted for harness compatibility.")
     args = parser.parse_known_args()[0]
@@ -165,12 +173,11 @@ def main():
         example = Example(device=args.device)
 
         initial = example.positions.numpy().copy()
-        print(f"iter 0: energy {example.energy():.6e}")
         for it in range(args.num_steps):
             example.step()
-            print(f"iter {it + 1}: energy {example.energy():.6e}")
+            print(f"iter {it + 1}: energy = {example.energy():.3e}, |grad| = {example.residual_norm():.3e}")
         final = example.positions.numpy().copy()
-        print(f"sag depth: {-float(final[:, 1].min()):.4f}")
+        print(f"final energy {example.energy():.6e}")
 
         if not args.headless:
             if not MATPLOTLIB_AVAILABLE:
