@@ -107,6 +107,33 @@ def _(p0: wp.vec3, p1: wp.vec3, p2: wp.vec3):
     }
 
 
+# Rest-length spring with the rest length as a non-differentiable per-edge
+# parameter (arg index 2), gathered through a second index array.
+
+
+@wp.summand
+def param_spring_energy(p0: wp.vec3, p1: wp.vec3, r: float) -> float:
+    return 0.5 * (wp.length(p0 - p1) - r) ** 2.0
+
+
+@wp.summand_grad(param_spring_energy)
+def _(p0: wp.vec3, p1: wp.vec3, r: float):
+    d = p0 - p1
+    n = d / wp.length(d)
+    g = (wp.length(d) - r) * n
+    return {0: g, 1: -g}
+
+
+@wp.summand_hessian(param_spring_energy)
+def _(p0: wp.vec3, p1: wp.vec3, r: float):
+    d = p0 - p1
+    l = wp.length(d)
+    n = d / l
+    ident = wp.identity(n=3, dtype=float)
+    h = (1.0 - r / l) * ident + (r / l) * wp.outer(n, n)
+    return {(0, 0): h, (0, 1): -h, (1, 1): h}
+
+
 # ---------------------------------------------------------------------------
 # Shared sample geometry and helpers.
 # ---------------------------------------------------------------------------
@@ -290,6 +317,76 @@ def test_hvp_matches_dense(test, device):
     np.testing.assert_allclose(y.numpy(), expected, atol=1e-4, rtol=1e-3)
 
 
+def test_param_rest_length(test, device):
+    # #2: rest length supplied as a non-differentiable per-edge parameter array.
+    pos_np = _sample_positions()
+    edges_np = _edges()
+    num_verts = pos_np.shape[0]
+    ne = edges_np.shape[0]
+    r_values = np.array([0.5, 0.7, 0.9], dtype=np.float32)  # distinct per-edge rest lengths
+
+    pos = wp.array(pos_np, dtype=wp.vec3, device=device)
+    edges = wp.array(edges_np, dtype=wp.vec2i, device=device)
+    edge_ids = wp.array(np.arange(ne, dtype=np.int32), dtype=int, device=device)
+    rest = wp.array(r_values, dtype=float, device=device)
+
+    total = wp.indexed_sum(param_spring_energy, (edges, edge_ids))
+    value = total(pos, rest)
+
+    # Hessian matches the per-edge analytic reference.
+    dense = _bsr_to_dense(value.hessian[pos, pos])
+    stencils = [tuple(e) for e in edges_np]
+    h_expected = np.zeros((3 * num_verts, 3 * num_verts))
+    for edge_i, stencil in enumerate(stencils):
+        h_expected += ref.assemble_global_hessian(
+            num_verts, [stencil], lambda z, rr=float(r_values[edge_i]): ref.rest_spring_hessian(z, rr), pos_np
+        )
+    np.testing.assert_allclose(dense, h_expected, atol=1e-4, rtol=1e-3)
+
+    # Value matches the summed reference energy.
+    e_expected = sum(
+        ref.rest_spring_value(np.concatenate([pos_np[v] for v in stencil]), float(r_values[edge_i]))
+        for edge_i, stencil in enumerate(stencils)
+    )
+    np.testing.assert_allclose(value.value, e_expected, atol=1e-5, rtol=1e-4)
+
+
+def test_composition_spring_plus_inertia(test, device):
+    # #3: value/gradient/Hessian of a sum of two indexed_sums over different stencils.
+    pos_np = _sample_positions()
+    edges_np = _edges()
+    num_verts = pos_np.shape[0]
+
+    pos = wp.array(pos_np, dtype=wp.vec3, device=device)
+    edges = wp.array(edges_np, dtype=wp.vec2i, device=device)
+    vertex_ids = wp.array(np.arange(num_verts, dtype=np.int32), dtype=int, device=device)
+
+    spring = wp.indexed_sum(spring_energy, edges)(pos)
+    inertia = wp.indexed_sum(inertia_energy, vertex_ids)(pos)
+    total = spring + 2.0 * inertia
+
+    r = float(_REST_LENGTH)
+    edge_stencils = [tuple(e) for e in edges_np]
+    vertex_stencils = [(i,) for i in range(num_verts)]
+
+    # Hessian: spring Hessian + 2 * identity.
+    dense = _bsr_to_dense(total.hessian[pos, pos])
+    h_expected = ref.assemble_global_hessian(num_verts, edge_stencils, lambda z: ref.rest_spring_hessian(z, r), pos_np)
+    h_expected += 2.0 * np.eye(3 * num_verts)
+    np.testing.assert_allclose(dense, h_expected, atol=1e-4, rtol=1e-3)
+
+    # Value and gradient vs. the reference total energy of spring + 2 * inertia.
+    def energy(flat):
+        p = flat.reshape(num_verts, 3)
+        e = ref.total_energy(edge_stencils, lambda z: ref.rest_spring_value(z, r), p)
+        e += 2.0 * ref.total_energy(vertex_stencils, lambda z: ref.inertia_value(z, np.zeros(3)), p)
+        return e
+
+    np.testing.assert_allclose(total.value, energy(pos_np.reshape(-1)), atol=1e-5, rtol=1e-4)
+    g_fd = ref.fd_gradient(energy, pos_np.reshape(-1).astype(np.float64)).reshape(num_verts, 3)
+    np.testing.assert_allclose(total.gradient[pos].numpy(), g_fd, atol=1e-3, rtol=1e-3)
+
+
 def test_vertex_midpoint_k3(test, device):
     # 3-node stencil exercises the k=3 assembly path.
     pos_np = _sample_positions()
@@ -317,6 +414,10 @@ add_function_test(TestSummand, "test_spring_value", test_spring_value, devices=d
 add_function_test(TestSummand, "test_spring_vjp_seed", test_spring_vjp_seed, devices=devices)
 add_function_test(TestSummand, "test_inertia_per_vertex", test_inertia_per_vertex, devices=devices)
 add_function_test(TestSummand, "test_hvp_matches_dense", test_hvp_matches_dense, devices=devices)
+add_function_test(TestSummand, "test_param_rest_length", test_param_rest_length, devices=devices)
+add_function_test(
+    TestSummand, "test_composition_spring_plus_inertia", test_composition_spring_plus_inertia, devices=devices
+)
 add_function_test(TestSummand, "test_vertex_midpoint_k3", test_vertex_midpoint_k3, devices=devices)
 
 

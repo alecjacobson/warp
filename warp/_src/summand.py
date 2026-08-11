@@ -44,14 +44,26 @@ strict-typed ``wp.func`` for the specific derivative request (the "factory"
 model). Off-diagonal Hessian blocks are given for the upper triangle only; the
 lower triangle is the transpose.
 
+A summand may take one non-differentiable per-element scalar parameter after its
+vec3 nodes (e.g. a spring rest length), supplied through a second index array::
+
+    total = wp.indexed_sum(spring_energy, (edges, edge_ids))  # r <- rest[edge_ids]
+    value = total(positions, rest_lengths)
+
+Values compose: ``a + b`` and ``scale * a`` build a weighted sum whose
+``value`` / ``gradient`` / ``vjp`` / ``hessian`` are the sums of the terms (union
+sparsity for the Hessian). A term whose summand registers no Hessian contributes
+zero -- e.g. a linear gravity potential.
+
 Current MVP scope: a single differentiable ``wp.array(dtype=wp.vec3)`` variable
-over homogeneous 1-, 2-, or 3-node stencils. ``value.value`` is the summed scalar
-energy; ``value.hessian[positions, positions]`` returns a ``mat33``
+over homogeneous 1-, 2-, or 3-node stencils, with at most one non-differentiable
+scalar parameter. ``value.value`` is the summed scalar energy;
+``value.hessian[positions, positions]`` returns a ``mat33``
 :class:`~warp.sparse.BsrMatrix`; ``value.gradient[positions]`` returns a ``vec3``
 array; ``value.vjp(positions, seed)`` returns ``seed`` times that gradient (with
-``gradient[x] == vjp(x, 1.0)``). Extra per-element
-parameters, mixed dtypes, multi-variable off-diagonal blocks, automatic
-backends, and PSD projection are tracked as next steps.
+``gradient[x] == vjp(x, 1.0)``). Multiple/differentiable extra parameters, mixed
+dtypes, multi-variable off-diagonal blocks, automatic backends, and PSD
+projection are tracked as next steps.
 """
 
 import ast
@@ -262,8 +274,146 @@ def _grad_k3_template(
     wp.atomic_add(grad, i2, seed * g2)
 
 
-_HESS_TEMPLATES = {1: _hess_k1_template, 2: _hess_k2_template, 3: _hess_k3_template}
-_GRAD_TEMPLATES = {1: _grad_k1_template, 2: _grad_k2_template, 3: _grad_k3_template}
+# Parameter-carrying variants: one extra non-differentiable scalar per element,
+# gathered as params[pidx[tid]] and passed to the local func after the nodes.
+
+
+def _hess_k1_p1_template(
+    elements: wp.array(dtype=int),
+    x: wp.array(dtype=wp.vec3),
+    pidx: wp.array(dtype=int),
+    params: wp.array(dtype=float),
+    rows: wp.array(dtype=int),
+    cols: wp.array(dtype=int),
+    vals: wp.array3d(dtype=float),
+):
+    tid = wp.tid()
+    i0 = elements[tid]
+    p = params[pidx[tid]]
+    b00 = _local_blocks(x[i0], p)  # noqa: F821
+    _emit_block(rows, cols, vals, tid, i0, i0, b00)
+
+
+def _hess_k2_p1_template(
+    elements: wp.array(dtype=wp.vec2i),
+    x: wp.array(dtype=wp.vec3),
+    pidx: wp.array(dtype=int),
+    params: wp.array(dtype=float),
+    rows: wp.array(dtype=int),
+    cols: wp.array(dtype=int),
+    vals: wp.array3d(dtype=float),
+):
+    tid = wp.tid()
+    e = elements[tid]
+    i0 = e[0]
+    i1 = e[1]
+    p = params[pidx[tid]]
+    b00, b01, b11 = _local_blocks(x[i0], x[i1], p)  # noqa: F821
+    base = tid * 4
+    _emit_block(rows, cols, vals, base + 0, i0, i0, b00)
+    _emit_block(rows, cols, vals, base + 1, i0, i1, b01)
+    _emit_block(rows, cols, vals, base + 2, i1, i0, wp.transpose(b01))
+    _emit_block(rows, cols, vals, base + 3, i1, i1, b11)
+
+
+def _hess_k3_p1_template(
+    elements: wp.array(dtype=wp.vec3i),
+    x: wp.array(dtype=wp.vec3),
+    pidx: wp.array(dtype=int),
+    params: wp.array(dtype=float),
+    rows: wp.array(dtype=int),
+    cols: wp.array(dtype=int),
+    vals: wp.array3d(dtype=float),
+):
+    tid = wp.tid()
+    e = elements[tid]
+    i0 = e[0]
+    i1 = e[1]
+    i2 = e[2]
+    p = params[pidx[tid]]
+    b00, b01, b02, b11, b12, b22 = _local_blocks(x[i0], x[i1], x[i2], p)  # noqa: F821
+    base = tid * 9
+    _emit_block(rows, cols, vals, base + 0, i0, i0, b00)
+    _emit_block(rows, cols, vals, base + 1, i0, i1, b01)
+    _emit_block(rows, cols, vals, base + 2, i0, i2, b02)
+    _emit_block(rows, cols, vals, base + 3, i1, i0, wp.transpose(b01))
+    _emit_block(rows, cols, vals, base + 4, i1, i1, b11)
+    _emit_block(rows, cols, vals, base + 5, i1, i2, b12)
+    _emit_block(rows, cols, vals, base + 6, i2, i0, wp.transpose(b02))
+    _emit_block(rows, cols, vals, base + 7, i2, i1, wp.transpose(b12))
+    _emit_block(rows, cols, vals, base + 8, i2, i2, b22)
+
+
+def _grad_k1_p1_template(
+    elements: wp.array(dtype=int),
+    x: wp.array(dtype=wp.vec3),
+    pidx: wp.array(dtype=int),
+    params: wp.array(dtype=float),
+    seed: float,
+    grad: wp.array(dtype=wp.vec3),
+):
+    tid = wp.tid()
+    i0 = elements[tid]
+    p = params[pidx[tid]]
+    g0 = _local_blocks(x[i0], p)  # noqa: F821
+    wp.atomic_add(grad, i0, seed * g0)
+
+
+def _grad_k2_p1_template(
+    elements: wp.array(dtype=wp.vec2i),
+    x: wp.array(dtype=wp.vec3),
+    pidx: wp.array(dtype=int),
+    params: wp.array(dtype=float),
+    seed: float,
+    grad: wp.array(dtype=wp.vec3),
+):
+    tid = wp.tid()
+    e = elements[tid]
+    i0 = e[0]
+    i1 = e[1]
+    p = params[pidx[tid]]
+    g0, g1 = _local_blocks(x[i0], x[i1], p)  # noqa: F821
+    wp.atomic_add(grad, i0, seed * g0)
+    wp.atomic_add(grad, i1, seed * g1)
+
+
+def _grad_k3_p1_template(
+    elements: wp.array(dtype=wp.vec3i),
+    x: wp.array(dtype=wp.vec3),
+    pidx: wp.array(dtype=int),
+    params: wp.array(dtype=float),
+    seed: float,
+    grad: wp.array(dtype=wp.vec3),
+):
+    tid = wp.tid()
+    e = elements[tid]
+    i0 = e[0]
+    i1 = e[1]
+    i2 = e[2]
+    p = params[pidx[tid]]
+    g0, g1, g2 = _local_blocks(x[i0], x[i1], x[i2], p)  # noqa: F821
+    wp.atomic_add(grad, i0, seed * g0)
+    wp.atomic_add(grad, i1, seed * g1)
+    wp.atomic_add(grad, i2, seed * g2)
+
+
+# Templates keyed by (num_nodes, num_params).
+_HESS_TEMPLATES = {
+    (1, 0): _hess_k1_template,
+    (2, 0): _hess_k2_template,
+    (3, 0): _hess_k3_template,
+    (1, 1): _hess_k1_p1_template,
+    (2, 1): _hess_k2_p1_template,
+    (3, 1): _hess_k3_p1_template,
+}
+_GRAD_TEMPLATES = {
+    (1, 0): _grad_k1_template,
+    (2, 0): _grad_k2_template,
+    (3, 0): _grad_k3_template,
+    (1, 1): _grad_k1_p1_template,
+    (2, 1): _grad_k2_p1_template,
+    (3, 1): _grad_k3_p1_template,
+}
 
 # Number of triplet blocks written per element by the Hessian assembly (k*k).
 _HESS_BLOCKS_PER_ELEM = {1: 1, 2: 4, 3: 9}
@@ -303,7 +453,52 @@ def _energy_k3_template(elements: wp.array(dtype=wp.vec3i), x: wp.array(dtype=wp
     wp.atomic_add(acc, 0, _local_energy(x[e[0]], x[e[1]], x[e[2]]))  # noqa: F821
 
 
-_ENERGY_TEMPLATES = {1: _energy_k1_template, 2: _energy_k2_template, 3: _energy_k3_template}
+def _energy_k1_p1_template(
+    elements: wp.array(dtype=int),
+    x: wp.array(dtype=wp.vec3),
+    pidx: wp.array(dtype=int),
+    params: wp.array(dtype=float),
+    acc: wp.array(dtype=float),
+):
+    tid = wp.tid()
+    p = params[pidx[tid]]
+    wp.atomic_add(acc, 0, _local_energy(x[elements[tid]], p))  # noqa: F821
+
+
+def _energy_k2_p1_template(
+    elements: wp.array(dtype=wp.vec2i),
+    x: wp.array(dtype=wp.vec3),
+    pidx: wp.array(dtype=int),
+    params: wp.array(dtype=float),
+    acc: wp.array(dtype=float),
+):
+    tid = wp.tid()
+    e = elements[tid]
+    p = params[pidx[tid]]
+    wp.atomic_add(acc, 0, _local_energy(x[e[0]], x[e[1]], p))  # noqa: F821
+
+
+def _energy_k3_p1_template(
+    elements: wp.array(dtype=wp.vec3i),
+    x: wp.array(dtype=wp.vec3),
+    pidx: wp.array(dtype=int),
+    params: wp.array(dtype=float),
+    acc: wp.array(dtype=float),
+):
+    tid = wp.tid()
+    e = elements[tid]
+    p = params[pidx[tid]]
+    wp.atomic_add(acc, 0, _local_energy(x[e[0]], x[e[1]], x[e[2]], p))  # noqa: F821
+
+
+_ENERGY_TEMPLATES = {
+    (1, 0): _energy_k1_template,
+    (2, 0): _energy_k2_template,
+    (3, 0): _energy_k3_template,
+    (1, 1): _energy_k1_p1_template,
+    (2, 1): _energy_k2_p1_template,
+    (3, 1): _energy_k3_p1_template,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -329,27 +524,31 @@ class Summand:
         self.__doc__ = getattr(func, "__doc__", None)
         self.__name__ = getattr(func, "__name__", "summand")
 
-    def _assembly_kernel(self, kind, num_nodes):
-        cached = self._kernel_cache.get((kind, num_nodes))
+    def _assembly_kernel(self, kind, num_nodes, num_params):
+        cache_key = (kind, num_nodes, num_params)
+        cached = self._kernel_cache.get(cache_key)
         if cached is not None:
             return cached
 
+        cfg = (num_nodes, num_params)
         if kind == "energy":
-            kernel = _build_assembly_kernel(_ENERGY_TEMPLATES[num_nodes], self.func, inject_name="_local_energy")
+            if cfg not in _ENERGY_TEMPLATES:
+                raise NotImplementedError(f"no assembly for {num_nodes} node(s) with {num_params} parameter(s).")
+            kernel = _build_assembly_kernel(_ENERGY_TEMPLATES[cfg], self.func, inject_name="_local_energy")
         elif kind == "gradient":
             if self.grad_authoring_fn is None:
                 raise ValueError("no gradient registered; use @wp.summand_grad to provide one.")
             local = _synthesize_blocks_func(self.grad_authoring_fn, _gradient_block_keys(num_nodes), "wp.vec3()")
-            kernel = _build_assembly_kernel(_GRAD_TEMPLATES[num_nodes], local)
+            kernel = _build_assembly_kernel(_GRAD_TEMPLATES[cfg], local)
         elif kind == "hessian":
             if self.hessian_authoring_fn is None:
                 raise ValueError("no Hessian registered; use @wp.summand_hessian to provide one.")
             local = _synthesize_blocks_func(self.hessian_authoring_fn, _hessian_block_keys(num_nodes), "wp.mat33()")
-            kernel = _build_assembly_kernel(_HESS_TEMPLATES[num_nodes], local)
+            kernel = _build_assembly_kernel(_HESS_TEMPLATES[cfg], local)
         else:
             raise ValueError(f"unknown assembly kind {kind!r}")
 
-        self._kernel_cache[(kind, num_nodes)] = kernel
+        self._kernel_cache[cache_key] = kernel
         return kernel
 
 
@@ -422,19 +621,35 @@ class IndexedSum:
 
     Args:
         energy: A :class:`Summand` (or raw Warp function) describing the term.
-        indices: Array of stencil indices; its dtype selects the stencil arity
-            (``int`` -> 1 node, ``wp.vec2i`` -> 2, ``wp.vec3i`` -> 3).
+        indices: The node index array (``int`` -> 1 node, ``wp.vec2i`` -> 2,
+            ``wp.vec3i`` -> 3), or a tuple ``(node_indices, param_indices...)``
+            where each trailing ``int`` array indexes a non-differentiable scalar
+            parameter array. The summand's extra ``float`` arguments (after the
+            vec3 nodes) are gathered through those param index arrays, in order.
     """
 
     def __init__(self, energy, indices):
         self.energy = energy if isinstance(energy, Summand) else Summand(energy)
-        self.indices = indices
-        self.num_nodes = _num_nodes_from_indices(indices)
-        self.num_elements = indices.shape[0]
+        if isinstance(indices, tuple):
+            self.node_indices = indices[0]
+            self.param_indices = list(indices[1:])
+        else:
+            self.node_indices = indices
+            self.param_indices = []
+        self.num_nodes = _num_nodes_from_indices(self.node_indices)
+        self.num_params = len(self.param_indices)
+        if self.num_params > 1:
+            raise NotImplementedError("this MVP supports at most one non-differentiable scalar parameter.")
+        self.num_elements = self.node_indices.shape[0]
 
-    def __call__(self, positions):
-        """Bind variable data and return a value object exposing derivatives."""
-        return IndexedSumValue(self, positions)
+    def __call__(self, positions, *params):
+        """Bind variable data and return a value object exposing derivatives.
+
+        Args:
+            positions: The differentiable ``wp.array(dtype=wp.vec3)`` variable.
+            params: One data array per param index array, in matching order.
+        """
+        return IndexedSumValue(self, positions, list(params))
 
 
 class _HessianView:
@@ -464,28 +679,8 @@ class _GradientView:
         return self._value.vjp(var, 1.0)
 
 
-class IndexedSumValue:
-    """Result of evaluating an :class:`IndexedSum` on variable data."""
-
-    def __init__(self, indexed_sum, positions):
-        if positions.dtype is not wp.vec3:
-            raise TypeError("this MVP requires the differentiable variable to be wp.array(dtype=wp.vec3).")
-        self.indexed_sum = indexed_sum
-        self.positions = positions
-
-    @property
-    def value(self):
-        """The scalar total energy ``sum_i g(stencil_i)``.
-
-        Returns a host ``float`` and therefore synchronizes the device.
-        """
-        isum = self.indexed_sum
-        kernel = isum.energy._assembly_kernel("energy", isum.num_nodes)
-        acc = wp.zeros(1, dtype=float, device=self.positions.device)
-        wp.launch(
-            kernel, dim=isum.num_elements, inputs=[isum.indices, self.positions, acc], device=self.positions.device
-        )
-        return float(acc.numpy()[0])
+class _ValueMixin:
+    """Shared ``vjp`` docstring/gradient/hessian accessors for value objects."""
 
     @property
     def hessian(self):
@@ -518,12 +713,65 @@ class IndexedSumValue:
         """
         if var is not self.positions:
             raise NotImplementedError("this MVP only supports vjp against positions.")
-        return self._assemble_vjp(seed)
+        grad = wp.zeros(self.positions.shape[0], dtype=wp.vec3, device=self.positions.device)
+        self._accumulate_vjp(seed, grad)
+        return grad
+
+    def __add__(self, other):
+        return _CompositeValue(_terms_of(self) + _terms_of(other))
+
+    __radd__ = __add__
+
+    def __mul__(self, scalar):
+        return _CompositeValue([(w * float(scalar), t) for w, t in _terms_of(self)])
+
+    __rmul__ = __mul__
+
+
+class IndexedSumValue(_ValueMixin):
+    """Result of evaluating an :class:`IndexedSum` on variable data."""
+
+    def __init__(self, indexed_sum, positions, params=None):
+        if positions.dtype is not wp.vec3:
+            raise TypeError("this MVP requires the differentiable variable to be wp.array(dtype=wp.vec3).")
+        self.indexed_sum = indexed_sum
+        self.positions = positions
+        self.params = params or []
+        if len(self.params) != indexed_sum.num_params:
+            raise ValueError(f"expected {indexed_sum.num_params} parameter array(s), got {len(self.params)}.")
+
+    def _param_inputs(self):
+        inputs = []
+        for pidx, parr in zip(self.indexed_sum.param_indices, self.params, strict=True):
+            inputs += [pidx, parr]
+        return inputs
+
+    def _has_hessian(self):
+        return self.indexed_sum.energy.hessian_authoring_fn is not None
+
+    @property
+    def value(self):
+        """The scalar total energy ``sum_i g(stencil_i)``.
+
+        Returns a host ``float`` and therefore synchronizes the device.
+        """
+        isum = self.indexed_sum
+        kernel = isum.energy._assembly_kernel("energy", isum.num_nodes, isum.num_params)
+        acc = wp.zeros(1, dtype=float, device=self.positions.device)
+        inputs = [isum.node_indices, self.positions, *self._param_inputs(), acc]
+        wp.launch(kernel, dim=isum.num_elements, inputs=inputs, device=self.positions.device)
+        return float(acc.numpy()[0])
+
+    def _accumulate_vjp(self, seed, out):
+        isum = self.indexed_sum
+        kernel = isum.energy._assembly_kernel("gradient", isum.num_nodes, isum.num_params)
+        inputs = [isum.node_indices, self.positions, *self._param_inputs(), float(seed), out]
+        wp.launch(kernel, dim=isum.num_elements, inputs=inputs, device=out.device)
 
     def _assemble_hessian(self):
         isum = self.indexed_sum
         k = isum.num_nodes
-        kernel = isum.energy._assembly_kernel("hessian", k)
+        kernel = isum.energy._assembly_kernel("hessian", k, isum.num_params)
 
         positions = self.positions
         device = positions.device
@@ -532,20 +780,59 @@ class IndexedSumValue:
         rows = wp.zeros(n_triplets, dtype=int, device=device)
         cols = wp.zeros(n_triplets, dtype=int, device=device)
         vals = wp.zeros((n_triplets, 3, 3), dtype=float, device=device)
-        wp.launch(kernel, dim=ne, inputs=[isum.indices, positions, rows, cols, vals], device=device)
+        inputs = [isum.node_indices, positions, *self._param_inputs(), rows, cols, vals]
+        wp.launch(kernel, dim=ne, inputs=inputs, device=device)
 
         num_verts = positions.shape[0]
         return bsr_from_triplets(num_verts, num_verts, rows, cols, vals)
 
-    def _assemble_vjp(self, seed):
-        isum = self.indexed_sum
-        kernel = isum.energy._assembly_kernel("gradient", isum.num_nodes)
 
-        positions = self.positions
-        device = positions.device
-        grad = wp.zeros(positions.shape[0], dtype=wp.vec3, device=device)
-        wp.launch(kernel, dim=isum.num_elements, inputs=[isum.indices, positions, float(seed), grad], device=device)
-        return grad
+def _terms_of(value):
+    """Flatten a value into a list of ``(weight, IndexedSumValue)`` terms."""
+    if isinstance(value, _CompositeValue):
+        return list(value.terms)
+    return [(1.0, value)]
+
+
+class _CompositeValue(_ValueMixin):
+    """A weighted sum of :class:`IndexedSumValue` terms sharing one variable.
+
+    Produced by adding/scaling values, e.g. ``spring + gravity`` or
+    ``spring + (1.0 / h**2) * inertia``. Exposes the same ``value`` /
+    ``gradient`` / ``vjp`` / ``hessian`` interface, summing the terms (union
+    sparsity for the Hessian). A term whose summand has no registered Hessian
+    contributes zero -- e.g. a linear gravity potential.
+    """
+
+    def __init__(self, terms):
+        if not terms:
+            raise ValueError("a composite value needs at least one term.")
+        self.terms = terms
+        self.positions = terms[0][1].positions
+        for _, term in terms:
+            if term.positions is not self.positions:
+                raise NotImplementedError("composed terms must share the same differentiable variable.")
+
+    @property
+    def value(self):
+        return sum(weight * term.value for weight, term in self.terms)
+
+    def _accumulate_vjp(self, seed, out):
+        for weight, term in self.terms:
+            term._accumulate_vjp(seed * weight, out)
+
+    def _assemble_hessian(self):
+        result = None
+        for weight, term in self.terms:
+            if not term._has_hessian():
+                continue  # zero Hessian (e.g. a linear potential)
+            contribution = term._assemble_hessian()
+            if weight != 1.0:
+                contribution = contribution * weight
+            result = contribution if result is None else result + contribution
+        if result is None:
+            raise ValueError("no term in the composite has a registered Hessian.")
+        return result
 
 
 def indexed_sum(energy, indices):

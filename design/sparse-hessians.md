@@ -27,20 +27,29 @@ Done:
   is a Newton right-hand side in one pass). ``seed`` is the scalar output
   cotangent; it generalizes to a vector cotangent for the vector-valued
   (Jacobian) track.
+* One non-differentiable per-element scalar parameter (e.g. a spring rest
+  length) supplied through a second index array: ``wp.indexed_sum(energy,
+  (edges, edge_ids))`` bound with ``total(positions, rest_lengths)``.
+* Sparsity-preserving composition: ``a + b`` and ``scale * a`` build a weighted
+  sum whose value/gradient/vjp/Hessian are the sums of the terms (Hessian by
+  union sparsity; terms without a registered Hessian, e.g. a linear gravity
+  potential, contribute zero). See ``optim/example_catenary.py``.
 * Hessian-vector products for free via ``warp.sparse.bsr_mv``.
 * NumPy reference oracles with finite-difference Hessian and gradient checks
   (``warp/tests/summand_references.py``) and assembly/HVP tests
   (``warp/tests/test_summand.py``).
-* An example: ``warp/examples/optim/example_spring_hessian.py``.
+* Examples: ``warp/examples/optim/example_spring_hessian.py`` (zero-rest Newton)
+  and ``warp/examples/optim/example_catenary.py`` (rest-length springs plus
+  gravity, exercising the parameter and composition features).
 
 Tested on both CPU and CUDA (NVIDIA L40, sm_89).
 
 Not yet implemented (see the design below and the tracking issue): automatic
-backends (jets/finite difference), extra per-element parameters and mixed
-element dimensions (e.g. a per-edge rest-length variable), multi-variable
-off-diagonal blocks and the storage/return model for a mixed-dtype Hessian
-(manifest per-pair BSRs vs. a single scalar matrix with views -- still open),
-PSD projection, sparsity-preserving composition, and the Jacobian track.
+backends (jets/finite difference), more than one per-element parameter and
+mixed element dimensions, multi-variable off-diagonal blocks and the
+storage/return model for a mixed-dtype Hessian (manifest per-pair BSRs vs. a
+single scalar matrix with views -- still open), PSD projection, and the Jacobian
+track.
 
 ## Motivation
 
