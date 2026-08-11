@@ -22,6 +22,11 @@ Done:
   ``warp.sparse.BsrMatrix`` and ``value.gradient[positions]`` into a ``vec3``
   array, for a single ``wp.array(dtype=wp.vec3)`` variable over 1-, 2-, or
   3-node stencils. Assembly kernels are cached per (kind, arity).
+* ``value.vjp(positions, seed)`` -- the vector-Jacobian product ``seed * dE/dx``
+  for the scalar energy (so ``gradient[x] == vjp(x, 1.0)``, and ``vjp(x, -1.0)``
+  is a Newton right-hand side in one pass). ``seed`` is the scalar output
+  cotangent; it generalizes to a vector cotangent for the vector-valued
+  (Jacobian) track.
 * Hessian-vector products for free via ``warp.sparse.bsr_mv``.
 * NumPy reference oracles with finite-difference Hessian and gradient checks
   (``warp/tests/summand_references.py``) and assembly/HVP tests

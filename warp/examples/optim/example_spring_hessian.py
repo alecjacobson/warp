@@ -9,8 +9,8 @@
 #
 #     E(x) = 0.5 * sum_{(i, j) in edges} || x_i - x_j ||^2
 #
-# Each Newton iteration re-assembles g = value.gradient[x] and
-# H = value.hessian[x, x] via wp.indexed_sum and solves
+# Each Newton iteration re-assembles the right-hand side -g = value.vjp(x, -1)
+# and the Hessian H = value.hessian[x, x] via wp.indexed_sum and solves
 #
 #     H dx = -g,   with the pinned endpoints held fixed,
 #
@@ -69,12 +69,6 @@ def spring_hessian(p0: wp.vec3, p1: wp.vec3):
 
 
 @wp.kernel
-def _negate(src: wp.array(dtype=wp.vec3), dst: wp.array(dtype=wp.vec3)):
-    i = wp.tid()
-    dst[i] = -src[i]
-
-
-@wp.kernel
 def _apply_step(dx: wp.array(dtype=wp.vec3), positions: wp.array(dtype=wp.vec3)):
     i = wp.tid()
     positions[i] = positions[i] + dx[i]
@@ -121,17 +115,15 @@ class Example:
 
     def step(self):
         with wp.ScopedDevice(self.device):
-            # Re-assemble the sparse gradient and Hessian at the current positions.
+            # Re-assemble the sparse system at the current positions. The Newton
+            # right-hand side -g is the VJP of the energy seeded with -1.
             value = self.total(self.positions)
-            g = value.gradient[self.positions]
+            rhs = value.vjp(self.positions, seed=-1.0)
             H = value.hessian[self.positions, self.positions]
-
-            rhs = wp.empty_like(g)
-            wp.launch(_negate, dim=self.num_points, inputs=[g, rhs])  # rhs = -g
 
             # Hard-pin the endpoints, then solve H dx = -g with CG (matrix-free).
             fem.project_linear_system(H, rhs, self.projector, normalize_projector=False)
-            dx = wp.zeros_like(g)
+            dx = wp.zeros_like(rhs)
             cg(H, rhs, dx, tol=1e-10)
 
             wp.launch(_apply_step, dim=self.num_points, inputs=[dx, self.positions])

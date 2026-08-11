@@ -238,6 +238,20 @@ def test_spring_value(test, device):
     np.testing.assert_allclose(val, expected, atol=1e-5, rtol=1e-4)
 
 
+def test_spring_vjp_seed(test, device):
+    # vjp(x, seed) == seed * gradient; gradient[x] == vjp(x, 1).
+    pos_np = _sample_positions()
+    edges_np = _edges()
+    pos = wp.array(pos_np, dtype=wp.vec3, device=device)
+    edges = wp.array(edges_np, dtype=wp.vec2i, device=device)
+
+    value = wp.indexed_sum(spring_energy, edges)(pos)
+    grad = value.gradient[pos].numpy()
+    np.testing.assert_allclose(value.vjp(pos, 1.0).numpy(), grad, atol=1e-6)
+    np.testing.assert_allclose(value.vjp(pos, -1.0).numpy(), -grad, atol=1e-6)
+    np.testing.assert_allclose(value.vjp(pos, 2.5).numpy(), 2.5 * grad, atol=1e-6)
+
+
 def test_inertia_per_vertex(test, device):
     # 1-node stencil: per-vertex identity blocks -> global Hessian is identity.
     pos_np = _sample_positions()
@@ -300,6 +314,7 @@ class TestSummand(unittest.TestCase):
 add_function_test(TestSummand, "test_spring_hessian", test_spring_hessian, devices=devices)
 add_function_test(TestSummand, "test_spring_gradient", test_spring_gradient, devices=devices)
 add_function_test(TestSummand, "test_spring_value", test_spring_value, devices=devices)
+add_function_test(TestSummand, "test_spring_vjp_seed", test_spring_vjp_seed, devices=devices)
 add_function_test(TestSummand, "test_inertia_per_vertex", test_inertia_per_vertex, devices=devices)
 add_function_test(TestSummand, "test_hvp_matches_dense", test_hvp_matches_dense, devices=devices)
 add_function_test(TestSummand, "test_vertex_midpoint_k3", test_vertex_midpoint_k3, devices=devices)

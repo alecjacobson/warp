@@ -48,7 +48,8 @@ Current MVP scope: a single differentiable ``wp.array(dtype=wp.vec3)`` variable
 over homogeneous 1-, 2-, or 3-node stencils. ``value.value`` is the summed scalar
 energy; ``value.hessian[positions, positions]`` returns a ``mat33``
 :class:`~warp.sparse.BsrMatrix`; ``value.gradient[positions]`` returns a ``vec3``
-array. Extra per-element
+array; ``value.vjp(positions, seed)`` returns ``seed`` times that gradient (with
+``gradient[x] == vjp(x, 1.0)``). Extra per-element
 parameters, mixed dtypes, multi-variable off-diagonal blocks, automatic
 backends, and PSD projection are tracked as next steps.
 """
@@ -221,33 +222,44 @@ def _hess_k3_template(
     _emit_block(rows, cols, vals, base + 8, i2, i2, b22)
 
 
-def _grad_k1_template(elements: wp.array(dtype=int), x: wp.array(dtype=wp.vec3), grad: wp.array(dtype=wp.vec3)):
+# The gradient assembly scales each per-node contribution by ``seed`` -- the
+# (scalar) cotangent of the summed energy -- so it is the vector-Jacobian
+# product seed * dE/dx. seed=1 gives the plain gradient.
+
+
+def _grad_k1_template(
+    elements: wp.array(dtype=int), x: wp.array(dtype=wp.vec3), seed: float, grad: wp.array(dtype=wp.vec3)
+):
     tid = wp.tid()
     i0 = elements[tid]
     g0 = _local_blocks(x[i0])  # noqa: F821
-    wp.atomic_add(grad, i0, g0)
+    wp.atomic_add(grad, i0, seed * g0)
 
 
-def _grad_k2_template(elements: wp.array(dtype=wp.vec2i), x: wp.array(dtype=wp.vec3), grad: wp.array(dtype=wp.vec3)):
+def _grad_k2_template(
+    elements: wp.array(dtype=wp.vec2i), x: wp.array(dtype=wp.vec3), seed: float, grad: wp.array(dtype=wp.vec3)
+):
     tid = wp.tid()
     e = elements[tid]
     i0 = e[0]
     i1 = e[1]
     g0, g1 = _local_blocks(x[i0], x[i1])  # noqa: F821
-    wp.atomic_add(grad, i0, g0)
-    wp.atomic_add(grad, i1, g1)
+    wp.atomic_add(grad, i0, seed * g0)
+    wp.atomic_add(grad, i1, seed * g1)
 
 
-def _grad_k3_template(elements: wp.array(dtype=wp.vec3i), x: wp.array(dtype=wp.vec3), grad: wp.array(dtype=wp.vec3)):
+def _grad_k3_template(
+    elements: wp.array(dtype=wp.vec3i), x: wp.array(dtype=wp.vec3), seed: float, grad: wp.array(dtype=wp.vec3)
+):
     tid = wp.tid()
     e = elements[tid]
     i0 = e[0]
     i1 = e[1]
     i2 = e[2]
     g0, g1, g2 = _local_blocks(x[i0], x[i1], x[i2])  # noqa: F821
-    wp.atomic_add(grad, i0, g0)
-    wp.atomic_add(grad, i1, g1)
-    wp.atomic_add(grad, i2, g2)
+    wp.atomic_add(grad, i0, seed * g0)
+    wp.atomic_add(grad, i1, seed * g1)
+    wp.atomic_add(grad, i2, seed * g2)
 
 
 _HESS_TEMPLATES = {1: _hess_k1_template, 2: _hess_k2_template, 3: _hess_k3_template}
@@ -448,9 +460,8 @@ class _GradientView:
         self._value = value
 
     def __getitem__(self, var):
-        if var is not self._value.positions:
-            raise NotImplementedError("this MVP only supports gradient[positions].")
-        return self._value._assemble_gradient()
+        # gradient[x] is the vector-Jacobian product with unit seed.
+        return self._value.vjp(var, 1.0)
 
 
 class IndexedSumValue:
@@ -484,6 +495,31 @@ class IndexedSumValue:
     def gradient(self):
         return _GradientView(self)
 
+    def vjp(self, var, seed=1.0):
+        """Vector-Jacobian product of the summed energy: ``seed * dE/dvar``.
+
+        For a scalar summand energy the value is a scalar, so ``seed`` is its
+        (scalar) cotangent and the result is the gradient scaled by ``seed``:
+        ``seed=1`` gives the gradient, ``seed=-1`` gives its negation (handy as a
+        Newton right-hand side), ``seed=alpha`` scales it. ``gradient[var]`` is
+        exactly ``vjp(var, 1.0)``.
+
+        This mirrors reverse-mode autodiff in JAX/PyTorch, where the gradient of a
+        scalar output is the VJP seeded with ``1.0``. When the vector-valued
+        (Jacobian) track lands, ``seed`` becomes the output-space cotangent
+        vector; see ``design/sparse-hessians.md``.
+
+        Args:
+            var: The differentiable variable to differentiate against.
+            seed: Scalar cotangent of the summed energy.
+
+        Returns:
+            A ``wp.array(dtype=wp.vec3)`` holding ``seed * dE/dvar``.
+        """
+        if var is not self.positions:
+            raise NotImplementedError("this MVP only supports vjp against positions.")
+        return self._assemble_vjp(seed)
+
     def _assemble_hessian(self):
         isum = self.indexed_sum
         k = isum.num_nodes
@@ -501,14 +537,14 @@ class IndexedSumValue:
         num_verts = positions.shape[0]
         return bsr_from_triplets(num_verts, num_verts, rows, cols, vals)
 
-    def _assemble_gradient(self):
+    def _assemble_vjp(self, seed):
         isum = self.indexed_sum
         kernel = isum.energy._assembly_kernel("gradient", isum.num_nodes)
 
         positions = self.positions
         device = positions.device
         grad = wp.zeros(positions.shape[0], dtype=wp.vec3, device=device)
-        wp.launch(kernel, dim=isum.num_elements, inputs=[isum.indices, positions, grad], device=device)
+        wp.launch(kernel, dim=isum.num_elements, inputs=[isum.indices, positions, float(seed), grad], device=device)
         return grad
 
 
