@@ -307,6 +307,12 @@ add_example_test(
     devices=test_devices,
     test_options={"headless": True, "num_steps": 4},
 )
+add_example_test(
+    TestOptimExamples,
+    name="optim.example_catenary_fd",
+    devices=test_devices,
+    test_options={"headless": True, "num_steps": 3},
+)
 
 
 class TestTileExamples(unittest.TestCase):

@@ -412,6 +412,51 @@ def test_hessian_variable_flag(test, device):
         _ = value.vjp(rest, 1.0)
 
 
+def test_fd_backend(test, device):
+    # backend="fd" reproduces the hand-written gradient/Hessian from the energy
+    # alone (value is exact; derivatives are finite differences).
+    pos_np = _sample_positions()
+    edges_np = _edges()
+    pos = wp.array(pos_np, dtype=wp.vec3, device=device)
+    edges = wp.array(edges_np, dtype=wp.vec2i, device=device)
+
+    hw = wp.indexed_sum(spring_energy, edges)(pos)
+    fd = wp.indexed_sum(spring_energy, edges, backend="fd")(pos)
+
+    np.testing.assert_allclose(fd.value, hw.value, atol=1e-5, rtol=1e-5)
+    np.testing.assert_allclose(fd.gradient[pos].numpy(), hw.gradient[pos].numpy(), atol=2e-3, rtol=2e-2)
+    np.testing.assert_allclose(
+        _bsr_to_dense(fd.hessian[pos, pos]), _bsr_to_dense(hw.hessian[pos, pos]), atol=5e-3, rtol=2e-2
+    )
+
+
+def test_fd_backend_param_and_1node(test, device):
+    # FD backend with a per-edge parameter (2-node) and a 1-node stencil.
+    pos_np = _sample_positions()
+    edges_np = _edges()
+    num_verts = pos_np.shape[0]
+    ne = edges_np.shape[0]
+    pos = wp.array(pos_np, dtype=wp.vec3, device=device)
+    edges = wp.array(edges_np, dtype=wp.vec2i, device=device)
+    edge_ids = wp.array(np.arange(ne, dtype=np.int32), dtype=int, device=device)
+    rest = wp.array(np.array([0.5, 0.7, 0.9], dtype=np.float32), dtype=float, device=device)
+    vertex_ids = wp.array(np.arange(num_verts, dtype=np.int32), dtype=int, device=device)
+
+    hw = wp.indexed_sum(param_spring_energy, (edges, edge_ids))(pos, rest)
+    fd = wp.indexed_sum(param_spring_energy, (edges, edge_ids), backend="fd")(pos, rest)
+    np.testing.assert_allclose(fd.gradient[pos].numpy(), hw.gradient[pos].numpy(), atol=2e-3, rtol=2e-2)
+    np.testing.assert_allclose(
+        _bsr_to_dense(fd.hessian[pos, pos]), _bsr_to_dense(hw.hessian[pos, pos]), atol=5e-3, rtol=2e-2
+    )
+
+    hw1 = wp.indexed_sum(inertia_energy, vertex_ids)(pos)
+    fd1 = wp.indexed_sum(inertia_energy, vertex_ids, backend="fd")(pos)
+    np.testing.assert_allclose(fd1.gradient[pos].numpy(), hw1.gradient[pos].numpy(), atol=2e-3, rtol=2e-2)
+    np.testing.assert_allclose(
+        _bsr_to_dense(fd1.hessian[pos, pos]), _bsr_to_dense(hw1.hessian[pos, pos]), atol=5e-3, rtol=2e-2
+    )
+
+
 def test_vertex_midpoint_k3(test, device):
     # 3-node stencil exercises the k=3 assembly path.
     pos_np = _sample_positions()
@@ -441,6 +486,8 @@ add_function_test(TestSummand, "test_inertia_per_vertex", test_inertia_per_verte
 add_function_test(TestSummand, "test_hvp_matches_dense", test_hvp_matches_dense, devices=devices)
 add_function_test(TestSummand, "test_param_rest_length", test_param_rest_length, devices=devices)
 add_function_test(TestSummand, "test_hessian_variable_flag", test_hessian_variable_flag, devices=devices)
+add_function_test(TestSummand, "test_fd_backend", test_fd_backend, devices=devices)
+add_function_test(TestSummand, "test_fd_backend_param_and_1node", test_fd_backend_param_and_1node, devices=devices)
 add_function_test(
     TestSummand, "test_composition_spring_plus_inertia", test_composition_spring_plus_inertia, devices=devices
 )

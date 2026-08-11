@@ -59,6 +59,12 @@ Values compose: ``a + b`` and ``scale * a`` build a weighted sum whose
 sparsity for the Hessian). A term whose summand registers no Hessian contributes
 zero -- e.g. a linear gravity potential.
 
+Derivatives come from the ``@wp.summand_grad`` / ``@wp.summand_hessian`` rules by
+default (``backend='hand_written'``), or from naive central differences of the
+energy with ``wp.indexed_sum(..., backend='fd')`` -- then no derivative rules are
+needed. The finite-difference backend currently covers 1- and 2-node stencils
+(0 or 1 parameter).
+
 Current MVP scope: a single differentiable ``wp.array(dtype=wp.vec3)`` variable
 over homogeneous 1-, 2-, or 3-node stencils, with at most one non-differentiable
 scalar parameter. ``value.value`` is the summed scalar energy;
@@ -66,8 +72,8 @@ scalar parameter. ``value.value`` is the summed scalar energy;
 :class:`~warp.sparse.BsrMatrix`; ``value.gradient[positions]`` returns a ``vec3``
 array; ``value.vjp(positions, seed)`` returns ``seed`` times that gradient (with
 ``gradient[x] == vjp(x, 1.0)``). Multiple/differentiable extra parameters, mixed
-dtypes, multi-variable off-diagonal blocks, automatic backends, and PSD
-projection are tracked as next steps.
+dtypes, multi-variable off-diagonal blocks, a jets (forward-mode) backend, and
+PSD projection are tracked as next steps.
 """
 
 import ast
@@ -163,6 +169,11 @@ def _gradient_block_keys(num_nodes):
 # _build_assembly_kernel binds the synthesized func into a private globals copy.
 # ---------------------------------------------------------------------------
 
+# Injected per-kernel by _build_assembly_kernel (via a private globals copy);
+# declared here so the undecorated template bodies reference a defined symbol.
+_local_blocks = None
+_local_energy = None
+
 
 @wp.func
 def _emit_block(
@@ -190,7 +201,7 @@ def _hess_k1_template(
 ):
     tid = wp.tid()
     i0 = elements[tid]
-    b00 = _local_blocks(x[i0])  # noqa: F821
+    b00 = _local_blocks(x[i0])
     _emit_block(rows, cols, vals, tid, i0, i0, b00)
 
 
@@ -205,7 +216,7 @@ def _hess_k2_template(
     e = elements[tid]
     i0 = e[0]
     i1 = e[1]
-    b00, b01, b11 = _local_blocks(x[i0], x[i1])  # noqa: F821
+    b00, b01, b11 = _local_blocks(x[i0], x[i1])
     base = tid * 4
     _emit_block(rows, cols, vals, base + 0, i0, i0, b00)
     _emit_block(rows, cols, vals, base + 1, i0, i1, b01)
@@ -225,7 +236,7 @@ def _hess_k3_template(
     i0 = e[0]
     i1 = e[1]
     i2 = e[2]
-    b00, b01, b02, b11, b12, b22 = _local_blocks(x[i0], x[i1], x[i2])  # noqa: F821
+    b00, b01, b02, b11, b12, b22 = _local_blocks(x[i0], x[i1], x[i2])
     base = tid * 9
     _emit_block(rows, cols, vals, base + 0, i0, i0, b00)
     _emit_block(rows, cols, vals, base + 1, i0, i1, b01)
@@ -248,7 +259,7 @@ def _grad_k1_template(
 ):
     tid = wp.tid()
     i0 = elements[tid]
-    g0 = _local_blocks(x[i0])  # noqa: F821
+    g0 = _local_blocks(x[i0])
     wp.atomic_add(grad, i0, seed * g0)
 
 
@@ -259,7 +270,7 @@ def _grad_k2_template(
     e = elements[tid]
     i0 = e[0]
     i1 = e[1]
-    g0, g1 = _local_blocks(x[i0], x[i1])  # noqa: F821
+    g0, g1 = _local_blocks(x[i0], x[i1])
     wp.atomic_add(grad, i0, seed * g0)
     wp.atomic_add(grad, i1, seed * g1)
 
@@ -272,7 +283,7 @@ def _grad_k3_template(
     i0 = e[0]
     i1 = e[1]
     i2 = e[2]
-    g0, g1, g2 = _local_blocks(x[i0], x[i1], x[i2])  # noqa: F821
+    g0, g1, g2 = _local_blocks(x[i0], x[i1], x[i2])
     wp.atomic_add(grad, i0, seed * g0)
     wp.atomic_add(grad, i1, seed * g1)
     wp.atomic_add(grad, i2, seed * g2)
@@ -294,7 +305,7 @@ def _hess_k1_p1_template(
     tid = wp.tid()
     i0 = elements[tid]
     p = params[pidx[tid]]
-    b00 = _local_blocks(x[i0], p)  # noqa: F821
+    b00 = _local_blocks(x[i0], p)
     _emit_block(rows, cols, vals, tid, i0, i0, b00)
 
 
@@ -312,7 +323,7 @@ def _hess_k2_p1_template(
     i0 = e[0]
     i1 = e[1]
     p = params[pidx[tid]]
-    b00, b01, b11 = _local_blocks(x[i0], x[i1], p)  # noqa: F821
+    b00, b01, b11 = _local_blocks(x[i0], x[i1], p)
     base = tid * 4
     _emit_block(rows, cols, vals, base + 0, i0, i0, b00)
     _emit_block(rows, cols, vals, base + 1, i0, i1, b01)
@@ -335,7 +346,7 @@ def _hess_k3_p1_template(
     i1 = e[1]
     i2 = e[2]
     p = params[pidx[tid]]
-    b00, b01, b02, b11, b12, b22 = _local_blocks(x[i0], x[i1], x[i2], p)  # noqa: F821
+    b00, b01, b02, b11, b12, b22 = _local_blocks(x[i0], x[i1], x[i2], p)
     base = tid * 9
     _emit_block(rows, cols, vals, base + 0, i0, i0, b00)
     _emit_block(rows, cols, vals, base + 1, i0, i1, b01)
@@ -359,7 +370,7 @@ def _grad_k1_p1_template(
     tid = wp.tid()
     i0 = elements[tid]
     p = params[pidx[tid]]
-    g0 = _local_blocks(x[i0], p)  # noqa: F821
+    g0 = _local_blocks(x[i0], p)
     wp.atomic_add(grad, i0, seed * g0)
 
 
@@ -376,7 +387,7 @@ def _grad_k2_p1_template(
     i0 = e[0]
     i1 = e[1]
     p = params[pidx[tid]]
-    g0, g1 = _local_blocks(x[i0], x[i1], p)  # noqa: F821
+    g0, g1 = _local_blocks(x[i0], x[i1], p)
     wp.atomic_add(grad, i0, seed * g0)
     wp.atomic_add(grad, i1, seed * g1)
 
@@ -395,7 +406,7 @@ def _grad_k3_p1_template(
     i1 = e[1]
     i2 = e[2]
     p = params[pidx[tid]]
-    g0, g1, g2 = _local_blocks(x[i0], x[i1], x[i2], p)  # noqa: F821
+    g0, g1, g2 = _local_blocks(x[i0], x[i1], x[i2], p)
     wp.atomic_add(grad, i0, seed * g0)
     wp.atomic_add(grad, i1, seed * g1)
     wp.atomic_add(grad, i2, seed * g2)
@@ -442,19 +453,19 @@ def _build_assembly_kernel(template, func, inject_name="_local_blocks"):
 def _energy_k1_template(elements: wp.array(dtype=int), x: wp.array(dtype=wp.vec3), acc: wp.array(dtype=float)):
     tid = wp.tid()
     i0 = elements[tid]
-    wp.atomic_add(acc, 0, _local_energy(x[i0]))  # noqa: F821
+    wp.atomic_add(acc, 0, _local_energy(x[i0]))
 
 
 def _energy_k2_template(elements: wp.array(dtype=wp.vec2i), x: wp.array(dtype=wp.vec3), acc: wp.array(dtype=float)):
     tid = wp.tid()
     e = elements[tid]
-    wp.atomic_add(acc, 0, _local_energy(x[e[0]], x[e[1]]))  # noqa: F821
+    wp.atomic_add(acc, 0, _local_energy(x[e[0]], x[e[1]]))
 
 
 def _energy_k3_template(elements: wp.array(dtype=wp.vec3i), x: wp.array(dtype=wp.vec3), acc: wp.array(dtype=float)):
     tid = wp.tid()
     e = elements[tid]
-    wp.atomic_add(acc, 0, _local_energy(x[e[0]], x[e[1]], x[e[2]]))  # noqa: F821
+    wp.atomic_add(acc, 0, _local_energy(x[e[0]], x[e[1]], x[e[2]]))
 
 
 def _energy_k1_p1_template(
@@ -466,7 +477,7 @@ def _energy_k1_p1_template(
 ):
     tid = wp.tid()
     p = params[pidx[tid]]
-    wp.atomic_add(acc, 0, _local_energy(x[elements[tid]], p))  # noqa: F821
+    wp.atomic_add(acc, 0, _local_energy(x[elements[tid]], p))
 
 
 def _energy_k2_p1_template(
@@ -479,7 +490,7 @@ def _energy_k2_p1_template(
     tid = wp.tid()
     e = elements[tid]
     p = params[pidx[tid]]
-    wp.atomic_add(acc, 0, _local_energy(x[e[0]], x[e[1]], p))  # noqa: F821
+    wp.atomic_add(acc, 0, _local_energy(x[e[0]], x[e[1]], p))
 
 
 def _energy_k3_p1_template(
@@ -492,7 +503,7 @@ def _energy_k3_p1_template(
     tid = wp.tid()
     e = elements[tid]
     p = params[pidx[tid]]
-    wp.atomic_add(acc, 0, _local_energy(x[e[0]], x[e[1]], x[e[2]], p))  # noqa: F821
+    wp.atomic_add(acc, 0, _local_energy(x[e[0]], x[e[1]], x[e[2]], p))
 
 
 _ENERGY_TEMPLATES = {
@@ -502,6 +513,285 @@ _ENERGY_TEMPLATES = {
     (1, 1): _energy_k1_p1_template,
     (2, 1): _energy_k2_p1_template,
     (3, 1): _energy_k3_p1_template,
+}
+
+
+# ---------------------------------------------------------------------------
+# Finite-difference backend. Derivatives are naive central differences of the
+# energy func (injected as _local_energy) -- no @wp.summand_grad / _hessian
+# needed. Step sizes are tuned for float32 (second differences amplify roundoff,
+# so the Hessian uses a coarser step). Currently 1-node and 2-node stencils, 0 or
+# 1 parameter; extend the template tables below for more.
+# ---------------------------------------------------------------------------
+
+_FD_GRAD_STEP = 1.0e-3
+_FD_HESS_STEP = 1.0e-2
+
+
+def _fd_grad_k1_template(
+    elements: wp.array(dtype=int), x: wp.array(dtype=wp.vec3), seed: float, grad: wp.array(dtype=wp.vec3)
+):
+    tid = wp.tid()
+    i0 = elements[tid]
+    p0 = x[i0]
+    h = _FD_GRAD_STEP
+    g0 = wp.vec3()
+    for i in range(3):
+        qp = p0
+        qp[i] = qp[i] + h
+        qm = p0
+        qm[i] = qm[i] - h
+        g0[i] = seed * (_local_energy(qp) - _local_energy(qm)) / (2.0 * h)
+    wp.atomic_add(grad, i0, g0)
+
+
+def _fd_grad_k2_template(
+    elements: wp.array(dtype=wp.vec2i), x: wp.array(dtype=wp.vec3), seed: float, grad: wp.array(dtype=wp.vec3)
+):
+    tid = wp.tid()
+    e = elements[tid]
+    i0 = e[0]
+    i1 = e[1]
+    p0 = x[i0]
+    p1 = x[i1]
+    h = _FD_GRAD_STEP
+    g0 = wp.vec3()
+    g1 = wp.vec3()
+    for i in range(3):
+        qp = p0
+        qp[i] = qp[i] + h
+        qm = p0
+        qm[i] = qm[i] - h
+        g0[i] = seed * (_local_energy(qp, p1) - _local_energy(qm, p1)) / (2.0 * h)
+        rp = p1
+        rp[i] = rp[i] + h
+        rm = p1
+        rm[i] = rm[i] - h
+        g1[i] = seed * (_local_energy(p0, rp) - _local_energy(p0, rm)) / (2.0 * h)
+    wp.atomic_add(grad, i0, g0)
+    wp.atomic_add(grad, i1, g1)
+
+
+def _fd_grad_k2_p1_template(
+    elements: wp.array(dtype=wp.vec2i),
+    x: wp.array(dtype=wp.vec3),
+    pidx: wp.array(dtype=int),
+    params: wp.array(dtype=float),
+    seed: float,
+    grad: wp.array(dtype=wp.vec3),
+):
+    tid = wp.tid()
+    e = elements[tid]
+    i0 = e[0]
+    i1 = e[1]
+    p0 = x[i0]
+    p1 = x[i1]
+    r = params[pidx[tid]]
+    h = _FD_GRAD_STEP
+    g0 = wp.vec3()
+    g1 = wp.vec3()
+    for i in range(3):
+        qp = p0
+        qp[i] = qp[i] + h
+        qm = p0
+        qm[i] = qm[i] - h
+        g0[i] = seed * (_local_energy(qp, p1, r) - _local_energy(qm, p1, r)) / (2.0 * h)
+        rp = p1
+        rp[i] = rp[i] + h
+        rm = p1
+        rm[i] = rm[i] - h
+        g1[i] = seed * (_local_energy(p0, rp, r) - _local_energy(p0, rm, r)) / (2.0 * h)
+    wp.atomic_add(grad, i0, g0)
+    wp.atomic_add(grad, i1, g1)
+
+
+def _fd_hess_k1_template(
+    elements: wp.array(dtype=int),
+    x: wp.array(dtype=wp.vec3),
+    rows: wp.array(dtype=int),
+    cols: wp.array(dtype=int),
+    vals: wp.array3d(dtype=float),
+):
+    tid = wp.tid()
+    i0 = elements[tid]
+    p0 = x[i0]
+    h = _FD_HESS_STEP
+    b00 = wp.mat33()
+    for i in range(3):
+        for j in range(3):
+            qpp = p0
+            qpp[i] = qpp[i] + h
+            qpp[j] = qpp[j] + h
+            qpm = p0
+            qpm[i] = qpm[i] + h
+            qpm[j] = qpm[j] - h
+            qmp = p0
+            qmp[i] = qmp[i] - h
+            qmp[j] = qmp[j] + h
+            qmm = p0
+            qmm[i] = qmm[i] - h
+            qmm[j] = qmm[j] - h
+            b00[i, j] = (_local_energy(qpp) - _local_energy(qpm) - _local_energy(qmp) + _local_energy(qmm)) / (
+                4.0 * h * h
+            )
+    _emit_block(rows, cols, vals, tid, i0, i0, b00)
+
+
+def _fd_hess_k2_template(
+    elements: wp.array(dtype=wp.vec2i),
+    x: wp.array(dtype=wp.vec3),
+    rows: wp.array(dtype=int),
+    cols: wp.array(dtype=int),
+    vals: wp.array3d(dtype=float),
+):
+    tid = wp.tid()
+    e = elements[tid]
+    i0 = e[0]
+    i1 = e[1]
+    p0 = x[i0]
+    p1 = x[i1]
+    h = _FD_HESS_STEP
+    b00 = wp.mat33()
+    b01 = wp.mat33()
+    b11 = wp.mat33()
+    for i in range(3):
+        for j in range(3):
+            app = p0
+            app[i] = app[i] + h
+            app[j] = app[j] + h
+            apm = p0
+            apm[i] = apm[i] + h
+            apm[j] = apm[j] - h
+            amp = p0
+            amp[i] = amp[i] - h
+            amp[j] = amp[j] + h
+            amm = p0
+            amm[i] = amm[i] - h
+            amm[j] = amm[j] - h
+            b00[i, j] = (
+                _local_energy(app, p1) - _local_energy(apm, p1) - _local_energy(amp, p1) + _local_energy(amm, p1)
+            ) / (4.0 * h * h)
+            spp = p1
+            spp[i] = spp[i] + h
+            spp[j] = spp[j] + h
+            spm = p1
+            spm[i] = spm[i] + h
+            spm[j] = spm[j] - h
+            smp = p1
+            smp[i] = smp[i] - h
+            smp[j] = smp[j] + h
+            smm = p1
+            smm[i] = smm[i] - h
+            smm[j] = smm[j] - h
+            b11[i, j] = (
+                _local_energy(p0, spp) - _local_energy(p0, spm) - _local_energy(p0, smp) + _local_energy(p0, smm)
+            ) / (4.0 * h * h)
+            a0p = p0
+            a0p[i] = a0p[i] + h
+            a0m = p0
+            a0m[i] = a0m[i] - h
+            b1p = p1
+            b1p[j] = b1p[j] + h
+            b1m = p1
+            b1m[j] = b1m[j] - h
+            b01[i, j] = (
+                _local_energy(a0p, b1p) - _local_energy(a0p, b1m) - _local_energy(a0m, b1p) + _local_energy(a0m, b1m)
+            ) / (4.0 * h * h)
+    base = tid * 4
+    _emit_block(rows, cols, vals, base + 0, i0, i0, b00)
+    _emit_block(rows, cols, vals, base + 1, i0, i1, b01)
+    _emit_block(rows, cols, vals, base + 2, i1, i0, wp.transpose(b01))
+    _emit_block(rows, cols, vals, base + 3, i1, i1, b11)
+
+
+def _fd_hess_k2_p1_template(
+    elements: wp.array(dtype=wp.vec2i),
+    x: wp.array(dtype=wp.vec3),
+    pidx: wp.array(dtype=int),
+    params: wp.array(dtype=float),
+    rows: wp.array(dtype=int),
+    cols: wp.array(dtype=int),
+    vals: wp.array3d(dtype=float),
+):
+    tid = wp.tid()
+    e = elements[tid]
+    i0 = e[0]
+    i1 = e[1]
+    p0 = x[i0]
+    p1 = x[i1]
+    r = params[pidx[tid]]
+    h = _FD_HESS_STEP
+    b00 = wp.mat33()
+    b01 = wp.mat33()
+    b11 = wp.mat33()
+    for i in range(3):
+        for j in range(3):
+            app = p0
+            app[i] = app[i] + h
+            app[j] = app[j] + h
+            apm = p0
+            apm[i] = apm[i] + h
+            apm[j] = apm[j] - h
+            amp = p0
+            amp[i] = amp[i] - h
+            amp[j] = amp[j] + h
+            amm = p0
+            amm[i] = amm[i] - h
+            amm[j] = amm[j] - h
+            b00[i, j] = (
+                _local_energy(app, p1, r)
+                - _local_energy(apm, p1, r)
+                - _local_energy(amp, p1, r)
+                + _local_energy(amm, p1, r)
+            ) / (4.0 * h * h)
+            spp = p1
+            spp[i] = spp[i] + h
+            spp[j] = spp[j] + h
+            spm = p1
+            spm[i] = spm[i] + h
+            spm[j] = spm[j] - h
+            smp = p1
+            smp[i] = smp[i] - h
+            smp[j] = smp[j] + h
+            smm = p1
+            smm[i] = smm[i] - h
+            smm[j] = smm[j] - h
+            b11[i, j] = (
+                _local_energy(p0, spp, r)
+                - _local_energy(p0, spm, r)
+                - _local_energy(p0, smp, r)
+                + _local_energy(p0, smm, r)
+            ) / (4.0 * h * h)
+            a0p = p0
+            a0p[i] = a0p[i] + h
+            a0m = p0
+            a0m[i] = a0m[i] - h
+            b1p = p1
+            b1p[j] = b1p[j] + h
+            b1m = p1
+            b1m[j] = b1m[j] - h
+            b01[i, j] = (
+                _local_energy(a0p, b1p, r)
+                - _local_energy(a0p, b1m, r)
+                - _local_energy(a0m, b1p, r)
+                + _local_energy(a0m, b1m, r)
+            ) / (4.0 * h * h)
+    base = tid * 4
+    _emit_block(rows, cols, vals, base + 0, i0, i0, b00)
+    _emit_block(rows, cols, vals, base + 1, i0, i1, b01)
+    _emit_block(rows, cols, vals, base + 2, i1, i0, wp.transpose(b01))
+    _emit_block(rows, cols, vals, base + 3, i1, i1, b11)
+
+
+_FD_GRAD_TEMPLATES = {
+    (1, 0): _fd_grad_k1_template,
+    (2, 0): _fd_grad_k2_template,
+    (2, 1): _fd_grad_k2_p1_template,
+}
+_FD_HESS_TEMPLATES = {
+    (1, 0): _fd_hess_k1_template,
+    (2, 0): _fd_hess_k2_template,
+    (2, 1): _fd_hess_k2_p1_template,
 }
 
 
@@ -528,25 +818,34 @@ class Summand:
         self.__doc__ = getattr(func, "__doc__", None)
         self.__name__ = getattr(func, "__name__", "summand")
 
-    def _assembly_kernel(self, kind, num_nodes, num_params):
-        cache_key = (kind, num_nodes, num_params)
+    def _assembly_kernel(self, kind, num_nodes, num_params, backend):
+        cache_key = (kind, num_nodes, num_params, backend)
         cached = self._kernel_cache.get(cache_key)
         if cached is not None:
             return cached
 
         cfg = (num_nodes, num_params)
         if kind == "energy":
+            # The value is exact for both backends.
             if cfg not in _ENERGY_TEMPLATES:
                 raise NotImplementedError(f"no assembly for {num_nodes} node(s) with {num_params} parameter(s).")
             kernel = _build_assembly_kernel(_ENERGY_TEMPLATES[cfg], self.func, inject_name="_local_energy")
+        elif backend == "fd":
+            table = _FD_GRAD_TEMPLATES if kind == "gradient" else _FD_HESS_TEMPLATES
+            if cfg not in table:
+                raise NotImplementedError(
+                    f"finite-difference backend has no {kind} assembly for {num_nodes} node(s) "
+                    f"with {num_params} parameter(s)."
+                )
+            kernel = _build_assembly_kernel(table[cfg], self.func, inject_name="_local_energy")
         elif kind == "gradient":
             if self.grad_authoring_fn is None:
-                raise ValueError("no gradient registered; use @wp.summand_grad to provide one.")
+                raise ValueError("no gradient registered; use @wp.summand_grad or backend='fd'.")
             local = _synthesize_blocks_func(self.grad_authoring_fn, _gradient_block_keys(num_nodes), "wp.vec3()")
             kernel = _build_assembly_kernel(_GRAD_TEMPLATES[cfg], local)
         elif kind == "hessian":
             if self.hessian_authoring_fn is None:
-                raise ValueError("no Hessian registered; use @wp.summand_hessian to provide one.")
+                raise ValueError("no Hessian registered; use @wp.summand_hessian or backend='fd'.")
             local = _synthesize_blocks_func(self.hessian_authoring_fn, _hessian_block_keys(num_nodes), "wp.mat33()")
             kernel = _build_assembly_kernel(_HESS_TEMPLATES[cfg], local)
         else:
@@ -649,8 +948,11 @@ class IndexedSum:
             vec3 nodes) are gathered through those param index arrays, in order.
     """
 
-    def __init__(self, energy, indices):
+    def __init__(self, energy, indices, backend="hand_written"):
+        if backend not in ("hand_written", "fd"):
+            raise ValueError(f"backend must be 'hand_written' or 'fd', got {backend!r}.")
         self.energy = energy if isinstance(energy, Summand) else Summand(energy)
+        self.backend = backend
         if isinstance(indices, tuple):
             self.node_indices = indices[0]
             self.param_indices = list(indices[1:])
@@ -771,7 +1073,8 @@ class IndexedSumValue(_ValueMixin):
         return inputs
 
     def _has_hessian(self):
-        return self.indexed_sum.energy.hessian_authoring_fn is not None
+        isum = self.indexed_sum
+        return isum.backend == "fd" or isum.energy.hessian_authoring_fn is not None
 
     @property
     def value(self):
@@ -780,7 +1083,7 @@ class IndexedSumValue(_ValueMixin):
         Returns a host ``float`` and therefore synchronizes the device.
         """
         isum = self.indexed_sum
-        kernel = isum.energy._assembly_kernel("energy", isum.num_nodes, isum.num_params)
+        kernel = isum.energy._assembly_kernel("energy", isum.num_nodes, isum.num_params, isum.backend)
         acc = wp.zeros(1, dtype=float, device=self.positions.device)
         inputs = [isum.node_indices, self.positions, *self._param_inputs(), acc]
         wp.launch(kernel, dim=isum.num_elements, inputs=inputs, device=self.positions.device)
@@ -788,14 +1091,14 @@ class IndexedSumValue(_ValueMixin):
 
     def _accumulate_vjp(self, seed, out):
         isum = self.indexed_sum
-        kernel = isum.energy._assembly_kernel("gradient", isum.num_nodes, isum.num_params)
+        kernel = isum.energy._assembly_kernel("gradient", isum.num_nodes, isum.num_params, isum.backend)
         inputs = [isum.node_indices, self.positions, *self._param_inputs(), float(seed), out]
         wp.launch(kernel, dim=isum.num_elements, inputs=inputs, device=out.device)
 
     def _assemble_hessian(self):
         isum = self.indexed_sum
         k = isum.num_nodes
-        kernel = isum.energy._assembly_kernel("hessian", k, isum.num_params)
+        kernel = isum.energy._assembly_kernel("hessian", k, isum.num_params, isum.backend)
 
         positions = self.positions
         device = positions.device
@@ -859,12 +1162,20 @@ class _CompositeValue(_ValueMixin):
         return result
 
 
-def indexed_sum(energy, indices):
+def indexed_sum(energy, indices, *, backend="hand_written"):
     """Create a sparse-derivative assembler for a summed local energy.
+
+    Args:
+        energy: A :class:`Summand` (or raw Warp function) for one stencil term.
+        indices: The node index array, or ``(node_indices, param_indices...)``.
+        backend: How derivatives are produced. ``"hand_written"`` (default) uses
+            the ``@wp.summand_grad`` / ``@wp.summand_hessian`` dict rules;
+            ``"fd"`` computes them by finite-differencing the energy, so no
+            derivative rules are required.
 
     Returns an :class:`IndexedSum`; call it with the position array to obtain a
     value whose ``hessian[positions, positions]`` is the assembled
     :class:`~warp.sparse.BsrMatrix` and whose ``gradient[positions]`` is the
     assembled ``vec3`` gradient array.
     """
-    return IndexedSum(energy, indices)
+    return IndexedSum(energy, indices, backend=backend)

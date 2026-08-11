@@ -34,6 +34,10 @@ Done:
   sum whose value/gradient/vjp/Hessian are the sums of the terms (Hessian by
   union sparsity; terms without a registered Hessian, e.g. a linear gravity
   potential, contribute zero). See ``optim/example_catenary.py``.
+* A finite-difference backend: ``wp.indexed_sum(..., backend='fd')`` computes the
+  gradient and Hessian by naive central differences of the energy, so no
+  ``@wp.summand_grad`` / ``@wp.summand_hessian`` rules are needed (1- and 2-node
+  stencils, 0 or 1 parameter). See ``optim/example_catenary_fd.py``.
 * Hessian-vector products for free via ``warp.sparse.bsr_mv``.
 * NumPy reference oracles with finite-difference Hessian and gradient checks
   (``warp/tests/summand_references.py``) and assembly/HVP tests
@@ -44,12 +48,12 @@ Done:
 
 Tested on both CPU and CUDA (NVIDIA L40, sm_89).
 
-Not yet implemented (see the design below and the tracking issue): automatic
-backends (jets/finite difference), more than one per-element parameter and
-mixed element dimensions, multi-variable off-diagonal blocks and the
-storage/return model for a mixed-dtype Hessian (manifest per-pair BSRs vs. a
-single scalar matrix with views -- still open), PSD projection, and the Jacobian
-track.
+Not yet implemented (see the design below and the tracking issue): a jets
+(forward-mode) backend, more than one per-element parameter and mixed element
+dimensions, multi-variable off-diagonal blocks and the storage/return model for
+a mixed-dtype Hessian (manifest per-pair BSRs vs. a single scalar matrix with
+views -- still open), PSD projection, and the Jacobian track. The
+finite-difference backend so far covers only 1- and 2-node stencils.
 
 ## Motivation
 
