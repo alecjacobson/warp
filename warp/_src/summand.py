@@ -50,6 +50,10 @@ vec3 nodes (e.g. a spring rest length), supplied through a second index array::
     total = wp.indexed_sum(spring_energy, (edges, edge_ids))  # r <- rest[edge_ids]
     value = total(positions, rest_lengths)
 
+Constant inputs may be tagged ``array.hessian_variable = False``; attempting to
+differentiate against such an array (e.g. ``value.hessian[rest_lengths, ...]``)
+raises rather than silently returning nonsense.
+
 Values compose: ``a + b`` and ``scale * a`` build a weighted sum whose
 ``value`` / ``gradient`` / ``vjp`` / ``hessian`` are the sums of the terms (union
 sparsity for the Hessian). A term whose summand registers no Hessian contributes
@@ -602,6 +606,23 @@ def summand_hessian(energy):
     return wrapper
 
 
+def _is_hessian_variable(array):
+    """Whether ``array`` may be differentiated against.
+
+    Arrays are differentiation variables by default. Tag a constant input (e.g. a
+    spring rest length) as non-differentiable with ``array.hessian_variable = False``.
+    """
+    return getattr(array, "hessian_variable", True) is not False
+
+
+def _require_hessian_variable(array):
+    if not _is_hessian_variable(array):
+        raise ValueError(
+            "cannot differentiate against an array marked hessian_variable=False "
+            "(it is a constant input, not a differentiation variable)."
+        )
+
+
 def _num_nodes_from_indices(indices):
     dtype = indices.dtype
     if dtype in (int, wp.int32):
@@ -662,6 +683,8 @@ class _HessianView:
         if not (isinstance(key, tuple) and len(key) == 2):
             raise KeyError("hessian must be indexed as hessian[var, var].")
         row_var, col_var = key
+        _require_hessian_variable(row_var)
+        _require_hessian_variable(col_var)
         positions = self._value.positions
         if row_var is not positions or col_var is not positions:
             raise NotImplementedError("this MVP only supports the diagonal block hessian[positions, positions].")
@@ -711,6 +734,7 @@ class _ValueMixin:
         Returns:
             A ``wp.array(dtype=wp.vec3)`` holding ``seed * dE/dvar``.
         """
+        _require_hessian_variable(var)
         if var is not self.positions:
             raise NotImplementedError("this MVP only supports vjp against positions.")
         grad = wp.zeros(self.positions.shape[0], dtype=wp.vec3, device=self.positions.device)

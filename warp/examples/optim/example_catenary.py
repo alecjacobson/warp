@@ -126,6 +126,8 @@ class Example:
             self.edges = wp.array(edges, dtype=wp.vec2i)
             self.edge_ids = wp.array(np.arange(ne, dtype=np.int32), dtype=int)
             self.rest_lengths = wp.array(np.full(ne, REST_SPACING, dtype=np.float32), dtype=float)
+            # The rest length is a constant input, not a differentiation variable.
+            self.rest_lengths.hessian_variable = False
             self.vertex_ids = wp.array(np.arange(NUM_POINTS, dtype=np.int32), dtype=int)
 
             self.springs = wp.indexed_sum(spring_energy, (self.edges, self.edge_ids))

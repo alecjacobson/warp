@@ -387,6 +387,31 @@ def test_composition_spring_plus_inertia(test, device):
     np.testing.assert_allclose(total.gradient[pos].numpy(), g_fd, atol=1e-3, rtol=1e-3)
 
 
+def test_hessian_variable_flag(test, device):
+    # An array marked hessian_variable=False cannot be differentiated against.
+    pos_np = _sample_positions()
+    edges_np = _edges()
+    ne = edges_np.shape[0]
+
+    pos = wp.array(pos_np, dtype=wp.vec3, device=device)
+    edges = wp.array(edges_np, dtype=wp.vec2i, device=device)
+    edge_ids = wp.array(np.arange(ne, dtype=np.int32), dtype=int, device=device)
+    rest = wp.array(np.full(ne, 0.7, dtype=np.float32), dtype=float, device=device)
+    rest.hessian_variable = False
+
+    value = wp.indexed_sum(param_spring_energy, (edges, edge_ids))(pos, rest)
+
+    # positions is a differentiation variable -> works.
+    _ = value.hessian[pos, pos]
+    _ = value.gradient[pos]
+
+    # rest lengths are not -> a clear error, not the generic "only positions" one.
+    with test.assertRaises(ValueError):
+        _ = value.hessian[rest, rest]
+    with test.assertRaises(ValueError):
+        _ = value.vjp(rest, 1.0)
+
+
 def test_vertex_midpoint_k3(test, device):
     # 3-node stencil exercises the k=3 assembly path.
     pos_np = _sample_positions()
@@ -415,6 +440,7 @@ add_function_test(TestSummand, "test_spring_vjp_seed", test_spring_vjp_seed, dev
 add_function_test(TestSummand, "test_inertia_per_vertex", test_inertia_per_vertex, devices=devices)
 add_function_test(TestSummand, "test_hvp_matches_dense", test_hvp_matches_dense, devices=devices)
 add_function_test(TestSummand, "test_param_rest_length", test_param_rest_length, devices=devices)
+add_function_test(TestSummand, "test_hessian_variable_flag", test_hessian_variable_flag, devices=devices)
 add_function_test(
     TestSummand, "test_composition_spring_plus_inertia", test_composition_spring_plus_inertia, devices=devices
 )
