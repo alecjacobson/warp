@@ -335,6 +335,13 @@ from warp._src.context import synchronize as synchronize
 
 from warp._src.tape import Tape as Tape
 
+from warp._src.summand import summand as summand
+from warp._src.summand import summand_grad as summand_grad
+from warp._src.summand import summand_hessian as summand_hessian
+from warp._src.summand import indexed_sum as indexed_sum
+from warp._src.summand import Summand as Summand
+from warp._src.summand import IndexedSum as IndexedSum
+
 
 # category: Device Management
 

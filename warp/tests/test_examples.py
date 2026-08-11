@@ -295,6 +295,12 @@ add_example_test(
     devices=cuda_test_devices_with_mempool,
     test_options={"headless": True, "train_iters": 5, "lead_steps": 5, "spin_up_steps": 10},
 )
+add_example_test(
+    TestOptimExamples,
+    name="optim.example_spring_hessian",
+    devices=test_devices,
+    test_options={"headless": True, "num_steps": 4},
+)
 
 
 class TestTileExamples(unittest.TestCase):

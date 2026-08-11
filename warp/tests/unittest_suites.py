@@ -238,6 +238,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
     from warp.tests.test_static import TestStatic
     from warp.tests.test_struct import TestStruct
     from warp.tests.test_subscript_types import TestSubscriptTypes
+    from warp.tests.test_summand import TestSummand, TestSummandReferences
     from warp.tests.test_tape import TestTape
     from warp.tests.test_template_launch_bounds import TestTemplateLaunchBounds
     from warp.tests.test_transient_module import TestTransientModule
@@ -418,6 +419,8 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
         TestStreams,
         TestStruct,
         TestSubscriptTypes,
+        TestSummand,
+        TestSummandReferences,
         TestTape,
         TestTemplateLaunchBounds,
         TestTexture,

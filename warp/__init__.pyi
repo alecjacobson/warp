@@ -119,6 +119,12 @@ from warp._src.context import launch_tiled as launch_tiled
 from warp._src.context import get_suggested_block_size as get_suggested_block_size
 from warp._src.context import synchronize as synchronize
 from warp._src.tape import Tape as Tape
+from warp._src.summand import summand as summand
+from warp._src.summand import summand_grad as summand_grad
+from warp._src.summand import summand_hessian as summand_hessian
+from warp._src.summand import indexed_sum as indexed_sum
+from warp._src.summand import Summand as Summand
+from warp._src.summand import IndexedSum as IndexedSum
 from warp._src.context import Device as Device
 from warp._src.utils import ScopedDevice as ScopedDevice
 from warp._src.context import is_device_available as is_device_available
