@@ -34,8 +34,8 @@ Usage:
 
 Correctness is gated before every timing run: a config whose two strategies
 disagree, or which disagrees with a float64 finite-difference reference, is
-reported as FAIL and not timed. See the max_unroll note below -- getting this
-wrong yields silently incorrect derivatives, not an error.
+reported as FAIL and not timed. See the strip-mining note below -- getting the
+loop structure wrong yields silently incorrect derivatives, not an error.
 
 On a GPU, pick m large enough to fill the device. At m=20000 an L40 is idle
 between launches and the numbers measure launch and allocation overhead rather
@@ -49,28 +49,44 @@ import numpy as np
 
 import warp as wp
 
-# The benchmark energy below carries jet-valued accumulators across a k-term
-# Python loop. Warp only unrolls loops up to max_unroll (default 16); past that
-# the loop stays dynamic, and reverse mode through a dynamic loop with
-# struct-valued loop-carried variables produces WRONG gradients with no
-# diagnostic. Raise it above the largest k benchmarked.
-#
-# This is a property of this harness, not of wp.JetSpace: the jet types
-# themselves are correct in both passes well past this threshold.
-wp.set_module_options({"max_unroll": 256})
-
-
 # ---------------------------------------------------------------------------
 # A local energy over k variables, touching all of them:
 #
 #     g(z) = sum_j [ sin(z_j * z_{j+1}) + 0.1 * z_j^3 ] + exp(z_{k-1})
+#
+# The chain is strip-mined into two loops of about sqrt(k) each rather than one
+# loop of k. Warp applies max_unroll (default 16) per loop, not to the total
+# trip count, so a 10 x 10 pair unrolls at k=100 where a flat loop of 100 does
+# not -- 11405 generated lines versus 869 for the rolled form.
+#
+# Unrolling is not a nicety here. The chain carries a seeded jet (`prev`)
+# across iterations, and reverse mode through a *dynamic* loop with
+# struct-valued loop-carried variables returns WRONG gradients with no
+# diagnostic. Strip-mining keeps the whole chain straight-line for every k up
+# to max_unroll^2 = 256 without touching module options. The correctness gate
+# below catches it if that ever stops holding.
+#
+# This is a property of this harness, not of wp.JetSpace: the jet types are
+# correct in both passes well past this threshold.
 # ---------------------------------------------------------------------------
+
+
+def strip_mine(k):
+    """Split k into (outer, inner) factors, each small enough to unroll."""
+    inner = 1
+    while inner * inner < k:
+        inner += 1
+
+    outer = (k + inner - 1) // inner
+    return outer, inner
 
 
 def build(k, dtype=wp.float32):
     """Return (Jk, width-k gradient kernel, width-1 directional kernel)."""
     Jk = wp.JetSpace(k, dtype=dtype)
     J1 = wp.JetSpace(1, dtype=dtype)
+
+    outer, inner = strip_mine(k)
 
     @wp.kernel
     def grad_wide(z: wp.array2d[dtype], out: wp.array[Jk.coeff]):
@@ -79,10 +95,16 @@ def build(k, dtype=wp.float32):
         acc = Jk.constant(dtype(0.0))
         prev = Jk.seed(z[i, 0], 0)
 
-        for j in range(1, wp.static(k)):
-            cur = Jk.seed(z[i, j], j)
-            acc = acc + wp.sin(prev * cur) + dtype(0.1) * (prev * prev * prev)
-            prev = cur
+        for b in range(wp.static(outer)):
+            for t in range(wp.static(inner)):
+                j = b * wp.static(inner) + t
+
+                # j == 0 seeds `prev` above; j >= k is padding when k is not a
+                # product of the two factors.
+                if j >= 1 and j < wp.static(k):
+                    cur = Jk.seed(z[i, j], j)
+                    acc = acc + wp.sin(prev * cur) + dtype(0.1) * (prev * prev * prev)
+                    prev = cur
 
         out[i] = (acc + wp.exp(prev)).coeff
 
@@ -93,10 +115,14 @@ def build(k, dtype=wp.float32):
         acc = J1.constant(dtype(0.0))
         prev = J1.with_coeff(z[i, 0], J1.coeff(v[0]))
 
-        for j in range(1, wp.static(k)):
-            cur = J1.with_coeff(z[i, j], J1.coeff(v[j]))
-            acc = acc + wp.sin(prev * cur) + dtype(0.1) * (prev * prev * prev)
-            prev = cur
+        for b in range(wp.static(outer)):
+            for t in range(wp.static(inner)):
+                j = b * wp.static(inner) + t
+
+                if j >= 1 and j < wp.static(k):
+                    cur = J1.with_coeff(z[i, j], J1.coeff(v[j]))
+                    acc = acc + wp.sin(prev * cur) + dtype(0.1) * (prev * prev * prev)
+                    prev = cur
 
         dv[i] = (acc + wp.exp(prev)).coeff[0]
 
