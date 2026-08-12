@@ -36,11 +36,14 @@ Correctness is gated before every timing run: a config whose two strategies
 disagree, or which disagrees with a float64 finite-difference reference, is
 reported as FAIL and not timed. See the max_unroll note below -- getting this
 wrong yields silently incorrect derivatives, not an error.
+
+On a GPU, pick m large enough to fill the device. At m=20000 an L40 is idle
+between launches and the numbers measure launch and allocation overhead rather
+than the kernels; prefer the m sweep, or --m 1000000.
 """
 
 import argparse
 import time
-from functools import partial
 
 import numpy as np
 
@@ -137,65 +140,119 @@ def hessian_fd(z, k, h=1.0e-4):
 
 # ---------------------------------------------------------------------------
 # The two strategies
+#
+# Everything stays device-resident. Host allocations and device-to-host copies
+# are hoisted into the constructors, so run() times the assembly rather than
+# the Python driver loop. On a GPU the difference dominates: at m=20000 a
+# .numpy() per direction costs far more than the kernels it is reading back.
 # ---------------------------------------------------------------------------
 
 
-def hessian_width_k(k, Jk, kernel, z_np, device):
-    n = z_np.shape[0]
-
-    z = wp.array(z_np, dtype=float, device=device, requires_grad=True)
-    g = wp.zeros(n, dtype=Jk.coeff, device=device, requires_grad=True)
-
-    tape = wp.Tape()
-    with tape:
-        wp.launch(kernel, dim=n, inputs=[z], outputs=[g], device=device)
-
-    out = np.empty((n, k, k), dtype=np.float32)
-
-    for row in range(k):
-        s = np.zeros((n, k), dtype=np.float32)
-        s[:, row] = 1.0
-
-        tape.backward(grads={g: wp.array(s, dtype=Jk.coeff, device=device)})
-
-        # z.grad[i,b] = H_i[row,b]
-        out[:, row, :] = z.grad.numpy()
-        tape.zero()
-
-    return out
+@wp.kernel
+def _scatter_row(src: wp.array2d[float], row: int, dst: wp.array3d[float]):
+    i, b = wp.tid()
+    dst[i, row, b] = src[i, b]
 
 
-def hessian_width_1(k, kernel, z_np, device):
-    n = z_np.shape[0]
+@wp.kernel
+def _scatter_col(src: wp.array2d[float], col: int, dst: wp.array3d[float]):
+    i, b = wp.tid()
+    dst[i, b, col] = src[i, b]
 
-    z = wp.array(z_np, dtype=float, device=device, requires_grad=True)
-    ones = wp.ones(n, dtype=float, device=device)
 
-    out = np.empty((n, k, k), dtype=np.float32)
+class WidthK:
+    """One k-wide forward pass, then k reverse sweeps through it."""
 
-    for j in range(k):
-        e = np.zeros(k, dtype=np.float32)
-        e[j] = 1.0
+    label = "width-k"
 
-        dv = wp.zeros(n, dtype=float, device=device, requires_grad=True)
+    def __init__(self, k, Jk, kernel, z_np, device):
+        self.k = k
+        self.kernel = kernel
+        self.device = device
+        self.n = z_np.shape[0]
 
+        self.z = wp.array(z_np, dtype=float, device=device, requires_grad=True)
+        self.g = wp.zeros(self.n, dtype=Jk.coeff, device=device, requires_grad=True)
+        self.hessian = wp.zeros((self.n, k, k), dtype=float, device=device)
+
+        # One seed per gradient component, uploaded once.
+        self.seeds = []
+        for row in range(k):
+            s = np.zeros((self.n, k), dtype=np.float32)
+            s[:, row] = 1.0
+            self.seeds.append(wp.array(s, dtype=Jk.coeff, device=device))
+
+    def run(self):
         tape = wp.Tape()
         with tape:
+            wp.launch(self.kernel, dim=self.n, inputs=[self.z], outputs=[self.g], device=self.device)
+
+        for row in range(self.k):
+            tape.backward(grads={self.g: self.seeds[row]})
+
+            # z.grad[i,b] = H_i[row,b]
             wp.launch(
-                kernel,
-                dim=n,
-                inputs=[z, wp.array(e, dtype=float, device=device)],
-                outputs=[dv],
-                device=device,
+                _scatter_row,
+                dim=(self.n, self.k),
+                inputs=[self.z.grad, row, self.hessian],
+                device=self.device,
             )
+            tape.zero()
 
-        # grad_z (grad g . e_j) = H e_j = column j
-        tape.backward(grads={dv: ones})
 
-        out[:, :, j] = z.grad.numpy()
-        tape.zero()
+class Width1:
+    """k forward+reverse pairs, each of constant width: one HVP per direction."""
 
-    return out
+    label = "width-1"
+
+    def __init__(self, k, Jk, kernel, z_np, device):
+        self.k = k
+        self.kernel = kernel
+        self.device = device
+        self.n = z_np.shape[0]
+
+        self.z = wp.array(z_np, dtype=float, device=device, requires_grad=True)
+        self.dv = wp.zeros(self.n, dtype=float, device=device, requires_grad=True)
+        self.ones = wp.ones(self.n, dtype=float, device=device)
+        self.hessian = wp.zeros((self.n, k, k), dtype=float, device=device)
+
+        # One basis direction per column, uploaded once.
+        self.dirs = []
+        for j in range(k):
+            e = np.zeros(k, dtype=np.float32)
+            e[j] = 1.0
+            self.dirs.append(wp.array(e, dtype=float, device=device))
+
+    def run(self):
+        for j in range(self.k):
+            self.dv.zero_()
+
+            tape = wp.Tape()
+            with tape:
+                wp.launch(
+                    self.kernel,
+                    dim=self.n,
+                    inputs=[self.z, self.dirs[j]],
+                    outputs=[self.dv],
+                    device=self.device,
+                )
+
+            # grad_z (grad g . e_j) = H e_j = column j
+            tape.backward(grads={self.dv: self.ones})
+
+            wp.launch(
+                _scatter_col,
+                dim=(self.n, self.k),
+                inputs=[self.z.grad, j, self.hessian],
+                device=self.device,
+            )
+            tape.zero()
+
+
+def assemble(strategy):
+    """Run once and read the result back. The copy is outside any timed region."""
+    strategy.run()
+    return strategy.hessian.numpy()
 
 
 # ---------------------------------------------------------------------------
@@ -206,8 +263,8 @@ def check(k, Jk, kw, kd, device, n=16, seed=0):
     rng = np.random.default_rng(seed)
     z = rng.uniform(-1.0, 1.0, size=(n, k)).astype(np.float32)
 
-    hw = hessian_width_k(k, Jk, kw, z, device)
-    hh = hessian_width_1(k, kd, z, device)
+    hw = assemble(WidthK(k, Jk, kw, z, device))
+    hh = assemble(Width1(k, Jk, kd, z, device))
     ref = hessian_fd(z.astype(np.float64), k)
 
     return (
@@ -267,13 +324,17 @@ def run(k_values, m_values, device, reps, tol, max_bytes, skip_check):
             rng = np.random.default_rng(0)
             z = rng.uniform(-1.0, 1.0, size=(m, k)).astype(np.float32)
 
-            # Warm up: compile, allocate, touch every path.
-            hessian_width_k(k, Jk, kw, z, device)
-            hessian_width_1(k, kd, z, device)
+            # Buffers and uploads are hoisted out of the timed region.
+            wide = WidthK(k, Jk, kw, z, device)
+            hvp = Width1(k, Jk, kd, z, device)
+
+            # Warm up: compile and touch every path.
+            wide.run()
+            hvp.run()
             wp.synchronize_device(device)
 
-            tw = timeit(partial(hessian_width_k, k, Jk, kw, z, device), device, reps)
-            th = timeit(partial(hessian_width_1, k, kd, z, device), device, reps)
+            tw = timeit(wide.run, device, reps)
+            th = timeit(hvp.run, device, reps)
 
             print(f"{k:>5} {m:>9} {tw * 1e3:>14.2f} {th * 1e3:>14.2f} {tw / th:>8.2f}x {d_ww:>10.1e} {d_hf:>10.1e}")
             results.append((k, m, tw, th))
