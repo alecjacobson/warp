@@ -34,8 +34,20 @@
 #                 forward ~ O(C), reverse ~ O(C), k of them  ->  O(kC)
 #
 # Only the width-1 path keeps derivative state per intermediate at O(1), so its
-# register pressure does not grow with k. At k=2 the two are close; the gap
-# opens up quickly with k.
+# register pressure does not grow with k.
+#
+# Which one is actually faster depends on the device, and the ranking reverses:
+#
+#     CPU (m=50000)     k=8  width-1 5.3x faster    k=16  10.3x faster
+#     L40 (m=500000)    k=8  width-k 3.0x faster    k=16   2.7x faster
+#
+# The operation-count argument above is a CPU story. A GPU running this over
+# many local terms is not compute-bound: width-1 issues 2k launches to
+# width-k's k+1, and re-reads z and recomputes the primal once per direction,
+# while width-k amortizes that into a single wide forward pass and has
+# registers to spare for the k tangents. Measure before choosing.
+#
+# See warp/examples/benchmarks/benchmark_jet_hessian.py.
 #
 # All m local terms are handled in parallel: one launch and one reverse sweep
 # per direction, not per element.

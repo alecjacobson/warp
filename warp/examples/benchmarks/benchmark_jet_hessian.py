@@ -25,6 +25,14 @@ Both strategies materialize the same m x k x k result.
 Only the width-1 path keeps derivative state per intermediate at O(1), so its
 register pressure does not grow with k.
 
+That operation count predicts width-1, and on a CPU it wins by 5.3x at k=8 and
+10.3x at k=16 (m=50000). On an L40 the ranking reverses: width-k is 3.0x faster
+at k=8 and 2.7x at k=16 (m=500000). A GPU running many local terms is not
+compute-bound here -- width-1 issues 2k launches to width-k's k+1, and re-reads
+z and recomputes the primal once per direction, while width-k folds that into
+one wide forward pass and has registers to spare for the k tangents. Which is
+why this is a benchmark rather than a recommendation.
+
 Usage:
 
     uv run warp/examples/benchmarks/benchmark_jet_hessian.py                      # both sweeps, auto device
