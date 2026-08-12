@@ -342,6 +342,8 @@ from warp._src.summand import indexed_sum as indexed_sum
 from warp._src.summand import Summand as Summand
 from warp._src.summand import IndexedSum as IndexedSum
 
+from warp._src.jet import JetSpace as JetSpace
+
 
 # category: Device Management
 

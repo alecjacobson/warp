@@ -310,7 +310,14 @@ Automatic Differentiation
    :nosignatures:
    :toctree: _generated
 
+   IndexedSum
+   Summand
    Tape
+   JetSpace
+   indexed_sum
+   summand
+   summand_grad
+   summand_hessian
 
 Device Management
 -----------------

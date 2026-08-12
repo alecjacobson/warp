@@ -313,6 +313,12 @@ add_example_test(
     devices=test_devices,
     test_options={"headless": True, "num_steps": 3},
 )
+add_example_test(
+    TestOptimExamples,
+    name="optim.example_jet_hessian",
+    devices=test_devices,
+    test_options={"headless": True, "grid": 4},
+)
 
 
 class TestTileExamples(unittest.TestCase):
