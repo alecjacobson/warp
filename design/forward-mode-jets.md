@@ -215,6 +215,117 @@ tape.backward(grads={grad_g: seed_row})
 # z.grad[i,b] = d grad_g[i,row] / d z[i,b] = H_i[row,b]
 ```
 
+## Choosing a Width: k-Wide Versus k Hessian-Vector Products
+
+A `k x k` local Hessian can be assembled two ways, and `JetSpace` deliberately
+prescribes neither. Which is faster depends on the device, and the ranking
+reverses between CPU and GPU.
+
+**width-k.** One `k`-wide forward pass yields all of `grad g`. Then `k` reverse
+sweeps through that widened program extract its `k x k` Jacobian, a row at a
+time.
+
+**width-1.** For each basis direction `e_j`, a constant-width forward pass
+yields the scalar `Dg[e_j] = grad g . e_j`, and one reverse sweep over that
+scalar yields `grad_z (grad g . e_j) = H e_j` -- column `j`, in one shot. This
+is the usual "a Hessian is `k` Hessian-vector products" identity.
+
+### Cost model
+
+Write `C` for the primal cost and `T` for the tangent work per direction.
+
+|         | forward       | reverse         | launches | reads of `z` |
+| ------- | ------------- | --------------- | -------- | ------------ |
+| width-k | `C + kT`      | `kC + k^2 T`    | `k + 1`  | 1            |
+| width-1 | `k(C + T)`    | `kC + kT`       | `2k`     | `k`          |
+
+The two trade against each other. Width-k wins the forward: it reads `z` once
+and computes the primal once, carrying `k` tangents alongside, where width-1
+re-reads and recomputes `k` separate times. Width-k loses the reverse: each of
+its `k` sweeps differentiates a program that is itself `k` wide, giving the
+`k^2 T` term.
+
+### Measurements
+
+Splitting the two halves apart on CPU (Apple M4, m=20000, milliseconds):
+
+| k  | strategy | forward | reverse | total  |
+| -- | -------- | ------- | ------- | ------ |
+| 4  | width-k  | 0.18    | 2.35    | 2.54   |
+| 4  | width-1  | 0.65    | 1.86    | 2.51   |
+| 8  | width-k  | 0.45    | 52.85   | 53.30  |
+| 8  | width-1  | 2.28    | 7.08    | 9.35   |
+| 16 | width-k  | 1.36    | 514.65  | 516.01 |
+| 16 | width-1  | 9.02    | 31.91   | 40.93  |
+
+Both predicted effects appear. Width-k's forward advantage grows with `k`
+(3.6x, 5.1x, 6.6x) and its reverse penalty grows faster (1.3x, 7.5x, 16.1x).
+At k=16 the reverse is 99.7% of its total, so the reverse decides the outcome.
+
+End to end, the winner depends on the device:
+
+| k  | L40, m=500000        | x86_64 CPU, m=50000   |
+| -- | -------------------- | --------------------- |
+| 8  | width-k 3.0x faster  | width-1 5.3x faster   |
+| 16 | width-k 2.7x faster  | width-1 10.3x faster  |
+
+### Why the ranking reverses
+
+**A CPU charges for FLOPs.** A Warp CPU kernel walks the elements on one
+thread, so the `k^2 T` arithmetic is serialized and lands directly in wall
+clock. The signature is exact: the width-1 advantage is 5.3x at k=8 and 10.3x
+at k=16, doubling as `k` doubles, which is `k^2 T / kT = k`. The operation
+count predicts the CPU result precisely.
+
+**A GPU charges for bytes and launches.** With 500000 local terms there are
+half a million threads in flight, so width-k's extra arithmetic is
+latency-hidden -- it costs occupancy rather than time, as long as the `k`
+tangents fit in registers. What is left to pay for is width-1's redundancy: it
+reads `z` `k` times (`m k^2` words against `m k`, which is 32 MiB per forward
+set at k=16, streamed from HBM rather than sitting in cache as the 1.28 MiB
+CPU working set does) and issues `2k` launches against `k + 1`.
+
+The GPU ratio corroborates this. It is flat, even shrinking -- 3.0x at k=8,
+2.7x at k=16. A compute-bound device would show it falling like `1/k`, as the
+CPU does. It does not, so `k^2 T` is not what is being charged.
+
+At smaller `m` the GPU picture is launch-bound instead: at m=50000 width-k
+leads by a flat 1.2-1.4x across k=2..16, close to the `2k / (k + 1)` launch
+ratio.
+
+### Open question
+
+Width-k's GPU advantage should survive only while `k` tangents fit in registers
+with enough occupancy left to hide the arithmetic. At k=16 that is comfortable
+on an L40 (255 registers per thread); at k=32 it is roughly double, occupancy
+drops, and the hidden `k^2 T` should become visible. The advantage already
+slipped from 3.0x to 2.7x between k=8 and k=16, so the crossover is plausibly
+near k=32 and likely past by k=64. That measurement has not been taken.
+
+Running k=32 at both m=500000 and m=50000 would isolate it: if the cause is
+occupancy, the large-`m` case degrades more, since that is the one relying on
+many resident warps.
+
+### A loop-structure hazard
+
+Local energies are often written as a loop over `k` terms carrying a jet
+accumulator. Warp unrolls a loop only up to `max_unroll` (default 16); past
+that it stays dynamic, and **reverse mode through a dynamic loop carrying a
+seeded jet returns wrong gradients with no diagnostic**. An accumulator alone
+is fine; the hazard needs a loop-carried jet whose coefficients were seeded per
+iteration.
+
+Warp applies the limit per loop rather than to the total trip count, so
+strip-mining a `k`-term chain into two loops of about `sqrt(k)` keeps every `k`
+up to `max_unroll^2 = 256` straight-line without touching module options. At
+k=100 a 10x10 pair generates 11405 lines against 869 for the rolled form, and a
+bounds guard for non-factorable `k` does not prevent unrolling (k=50 unrolls as
+7x8). `benchmark_jet_hessian.py` does this, and gates every configuration
+against a float64 finite-difference reference before timing it.
+
+This concerns user code that loops over jets. The jet types themselves are
+correct in both passes well past this threshold.
+
 ## Testing Strategy
 
 `warp/tests/test_jet.py`, registered in `default_suite`. Device-parametrized
