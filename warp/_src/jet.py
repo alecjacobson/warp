@@ -220,57 +220,91 @@ def _make_jet_space(width: int, dtype):
             (-a * inv_b * inv_b) * b.coeff,
         )
 
-    @wp.func
-    def jet_pow(a: JetScalar, p: dtype) -> JetScalar:
-        value = wp.pow(a.value, p)
-        coeff = (p * wp.pow(a.value, p - dtype(1.0))) * a.coeff
-        return JetScalar(value, coeff)
-
     # ------------------------------------------------------------------
     # Scalar elementary functions
+    #
+    # Each unary function is the chain rule f(a) = f(value) with derivative
+    # f'(value) scaling the coefficients, so they all route through _lift1.
     # ------------------------------------------------------------------
+
+    @wp.func
+    def _lift1(value: dtype, fp: dtype, a: JetScalar) -> JetScalar:
+        # Single-argument chain rule: value = f(a.value), fp = f'(a.value).
+        return JetScalar(value, fp * a.coeff)
+
+    @wp.func
+    def jet_pow(a: JetScalar, p: dtype) -> JetScalar:
+        return _lift1(wp.pow(a.value, p), p * wp.pow(a.value, p - dtype(1.0)), a)
+
+    @wp.func
+    def jet_pow(a: JetScalar, p: int) -> JetScalar:
+        return _lift1(wp.pow(a.value, dtype(p)), dtype(p) * wp.pow(a.value, dtype(p) - dtype(1.0)), a)
+
+    @wp.func
+    def jet_pow(a: JetScalar, b: JetScalar) -> JetScalar:
+        # a**b = exp(b log a); d = a**b (b/a da + log(a) db).
+        value = wp.pow(a.value, b.value)
+        coeff = value * ((b.value / a.value) * a.coeff + wp.log(a.value) * b.coeff)
+        return JetScalar(value, coeff)
+
+    @wp.func
+    def jet_pow(a: dtype, b: JetScalar) -> JetScalar:
+        value = wp.pow(a, b.value)
+        return JetScalar(value, (value * wp.log(a)) * b.coeff)
 
     @wp.func
     def jet_sin(a: JetScalar) -> JetScalar:
-        return JetScalar(
-            wp.sin(a.value),
-            wp.cos(a.value) * a.coeff,
-        )
+        return _lift1(wp.sin(a.value), wp.cos(a.value), a)
 
     @wp.func
     def jet_cos(a: JetScalar) -> JetScalar:
-        return JetScalar(
-            wp.cos(a.value),
-            -wp.sin(a.value) * a.coeff,
-        )
+        return _lift1(wp.cos(a.value), -wp.sin(a.value), a)
 
     @wp.func
     def jet_tan(a: JetScalar) -> JetScalar:
         c = wp.cos(a.value)
-        return JetScalar(
-            wp.tan(a.value),
-            a.coeff / (c * c),
-        )
+        return _lift1(wp.tan(a.value), dtype(1.0) / (c * c), a)
+
+    @wp.func
+    def jet_asin(a: JetScalar) -> JetScalar:
+        return _lift1(wp.asin(a.value), dtype(1.0) / wp.sqrt(dtype(1.0) - a.value * a.value), a)
+
+    @wp.func
+    def jet_acos(a: JetScalar) -> JetScalar:
+        return _lift1(wp.acos(a.value), -dtype(1.0) / wp.sqrt(dtype(1.0) - a.value * a.value), a)
+
+    @wp.func
+    def jet_atan(a: JetScalar) -> JetScalar:
+        return _lift1(wp.atan(a.value), dtype(1.0) / (dtype(1.0) + a.value * a.value), a)
 
     @wp.func
     def jet_exp(a: JetScalar) -> JetScalar:
         e = wp.exp(a.value)
-        return JetScalar(e, e * a.coeff)
+        return _lift1(e, e, a)
 
     @wp.func
     def jet_log(a: JetScalar) -> JetScalar:
-        return JetScalar(
-            wp.log(a.value),
-            a.coeff / a.value,
-        )
+        return _lift1(wp.log(a.value), dtype(1.0) / a.value, a)
 
     @wp.func
     def jet_sqrt(a: JetScalar) -> JetScalar:
         s = wp.sqrt(a.value)
-        return JetScalar(
-            s,
-            a.coeff / (dtype(2.0) * s),
-        )
+        return _lift1(s, dtype(0.5) / s, a)
+
+    @wp.func
+    def jet_atan2(y: JetScalar, x: JetScalar) -> JetScalar:
+        d = x.value * x.value + y.value * y.value
+        return JetScalar(wp.atan2(y.value, x.value), (x.value * y.coeff - y.value * x.coeff) / d)
+
+    @wp.func
+    def jet_atan2(y: JetScalar, x: dtype) -> JetScalar:
+        d = x * x + y.value * y.value
+        return JetScalar(wp.atan2(y.value, x), (x * y.coeff) / d)
+
+    @wp.func
+    def jet_atan2(y: dtype, x: JetScalar) -> JetScalar:
+        d = x.value * x.value + y * y
+        return JetScalar(wp.atan2(y, x.value), (-y * x.coeff) / d)
 
     @wp.func
     def jet_abs(a: JetScalar) -> JetScalar:
@@ -280,6 +314,41 @@ def _make_jet_space(width: int, dtype):
         if a.value < dtype(0.0):
             return -a
         return JetScalar(dtype(0.0), Coeff())
+
+    @wp.func
+    def jet_sign(a: JetScalar) -> JetScalar:
+        return JetScalar(wp.sign(a.value), Coeff())
+
+    # ------------------------------------------------------------------
+    # Selection / branching. Comparisons are value-only (a jet has no order),
+    # so branch on ``.value`` and carry the chosen jet's derivatives through.
+    # ------------------------------------------------------------------
+
+    @wp.func
+    def jet_min(a: JetScalar, b: JetScalar) -> JetScalar:
+        if a.value <= b.value:
+            return a
+        return b
+
+    @wp.func
+    def jet_max(a: JetScalar, b: JetScalar) -> JetScalar:
+        if a.value >= b.value:
+            return a
+        return b
+
+    @wp.func
+    def jet_clamp(a: JetScalar, lo: dtype, hi: dtype) -> JetScalar:
+        if a.value < lo:
+            return JetScalar(lo, Coeff())
+        if a.value > hi:
+            return JetScalar(hi, Coeff())
+        return a
+
+    @wp.func
+    def jet_where(cond: bool, a: JetScalar, b: JetScalar) -> JetScalar:
+        if cond:
+            return a
+        return b
 
     # ------------------------------------------------------------------
     # Vec2 / Vec3 construction
@@ -730,10 +799,20 @@ def _make_jet_space(width: int, dtype):
     _register("sin", jet_sin)
     _register("cos", jet_cos)
     _register("tan", jet_tan)
+    _register("asin", jet_asin)
+    _register("acos", jet_acos)
+    _register("atan", jet_atan)
+    _register("atan2", jet_atan2)
     _register("exp", jet_exp)
     _register("log", jet_log)
     _register("sqrt", jet_sqrt)
     _register("abs", jet_abs)
+    _register("sign", jet_sign)
+
+    _register("min", jet_min)
+    _register("max", jet_max)
+    _register("clamp", jet_clamp)
+    _register("where", jet_where)
 
     _register("extract", jet_extract)
 

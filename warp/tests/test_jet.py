@@ -467,6 +467,81 @@ def test_jet2_div_log_sqrt(test, device):
     np.testing.assert_allclose(hess, np.transpose(hess, (0, 2, 1)), rtol=1.0e-6, atol=1.0e-7)
 
 
+# ===========================================================================
+# Extended scalar builtins: inverse-trig, pow variants, and branching ops.
+# ===========================================================================
+
+
+def smooth_np(z):
+    a = z[:, 0]
+    b = z[:, 1]
+    return (
+        np.arcsin(0.4 * a)
+        + np.arccos(0.3 * b)
+        + np.arctan(1.5 * a)
+        + np.arctan2(a, b + 2.0)
+        + np.power(a + 2.0, b)
+        + np.power(3.0, b)
+    )
+
+
+@wp.kernel
+def jet_smooth(z: wp.array2d[float], val: wp.array[float], grad: wp.array[J2.coeff]):
+    i = wp.tid()
+    a = J2.seed(z[i, 0], 0)
+    b = J2.seed(z[i, 1], 1)
+    e = (
+        wp.asin(0.4 * a)
+        + wp.acos(0.3 * b)
+        + wp.atan(1.5 * a)
+        + wp.atan2(a, b + 2.0)
+        + wp.pow(a + 2.0, b)  # pow(jet, jet)
+        + wp.pow(3.0, b)  # pow(dtype, jet)
+    )
+    val[i] = e.value
+    grad[i] = e.coeff
+
+
+def branch_np(z):
+    a = z[:, 0]
+    b = z[:, 1]
+    return np.minimum(a, b) + np.maximum(a, b) + np.clip(a, -0.5, 0.5) + np.where(a > 0.0, a, b) + np.abs(a)
+
+
+@wp.kernel
+def jet_branch(z: wp.array2d[float], val: wp.array[float], grad: wp.array[J2.coeff]):
+    i = wp.tid()
+    a = J2.seed(z[i, 0], 0)
+    b = J2.seed(z[i, 1], 1)
+    e = wp.min(a, b) + wp.max(a, b) + wp.clamp(a, -0.5, 0.5) + wp.where(a.value > 0.0, a, b) + wp.abs(a)
+    val[i] = e.value
+    grad[i] = e.coeff
+
+
+def test_jet_smooth_ops(test, device):
+    m = Z_NP.shape[0]
+    z = wp.array(Z_NP, dtype=float, device=device)
+    val = wp.zeros(m, dtype=float, device=device)
+    grad = wp.zeros(m, dtype=J2.coeff, device=device)
+    wp.launch(jet_smooth, dim=m, inputs=[z], outputs=[val, grad], device=device)
+    z64 = Z_NP.astype(np.float64)
+    np.testing.assert_allclose(val.numpy(), smooth_np(z64), rtol=1.0e-5, atol=1.0e-6)
+    np.testing.assert_allclose(grad.numpy().reshape(m, 2), _grad_fd(smooth_np, z64), rtol=1.0e-3, atol=1.0e-4)
+
+
+def test_jet_branch_ops(test, device):
+    # Points chosen away from kinks (a != b, a != 0, a inside the clamp range).
+    zb = np.array([[0.3, 0.7], [-0.2, 0.9], [0.4, -0.1]], dtype=np.float32)
+    m = zb.shape[0]
+    z = wp.array(zb, dtype=float, device=device)
+    val = wp.zeros(m, dtype=float, device=device)
+    grad = wp.zeros(m, dtype=J2.coeff, device=device)
+    wp.launch(jet_branch, dim=m, inputs=[z], outputs=[val, grad], device=device)
+    z64 = zb.astype(np.float64)
+    np.testing.assert_allclose(val.numpy(), branch_np(z64), rtol=1.0e-5, atol=1.0e-6)
+    np.testing.assert_allclose(grad.numpy().reshape(m, 2), _grad_fd(branch_np, z64), rtol=1.0e-4, atol=1.0e-5)
+
+
 devices = get_test_devices()
 
 
@@ -485,6 +560,8 @@ add_function_test(TestJet, "test_jet_float64", test_jet_float64, devices=devices
 add_function_test(TestJet, "test_jet2_value_grad_hessian", test_jet2_value_grad_hessian, devices=devices)
 add_function_test(TestJet, "test_jet2_hessian_symmetric", test_jet2_hessian_symmetric, devices=devices)
 add_function_test(TestJet, "test_jet2_div_log_sqrt", test_jet2_div_log_sqrt, devices=devices)
+add_function_test(TestJet, "test_jet_smooth_ops", test_jet_smooth_ops, devices=devices)
+add_function_test(TestJet, "test_jet_branch_ops", test_jet_branch_ops, devices=devices)
 
 
 if __name__ == "__main__":
