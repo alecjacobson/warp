@@ -350,6 +350,123 @@ class TestJetSpace(unittest.TestCase):
         self.assertEqual(wp.types.type_size(J6.coeff), 6)
 
 
+# ===========================================================================
+# Second-order (forward-over-forward) jets: value, gradient, and Hessian from a
+# single forward pass. Cross-checked against the analytic references above, the
+# reverse-over-forward Hessian, and finite differences.
+# ===========================================================================
+
+J2_2ND = wp.JetSpace2(2)
+
+
+@wp.kernel
+def jet2_value_grad_hess(
+    z: wp.array2d[float],
+    val: wp.array[float],
+    grad: wp.array2d[float],
+    hess: wp.array3d[float],
+):
+    # Same energy as local_energy: sin(a*b) + 0.1*a^3 + exp(b).
+    i = wp.tid()
+    a = J2_2ND.seed(z[i, 0], 0)
+    b = J2_2ND.seed(z[i, 1], 1)
+    r = wp.sin(a * b) + 0.1 * (a * a * a) + wp.exp(b)
+    val[i] = r.value
+    for p in range(2):
+        grad[i, p] = r.grad[p]
+        for q in range(2):
+            hess[i, p, q] = r.hess[p, q]
+
+
+def g2_np(z):
+    # Exercises the ops local_energy does not: div(jet,jet), log, sqrt, cos.
+    a = z[:, 0]
+    b = z[:, 1]
+    return np.log(a * a + b * b + 1.5) + np.sqrt(a * a + 1.0) + a / (b * b + 2.0) + np.cos(a * b)
+
+
+@wp.kernel
+def jet2_g2(
+    z: wp.array2d[float],
+    val: wp.array[float],
+    grad: wp.array2d[float],
+    hess: wp.array3d[float],
+):
+    i = wp.tid()
+    a = J2_2ND.seed(z[i, 0], 0)
+    b = J2_2ND.seed(z[i, 1], 1)
+    r = wp.log(a * a + b * b + 1.5) + wp.sqrt(a * a + 1.0) + a / (b * b + 2.0) + wp.cos(a * b)
+    val[i] = r.value
+    for p in range(2):
+        grad[i, p] = r.grad[p]
+        for q in range(2):
+            hess[i, p, q] = r.hess[p, q]
+
+
+def _grad_fd(fn, z, h=1.0e-5):
+    out = np.empty_like(z)
+    for p in range(z.shape[1]):
+        e = np.zeros_like(z)
+        e[:, p] = h
+        out[:, p] = (fn(z + e) - fn(z - e)) / (2.0 * h)
+    return out
+
+
+def _hess_fd(fn, z, h=1.0e-4):
+    n, k = z.shape
+    out = np.empty((n, k, k))
+    for p in range(k):
+        for q in range(k):
+            ep = np.zeros_like(z)
+            ep[:, p] = h
+            eq = np.zeros_like(z)
+            eq[:, q] = h
+            out[:, p, q] = (fn(z + ep + eq) - fn(z + ep - eq) - fn(z - ep + eq) + fn(z - ep - eq)) / (4.0 * h * h)
+    return out
+
+
+def _run_jet2(kernel, z_np, device):
+    m = z_np.shape[0]
+    z = wp.array(z_np, dtype=float, device=device)
+    val = wp.zeros(m, dtype=float, device=device)
+    grad = wp.zeros((m, 2), dtype=float, device=device)
+    hess = wp.zeros((m, 2, 2), dtype=float, device=device)
+    wp.launch(kernel, dim=m, inputs=[z], outputs=[val, grad, hess], device=device)
+    return val.numpy(), grad.numpy(), hess.numpy()
+
+
+def test_jet2_value_grad_hessian(test, device):
+    val, grad, hess = _run_jet2(jet2_value_grad_hess, Z_NP, device)
+    z64 = Z_NP.astype(np.float64)
+
+    # One forward pass reproduces the analytic value, gradient, and Hessian.
+    np.testing.assert_allclose(val, g_np(z64), rtol=1.0e-5, atol=1.0e-6)
+    np.testing.assert_allclose(grad, grad_np(z64), rtol=1.0e-5, atol=1.0e-6)
+    np.testing.assert_allclose(hess, hessian_np(z64), rtol=1.0e-4, atol=1.0e-5)
+    np.testing.assert_allclose(hess, hessian_fd(z64), rtol=1.0e-3, atol=1.0e-4)
+
+    # It also agrees with the reverse-over-forward Hessian of the same energy.
+    _, hess_tape = hessian_from_tape(Z_NP, device)
+    np.testing.assert_allclose(hess, hess_tape, rtol=1.0e-4, atol=1.0e-5)
+
+
+def test_jet2_hessian_symmetric(test, device):
+    # The forward-over-forward Hessian is symmetric by construction.
+    _, _, hess = _run_jet2(jet2_value_grad_hess, Z_NP, device)
+    np.testing.assert_allclose(hess, np.transpose(hess, (0, 2, 1)), rtol=1.0e-6, atol=1.0e-7)
+
+
+def test_jet2_div_log_sqrt(test, device):
+    # Covers div(jet, jet), log, sqrt, and cos, which local_energy does not.
+    val, grad, hess = _run_jet2(jet2_g2, Z_NP, device)
+    z64 = Z_NP.astype(np.float64)
+
+    np.testing.assert_allclose(val, g2_np(z64), rtol=1.0e-5, atol=1.0e-6)
+    np.testing.assert_allclose(grad, _grad_fd(g2_np, z64), rtol=1.0e-4, atol=1.0e-5)
+    np.testing.assert_allclose(hess, _hess_fd(g2_np, z64), rtol=1.0e-3, atol=1.0e-4)
+    np.testing.assert_allclose(hess, np.transpose(hess, (0, 2, 1)), rtol=1.0e-6, atol=1.0e-7)
+
+
 devices = get_test_devices()
 
 
@@ -365,6 +482,9 @@ add_function_test(TestJet, "test_jet_spring_gradient", test_jet_spring_gradient,
 add_function_test(TestJet, "test_jet_component_and_geometry", test_jet_component_and_geometry, devices=devices)
 add_function_test(TestJet, "test_jet_multiple_widths", test_jet_multiple_widths, devices=devices)
 add_function_test(TestJet, "test_jet_float64", test_jet_float64, devices=devices)
+add_function_test(TestJet, "test_jet2_value_grad_hessian", test_jet2_value_grad_hessian, devices=devices)
+add_function_test(TestJet, "test_jet2_hessian_symmetric", test_jet2_hessian_symmetric, devices=devices)
+add_function_test(TestJet, "test_jet2_div_log_sqrt", test_jet2_div_log_sqrt, devices=devices)
 
 
 if __name__ == "__main__":
