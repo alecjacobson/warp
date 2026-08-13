@@ -782,6 +782,175 @@ def _make_jet_space(width: int, dtype):
         return JetVec3(wp.cross(a, b.value), c)
 
     # ------------------------------------------------------------------
+    # Square matrix jets (mat2 / mat3)
+    #
+    # ``coeff`` flattens the matrix row-major: entry (r, c) is row r*n + c of a
+    # (n*n, width) coefficient block. Enough to write FEM energies with a native
+    # deformation gradient -- construction, transpose, matmul, matrix-vector
+    # product, determinant, and trace.
+    # ------------------------------------------------------------------
+
+    NativeMat2 = matrix((2, 2), dtype)
+    NativeMat3 = matrix((3, 3), dtype)
+    CoeffMat4 = matrix((4, width), dtype)
+    CoeffMat9 = matrix((9, width), dtype)
+
+    @wp.struct
+    class JetMat2:
+        value: NativeMat2
+        coeff: CoeffMat4
+
+    @wp.struct
+    class JetMat3:
+        value: NativeMat3
+        coeff: CoeffMat9
+
+    @wp.func
+    def mat2_from_cols(c0: JetVec2, c1: JetVec2) -> JetMat2:
+        v = NativeMat2()
+        m = CoeffMat4()
+        for r in range(2):
+            v[r, 0] = c0.value[r]
+            v[r, 1] = c1.value[r]
+            for q in range(wp.static(width)):
+                m[r * 2 + 0, q] = c0.coeff[r, q]
+                m[r * 2 + 1, q] = c1.coeff[r, q]
+        return JetMat2(v, m)
+
+    @wp.func
+    def mat3_from_cols(c0: JetVec3, c1: JetVec3, c2: JetVec3) -> JetMat3:
+        v = NativeMat3()
+        m = CoeffMat9()
+        for r in range(3):
+            v[r, 0] = c0.value[r]
+            v[r, 1] = c1.value[r]
+            v[r, 2] = c2.value[r]
+            for q in range(wp.static(width)):
+                m[r * 3 + 0, q] = c0.coeff[r, q]
+                m[r * 3 + 1, q] = c1.coeff[r, q]
+                m[r * 3 + 2, q] = c2.coeff[r, q]
+        return JetMat3(v, m)
+
+    @wp.func
+    def jet_add(a: JetMat2, b: JetMat2) -> JetMat2:
+        return JetMat2(a.value + b.value, a.coeff + b.coeff)
+
+    @wp.func
+    def jet_add(a: JetMat3, b: JetMat3) -> JetMat3:
+        return JetMat3(a.value + b.value, a.coeff + b.coeff)
+
+    @wp.func
+    def jet_sub(a: JetMat2, b: JetMat2) -> JetMat2:
+        return JetMat2(a.value - b.value, a.coeff - b.coeff)
+
+    @wp.func
+    def jet_sub(a: JetMat3, b: JetMat3) -> JetMat3:
+        return JetMat3(a.value - b.value, a.coeff - b.coeff)
+
+    @wp.func
+    def jet_mul(a: JetMat2, s: dtype) -> JetMat2:
+        return JetMat2(a.value * s, a.coeff * s)
+
+    @wp.func
+    def jet_mul(a: JetMat3, s: dtype) -> JetMat3:
+        return JetMat3(a.value * s, a.coeff * s)
+
+    @wp.func
+    def jet_mul(s: dtype, a: JetMat3) -> JetMat3:
+        return JetMat3(s * a.value, s * a.coeff)
+
+    @wp.func
+    def jet_transpose(a: JetMat3) -> JetMat3:
+        m = CoeffMat9()
+        for r in range(3):
+            for c in range(3):
+                for q in range(wp.static(width)):
+                    m[c * 3 + r, q] = a.coeff[r * 3 + c, q]
+        return JetMat3(wp.transpose(a.value), m)
+
+    @wp.func
+    def jet_transpose(a: JetMat2) -> JetMat2:
+        m = CoeffMat4()
+        for r in range(2):
+            for c in range(2):
+                for q in range(wp.static(width)):
+                    m[c * 2 + r, q] = a.coeff[r * 2 + c, q]
+        return JetMat2(wp.transpose(a.value), m)
+
+    @wp.func
+    def jet_mul(a: JetMat3, b: JetMat3) -> JetMat3:
+        m = CoeffMat9()
+        for i in range(3):
+            for j in range(3):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for k in range(3):
+                        acc += a.coeff[i * 3 + k, q] * b.value[k, j] + a.value[i, k] * b.coeff[k * 3 + j, q]
+                    m[i * 3 + j, q] = acc
+        return JetMat3(a.value * b.value, m)
+
+    @wp.func
+    def jet_mul(a: JetMat3, v: JetVec3) -> JetVec3:
+        c = CoeffMat3()
+        for i in range(3):
+            for q in range(wp.static(width)):
+                acc = dtype(0.0)
+                for k in range(3):
+                    acc += a.coeff[i * 3 + k, q] * v.value[k] + a.value[i, k] * v.coeff[k, q]
+                c[i, q] = acc
+        return JetVec3(a.value * v.value, c)
+
+    @wp.func
+    def jet_trace(a: JetMat3) -> JetScalar:
+        c = Coeff()
+        for q in range(wp.static(width)):
+            c[q] = a.coeff[0, q] + a.coeff[4, q] + a.coeff[8, q]
+        return JetScalar(a.value[0, 0] + a.value[1, 1] + a.value[2, 2], c)
+
+    @wp.func
+    def jet_trace(a: JetMat2) -> JetScalar:
+        c = Coeff()
+        for q in range(wp.static(width)):
+            c[q] = a.coeff[0, q] + a.coeff[3, q]
+        return JetScalar(a.value[0, 0] + a.value[1, 1], c)
+
+    @wp.func
+    def jet_determinant(a: JetMat3) -> JetScalar:
+        # d(det A) = sum_ij cofactor(i,j) * dA[i,j]  (Jacobi's formula).
+        m = a.value
+        cof0 = m[1, 1] * m[2, 2] - m[1, 2] * m[2, 1]
+        cof1 = -(m[1, 0] * m[2, 2] - m[1, 2] * m[2, 0])
+        cof2 = m[1, 0] * m[2, 1] - m[1, 1] * m[2, 0]
+        cof3 = -(m[0, 1] * m[2, 2] - m[0, 2] * m[2, 1])
+        cof4 = m[0, 0] * m[2, 2] - m[0, 2] * m[2, 0]
+        cof5 = -(m[0, 0] * m[2, 1] - m[0, 1] * m[2, 0])
+        cof6 = m[0, 1] * m[1, 2] - m[0, 2] * m[1, 1]
+        cof7 = -(m[0, 0] * m[1, 2] - m[0, 2] * m[1, 0])
+        cof8 = m[0, 0] * m[1, 1] - m[0, 1] * m[1, 0]
+        c = Coeff()
+        for q in range(wp.static(width)):
+            c[q] = (
+                cof0 * a.coeff[0, q]
+                + cof1 * a.coeff[1, q]
+                + cof2 * a.coeff[2, q]
+                + cof3 * a.coeff[3, q]
+                + cof4 * a.coeff[4, q]
+                + cof5 * a.coeff[5, q]
+                + cof6 * a.coeff[6, q]
+                + cof7 * a.coeff[7, q]
+                + cof8 * a.coeff[8, q]
+            )
+        return JetScalar(wp.determinant(m), c)
+
+    @wp.func
+    def jet_determinant(a: JetMat2) -> JetScalar:
+        m = a.value
+        c = Coeff()
+        for q in range(wp.static(width)):
+            c[q] = m[1, 1] * a.coeff[0, q] - m[1, 0] * a.coeff[1, q] - m[0, 1] * a.coeff[2, q] + m[0, 0] * a.coeff[3, q]
+        return JetScalar(m[0, 0] * m[1, 1] - m[0, 1] * m[1, 0], c)
+
+    # ------------------------------------------------------------------
     # Publish into Warp's builtin overload table.
     #
     # From here on, ordinary Warp syntax resolves on jets by argument type,
@@ -822,15 +991,23 @@ def _make_jet_space(width: int, dtype):
     _register("normalize", jet_normalize)
     _register("cross", jet_cross)
 
+    _register("transpose", jet_transpose)
+    _register("determinant", jet_determinant)
+    _register("trace", jet_trace)
+
     return SimpleNamespace(
         width=width,
         dtype=dtype,
         scalar=JetScalar,
         vec2=JetVec2,
         vec3=JetVec3,
+        mat2=JetMat2,
+        mat3=JetMat3,
         coeff=Coeff,
         native_vec2=NativeVec2,
         native_vec3=NativeVec3,
+        native_mat2=NativeMat2,
+        native_mat3=NativeMat3,
         coeff_mat2=CoeffMat2,
         coeff_mat3=CoeffMat3,
         constant=scalar_constant,
@@ -844,6 +1021,8 @@ def _make_jet_space(width: int, dtype):
         seed_vec3=seed_vec3,
         directional_vec2=directional_vec2,
         directional_vec3=directional_vec3,
+        make_mat2=mat2_from_cols,
+        make_mat3=mat3_from_cols,
         perp=jet_perp,
         cross2=jet_cross2,
     )

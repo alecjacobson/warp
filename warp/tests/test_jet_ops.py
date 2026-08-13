@@ -176,6 +176,78 @@ def _run_hess(kernel, z_np, device):
     return val.numpy(), grad.numpy(), hess.numpy()
 
 
+# --------------------------------------------------------------------------
+# Square matrix jets: determinant, trace, transpose, matmul via a real energy.
+# --------------------------------------------------------------------------
+
+J4 = wp.JetSpace(4)
+J12 = wp.JetSpace(12)
+
+
+@wp.kernel(enable_backward=False)
+def jet_mat2_detrace(a: wp.array2d[float], det_g: wp.array[J4.coeff], tr_g: wp.array[J4.coeff]):
+    # Seed the four entries (row-major m00,m01,m10,m11) to directions 0..3.
+    i = wp.tid()
+    c0 = J4.seed_vec2(wp.vec2(a[i, 0], a[i, 2]), 0, 2)  # column 0 = (m00, m10)
+    c1 = J4.seed_vec2(wp.vec2(a[i, 1], a[i, 3]), 1, 3)  # column 1 = (m01, m11)
+    m = J4.make_mat2(c0, c1)
+    det_g[i] = wp.determinant(m).coeff
+    tr_g[i] = wp.trace(m).coeff
+
+
+def tet_np(z):
+    p0, p1, p2, p3 = z[:, 0:3], z[:, 3:6], z[:, 6:9], z[:, 9:12]
+    f = np.stack([p1 - p0, p2 - p0, p3 - p0], axis=2)  # columns
+    i1 = (f * f).sum((1, 2))
+    j = np.linalg.det(f)
+    return 0.5 * (i1 - 3.0) - np.log(j) + 0.5 * np.log(j) ** 2
+
+
+@wp.kernel(enable_backward=False)
+def jet_tet(z: wp.array2d[float], grad: wp.array[J12.coeff]):
+    i = wp.tid()
+    p0 = J12.seed_vec3(wp.vec3(z[i, 0], z[i, 1], z[i, 2]), 0, 1, 2)
+    p1 = J12.seed_vec3(wp.vec3(z[i, 3], z[i, 4], z[i, 5]), 3, 4, 5)
+    p2 = J12.seed_vec3(wp.vec3(z[i, 6], z[i, 7], z[i, 8]), 6, 7, 8)
+    p3 = J12.seed_vec3(wp.vec3(z[i, 9], z[i, 10], z[i, 11]), 9, 10, 11)
+    f = J12.make_mat3(p1 - p0, p2 - p0, p3 - p0)  # deformation gradient
+    i1 = wp.trace(wp.transpose(f) * f)  # matmul -> trace = sum of squares
+    logj = wp.log(wp.determinant(f))
+    e = 0.5 * (i1 - 3.0) - logj + 0.5 * logj * logj
+    grad[i] = e.coeff
+
+
+class TestJetMatrix(unittest.TestCase):
+    def test_mat2_det_trace(self):
+        rng = np.random.default_rng(0)
+        a = (rng.standard_normal((5, 4)) + np.array([2.0, 0.1, 0.1, 2.0])).astype(np.float32)  # well-conditioned
+        det_g = wp.zeros(5, dtype=J4.coeff, device="cpu")
+        tr_g = wp.zeros(5, dtype=J4.coeff, device="cpu")
+        wp.launch(
+            jet_mat2_detrace,
+            dim=5,
+            inputs=[wp.array(a, dtype=float, device="cpu")],
+            outputs=[det_g, tr_g],
+            device="cpu",
+        )
+        m = a.astype(np.float64)
+        # d det / d(m00,m01,m10,m11) = (m11, -m10, -m01, m00); d trace = (1,0,0,1)
+        det_expected = np.stack([m[:, 3], -m[:, 2], -m[:, 1], m[:, 0]], axis=1)
+        tr_expected = np.tile([1.0, 0.0, 0.0, 1.0], (5, 1))
+        np.testing.assert_allclose(det_g.numpy().reshape(5, 4), det_expected, rtol=1e-5, atol=1e-6)
+        np.testing.assert_allclose(tr_g.numpy().reshape(5, 4), tr_expected, rtol=1e-5, atol=1e-6)
+
+    def test_mat3_tet_energy(self):
+        rng = np.random.default_rng(1)
+        rest = np.array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1], np.float32)  # unit reference tet
+        z = (rest + 0.05 * rng.standard_normal((6, 12))).astype(np.float32)
+        grad = wp.zeros(6, dtype=J12.coeff, device="cpu")
+        wp.launch(jet_tet, dim=6, inputs=[wp.array(z, dtype=float, device="cpu")], outputs=[grad], device="cpu")
+        np.testing.assert_allclose(
+            grad.numpy().reshape(6, 12), _grad_fd(tet_np, z.astype(np.float64)), rtol=1e-3, atol=1e-4
+        )
+
+
 class TestJetOps(unittest.TestCase):
     def test_first_order_smooth(self):
         z64 = Z_NP.astype(np.float64)
