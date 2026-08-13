@@ -801,3 +801,198 @@ def JetSpace(width: int, dtype=wp.float32):
         _CACHE[key] = J
 
     return J
+
+
+# ==========================================================================
+# Second-order (forward-over-forward) jets.
+#
+# A width-k second-order jet carries value, gradient, and the full k x k
+# Hessian of one scalar with respect to k variables:
+#
+#     x = value + grad . eps + 0.5 eps^T hess eps
+#
+# Propagating it through a scalar function in a single forward pass yields the
+# local Hessian directly -- no reverse pass, no tape. The per-intermediate
+# state is O(k^2), so this is a small-k strategy: register pressure grows
+# quadratically where the first-order jet's grows linearly.
+#
+# Scalars only (enough to differentiate a scalar energy); no vec2/vec3.
+# ==========================================================================
+
+_CACHE2 = {}
+
+
+def _make_jet_space2(width: int, dtype):
+    if width <= 0:
+        raise ValueError("Jet width must be positive")
+
+    Grad = vector(width, dtype)
+    Hess = matrix((width, width), dtype)
+
+    @wp.struct
+    class Jet2Scalar:
+        value: dtype
+        grad: Grad
+        hess: Hess
+
+    # ---- construction / seeding ----
+
+    @wp.func
+    def scalar_constant(x: dtype) -> Jet2Scalar:
+        return Jet2Scalar(x, Grad(), Hess())
+
+    @wp.func
+    def scalar_seed(x: dtype, direction: int) -> Jet2Scalar:
+        g = Grad()
+        g[direction] = dtype(1.0)
+        return Jet2Scalar(x, g, Hess())
+
+    # ---- linear ops ----
+
+    @wp.func
+    def jet_add(a: Jet2Scalar, b: Jet2Scalar) -> Jet2Scalar:
+        return Jet2Scalar(a.value + b.value, a.grad + b.grad, a.hess + b.hess)
+
+    @wp.func
+    def jet_add(a: Jet2Scalar, b: dtype) -> Jet2Scalar:
+        return Jet2Scalar(a.value + b, a.grad, a.hess)
+
+    @wp.func
+    def jet_add(a: dtype, b: Jet2Scalar) -> Jet2Scalar:
+        return Jet2Scalar(a + b.value, b.grad, b.hess)
+
+    @wp.func
+    def jet_sub(a: Jet2Scalar, b: Jet2Scalar) -> Jet2Scalar:
+        return Jet2Scalar(a.value - b.value, a.grad - b.grad, a.hess - b.hess)
+
+    @wp.func
+    def jet_sub(a: Jet2Scalar, b: dtype) -> Jet2Scalar:
+        return Jet2Scalar(a.value - b, a.grad, a.hess)
+
+    @wp.func
+    def jet_sub(a: dtype, b: Jet2Scalar) -> Jet2Scalar:
+        return Jet2Scalar(a - b.value, -b.grad, -b.hess)
+
+    @wp.func
+    def jet_pos(a: Jet2Scalar) -> Jet2Scalar:
+        return a
+
+    @wp.func
+    def jet_neg(a: Jet2Scalar) -> Jet2Scalar:
+        return Jet2Scalar(-a.value, -a.grad, -a.hess)
+
+    @wp.func
+    def jet_mul(a: Jet2Scalar, s: dtype) -> Jet2Scalar:
+        return Jet2Scalar(a.value * s, a.grad * s, a.hess * s)
+
+    @wp.func
+    def jet_mul(s: dtype, a: Jet2Scalar) -> Jet2Scalar:
+        return Jet2Scalar(s * a.value, s * a.grad, s * a.hess)
+
+    @wp.func
+    def jet_div(a: Jet2Scalar, s: dtype) -> Jet2Scalar:
+        return Jet2Scalar(a.value / s, a.grad / s, a.hess / s)
+
+    # ---- product: hess picks up the grad outer products ----
+
+    @wp.func
+    def jet_mul(a: Jet2Scalar, b: Jet2Scalar) -> Jet2Scalar:
+        outer_ab = wp.outer(a.grad, b.grad)
+        return Jet2Scalar(
+            a.value * b.value,
+            a.value * b.grad + b.value * a.grad,
+            a.value * b.hess + b.value * a.hess + outer_ab + wp.transpose(outer_ab),
+        )
+
+    @wp.func
+    def jet_div(a: Jet2Scalar, b: Jet2Scalar) -> Jet2Scalar:
+        inv = dtype(1.0) / b.value
+        value = a.value * inv
+        grad = (a.grad - value * b.grad) * inv
+        outer_gb = wp.outer(grad, b.grad)
+        hess = (a.hess - value * b.hess - outer_gb - wp.transpose(outer_gb)) * inv
+        return Jet2Scalar(value, grad, hess)
+
+    # ---- elementary functions: chain rule with f' and f'' ----
+
+    @wp.func
+    def _lift(value: dtype, fp: dtype, fpp: dtype, a: Jet2Scalar) -> Jet2Scalar:
+        return Jet2Scalar(value, fp * a.grad, fp * a.hess + fpp * wp.outer(a.grad, a.grad))
+
+    @wp.func
+    def jet_sin(a: Jet2Scalar) -> Jet2Scalar:
+        return _lift(wp.sin(a.value), wp.cos(a.value), -wp.sin(a.value), a)
+
+    @wp.func
+    def jet_cos(a: Jet2Scalar) -> Jet2Scalar:
+        return _lift(wp.cos(a.value), -wp.sin(a.value), -wp.cos(a.value), a)
+
+    @wp.func
+    def jet_exp(a: Jet2Scalar) -> Jet2Scalar:
+        e = wp.exp(a.value)
+        return _lift(e, e, e, a)
+
+    @wp.func
+    def jet_log(a: Jet2Scalar) -> Jet2Scalar:
+        inv = dtype(1.0) / a.value
+        return _lift(wp.log(a.value), inv, -inv * inv, a)
+
+    @wp.func
+    def jet_sqrt(a: Jet2Scalar) -> Jet2Scalar:
+        s = wp.sqrt(a.value)
+        fp = dtype(0.5) / s
+        return _lift(s, fp, -dtype(0.5) * fp / a.value, a)
+
+    @wp.func
+    def jet_pow(a: Jet2Scalar, p: dtype) -> Jet2Scalar:
+        v = wp.pow(a.value, p)
+        fp = p * wp.pow(a.value, p - dtype(1.0))
+        fpp = p * (p - dtype(1.0)) * wp.pow(a.value, p - dtype(2.0))
+        return _lift(v, fp, fpp, a)
+
+    _register("add", jet_add)
+    _register("sub", jet_sub)
+    _register("mul", jet_mul)
+    _register("div", jet_div)
+    _register("pow", jet_pow)
+    _register("neg", jet_neg)
+    _register("pos", jet_pos)
+
+    _register("sin", jet_sin)
+    _register("cos", jet_cos)
+    _register("exp", jet_exp)
+    _register("log", jet_log)
+    _register("sqrt", jet_sqrt)
+
+    return SimpleNamespace(
+        width=width,
+        dtype=dtype,
+        scalar=Jet2Scalar,
+        grad=Grad,
+        hess=Hess,
+        constant=scalar_constant,
+        seed=scalar_seed,
+    )
+
+
+def JetSpace2(width: int, dtype=wp.float32):
+    """Return second-order (forward-over-forward) jet types for a given width.
+
+    A width-k second-order jet tracks value, gradient, and the full k x k
+    Hessian; propagating it through a scalar function in one forward pass yields
+    the local Hessian with no reverse pass. Per-intermediate state is O(k^2), so
+    this suits small k. Scalars only.
+
+    Args:
+        width: Number of variables differentiated with respect to.
+        dtype: Scalar type the jets are built on.
+    """
+    width = int(width)
+    key = (width, dtype)
+
+    J = _CACHE2.get(key)
+    if J is None:
+        J = _make_jet_space2(width, dtype)
+        _CACHE2[key] = J
+
+    return J
