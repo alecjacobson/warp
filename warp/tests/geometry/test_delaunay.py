@@ -88,6 +88,40 @@ def _grid_mesh(nx, ny, jitter=0.0, seed=0):
     return points, np.array(tris, dtype=np.int32)
 
 
+def _convex_fan_mesh(n, a=2.0, b=1.0, seed=0):
+    """Points on an ellipse (convex, not cocircular) triangulated as a fan from vertex 0.
+
+    The ellipse guarantees a convex polygon so the fan is a valid triangulation,
+    while ``a != b`` keeps the points off a common circle so the Delaunay
+    triangulation is non-degenerate and the fan is far from it.
+    """
+    rng = np.random.default_rng(seed)
+    angles = np.sort(rng.uniform(0.0, 2.0 * np.pi, size=n))
+    points = np.stack([a * np.cos(angles), b * np.sin(angles)], axis=1).astype(np.float32)
+    tris = np.array([[0, i, i + 1] for i in range(1, n - 1)], dtype=np.int32)
+    return points, tris
+
+
+def _star_mesh(num_points=6):
+    """A non-convex star-shaped polygon triangulated as a fan from an added center vertex.
+
+    The polygon is star-shaped about the origin, so the center fan is a valid
+    triangulation of a non-convex simple polygon. Its boundary edges are shared
+    by a single triangle each (never flipped), while the interior spokes are.
+    """
+    outer_r, inner_r = 1.0, 0.45
+    boundary = []
+    for i in range(2 * num_points):
+        r = outer_r if i % 2 == 0 else inner_r
+        ang = np.pi * float(i) / float(num_points)
+        boundary.append([r * np.cos(ang), r * np.sin(ang)])
+    boundary = np.array(boundary, dtype=np.float32)  # counterclockwise
+    points = np.concatenate([np.zeros((1, 2), dtype=np.float32), boundary], axis=0)  # index 0 = center
+    m = boundary.shape[0]
+    tris = np.array([[0, 1 + i, 1 + (i + 1) % m] for i in range(m)], dtype=np.int32)
+    return points, tris
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -180,6 +214,30 @@ def test_flip_grid(test, device):
     test.assertEqual(warp.geometry.delaunay_edge_flip(positions, indices), 0)
 
 
+def test_flip_grid_large(test, device):
+    # A large perturbed grid stresses the parallel independent-set: many flips
+    # are applied per pass, so this is the key check that concurrent flips never
+    # corrupt adjacency (race-freedom) and still converge to a valid Delaunay mesh.
+    points, tris = _grid_mesh(40, 40, jitter=0.25, seed=99)
+    _assert_valid_mesh(test, points, tris)
+    test.assertFalse(_is_delaunay(points, tris))
+
+    positions = wp.array(points, dtype=wp.vec2, device=device)
+    indices = wp.array(tris, dtype=wp.int32, device=device)
+    area_before = sum(_signed_area(points[t[0]], points[t[1]], points[t[2]]) for t in tris)
+
+    num_flips = warp.geometry.delaunay_edge_flip(positions, indices)
+    test.assertGreater(num_flips, 0)
+
+    out = indices.numpy()
+    _assert_valid_mesh(test, points, out)
+    _assert_delaunay(test, points, out)
+    test.assertEqual(set(np.unique(out).tolist()), set(np.unique(tris).tolist()))
+    area_after = sum(_signed_area(points[t[0]], points[t[1]], points[t[2]]) for t in out)
+    np.testing.assert_allclose(area_after, area_before, rtol=1e-4)
+    test.assertEqual(warp.geometry.delaunay_edge_flip(positions, indices), 0)
+
+
 def test_flip_already_delaunay(test, device):
     # A right-triangulated axis-aligned grid is already (weakly) Delaunay; expect no flips.
     points, tris = _grid_mesh(4, 4, jitter=0.0)
@@ -214,6 +272,100 @@ def test_flip_empty(test, device):
     test.assertEqual(num_flips, 0)
 
 
+def test_flip_convex_fan(test, device):
+    # A fan triangulation of a convex (elliptical) polygon flips to the full
+    # Delaunay triangulation, since the domain is convex and unconstrained.
+    points, tris = _convex_fan_mesh(40, seed=3)
+    _assert_valid_mesh(test, points, tris)
+    test.assertFalse(_is_delaunay(points, tris))
+
+    positions = wp.array(points, dtype=wp.vec2, device=device)
+    indices = wp.array(tris, dtype=wp.int32, device=device)
+    area_before = sum(_signed_area(points[t[0]], points[t[1]], points[t[2]]) for t in tris)
+
+    num_flips = warp.geometry.delaunay_edge_flip(positions, indices)
+    test.assertGreater(num_flips, 0)
+
+    out = indices.numpy()
+    _assert_valid_mesh(test, points, out)
+    _assert_delaunay(test, points, out)
+    test.assertEqual(set(np.unique(out).tolist()), set(np.unique(tris).tolist()))
+    area_after = sum(_signed_area(points[t[0]], points[t[1]], points[t[2]]) for t in out)
+    np.testing.assert_allclose(area_after, area_before, rtol=1e-4)
+    test.assertEqual(warp.geometry.delaunay_edge_flip(positions, indices), 0)
+
+
+def test_flip_star_polygon(test, device):
+    # A non-convex simple polygon: some interior edges may be un-flippable (the
+    # quad is non-convex), so we verify the flipper reaches a valid fixed point
+    # that preserves the domain rather than asserting full Delaunay.
+    points, tris = _star_mesh(num_points=7)
+    _assert_valid_mesh(test, points, tris)
+
+    positions = wp.array(points, dtype=wp.vec2, device=device)
+    indices = wp.array(tris, dtype=wp.int32, device=device)
+    area_before = sum(_signed_area(points[t[0]], points[t[1]], points[t[2]]) for t in tris)
+
+    num_flips = warp.geometry.delaunay_edge_flip(positions, indices)
+    test.assertGreater(num_flips, 0)
+
+    out = indices.numpy()
+    _assert_valid_mesh(test, points, out)
+    test.assertEqual(out.shape, tris.shape)
+    test.assertEqual(set(np.unique(out).tolist()), set(np.unique(tris).tolist()))
+    area_after = sum(_signed_area(points[t[0]], points[t[1]], points[t[2]]) for t in out)
+    np.testing.assert_allclose(area_after, area_before, rtol=1e-4)
+    # Boundary is preserved: same set of boundary (singly-incident) edges.
+    before_boundary = {e for e, inc in _edge_map(tris).items() if len(inc) == 1}
+    after_boundary = {e for e, inc in _edge_map(out).items() if len(inc) == 1}
+    test.assertEqual(before_boundary, after_boundary)
+    # Converged to a fixed point.
+    test.assertEqual(warp.geometry.delaunay_edge_flip(positions, indices), 0)
+
+
+def test_flip_graph_capture(test, device):
+    points, tris = _grid_mesh(8, 7, jitter=0.3, seed=7)
+
+    # Eager reference result on a separate copy of the input.
+    ref_positions = wp.array(points, dtype=wp.vec2, device=device)
+    ref_indices = wp.array(tris, dtype=wp.int32, device=device)
+    ref_flips = warp.geometry.delaunay_edge_flip(ref_positions, ref_indices)
+    test.assertGreater(ref_flips, 0)
+    expected = ref_indices.numpy()
+
+    # Warm up device allocations (radix-sort scratch, etc.) before capturing so
+    # that no first-time allocation happens inside the captured region.
+    warp.geometry.delaunay_edge_flip(
+        wp.array(points, dtype=wp.vec2, device=device),
+        wp.array(tris, dtype=wp.int32, device=device),
+    )
+
+    positions = wp.array(points, dtype=wp.vec2, device=device)
+    indices = wp.array(tris, dtype=wp.int32, device=device)
+
+    with wp.ScopedDevice(device):
+        with wp.ScopedCapture() as capture:
+            total = warp.geometry.delaunay_edge_flip(positions, indices)
+
+    # Capture records operations without executing them: the mesh is untouched.
+    assert_np_equal(indices.numpy(), tris)
+
+    wp.capture_launch(capture.graph)
+    wp.synchronize_device(device)
+
+    out = indices.numpy()
+    _assert_delaunay(test, points, out)
+    assert_np_equal(out, expected)
+    test.assertEqual(int(total.numpy()[0]), ref_flips)
+
+    # The captured graph rebuilds adjacency from the current connectivity each
+    # replay, so replaying on the now-Delaunay mesh is a stable no-op.
+    wp.capture_launch(capture.graph)
+    wp.synchronize_device(device)
+    assert_np_equal(indices.numpy(), expected)
+    test.assertEqual(int(total.numpy()[0]), 0)
+
+
 devices = get_test_devices()
 
 
@@ -224,9 +376,13 @@ class TestDelaunay(unittest.TestCase):
 add_function_test(TestDelaunay, "test_adjacency_single_pair", test_adjacency_single_pair, devices=devices)
 add_function_test(TestDelaunay, "test_flip_single_edge", test_flip_single_edge, devices=devices)
 add_function_test(TestDelaunay, "test_flip_grid", test_flip_grid, devices=devices)
+add_function_test(TestDelaunay, "test_flip_grid_large", test_flip_grid_large, devices=devices)
 add_function_test(TestDelaunay, "test_flip_already_delaunay", test_flip_already_delaunay, devices=devices)
 add_function_test(TestDelaunay, "test_flip_reference_rejection", test_flip_reference_rejection, devices=devices)
+add_function_test(TestDelaunay, "test_flip_convex_fan", test_flip_convex_fan, devices=devices)
+add_function_test(TestDelaunay, "test_flip_star_polygon", test_flip_star_polygon, devices=devices)
 add_function_test(TestDelaunay, "test_flip_empty", test_flip_empty, devices=devices)
+add_function_test(TestDelaunay, "test_flip_graph_capture", test_flip_graph_capture, devices=devices)
 
 
 if __name__ == "__main__":

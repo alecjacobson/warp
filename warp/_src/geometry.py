@@ -121,6 +121,78 @@ def _match_half_edges(
     TTi[t1, j1] = j0
 
 
+@wp.kernel
+def _match_half_edges_tt(
+    keys: wp.array[wp.int64],
+    values: wp.array[wp.int32],
+    num_half_edges: wp.int32,
+    TT: wp.array2d[wp.int32],
+):
+    # As _match_half_edges, but only records the neighbor triangle (no reciprocal
+    # local edge index). The edge flipper recovers the reciprocal slot on demand.
+    k = wp.tid()
+
+    key = keys[k]
+    if k > 0 and keys[k - 1] == key:
+        return
+    if k + 1 >= num_half_edges or keys[k + 1] != key:
+        return
+    if k + 2 < num_half_edges and keys[k + 2] == key:
+        return
+
+    e0 = values[k]
+    e1 = values[k + 1]
+    TT[e0 // 3, e0 % 3] = e1 // 3
+    TT[e1 // 3, e1 % 3] = e0 // 3
+
+
+def _sorted_half_edges(indices: wp.array, num_verts: int, device, num_tris: int):
+    """Pack the mesh half-edges into sortable keys and sort them by undirected edge.
+
+    Returns ``(keys, values, num_half_edges)`` where the first ``num_half_edges``
+    entries of ``keys``/``values`` are sorted so the two half-edges of an interior
+    edge are adjacent. ``values[k]`` encodes the half-edge as ``tri * 3 + local_edge``.
+    """
+    num_half_edges = 3 * num_tris
+
+    # radix_sort_pairs requires 2*count storage for its scratch space.
+    keys = wp.empty(shape=2 * num_half_edges, dtype=wp.int64, device=device)
+    values = wp.empty(shape=2 * num_half_edges, dtype=wp.int32, device=device)
+
+    wp.launch(
+        _pack_half_edges,
+        dim=num_tris,
+        inputs=[indices, wp.int32(num_verts), keys, values],
+        device=device,
+    )
+    radix_sort_pairs(keys, values, num_half_edges)
+
+    return keys, values, num_half_edges
+
+
+def _build_triangle_adjacency(indices: wp.array, num_verts: int) -> wp.array:
+    """Build the triangle-triangle neighbor array ``TT`` only (no reciprocal slots).
+
+    Used internally by :func:`delaunay_edge_flip`, which recovers reciprocal edge
+    indices on demand and therefore does not need ``TTi``.
+    """
+    device = indices.device
+    num_tris = indices.shape[0]
+
+    TT = wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device)
+    if num_tris == 0:
+        return TT
+
+    keys, values, num_half_edges = _sorted_half_edges(indices, num_verts, device, num_tris)
+    wp.launch(
+        _match_half_edges_tt,
+        dim=num_half_edges,
+        inputs=[keys, values, wp.int32(num_half_edges), TT],
+        device=device,
+    )
+    return TT
+
+
 def triangle_triangle_adjacency(indices: wp.array, num_verts: int | None = None):
     """Build triangle-triangle adjacency for a triangle mesh.
 
@@ -157,21 +229,7 @@ def triangle_triangle_adjacency(indices: wp.array, num_verts: int | None = None)
     if num_verts is None:
         num_verts = int(indices.numpy().max()) + 1
 
-    num_half_edges = 3 * num_tris
-
-    # radix_sort_pairs requires 2*count storage for its scratch space.
-    keys = wp.empty(shape=2 * num_half_edges, dtype=wp.int64, device=device)
-    values = wp.empty(shape=2 * num_half_edges, dtype=wp.int32, device=device)
-
-    wp.launch(
-        _pack_half_edges,
-        dim=num_tris,
-        inputs=[indices, wp.int32(num_verts), keys, values],
-        device=device,
-    )
-
-    radix_sort_pairs(keys, values, num_half_edges)
-
+    keys, values, num_half_edges = _sorted_half_edges(indices, num_verts, device, num_tris)
     wp.launch(
         _match_half_edges,
         dim=num_half_edges,
@@ -188,10 +246,20 @@ def triangle_triangle_adjacency(indices: wp.array, num_verts: int | None = None)
 
 
 @wp.func
+def _find_neighbor_edge(TT: wp.array2d[wp.int32], t: wp.int32, n: wp.int32) -> wp.int32:
+    """Return the local edge of triangle ``t`` whose neighbor is ``n`` (or -1)."""
+    if TT[t, 0] == n:
+        return 0
+    if TT[t, 1] == n:
+        return 1
+    if TT[t, 2] == n:
+        return 2
+    return -1
+
+
+@wp.func
 def _is_flippable(
     tri: wp.array2d[wp.int32],
-    TT: wp.array2d[wp.int32],
-    TTi: wp.array2d[wp.int32],
     pos: wp.array[wp.vec2],
     ref: wp.array[wp.vec2],
     has_ref: wp.int32,
@@ -199,16 +267,16 @@ def _is_flippable(
     ref_eps: float,
     t: wp.int32,
     j: wp.int32,
+    n: wp.int32,
+    jn: wp.int32,
 ) -> bool:
-    """Return whether the interior edge ``(t, j)`` should be flipped to restore Delaunay.
+    """Return whether the interior edge between triangles ``t`` and ``n`` should flip.
 
-    The shared edge joins vertices ``a`` and ``b``; ``c`` is the apex in ``t``
-    and ``d`` the apex in the neighboring triangle. A flip replaces edge ``ab``
-    with edge ``cd``, producing triangles ``(c, a, d)`` and ``(c, d, b)``.
+    ``j`` is the local edge of ``t`` opposite apex ``c`` and ``jn`` the local edge
+    of ``n`` opposite apex ``d``. The shared edge joins vertices ``a`` and ``b``. A
+    flip replaces edge ``ab`` with edge ``cd``, producing triangles ``(c, a, d)``
+    and ``(c, d, b)``.
     """
-    n = TT[t, j]
-    jn = TTi[t, j]
-
     c = tri[t, j]
     a = tri[t, (j + 1) % 3]
     b = tri[t, (j + 2) % 3]
@@ -254,7 +322,6 @@ def _claim(claim: wp.array[wp.int32], t: wp.int32, prio: wp.int32):
 def _claim_flips(
     tri: wp.array2d[wp.int32],
     TT: wp.array2d[wp.int32],
-    TTi: wp.array2d[wp.int32],
     pos: wp.array[wp.vec2],
     ref: wp.array[wp.vec2],
     has_ref: wp.int32,
@@ -268,26 +335,27 @@ def _claim_flips(
         # Process each undirected edge once, from its lower-indexed triangle.
         if n < 0 or t >= n:
             continue
-        if not _is_flippable(tri, TT, TTi, pos, ref, has_ref, area_eps, ref_eps, t, j):
+        jn = _find_neighbor_edge(TT, n, t)
+        if jn < 0:
+            continue
+        if not _is_flippable(tri, pos, ref, has_ref, area_eps, ref_eps, t, j, n, jn):
             continue
 
-        # A flip rewrites adjacency for its two triangles and the four
-        # surrounding neighbors, so it must claim all six exclusively.
+        # Preserving each triangle's cyclic slot layout, a flip only reads and
+        # writes the rows of {t, n, n_bc, n_ad}, so it claims exactly those four.
+        n_bc = TT[t, (j + 1) % 3]
+        n_ad = TT[n, (jn + 1) % 3]
         prio = t * 3 + j
-        jn = TTi[t, j]
         _claim(claim, t, prio)
         _claim(claim, n, prio)
-        _claim(claim, TT[t, (j + 1) % 3], prio)
-        _claim(claim, TT[t, (j + 2) % 3], prio)
-        _claim(claim, TT[n, (jn + 1) % 3], prio)
-        _claim(claim, TT[n, (jn + 2) % 3], prio)
+        _claim(claim, n_bc, prio)
+        _claim(claim, n_ad, prio)
 
 
 @wp.kernel
 def _apply_flips(
     tri: wp.array2d[wp.int32],
     TT: wp.array2d[wp.int32],
-    TTi: wp.array2d[wp.int32],
     pos: wp.array[wp.vec2],
     ref: wp.array[wp.vec2],
     has_ref: wp.int32,
@@ -298,91 +366,80 @@ def _apply_flips(
 ):
     t = wp.tid()
     for j in range(3):
+        prio = t * 3 + j
+
+        # Check ownership before reading any mutable topology: if this edge did
+        # not win row t, another concurrent flip may be rewriting it. An edge that
+        # placed a claim here passed the Delaunay predicate in _claim_flips, and no
+        # winning conflicting flip can touch its four protected rows, so there is
+        # no need to re-run the predicate.
+        if claim[t] != prio:
+            continue
         n = TT[t, j]
         if n < 0 or t >= n:
             continue
-        if not _is_flippable(tri, TT, TTi, pos, ref, has_ref, area_eps, ref_eps, t, j):
+        if claim[n] != prio:
             continue
 
-        prio = t * 3 + j
-        jn = TTi[t, j]
+        jn = _find_neighbor_edge(TT, n, t)
+        if jn < 0:
+            continue
 
         j1 = (j + 1) % 3
         j2 = (j + 2) % 3
         jn1 = (jn + 1) % 3
         jn2 = (jn + 2) % 3
 
-        # Outer neighbors around the quad and their local edge indices.
         n_bc = TT[t, j1]
-        k_bc = TTi[t, j1]
-        n_ca = TT[t, j2]
-        k_ca = TTi[t, j2]
         n_ad = TT[n, jn1]
-        k_ad = TTi[n, jn1]
-        n_db = TT[n, jn2]
-        k_db = TTi[n, jn2]
-
-        # Proceed only if this edge won all six of its claimed triangles.
-        if claim[t] != prio or claim[n] != prio:
-            continue
         if n_bc >= 0 and claim[n_bc] != prio:
-            continue
-        if n_ca >= 0 and claim[n_ca] != prio:
             continue
         if n_ad >= 0 and claim[n_ad] != prio:
             continue
-        if n_db >= 0 and claim[n_db] != prio:
-            continue
 
+        # This edge owns {t, n, n_bc, n_ad}; their rows are stable for this pass.
+        #   t: (c, a, b) -> (c, a, d)   n: (d, b, a) -> (d, b, c)
+        # so the new diagonal is c-d and only slots j2 and jn2 change vertex.
         c = tri[t, j]
-        a = tri[t, j1]
-        b = tri[t, j2]
         d = tri[n, jn]
+        tri[t, j2] = d
+        tri[n, jn2] = c
 
-        # Rewrite the two triangles. The quad c, a, d, b (counterclockwise) is
-        # split by the new diagonal c-d into (c, a, d) and (c, d, b).
-        tri[t, 0] = c
-        tri[t, 1] = a
-        tri[t, 2] = d
-        tri[n, 0] = c
-        tri[n, 1] = d
-        tri[n, 2] = b
+        # t keeps slot j2 (edge c-a); slot j (edge a-d) inherits n's a-d neighbor;
+        # slot j1 (edge d-c) is the new diagonal to n.
+        TT[t, j] = n_ad
+        TT[t, j1] = n
+        # n keeps slot jn2 (edge d-b); slot jn (edge b-c) inherits t's b-c
+        # neighbor; slot jn1 (edge c-d) is the new diagonal to t.
+        TT[n, jn] = n_bc
+        TT[n, jn1] = t
 
-        # Adjacency for the new triangle t = (c, a, d):
-        #   edge 0 (a-d) -> former a-d neighbor, edge 1 (d-c) -> new diagonal,
-        #   edge 2 (c-a) -> former c-a neighbor.
-        TT[t, 0] = n_ad
-        TTi[t, 0] = k_ad
-        TT[t, 1] = n
-        TTi[t, 1] = 2
-        TT[t, 2] = n_ca
-        TTi[t, 2] = k_ca
-
-        # Adjacency for the new triangle n = (c, d, b):
-        #   edge 0 (d-b) -> former d-b neighbor, edge 1 (b-c) -> former b-c
-        #   neighbor, edge 2 (c-d) -> new diagonal.
-        TT[n, 0] = n_db
-        TTi[n, 0] = k_db
-        TT[n, 1] = n_bc
-        TTi[n, 1] = k_bc
-        TT[n, 2] = t
-        TTi[n, 2] = 1
-
-        # Fix the back-pointers of the four outer neighbors.
+        # Only these two outer neighbors change ownership; re-point them.
         if n_ad >= 0:
-            TT[n_ad, k_ad] = t
-            TTi[n_ad, k_ad] = 0
-        if n_ca >= 0:
-            TT[n_ca, k_ca] = t
-            TTi[n_ca, k_ca] = 2
-        if n_db >= 0:
-            TT[n_db, k_db] = n
-            TTi[n_db, k_db] = 0
+            TT[n_ad, _find_neighbor_edge(TT, n_ad, n)] = t
         if n_bc >= 0:
-            TT[n_bc, k_bc] = n
-            TTi[n_bc, k_bc] = 1
+            TT[n_bc, _find_neighbor_edge(TT, n_bc, t)] = n
 
         wp.atomic_add(num_flips, 0, 1)
+
+
+@wp.kernel
+def _update_condition(
+    num_flips: wp.array[wp.int32],
+    max_passes: wp.int32,
+    total_flips: wp.array[wp.int32],
+    pass_count: wp.array[wp.int32],
+    condition: wp.array[wp.int32],
+):
+    # Single-thread bookkeeping between passes: accumulate the running total and
+    # decide whether another pass is warranted. Written to a device array so the
+    # convergence loop needs no host synchronization under graph capture.
+    total_flips[0] += num_flips[0]
+    pass_count[0] += 1
+    if num_flips[0] > 0 and pass_count[0] < max_passes:
+        condition[0] = 1
+    else:
+        condition[0] = 0
 
 
 def delaunay_edge_flip(
@@ -392,14 +449,16 @@ def delaunay_edge_flip(
     max_passes: int = 1000,
     area_epsilon: float = 0.0,
     ref_epsilon: float = 1.0e-10,
-) -> int:
+):
     """Flip interior edges in place until the 2D triangulation is Delaunay.
 
     The triangulation is modified in place: ``indices`` is updated with the
     flipped connectivity while ``positions`` is left unchanged. Flips run in
-    parallel on the Warp device using a priority-based maximal independent set,
-    so no host round-trip is needed apart from the per-pass flip count used to
-    detect convergence.
+    parallel on the Warp device using a priority-based maximal independent set.
+    The convergence loop is driven on-device with :func:`warp.capture_while`, so
+    the whole routine can be recorded into a CUDA graph without host
+    synchronization (a warm-up call is recommended so that internal allocations,
+    including the radix-sort scratch buffer, are sized before capture).
 
     Args:
         positions: A ``(num_verts,)`` :class:`warp.array` of :class:`warp.vec2`
@@ -418,7 +477,10 @@ def delaunay_edge_flip(
         ref_epsilon: Degeneracy threshold applied to ``ref_positions``.
 
     Returns:
-        The total number of edges flipped.
+        In eager mode, the total number of edges flipped as a Python ``int``.
+        During CUDA graph capture the count is only known at replay time, so a
+        single-element ``int32`` :class:`warp.array` accumulator is returned
+        instead; read it after :func:`warp.capture_launch`.
 
     Note:
         Assumes an orientable manifold mesh with consistent counterclockwise
@@ -438,35 +500,48 @@ def delaunay_edge_flip(
         raise ValueError("ref_positions and indices must be on the same device")
 
     num_verts = positions.shape[0]
-    TT, TTi = triangle_triangle_adjacency(indices, num_verts=num_verts)
+    TT = _build_triangle_adjacency(indices, num_verts)
 
     has_ref = wp.int32(1 if ref_positions is not None else 0)
     ref = ref_positions if ref_positions is not None else positions
+    max_passes_i = wp.int32(max_passes)
 
     claim = wp.empty(shape=num_tris, dtype=wp.int32, device=device)
-    num_flips = wp.zeros(shape=1, dtype=wp.int32, device=device)
+    num_flips = wp.empty(shape=1, dtype=wp.int32, device=device)
+    total_flips = wp.zeros(shape=1, dtype=wp.int32, device=device)
+    pass_count = wp.zeros(shape=1, dtype=wp.int32, device=device)
+    # Seed the condition so the loop body runs at least once; the body clears it
+    # once a pass makes no progress (or the pass budget is exhausted).
+    condition = wp.ones(shape=1, dtype=wp.int32, device=device)
 
-    total_flips = 0
-    for _ in range(max_passes):
+    def _flip_pass():
         claim.fill_(-1)
         num_flips.zero_()
-
         wp.launch(
             _claim_flips,
             dim=num_tris,
-            inputs=[indices, TT, TTi, positions, ref, has_ref, area_epsilon, ref_epsilon, claim],
+            inputs=[indices, TT, positions, ref, has_ref, area_epsilon, ref_epsilon, claim],
             device=device,
         )
         wp.launch(
             _apply_flips,
             dim=num_tris,
-            inputs=[indices, TT, TTi, positions, ref, has_ref, area_epsilon, ref_epsilon, claim, num_flips],
+            inputs=[indices, TT, positions, ref, has_ref, area_epsilon, ref_epsilon, claim, num_flips],
+            device=device,
+        )
+        wp.launch(
+            _update_condition,
+            dim=1,
+            inputs=[num_flips, max_passes_i, total_flips, pass_count, condition],
             device=device,
         )
 
-        pass_flips = int(num_flips.numpy()[0])
-        total_flips += pass_flips
-        if pass_flips == 0:
-            break
+    # Device-driven convergence loop. Under CUDA graph capture this records
+    # conditional graph nodes; otherwise wp.capture_while reads the condition
+    # back to the host to decide when to stop.
+    wp.capture_while(condition, _flip_pass)
 
-    return total_flips
+    if device.is_capturing:
+        return total_flips
+
+    return int(total_flips.numpy()[0])
