@@ -413,14 +413,21 @@ Two open threads recorded as tracking issues:
   compile time *5–6× worse* — the packed form hand-unrolls each op into ``O(L)``
   scalar statements (6× more generated source) instead of one whole-matrix
   intrinsic. Genuinely exploiting symmetry needs Warp-core support (GH issue #5).
-* **Jet type generality gaps** blocking arbitrary energies (GH issue #6): matrix
-  jet types (``mat22``/``mat33`` so ``wp.determinant``/``trace``/``inverse`` work
-  on jets — the biggest gap for FEM, distinct from the storage type above);
-  comparisons / ``select`` / ``min`` / ``max`` / ``atan2`` for branching and angle
-  energies; ``pow(jet, jet)`` and integer exponents; shared arithmetic scaffolding
-  so first- and second-order don't diverge; and ``JetSpace2`` vec/`tan`/`abs`
-  parity. Every change is gated on ``test_jet.py`` plus the jet benchmarks for
-  correctness and performance regressions.
+* **Jet type generality** (GH issue #6): now largely closed. Both orders have
+  ``asin``/``acos``/``atan``/``atan2``, value-branching ``min``/``max``/``clamp``/
+  ``where``/``sign`` (comparisons stay ``.value``-based), and ``pow(jet, jet)`` /
+  ``pow(dtype, jet)`` / integer exponents, sharing a ``_lift1`` (first-order) and
+  ``_lift2`` (second-order) chain-rule helper. First-order square matrix jets
+  (``mat2``/``mat3``: construction, transpose, matmul, matrix-vector product,
+  ``determinant`` via Jacobi's formula, ``trace``) let a tet neo-Hookean energy be
+  written with a native deformation gradient. Remaining follow-ups: rectangular
+  matrix jets (e.g. a 3×2 triangle deformation gradient) and ``inverse``/SVD;
+  second-order vec/matrix jets. Every change is gated on ``test_jet.py`` /
+  ``test_jet_ops.py`` and the jet benchmarks for correctness and performance.
+* A **module-hasher instability** (GH issue #7): kernels chaining many of the new
+  overloads get an unstable content hash across an in-process CPU+CUDA build, so a
+  cold build can look a kernel up under the wrong symbol. Extended-op tests are
+  pinned CPU-only until the hasher is made order-independent.
 
 ### HVP: Hessian-vector product
 
