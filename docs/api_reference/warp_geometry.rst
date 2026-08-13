@@ -14,6 +14,4 @@ API
    :toctree: _generated
 
    delaunay_edge_flip
-   in_circle
-   signed_area
    triangle_triangle_adjacency

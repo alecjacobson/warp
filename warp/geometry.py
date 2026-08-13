@@ -16,6 +16,8 @@ Usage:
 # isort: skip_file
 
 from warp._src.geometry import delaunay_edge_flip as delaunay_edge_flip
-from warp._src.geometry import in_circle as in_circle
-from warp._src.geometry import signed_area as signed_area
+
+# Don't expose these quite yet in case we want to change the naming conventions.
+# from warp._src.geometry import in_circle as in_circle
+# from warp._src.geometry import signed_area as signed_area
 from warp._src.geometry import triangle_triangle_adjacency as triangle_triangle_adjacency
