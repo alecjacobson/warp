@@ -12,7 +12,7 @@ performed apart from reading back the per-pass flip count to detect convergence.
 from __future__ import annotations
 
 import warp as wp
-from warp._src.utils import radix_sort_pairs
+from warp._src.utils import array_scan
 
 __all__ = [
     "delaunay_edge_flip",
@@ -70,104 +70,126 @@ def in_circle(a: wp.vec2, b: wp.vec2, c: wp.vec2, d: wp.vec2) -> bool:
 
 
 @wp.kernel
-def _pack_half_edges(
+def _count_vertex_edges(tri: wp.array2d[wp.int32], counts: wp.array[wp.int32]):
+    # Bucket each half-edge under its lower-indexed endpoint.
+    t = wp.tid()
+    for j in range(3):
+        v1 = tri[t, (j + 1) % 3]
+        v2 = tri[t, (j + 2) % 3]
+        wp.atomic_add(counts, wp.min(v1, v2), 1)
+
+
+@wp.kernel
+def _scatter_vertex_edges(
     tri: wp.array2d[wp.int32],
-    num_verts: wp.int32,
-    keys: wp.array[wp.int64],
-    values: wp.array[wp.int32],
+    offsets: wp.array[wp.int32],
+    fill: wp.array[wp.int32],
+    bucket_hi: wp.array[wp.int32],
+    bucket_he: wp.array[wp.int32],
 ):
+    # Scatter each half-edge into its lower-endpoint bucket, recording the upper
+    # endpoint and the packed half-edge id ``tri * 3 + local_edge``.
     t = wp.tid()
     for j in range(3):
         v1 = tri[t, (j + 1) % 3]
         v2 = tri[t, (j + 2) % 3]
         lo = wp.min(v1, v2)
         hi = wp.max(v1, v2)
-        # Pack the undirected edge (lo, hi) into a single sortable key.
-        keys[t * 3 + j] = wp.int64(lo) * wp.int64(num_verts) + wp.int64(hi)
-        values[t * 3 + j] = t * 3 + j
+        slot = offsets[lo] + wp.atomic_add(fill, lo, 1)
+        bucket_hi[slot] = hi
+        bucket_he[slot] = t * 3 + j
 
 
 @wp.kernel
-def _match_half_edges(
-    keys: wp.array[wp.int64],
-    values: wp.array[wp.int32],
-    num_half_edges: wp.int32,
+def _match_vertex_buckets(
+    offsets: wp.array[wp.int32],
+    counts: wp.array[wp.int32],
+    bucket_hi: wp.array[wp.int32],
+    bucket_he: wp.array[wp.int32],
+    TT: wp.array2d[wp.int32],
+):
+    # Each thread owns one vertex's bucket (a disjoint range), so it can pair
+    # half-edges that share the same upper endpoint without synchronization. The
+    # bucket holds only edges incident to this vertex (average degree ~6), so the
+    # quadratic inner scan is over a handful of entries.
+    v = wp.tid()
+    beg = offsets[v]
+    end = beg + counts[v]
+    for a in range(beg, end):
+        he_a = bucket_he[a]
+        if he_a < 0:  # already paired
+            continue
+        hi_a = bucket_hi[a]
+        for b in range(a + 1, end):
+            if bucket_he[b] >= 0 and bucket_hi[b] == hi_a:
+                he_b = bucket_he[b]
+                TT[he_a // 3, he_a % 3] = he_b // 3
+                TT[he_b // 3, he_b % 3] = he_a // 3
+                bucket_he[a] = -1
+                bucket_he[b] = -1
+                break
+
+
+@wp.kernel
+def _match_vertex_buckets_full(
+    offsets: wp.array[wp.int32],
+    counts: wp.array[wp.int32],
+    bucket_hi: wp.array[wp.int32],
+    bucket_he: wp.array[wp.int32],
     TT: wp.array2d[wp.int32],
     TTi: wp.array2d[wp.int32],
 ):
-    k = wp.tid()
-
-    # Only act at the start of a run of two identical keys (a manifold interior
-    # edge). Boundary edges appear once and are left as -1; non-manifold edges
-    # (runs of three or more) are skipped rather than mispaired.
-    key = keys[k]
-    if k > 0 and keys[k - 1] == key:
-        return
-    if k + 1 >= num_half_edges or keys[k + 1] != key:
-        return
-    if k + 2 < num_half_edges and keys[k + 2] == key:
-        return
-
-    e0 = values[k]
-    e1 = values[k + 1]
-    t0 = e0 // 3
-    j0 = e0 % 3
-    t1 = e1 // 3
-    j1 = e1 % 3
-
-    TT[t0, j0] = t1
-    TTi[t0, j0] = j1
-    TT[t1, j1] = t0
-    TTi[t1, j1] = j0
-
-
-@wp.kernel
-def _match_half_edges_tt(
-    keys: wp.array[wp.int64],
-    values: wp.array[wp.int32],
-    num_half_edges: wp.int32,
-    TT: wp.array2d[wp.int32],
-):
-    # As _match_half_edges, but only records the neighbor triangle (no reciprocal
-    # local edge index). The edge flipper recovers the reciprocal slot on demand.
-    k = wp.tid()
-
-    key = keys[k]
-    if k > 0 and keys[k - 1] == key:
-        return
-    if k + 1 >= num_half_edges or keys[k + 1] != key:
-        return
-    if k + 2 < num_half_edges and keys[k + 2] == key:
-        return
-
-    e0 = values[k]
-    e1 = values[k + 1]
-    TT[e0 // 3, e0 % 3] = e1 // 3
-    TT[e1 // 3, e1 % 3] = e0 // 3
+    # As _match_vertex_buckets, but also records the reciprocal local edge index.
+    v = wp.tid()
+    beg = offsets[v]
+    end = beg + counts[v]
+    for a in range(beg, end):
+        he_a = bucket_he[a]
+        if he_a < 0:
+            continue
+        hi_a = bucket_hi[a]
+        for b in range(a + 1, end):
+            if bucket_he[b] >= 0 and bucket_hi[b] == hi_a:
+                he_b = bucket_he[b]
+                ta = he_a // 3
+                ja = he_a % 3
+                tb = he_b // 3
+                jb = he_b % 3
+                TT[ta, ja] = tb
+                TTi[ta, ja] = jb
+                TT[tb, jb] = ta
+                TTi[tb, jb] = ja
+                bucket_he[a] = -1
+                bucket_he[b] = -1
+                break
 
 
-def _sorted_half_edges(indices: wp.array, num_verts: int, device, num_tris: int):
-    """Pack the mesh half-edges into sortable keys and sort them by undirected edge.
+def _bucket_half_edges(indices: wp.array, num_verts: int, device, num_tris: int):
+    """Counting-sort the half-edges into per-vertex buckets keyed by their lower endpoint.
 
-    Returns ``(keys, values, num_half_edges)`` where the first ``num_half_edges``
-    entries of ``keys``/``values`` are sorted so the two half-edges of an interior
-    edge are adjacent. ``values[k]`` encodes the half-edge as ``tri * 3 + local_edge``.
+    Returns ``(offsets, counts, bucket_hi, bucket_he)``: for vertex ``v`` the slice
+    ``[offsets[v] : offsets[v] + counts[v]]`` of ``bucket_hi`` / ``bucket_he`` lists
+    the upper endpoint and packed half-edge id ``tri * 3 + local_edge`` of every
+    half-edge whose lower endpoint is ``v``. Uses :func:`warp.utils.array_scan`
+    rather than a global key sort, and needs no host synchronization.
     """
     num_half_edges = 3 * num_tris
 
-    # radix_sort_pairs requires 2*count storage for its scratch space.
-    keys = wp.empty(shape=2 * num_half_edges, dtype=wp.int64, device=device)
-    values = wp.empty(shape=2 * num_half_edges, dtype=wp.int32, device=device)
+    counts = wp.zeros(shape=num_verts, dtype=wp.int32, device=device)
+    offsets = wp.empty(shape=num_verts, dtype=wp.int32, device=device)
+    fill = wp.zeros(shape=num_verts, dtype=wp.int32, device=device)
+    bucket_hi = wp.empty(shape=num_half_edges, dtype=wp.int32, device=device)
+    bucket_he = wp.empty(shape=num_half_edges, dtype=wp.int32, device=device)
 
+    wp.launch(_count_vertex_edges, dim=num_tris, inputs=[indices, counts], device=device)
+    array_scan(counts, offsets, inclusive=False)
     wp.launch(
-        _pack_half_edges,
+        _scatter_vertex_edges,
         dim=num_tris,
-        inputs=[indices, wp.int32(num_verts), keys, values],
+        inputs=[indices, offsets, fill, bucket_hi, bucket_he],
         device=device,
     )
-    radix_sort_pairs(keys, values, num_half_edges)
-
-    return keys, values, num_half_edges
+    return offsets, counts, bucket_hi, bucket_he
 
 
 def _build_triangle_adjacency(indices: wp.array, num_verts: int) -> wp.array:
@@ -183,11 +205,11 @@ def _build_triangle_adjacency(indices: wp.array, num_verts: int) -> wp.array:
     if num_tris == 0:
         return TT
 
-    keys, values, num_half_edges = _sorted_half_edges(indices, num_verts, device, num_tris)
+    offsets, counts, bucket_hi, bucket_he = _bucket_half_edges(indices, num_verts, device, num_tris)
     wp.launch(
-        _match_half_edges_tt,
-        dim=num_half_edges,
-        inputs=[keys, values, wp.int32(num_half_edges), TT],
+        _match_vertex_buckets,
+        dim=num_verts,
+        inputs=[offsets, counts, bucket_hi, bucket_he, TT],
         device=device,
     )
     return TT
@@ -211,8 +233,13 @@ def triangle_triangle_adjacency(indices: wp.array, num_verts: int | None = None)
 
     Note:
         Assumes an orientable manifold mesh with consistent winding. Interior
-        edges must be shared by exactly two triangles; non-manifold edges are
-        ignored (left as boundaries).
+        edges must be shared by exactly two triangles; for a non-manifold edge
+        shared by more triangles only an arbitrary two are paired.
+
+        Adjacency is built by counting-sorting the half-edges into per-vertex
+        buckets (via :func:`warp.utils.array_scan`) and matching within each
+        bucket -- no global key sort -- so the build is CUDA-graph capturable and
+        needs no host synchronization when ``num_verts`` is given.
     """
     if indices.ndim != 2 or indices.shape[1] != 3:
         raise ValueError("indices must be a (num_tris, 3) array of triangle vertex indices")
@@ -229,11 +256,11 @@ def triangle_triangle_adjacency(indices: wp.array, num_verts: int | None = None)
     if num_verts is None:
         num_verts = int(indices.numpy().max()) + 1
 
-    keys, values, num_half_edges = _sorted_half_edges(indices, num_verts, device, num_tris)
+    offsets, counts, bucket_hi, bucket_he = _bucket_half_edges(indices, num_verts, device, num_tris)
     wp.launch(
-        _match_half_edges,
-        dim=num_half_edges,
-        inputs=[keys, values, wp.int32(num_half_edges), TT, TTi],
+        _match_vertex_buckets_full,
+        dim=num_verts,
+        inputs=[offsets, counts, bucket_hi, bucket_he, TT, TTi],
         device=device,
     )
 
