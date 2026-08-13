@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>warp.utils.runlength_encode &#8212; Warp 1.17.0.dev2</title>
+    <title>warp.utils.runlength_encode &#8212; Warp 1.17.0.dev3</title>
   
   
   
@@ -34,7 +34,7 @@
     <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
     <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=3d681599" />
+    <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=21194238" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
@@ -44,7 +44,7 @@
 
 
 
-    <script src="../../_static/documentation_options.js?v=a5afd832"></script>
+    <script src="../../_static/documentation_options.js?v=01d75c2b"></script>
     <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -69,7 +69,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="1.17.0.dev2" />
+  <meta name="docsearch:version" content="1.17.0.dev3" />
   
     
     <script src="../../_static/searchtools.js"></script>
@@ -146,11 +146,11 @@
       
     
     
-    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.17.0.dev2 - Home"/>
-    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.17.0.dev2 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.17.0.dev3 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.17.0.dev3 - Home"/>
   
   
-    <p class="title logo__title">Warp 1.17.0.dev2</p>
+    <p class="title logo__title">Warp 1.17.0.dev3</p>
   
 </a></div>
     
@@ -290,11 +290,11 @@
       
     
     
-    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.17.0.dev2 - Home"/>
-    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.17.0.dev2 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.17.0.dev3 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.17.0.dev3 - Home"/>
   
   
-    <p class="title logo__title">Warp 1.17.0.dev2</p>
+    <p class="title logo__title">Warp 1.17.0.dev3</p>
   
 </a>
 
@@ -528,11 +528,14 @@
 <dd><em class="sig-param"><span class="n"><span class="pre">value_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
-<span class="sig-paren">)</span><a class="reference external" href="https://github.com/NVIDIA/warp/blob/main/warp/_src/utils.py#L368-L469"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#warp.utils.runlength_encode" title="Link to this definition">#</a></dt>
+<span class="sig-paren">)</span><a class="reference external" href="https://github.com/NVIDIA/warp/blob/main/warp/_src/utils.py#L371-L478"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#warp.utils.runlength_encode" title="Link to this definition">#</a></dt>
 <dd><p>Perform run-length encoding on an array.</p>
 <p>This function compresses an array by replacing consecutive identical values with a single value
 and its count.
 For example, <code class="docutils literal notranslate"><span class="pre">[1,1,1,2,2,3]</span></code> becomes <code class="docutils literal notranslate"><span class="pre">values=[1,2,3]</span></code> and <code class="docutils literal notranslate"><span class="pre">lengths=[3,2,1]</span></code>.</p>
+<p>During CPU graph capture, or CUDA graph capture with <code class="docutils literal notranslate"><span class="pre">apic=True</span></code>, a
+non-empty call requires an explicit <code class="docutils literal notranslate"><span class="pre">run_count</span></code> array because the
+host-return form cannot represent a replay-time result.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -548,8 +551,12 @@ If <code class="docutils literal notranslate"><span class="pre">None</span></cod
 <dd class="field-even"><p>Number of runs if <code class="docutils literal notranslate"><span class="pre">run_count</span></code> is <code class="docutils literal notranslate"><span class="pre">None</span></code>, otherwise returns the <code class="docutils literal notranslate"><span class="pre">run_count</span></code> array.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If array storage devices don’t match, if storage size is insufficient, if data types are
-    unsupported, or if <code class="docutils literal notranslate"><span class="pre">value_count</span></code> is negative.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If array storage devices don’t match, if storage size is insufficient, if data types are
+    unsupported, or if <code class="docutils literal notranslate"><span class="pre">value_count</span></code> is negative.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#NotImplementedError" title="(in Python v3.14)"><strong>NotImplementedError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">run_count</span></code> is <code class="docutils literal notranslate"><span class="pre">None</span></code> for a non-empty call
+    during CPU graph capture or CUDA graph capture with <code class="docutils literal notranslate"><span class="pre">apic=True</span></code>.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a> | <a class="reference internal" href="warp.array.html#warp.array" title="warp._src.types.array"><em>array</em></a></p>
