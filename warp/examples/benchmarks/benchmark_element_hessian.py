@@ -23,7 +23,8 @@ every strategy (jet arithmetic is registered as builtin overloads):
                 width-k   : one width-k forward jet -> grad, then k reverse sweeps
 
 forward-2 holds an O(k^2) Hessian in registers; nvcc compile is super-linear in
-k, so it is skipped for tet (k=12). --graph times warm graph-captured replay.
+k (tet k=12 takes ~2 min the first time, then caches). --forward2-max-k skips it
+above a chosen k for quick runs; --graph times warm graph-captured replay.
 
     uv run warp/examples/benchmarks/benchmark_element_hessian.py --device cuda:0
     uv run warp/examples/benchmarks/benchmark_element_hessian.py --device cuda:0 --graph
@@ -203,7 +204,8 @@ def build_spring():
 
 
 def build_triangle():
-    Jk = wp.JetSpace(9)  # forward-2 (k=9) is skipped by the compile cap.
+    Jk = wp.JetSpace(9)
+    J2 = wp.JetSpace2(9)
 
     @wp.kernel
     def triangle_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff]):
@@ -225,11 +227,30 @@ def build_triangle():
         i = wp.tid()
         e[i] = triangle_energy(z[i, 0], z[i, 1], z[i, 2], z[i, 3], z[i, 4], z[i, 5], z[i, 6], z[i, 7], z[i, 8])
 
-    return Jk, triangle_grad_wide, triangle_energy_scalar, None
+    @wp.kernel
+    def triangle_hess_forward(z: wp.array2d[wp.float32], out: wp.array3d[wp.float32]):
+        i = wp.tid()
+        h = triangle_energy(
+            J2.seed(z[i, 0], 0),
+            J2.seed(z[i, 1], 1),
+            J2.seed(z[i, 2], 2),
+            J2.seed(z[i, 3], 3),
+            J2.seed(z[i, 4], 4),
+            J2.seed(z[i, 5], 5),
+            J2.seed(z[i, 6], 6),
+            J2.seed(z[i, 7], 7),
+            J2.seed(z[i, 8], 8),
+        ).hess
+        for p in range(9):
+            for q in range(9):
+                out[i, p, q] = h[p, q]
+
+    return Jk, triangle_grad_wide, triangle_energy_scalar, triangle_hess_forward
 
 
 def build_tet():
     Jk = wp.JetSpace(12)
+    J2 = wp.JetSpace2(12)
 
     @wp.kernel
     def tet_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff]):
@@ -267,7 +288,28 @@ def build_tet():
             z[i, 11],
         )
 
-    return Jk, tet_grad_wide, tet_energy_scalar, None
+    @wp.kernel
+    def tet_hess_forward(z: wp.array2d[wp.float32], out: wp.array3d[wp.float32]):
+        i = wp.tid()
+        h = tet_energy(
+            J2.seed(z[i, 0], 0),
+            J2.seed(z[i, 1], 1),
+            J2.seed(z[i, 2], 2),
+            J2.seed(z[i, 3], 3),
+            J2.seed(z[i, 4], 4),
+            J2.seed(z[i, 5], 5),
+            J2.seed(z[i, 6], 6),
+            J2.seed(z[i, 7], 7),
+            J2.seed(z[i, 8], 8),
+            J2.seed(z[i, 9], 9),
+            J2.seed(z[i, 10], 10),
+            J2.seed(z[i, 11], 11),
+        ).hess
+        for p in range(12):
+            for q in range(12):
+                out[i, p, q] = h[p, q]
+
+    return Jk, tet_grad_wide, tet_energy_scalar, tet_hess_forward
 
 
 ELEMENTS = {
@@ -405,8 +447,10 @@ def grad_fd(energy_np, z, k, h=1.0e-4):
     return out
 
 
-# forward-2's O(k^2) register Hessian compiles super-linearly in k; skip above this.
-FORWARD2_MAX_K = 8
+# forward-2's O(k^2) register Hessian compiles super-linearly in k: spring k=6
+# ~4 s, triangle k=9 ~45 s, tet k=12 ~2 min (one-time, then cached). Raise this to
+# skip the slow tet compile during quick runs.
+FORWARD2_MAX_K = 12
 
 
 def main():
@@ -418,6 +462,9 @@ def main():
     parser.add_argument("--m", type=int, default=1_000_000)
     parser.add_argument("--reps", type=int, default=5)
     parser.add_argument("--graph", action="store_true", help="Time warm graph-captured replay.")
+    parser.add_argument(
+        "--forward2-max-k", type=int, default=FORWARD2_MAX_K, help="Skip forward-2 above this k (slow compile)."
+    )
     args = parser.parse_args()
 
     wp.init()
@@ -435,7 +482,7 @@ def main():
     for name in [args.element] if args.element else list(ELEMENTS):
         k, builder, energy_np = ELEMENTS[name]
         Jk, grad_wide, energy_k, hess_k = builder()
-        if k > FORWARD2_MAX_K:
+        if k > args.forward2_max_k:
             hess_k = None
 
         z_np = sample(k, args.m)
