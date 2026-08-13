@@ -6,6 +6,7 @@ import unittest
 import numpy as np
 
 import warp as wp
+import warp._src.geometry as _src_geometry
 import warp.geometry
 from warp.tests.unittest_utils import *
 
@@ -132,14 +133,14 @@ def _eval_predicates(out_area: wp.array(dtype=float), out_in: wp.array(dtype=wp.
     a = wp.vec2(0.0, 0.0)
     b = wp.vec2(1.0, 0.0)
     c = wp.vec2(0.0, 1.0)
-    out_area[0] = warp.geometry.signed_area(a, b, c)  # +0.5 (counterclockwise)
-    out_area[1] = warp.geometry.signed_area(a, c, b)  # -0.5 (clockwise)
+    out_area[0] = _src_geometry.signed_area(a, b, c)  # +0.5 (counterclockwise)
+    out_area[1] = _src_geometry.signed_area(a, c, b)  # -0.5 (clockwise)
     # Circumcircle of the unit right triangle is centered at (0.5, 0.5), radius ~0.707.
-    out_in[0] = wp.int32(warp.geometry.in_circle(a, b, c, wp.vec2(0.4, 0.4)))  # inside -> 1
-    out_in[1] = wp.int32(warp.geometry.in_circle(a, b, c, wp.vec2(2.0, 2.0)))  # outside -> 0
+    out_in[0] = wp.int32(_src_geometry.in_circle(a, b, c, wp.vec2(0.4, 0.4)))  # inside -> 1
+    out_in[1] = wp.int32(_src_geometry.in_circle(a, b, c, wp.vec2(2.0, 2.0)))  # outside -> 0
 
 
-def test_public_predicates(test, device):
+def test_predicates(test, device):
     out_area = wp.empty(2, dtype=float, device=device)
     out_in = wp.empty(2, dtype=wp.int32, device=device)
     wp.launch(_eval_predicates, dim=1, inputs=[out_area, out_in], device=device)
@@ -424,7 +425,7 @@ class TestDelaunay(unittest.TestCase):
     pass
 
 
-add_function_test(TestDelaunay, "test_public_predicates", test_public_predicates, devices=devices)
+add_function_test(TestDelaunay, "test_predicates", test_predicates, devices=devices)
 add_function_test(TestDelaunay, "test_adjacency_single_pair", test_adjacency_single_pair, devices=devices)
 add_function_test(TestDelaunay, "test_adjacency_matches_grid", test_adjacency_matches_grid, devices=devices)
 add_function_test(TestDelaunay, "test_flip_single_edge", test_flip_single_edge, devices=devices)
