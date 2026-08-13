@@ -3,10 +3,15 @@
 
 """Geometry processing utilities for triangle meshes.
 
-This module currently provides in-place Delaunay edge flipping for 2D triangle
-meshes, along with the triangle-triangle adjacency structure it relies on. All
-routines run entirely on the Warp device (CPU or CUDA); no host round-trips are
-performed apart from reading back the per-pass flip count to detect convergence.
+The public entry points are the reusable predicates :func:`in_circle` and
+:func:`signed_area`, the topology builder :func:`triangle_triangle_adjacency`,
+and the :func:`delaunay_edge_flip` operation. Everything runs on the Warp device
+(CPU or CUDA); the Delaunay convergence loop is driven on-device with
+:func:`warp.capture_while`, so the routines are CUDA-graph capturable.
+
+Algorithm-specific kernels that are not meant for reuse are grouped in private
+classes (for example :class:`_DelaunayFlipper`) so their names stay tied to the
+algorithm and do not clutter the module namespace.
 """
 
 from __future__ import annotations
@@ -17,19 +22,20 @@ from warp._src.utils import array_scan
 __all__ = [
     "delaunay_edge_flip",
     "in_circle",
+    "signed_area",
     "triangle_triangle_adjacency",
 ]
 
 
 # ---------------------------------------------------------------------------
-# Geometric predicates
+# Reusable geometric predicates
 # ---------------------------------------------------------------------------
 
 
 @wp.func
-def _signed_area(a: wp.vec2, b: wp.vec2, c: wp.vec2) -> float:
-    """Twice the signed area of triangle ``abc`` (positive when counterclockwise)."""
-    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+def signed_area(a: wp.vec2, b: wp.vec2, c: wp.vec2) -> float:
+    """Return the signed area of triangle ``abc`` (positive when counterclockwise)."""
+    return 0.5 * ((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]))
 
 
 @wp.func
@@ -276,189 +282,198 @@ def _find_neighbor_edge(TT: wp.array2d[wp.int32], t: wp.int32, n: wp.int32) -> w
     return -1
 
 
-@wp.func
-def _is_flippable(
-    tri: wp.array2d[wp.int32],
-    pos: wp.array[wp.vec2],
-    ref: wp.array[wp.vec2],
-    has_ref: wp.int32,
-    area_eps: float,
-    ref_eps: float,
-    t: wp.int32,
-    j: wp.int32,
-    n: wp.int32,
-    jn: wp.int32,
-) -> bool:
-    """Return whether the interior edge between triangles ``t`` and ``n`` should flip.
+class _DelaunayFlipper:
+    """Kernels and predicates specific to parallel Delaunay edge flipping.
 
-    ``j`` is the local edge of ``t`` opposite apex ``c`` and ``jn`` the local edge
-    of ``n`` opposite apex ``d``. The shared edge joins vertices ``a`` and ``b``. A
-    flip replaces edge ``ab`` with edge ``cd``, producing triangles ``(c, a, d)``
-    and ``(c, d, b)``.
+    These are grouped in a private class -- not part of the public API -- so
+    their names stay tied to the flip algorithm and do not clutter the module
+    namespace. The reusable primitives (:func:`in_circle`, :func:`signed_area`,
+    :func:`triangle_triangle_adjacency`, :func:`_find_neighbor_edge`) live at
+    module scope. :func:`delaunay_edge_flip` is the driver that orchestrates
+    these kernels.
     """
-    c = tri[t, j]
-    a = tri[t, (j + 1) % 3]
-    b = tri[t, (j + 2) % 3]
-    d = tri[n, jn]
 
-    pa = pos[a]
-    pb = pos[b]
-    pc = pos[c]
-    pd = pos[d]
+    @wp.func
+    def _edge_should_flip(
+        tri: wp.array2d[wp.int32],
+        pos: wp.array[wp.vec2],
+        ref: wp.array[wp.vec2],
+        has_ref: wp.int32,
+        area_eps: float,
+        ref_eps: float,
+        t: wp.int32,
+        j: wp.int32,
+        n: wp.int32,
+        jn: wp.int32,
+    ) -> bool:
+        """Return whether the interior edge between triangles ``t`` and ``n`` should flip.
 
-    # Reject non-convex quads: both resulting triangles must be counterclockwise.
-    if _signed_area(pc, pa, pd) <= area_eps:
-        return False
-    if _signed_area(pc, pd, pb) <= area_eps:
-        return False
-
-    # Delaunay test: flip only if the opposite apex is inside the circumcircle.
-    # Triangle (c, a, b) is counterclockwise, matching the input winding.
-    if _in_circle_det(pc, pa, pb, pd) <= 0.0:
-        return False
-
-    # Reject flips that would create degenerate triangles in a reference config.
-    if has_ref != 0:
-        ra = ref[a]
-        rb = ref[b]
-        rc = ref[c]
-        rd = ref[d]
-        if wp.abs(_signed_area(rc, ra, rd)) <= ref_eps:
-            return False
-        if wp.abs(_signed_area(rc, rd, rb)) <= ref_eps:
-            return False
-
-    return True
-
-
-@wp.func
-def _claim(claim: wp.array[wp.int32], t: wp.int32, prio: wp.int32):
-    if t >= 0:
-        wp.atomic_max(claim, t, prio)
-
-
-@wp.kernel
-def _claim_flips(
-    tri: wp.array2d[wp.int32],
-    TT: wp.array2d[wp.int32],
-    pos: wp.array[wp.vec2],
-    ref: wp.array[wp.vec2],
-    has_ref: wp.int32,
-    area_eps: float,
-    ref_eps: float,
-    claim: wp.array[wp.int32],
-):
-    t = wp.tid()
-    for j in range(3):
-        n = TT[t, j]
-        # Process each undirected edge once, from its lower-indexed triangle.
-        if n < 0 or t >= n:
-            continue
-        jn = _find_neighbor_edge(TT, n, t)
-        if jn < 0:
-            continue
-        if not _is_flippable(tri, pos, ref, has_ref, area_eps, ref_eps, t, j, n, jn):
-            continue
-
-        # Preserving each triangle's cyclic slot layout, a flip only reads and
-        # writes the rows of {t, n, n_bc, n_ad}, so it claims exactly those four.
-        n_bc = TT[t, (j + 1) % 3]
-        n_ad = TT[n, (jn + 1) % 3]
-        prio = t * 3 + j
-        _claim(claim, t, prio)
-        _claim(claim, n, prio)
-        _claim(claim, n_bc, prio)
-        _claim(claim, n_ad, prio)
-
-
-@wp.kernel
-def _apply_flips(
-    tri: wp.array2d[wp.int32],
-    TT: wp.array2d[wp.int32],
-    pos: wp.array[wp.vec2],
-    ref: wp.array[wp.vec2],
-    has_ref: wp.int32,
-    area_eps: float,
-    ref_eps: float,
-    claim: wp.array[wp.int32],
-    num_flips: wp.array[wp.int32],
-):
-    t = wp.tid()
-    for j in range(3):
-        prio = t * 3 + j
-
-        # Check ownership before reading any mutable topology: if this edge did
-        # not win row t, another concurrent flip may be rewriting it. An edge that
-        # placed a claim here passed the Delaunay predicate in _claim_flips, and no
-        # winning conflicting flip can touch its four protected rows, so there is
-        # no need to re-run the predicate.
-        if claim[t] != prio:
-            continue
-        n = TT[t, j]
-        if n < 0 or t >= n:
-            continue
-        if claim[n] != prio:
-            continue
-
-        jn = _find_neighbor_edge(TT, n, t)
-        if jn < 0:
-            continue
-
-        j1 = (j + 1) % 3
-        j2 = (j + 2) % 3
-        jn1 = (jn + 1) % 3
-        jn2 = (jn + 2) % 3
-
-        n_bc = TT[t, j1]
-        n_ad = TT[n, jn1]
-        if n_bc >= 0 and claim[n_bc] != prio:
-            continue
-        if n_ad >= 0 and claim[n_ad] != prio:
-            continue
-
-        # This edge owns {t, n, n_bc, n_ad}; their rows are stable for this pass.
-        #   t: (c, a, b) -> (c, a, d)   n: (d, b, a) -> (d, b, c)
-        # so the new diagonal is c-d and only slots j2 and jn2 change vertex.
+        ``j`` is the local edge of ``t`` opposite apex ``c`` and ``jn`` the local
+        edge of ``n`` opposite apex ``d``. The shared edge joins vertices ``a`` and
+        ``b``. A flip replaces edge ``ab`` with edge ``cd``, producing triangles
+        ``(c, a, d)`` and ``(c, d, b)``.
+        """
         c = tri[t, j]
+        a = tri[t, (j + 1) % 3]
+        b = tri[t, (j + 2) % 3]
         d = tri[n, jn]
-        tri[t, j2] = d
-        tri[n, jn2] = c
 
-        # t keeps slot j2 (edge c-a); slot j (edge a-d) inherits n's a-d neighbor;
-        # slot j1 (edge d-c) is the new diagonal to n.
-        TT[t, j] = n_ad
-        TT[t, j1] = n
-        # n keeps slot jn2 (edge d-b); slot jn (edge b-c) inherits t's b-c
-        # neighbor; slot jn1 (edge c-d) is the new diagonal to t.
-        TT[n, jn] = n_bc
-        TT[n, jn1] = t
+        pa = pos[a]
+        pb = pos[b]
+        pc = pos[c]
+        pd = pos[d]
 
-        # Only these two outer neighbors change ownership; re-point them.
-        if n_ad >= 0:
-            TT[n_ad, _find_neighbor_edge(TT, n_ad, n)] = t
-        if n_bc >= 0:
-            TT[n_bc, _find_neighbor_edge(TT, n_bc, t)] = n
+        # Reject non-convex quads: both resulting triangles must be counterclockwise.
+        if signed_area(pc, pa, pd) <= area_eps:
+            return False
+        if signed_area(pc, pd, pb) <= area_eps:
+            return False
 
-        wp.atomic_add(num_flips, 0, 1)
+        # Delaunay test: flip only if the opposite apex is inside the circumcircle.
+        # Triangle (c, a, b) is counterclockwise, matching the input winding.
+        if _in_circle_det(pc, pa, pb, pd) <= 0.0:
+            return False
 
+        # Reject flips that would create degenerate triangles in a reference config.
+        if has_ref != 0:
+            ra = ref[a]
+            rb = ref[b]
+            rc = ref[c]
+            rd = ref[d]
+            if wp.abs(signed_area(rc, ra, rd)) <= ref_eps:
+                return False
+            if wp.abs(signed_area(rc, rd, rb)) <= ref_eps:
+                return False
 
-@wp.kernel
-def _update_condition(
-    num_flips: wp.array[wp.int32],
-    max_passes: wp.int32,
-    total_flips: wp.array[wp.int32],
-    pass_count: wp.array[wp.int32],
-    condition: wp.array[wp.int32],
-):
-    # Single-thread bookkeeping between passes: accumulate the running total and
-    # decide whether another pass is warranted. Written to a device array so the
-    # convergence loop needs no host synchronization under graph capture.
-    total_flips[0] += num_flips[0]
-    pass_count[0] += 1
-    if num_flips[0] > 0 and pass_count[0] < max_passes:
-        condition[0] = 1
-    else:
-        condition[0] = 0
+        return True
+
+    @wp.func
+    def _stake_claim(claim: wp.array[wp.int32], t: wp.int32, prio: wp.int32):
+        # Contend for exclusive ownership of triangle row ``t`` this pass; the
+        # highest-priority edge touching the row wins the atomic_max.
+        if t >= 0:
+            wp.atomic_max(claim, t, prio)
+
+    @wp.kernel
+    def _stake_flip_claims(
+        tri: wp.array2d[wp.int32],
+        TT: wp.array2d[wp.int32],
+        pos: wp.array[wp.vec2],
+        ref: wp.array[wp.vec2],
+        has_ref: wp.int32,
+        area_eps: float,
+        ref_eps: float,
+        claim: wp.array[wp.int32],
+    ):
+        t = wp.tid()
+        for j in range(3):
+            n = TT[t, j]
+            # Process each undirected edge once, from its lower-indexed triangle.
+            if n < 0 or t >= n:
+                continue
+            jn = _find_neighbor_edge(TT, n, t)
+            if jn < 0:
+                continue
+            if not _DelaunayFlipper._edge_should_flip(tri, pos, ref, has_ref, area_eps, ref_eps, t, j, n, jn):
+                continue
+
+            # Preserving each triangle's cyclic slot layout, a flip only reads and
+            # writes the rows of {t, n, n_bc, n_ad}, so it claims exactly those four.
+            n_bc = TT[t, (j + 1) % 3]
+            n_ad = TT[n, (jn + 1) % 3]
+            prio = t * 3 + j
+            _DelaunayFlipper._stake_claim(claim, t, prio)
+            _DelaunayFlipper._stake_claim(claim, n, prio)
+            _DelaunayFlipper._stake_claim(claim, n_bc, prio)
+            _DelaunayFlipper._stake_claim(claim, n_ad, prio)
+
+    @wp.kernel
+    def _apply_won_flips(
+        tri: wp.array2d[wp.int32],
+        TT: wp.array2d[wp.int32],
+        pos: wp.array[wp.vec2],
+        ref: wp.array[wp.vec2],
+        has_ref: wp.int32,
+        area_eps: float,
+        ref_eps: float,
+        claim: wp.array[wp.int32],
+        num_flips: wp.array[wp.int32],
+    ):
+        t = wp.tid()
+        for j in range(3):
+            prio = t * 3 + j
+
+            # Check ownership before reading any mutable topology: if this edge did
+            # not win row t, another concurrent flip may be rewriting it. An edge
+            # only staked a claim if it passed the flip predicate, and no winning
+            # conflicting flip can touch its four protected rows, so there is no
+            # need to re-run the predicate here.
+            if claim[t] != prio:
+                continue
+            n = TT[t, j]
+            if n < 0 or t >= n:
+                continue
+            if claim[n] != prio:
+                continue
+
+            jn = _find_neighbor_edge(TT, n, t)
+            if jn < 0:
+                continue
+
+            j1 = (j + 1) % 3
+            j2 = (j + 2) % 3
+            jn1 = (jn + 1) % 3
+            jn2 = (jn + 2) % 3
+
+            n_bc = TT[t, j1]
+            n_ad = TT[n, jn1]
+            if n_bc >= 0 and claim[n_bc] != prio:
+                continue
+            if n_ad >= 0 and claim[n_ad] != prio:
+                continue
+
+            # This edge owns {t, n, n_bc, n_ad}; their rows are stable for this pass.
+            #   t: (c, a, b) -> (c, a, d)   n: (d, b, a) -> (d, b, c)
+            # so the new diagonal is c-d and only slots j2 and jn2 change vertex.
+            c = tri[t, j]
+            d = tri[n, jn]
+            tri[t, j2] = d
+            tri[n, jn2] = c
+
+            # t keeps slot j2 (edge c-a); slot j (edge a-d) inherits n's a-d
+            # neighbor; slot j1 (edge d-c) is the new diagonal to n.
+            TT[t, j] = n_ad
+            TT[t, j1] = n
+            # n keeps slot jn2 (edge d-b); slot jn (edge b-c) inherits t's b-c
+            # neighbor; slot jn1 (edge c-d) is the new diagonal to t.
+            TT[n, jn] = n_bc
+            TT[n, jn1] = t
+
+            # Only these two outer neighbors change ownership; re-point them.
+            if n_ad >= 0:
+                TT[n_ad, _find_neighbor_edge(TT, n_ad, n)] = t
+            if n_bc >= 0:
+                TT[n_bc, _find_neighbor_edge(TT, n_bc, t)] = n
+
+            wp.atomic_add(num_flips, 0, 1)
+
+    @wp.kernel
+    def _record_pass(
+        num_flips: wp.array[wp.int32],
+        max_passes: wp.int32,
+        total_flips: wp.array[wp.int32],
+        pass_count: wp.array[wp.int32],
+        condition: wp.array[wp.int32],
+    ):
+        # Single-thread bookkeeping between passes: accumulate the running total
+        # and decide whether another pass is warranted. Written to a device array
+        # so the convergence loop needs no host synchronization under graph capture.
+        total_flips[0] += num_flips[0]
+        pass_count[0] += 1
+        if num_flips[0] > 0 and pass_count[0] < max_passes:
+            condition[0] = 1
+        else:
+            condition[0] = 0
 
 
 def delaunay_edge_flip(
@@ -476,8 +491,8 @@ def delaunay_edge_flip(
     parallel on the Warp device using a priority-based maximal independent set.
     The convergence loop is driven on-device with :func:`warp.capture_while`, so
     the whole routine can be recorded into a CUDA graph without host
-    synchronization (a warm-up call is recommended so that internal allocations,
-    including the radix-sort scratch buffer, are sized before capture).
+    synchronization (a warm-up call is recommended so that internal scratch
+    allocations are sized before capture).
 
     Args:
         positions: A ``(num_verts,)`` :class:`warp.array` of :class:`warp.vec2`
@@ -490,9 +505,8 @@ def delaunay_edge_flip(
             are rejected. Useful when the working mesh is a deformation of a
             reference mesh that must stay non-degenerate.
         max_passes: Maximum number of parallel flip passes before stopping.
-        area_epsilon: Minimum signed area (twice the triangle area) required for
-            each triangle produced by a flip; guards against creating inverted
-            or sliver triangles.
+        area_epsilon: Minimum signed area required for each triangle produced by
+            a flip; guards against creating inverted or sliver triangles.
         ref_epsilon: Degeneracy threshold applied to ``ref_positions``.
 
     Returns:
@@ -537,19 +551,19 @@ def delaunay_edge_flip(
         claim.fill_(-1)
         num_flips.zero_()
         wp.launch(
-            _claim_flips,
+            _DelaunayFlipper._stake_flip_claims,
             dim=num_tris,
             inputs=[indices, TT, positions, ref, has_ref, area_epsilon, ref_epsilon, claim],
             device=device,
         )
         wp.launch(
-            _apply_flips,
+            _DelaunayFlipper._apply_won_flips,
             dim=num_tris,
             inputs=[indices, TT, positions, ref, has_ref, area_epsilon, ref_epsilon, claim, num_flips],
             device=device,
         )
         wp.launch(
-            _update_condition,
+            _DelaunayFlipper._record_pass,
             dim=1,
             inputs=[num_flips, max_passes_i, total_flips, pass_count, condition],
             device=device,
