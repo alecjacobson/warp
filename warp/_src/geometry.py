@@ -192,30 +192,7 @@ def _bucket_half_edges(indices: wp.array, num_verts: int, device, num_tris: int)
     return offsets, counts, bucket_hi, bucket_he
 
 
-def _build_triangle_adjacency(indices: wp.array, num_verts: int) -> wp.array:
-    """Build the triangle-triangle neighbor array ``TT`` only (no reciprocal slots).
-
-    Used internally by :func:`delaunay_edge_flip`, which recovers reciprocal edge
-    indices on demand and therefore does not need ``TTi``.
-    """
-    device = indices.device
-    num_tris = indices.shape[0]
-
-    TT = wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device)
-    if num_tris == 0:
-        return TT
-
-    offsets, counts, bucket_hi, bucket_he = _bucket_half_edges(indices, num_verts, device, num_tris)
-    wp.launch(
-        _match_vertex_buckets,
-        dim=num_verts,
-        inputs=[offsets, counts, bucket_hi, bucket_he, TT],
-        device=device,
-    )
-    return TT
-
-
-def triangle_triangle_adjacency(indices: wp.array, num_verts: int | None = None):
+def triangle_triangle_adjacency(indices: wp.array, num_verts: int | None = None, return_reciprocal: bool = True):
     """Build triangle-triangle adjacency for a triangle mesh.
 
     Args:
@@ -223,13 +200,20 @@ def triangle_triangle_adjacency(indices: wp.array, num_verts: int | None = None)
             indices (``int32``).
         num_verts: Number of vertices in the mesh. If ``None``, inferred as one
             plus the maximum vertex index, which requires a host synchronization.
+        return_reciprocal: If ``True`` (default), also compute and return the
+            reciprocal local edge indices ``TTi``. Pass ``False`` to build only
+            the neighbor array ``TT``, which is faster and uses less memory when
+            the reciprocal indices are not needed (they can be recovered on
+            demand by searching a neighbor's three entries).
 
     Returns:
-        A tuple ``(TT, TTi)`` of ``(num_tris, 3)`` ``int32`` arrays. ``TT[t, j]``
-        is the triangle adjacent to triangle ``t`` across the edge opposite
-        local vertex ``j`` (the edge joining local vertices ``(j + 1) % 3`` and
-        ``(j + 2) % 3``), or ``-1`` on a boundary edge. ``TTi[t, j]`` is the
-        local edge index of that shared edge within the neighboring triangle.
+        If ``return_reciprocal`` is ``True``, a tuple ``(TT, TTi)`` of
+        ``(num_tris, 3)`` ``int32`` arrays; otherwise the single array ``TT``.
+        ``TT[t, j]`` is the triangle adjacent to triangle ``t`` across the edge
+        opposite local vertex ``j`` (the edge joining local vertices
+        ``(j + 1) % 3`` and ``(j + 2) % 3``), or ``-1`` on a boundary edge.
+        ``TTi[t, j]`` is the local edge index of that shared edge within the
+        neighboring triangle.
 
     Note:
         Assumes an orientable manifold mesh with consistent winding. Interior
@@ -248,23 +232,31 @@ def triangle_triangle_adjacency(indices: wp.array, num_verts: int | None = None)
     num_tris = indices.shape[0]
 
     TT = wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device)
-    TTi = wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device)
+    TTi = wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device) if return_reciprocal else None
 
     if num_tris == 0:
-        return TT, TTi
+        return (TT, TTi) if return_reciprocal else TT
 
     if num_verts is None:
         num_verts = int(indices.numpy().max()) + 1
 
     offsets, counts, bucket_hi, bucket_he = _bucket_half_edges(indices, num_verts, device, num_tris)
+    if return_reciprocal:
+        wp.launch(
+            _match_vertex_buckets_full,
+            dim=num_verts,
+            inputs=[offsets, counts, bucket_hi, bucket_he, TT, TTi],
+            device=device,
+        )
+        return TT, TTi
+
     wp.launch(
-        _match_vertex_buckets_full,
+        _match_vertex_buckets,
         dim=num_verts,
-        inputs=[offsets, counts, bucket_hi, bucket_he, TT, TTi],
+        inputs=[offsets, counts, bucket_hi, bucket_he, TT],
         device=device,
     )
-
-    return TT, TTi
+    return TT
 
 
 # ---------------------------------------------------------------------------
@@ -527,7 +519,7 @@ def delaunay_edge_flip(
         raise ValueError("ref_positions and indices must be on the same device")
 
     num_verts = positions.shape[0]
-    TT = _build_triangle_adjacency(indices, num_verts)
+    TT = triangle_triangle_adjacency(indices, num_verts=num_verts, return_reciprocal=False)
 
     has_ref = wp.int32(1 if ref_positions is not None else 0)
     ref = ref_positions if ref_positions is not None else positions

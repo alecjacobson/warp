@@ -147,6 +147,33 @@ def test_adjacency_single_pair(test, device):
     test.assertEqual(TT_np[1, 0], -1)
     test.assertEqual(TT_np[1, 1], -1)
 
+    # return_reciprocal=False yields the same TT as a single array (no TTi).
+    TT_only = warp.geometry.triangle_triangle_adjacency(indices, num_verts=4, return_reciprocal=False)
+    test.assertFalse(isinstance(TT_only, tuple))
+    assert_np_equal(TT_only.numpy(), TT_np)
+
+
+def test_adjacency_matches_grid(test, device):
+    # On a larger mesh, TT/TTi are mutually consistent and TT matches the
+    # return_reciprocal=False build.
+    points, tris = _grid_mesh(5, 4, jitter=0.2, seed=11)
+    indices = wp.array(tris, dtype=wp.int32, device=device)
+    TT, TTi = warp.geometry.triangle_triangle_adjacency(indices, num_verts=points.shape[0])
+    TT_only = warp.geometry.triangle_triangle_adjacency(indices, num_verts=points.shape[0], return_reciprocal=False)
+    TT_np = TT.numpy()
+    TTi_np = TTi.numpy()
+    assert_np_equal(TT_only.numpy(), TT_np)
+
+    # For every interior edge, the reciprocal pointer round-trips.
+    for t in range(tris.shape[0]):
+        for j in range(3):
+            n = TT_np[t, j]
+            if n < 0:
+                continue
+            jn = TTi_np[t, j]
+            test.assertEqual(TT_np[n, jn], t)
+            test.assertEqual(TTi_np[n, jn], j)
+
 
 def test_flip_single_edge(test, device):
     # A "thin" quad whose shared horizontal edge (0-1) must flip to the vertical diagonal (2-3).
@@ -374,6 +401,7 @@ class TestDelaunay(unittest.TestCase):
 
 
 add_function_test(TestDelaunay, "test_adjacency_single_pair", test_adjacency_single_pair, devices=devices)
+add_function_test(TestDelaunay, "test_adjacency_matches_grid", test_adjacency_matches_grid, devices=devices)
 add_function_test(TestDelaunay, "test_flip_single_edge", test_flip_single_edge, devices=devices)
 add_function_test(TestDelaunay, "test_flip_grid", test_flip_grid, devices=devices)
 add_function_test(TestDelaunay, "test_flip_grid_large", test_flip_grid_large, devices=devices)
