@@ -1023,11 +1023,138 @@ def _make_jet_space2(width: int, dtype):
         return _lift(s, fp, -dtype(0.5) * fp / a.value, a)
 
     @wp.func
-    def jet_pow(a: Jet2Scalar, p: dtype) -> Jet2Scalar:
-        v = wp.pow(a.value, p)
-        fp = p * wp.pow(a.value, p - dtype(1.0))
-        fpp = p * (p - dtype(1.0)) * wp.pow(a.value, p - dtype(2.0))
+    def jet_tan(a: Jet2Scalar) -> Jet2Scalar:
+        c = wp.cos(a.value)
+        sec2 = dtype(1.0) / (c * c)
+        return _lift(wp.tan(a.value), sec2, dtype(2.0) * wp.tan(a.value) * sec2, a)
+
+    @wp.func
+    def jet_asin(a: Jet2Scalar) -> Jet2Scalar:
+        r = dtype(1.0) / wp.sqrt(dtype(1.0) - a.value * a.value)
+        return _lift(wp.asin(a.value), r, a.value * r * r * r, a)
+
+    @wp.func
+    def jet_acos(a: Jet2Scalar) -> Jet2Scalar:
+        r = dtype(1.0) / wp.sqrt(dtype(1.0) - a.value * a.value)
+        return _lift(wp.acos(a.value), -r, -a.value * r * r * r, a)
+
+    @wp.func
+    def jet_atan(a: Jet2Scalar) -> Jet2Scalar:
+        u = dtype(1.0) / (dtype(1.0) + a.value * a.value)
+        return _lift(wp.atan(a.value), u, -dtype(2.0) * a.value * u * u, a)
+
+    @wp.func
+    def jet_pow(a: Jet2Scalar, p: int) -> Jet2Scalar:
+        pf = dtype(p)
+        v = wp.pow(a.value, pf)
+        fp = pf * wp.pow(a.value, pf - dtype(1.0))
+        fpp = pf * (pf - dtype(1.0)) * wp.pow(a.value, pf - dtype(2.0))
         return _lift(v, fp, fpp, a)
+
+    @wp.func
+    def jet_pow(a: dtype, b: Jet2Scalar) -> Jet2Scalar:
+        v = wp.pow(a, b.value)
+        la = wp.log(a)
+        return _lift(v, v * la, v * la * la, b)
+
+    @wp.func
+    def jet_div(a: dtype, b: Jet2Scalar) -> Jet2Scalar:
+        inv = dtype(1.0) / b.value
+        return _lift(a * inv, -a * inv * inv, dtype(2.0) * a * inv * inv * inv, b)
+
+    # ---- two-argument chain rule: value = F(u, v), F's partials as scalars ----
+
+    @wp.func
+    def _lift2(
+        value: dtype,
+        fu: dtype,
+        fv: dtype,
+        fuu: dtype,
+        fvv: dtype,
+        fuv: dtype,
+        u: Jet2Scalar,
+        v: Jet2Scalar,
+    ) -> Jet2Scalar:
+        ouv = wp.outer(u.grad, v.grad)
+        hess = (
+            fu * u.hess
+            + fv * v.hess
+            + fuu * wp.outer(u.grad, u.grad)
+            + fvv * wp.outer(v.grad, v.grad)
+            + fuv * (ouv + wp.transpose(ouv))
+        )
+        return Jet2Scalar(value, fu * u.grad + fv * v.grad, hess)
+
+    @wp.func
+    def jet_atan2(y: Jet2Scalar, x: Jet2Scalar) -> Jet2Scalar:
+        d = x.value * x.value + y.value * y.value
+        d2 = d * d
+        return _lift2(
+            wp.atan2(y.value, x.value),
+            x.value / d,  # d/dy
+            -y.value / d,  # d/dx
+            -dtype(2.0) * x.value * y.value / d2,  # d2/dy2
+            dtype(2.0) * x.value * y.value / d2,  # d2/dx2
+            (y.value * y.value - x.value * x.value) / d2,  # d2/dydx
+            y,
+            x,
+        )
+
+    @wp.func
+    def jet_pow(a: Jet2Scalar, b: Jet2Scalar) -> Jet2Scalar:
+        g = wp.pow(a.value, b.value)
+        la = wp.log(a.value)
+        inva = dtype(1.0) / a.value
+        return _lift2(
+            g,
+            g * b.value * inva,  # d/da
+            g * la,  # d/db
+            g * b.value * (b.value - dtype(1.0)) * inva * inva,  # d2/da2
+            g * la * la,  # d2/db2
+            g * (dtype(1.0) + b.value * la) * inva,  # d2/dadb
+            a,
+            b,
+        )
+
+    # ---- branching: value-only comparisons carry the chosen jet's derivatives ----
+
+    @wp.func
+    def jet_abs(a: Jet2Scalar) -> Jet2Scalar:
+        if a.value > dtype(0.0):
+            return a
+        if a.value < dtype(0.0):
+            return -a
+        return Jet2Scalar(dtype(0.0), Grad(), Hess())
+
+    @wp.func
+    def jet_sign(a: Jet2Scalar) -> Jet2Scalar:
+        return Jet2Scalar(wp.sign(a.value), Grad(), Hess())
+
+    @wp.func
+    def jet_min(a: Jet2Scalar, b: Jet2Scalar) -> Jet2Scalar:
+        if a.value <= b.value:
+            return a
+        return b
+
+    @wp.func
+    def jet_max(a: Jet2Scalar, b: Jet2Scalar) -> Jet2Scalar:
+        if a.value >= b.value:
+            return a
+        return b
+
+    @wp.func
+    def jet_clamp(a: Jet2Scalar, lo: dtype, hi: dtype) -> Jet2Scalar:
+        if a.value < lo:
+            return Jet2Scalar(lo, Grad(), Hess())
+        if a.value > hi:
+            return Jet2Scalar(hi, Grad(), Hess())
+        return a
+
+    @wp.func
+    def jet_where(cond: bool, a: Jet2Scalar, b: Jet2Scalar) -> Jet2Scalar:
+        if cond:
+            return a
+        return b
 
     _register("add", jet_add)
     _register("sub", jet_sub)
@@ -1039,9 +1166,21 @@ def _make_jet_space2(width: int, dtype):
 
     _register("sin", jet_sin)
     _register("cos", jet_cos)
+    _register("tan", jet_tan)
+    _register("asin", jet_asin)
+    _register("acos", jet_acos)
+    _register("atan", jet_atan)
+    _register("atan2", jet_atan2)
     _register("exp", jet_exp)
     _register("log", jet_log)
     _register("sqrt", jet_sqrt)
+    _register("abs", jet_abs)
+    _register("sign", jet_sign)
+
+    _register("min", jet_min)
+    _register("max", jet_max)
+    _register("clamp", jet_clamp)
+    _register("where", jet_where)
 
     return SimpleNamespace(
         width=width,
