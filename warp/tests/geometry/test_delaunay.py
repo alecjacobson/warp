@@ -127,6 +127,30 @@ def _star_mesh(num_points=6):
 # ---------------------------------------------------------------------------
 
 
+@wp.kernel
+def _eval_predicates(out_area: wp.array(dtype=float), out_in: wp.array(dtype=wp.int32)):
+    a = wp.vec2(0.0, 0.0)
+    b = wp.vec2(1.0, 0.0)
+    c = wp.vec2(0.0, 1.0)
+    out_area[0] = warp.geometry.signed_area(a, b, c)  # +0.5 (counterclockwise)
+    out_area[1] = warp.geometry.signed_area(a, c, b)  # -0.5 (clockwise)
+    # Circumcircle of the unit right triangle is centered at (0.5, 0.5), radius ~0.707.
+    out_in[0] = wp.int32(warp.geometry.in_circle(a, b, c, wp.vec2(0.4, 0.4)))  # inside -> 1
+    out_in[1] = wp.int32(warp.geometry.in_circle(a, b, c, wp.vec2(2.0, 2.0)))  # outside -> 0
+
+
+def test_public_predicates(test, device):
+    out_area = wp.empty(2, dtype=float, device=device)
+    out_in = wp.empty(2, dtype=wp.int32, device=device)
+    wp.launch(_eval_predicates, dim=1, inputs=[out_area, out_in], device=device)
+    area = out_area.numpy()
+    inside = out_in.numpy()
+    np.testing.assert_allclose(area[0], 0.5, atol=1e-6)
+    np.testing.assert_allclose(area[1], -0.5, atol=1e-6)
+    test.assertEqual(inside[0], 1)
+    test.assertEqual(inside[1], 0)
+
+
 def test_adjacency_single_pair(test, device):
     # Two triangles sharing edge (0, 2): tri 0 = (0,1,2), tri 1 = (0,2,3).
     indices = wp.array(np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32), dtype=wp.int32, device=device)
@@ -400,6 +424,7 @@ class TestDelaunay(unittest.TestCase):
     pass
 
 
+add_function_test(TestDelaunay, "test_public_predicates", test_public_predicates, devices=devices)
 add_function_test(TestDelaunay, "test_adjacency_single_pair", test_adjacency_single_pair, devices=devices)
 add_function_test(TestDelaunay, "test_adjacency_matches_grid", test_adjacency_matches_grid, devices=devices)
 add_function_test(TestDelaunay, "test_flip_single_edge", test_flip_single_edge, devices=devices)
