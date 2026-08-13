@@ -385,14 +385,36 @@ def timeit(fn, device, reps):
     return best
 
 
+def time_strategy(strategy, device, reps, use_graph):
+    """Warm up, then time strategy.run() -- as-is, or replayed from a captured graph.
+
+    Graph capture records the strategy's launches once (warm) and replays them
+    with a single graph launch, so per-launch and Python-driver overhead is
+    amortized. This isolates the strategies' intrinsic device cost from the
+    launch bookkeeping that dominates the small-m regime.
+    """
+    strategy.run()  # warm up: compile and allocate before capture/timing
+    wp.synchronize_device(device)
+
+    if not use_graph:
+        return timeit(strategy.run, device, reps)
+
+    with wp.ScopedCapture(device) as cap:
+        strategy.run()
+    graph = cap.graph
+
+    return timeit(lambda: wp.capture_launch(graph), device, reps)
+
+
 def estimate_bytes(m, k):
     """Rough peak footprint: z, z.grad, g, g.grad, seed, plus the m x k x k Hessian."""
     return (5 * m * k + m * k * k) * 4
 
 
-def run(k_values, m_values, device, reps, tol, max_bytes, skip_check):
+def run(k_values, m_values, device, reps, tol, max_bytes, skip_check, use_graph):
     print(f"device: {wp.get_device(device)}")
-    print(f"reps: {reps}   correctness tol: {tol}   memory cap: {max_bytes / 2**30:.1f} GiB\n")
+    mode = "graph replay (warm)" if use_graph else "per-launch"
+    print(f"reps: {reps}   correctness tol: {tol}   memory cap: {max_bytes / 2**30:.1f} GiB   timing: {mode}\n")
 
     header = (
         f"{'k':>5} {'m':>9} {'width-k':>11} {'width-1':>11} {'fwd-2':>11} {'wk/w1':>7} {'f2/w1':>7} {'|max-fd|':>10}"
@@ -429,12 +451,8 @@ def run(k_values, m_values, device, reps, tol, max_bytes, skip_check):
             wide = WidthK(k, Jk, kw, z, device)
             hvp = Width1(k, Jk, kd, z, device)
 
-            wide.run()
-            hvp.run()
-            wp.synchronize_device(device)
-
-            tw = timeit(wide.run, device, reps)
-            th = timeit(hvp.run, device, reps)
+            tw = time_strategy(wide, device, reps, use_graph)
+            th = time_strategy(hvp, device, reps, use_graph)
 
             # forward-2 is optional: skip it if the wide second-order jet is
             # infeasible (register blow-up) or too large to allocate at this k.
@@ -442,9 +460,7 @@ def run(k_values, m_values, device, reps, tol, max_bytes, skip_check):
             if f2_ok:
                 try:
                     fwd2 = Forward2(k, Jk, kf, z, device)
-                    fwd2.run()
-                    wp.synchronize_device(device)
-                    tf = timeit(fwd2.run, device, reps)
+                    tf = time_strategy(fwd2, device, reps, use_graph)
                 except Exception:
                     tf = float("nan")
 
@@ -477,6 +493,7 @@ def main():
     parser.add_argument("--max-gib", type=float, default=8.0, help="Skip configs above this estimate.")
     parser.add_argument("--skip-check", action="store_true", help="Skip the correctness gate (not advised).")
     parser.add_argument("--forward2-max-k", type=int, default=None, help="Cap k for the forward-2 strategy.")
+    parser.add_argument("--graph", action="store_true", help="Time warm graph-captured replay instead of per-launch.")
     args = parser.parse_args()
 
     if args.forward2_max_k is not None:
@@ -500,6 +517,7 @@ def main():
             args.tol,
             max_bytes,
             args.skip_check,
+            args.graph,
         )
         print()
 
@@ -515,6 +533,7 @@ def main():
             args.tol,
             max_bytes,
             args.skip_check,
+            args.graph,
         )
 
 
