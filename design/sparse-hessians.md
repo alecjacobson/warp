@@ -378,6 +378,50 @@ for differentiation should be an exposed option: `wp.indexed_sum(..., backend=..
      `wp.func`'s that don't have second derivatives implemented)
    - 👎 terrible numerics for second derivatives
 
+#### Jet backend: status and generality gaps
+
+Forward-mode jets are implemented as ordinary differentiable Warp types in
+``warp/_src/jet.py``: ``wp.JetSpace(width, dtype)`` (first order, carrying value
+plus a ``width``-vector of coefficients, with ``scalar``/``vec2``/``vec3``
+variants) and ``wp.JetSpace2(width, dtype)`` (second order / forward-over-forward,
+carrying value, gradient, and the full ``width×width`` Hessian; scalars only).
+The arithmetic is registered as overloads of Warp's builtins, so a local energy
+is written once as a plain ``@wp.func`` in ordinary operator/`wp.length`/`wp.dot`
+syntax and specializes across plain floats and every jet type. Unit tests in
+``warp/tests/test_jet.py`` cover both, cross-checked against analytic
+derivatives, reverse-over-forward, and finite differences.
+
+What the benchmarks (``warp/examples/benchmarks/benchmark_jet_*``) show:
+
+* **Gradients**: a first-order jet assembling a summed-loss vertex gradient (one
+  fused forward+scatter launch, no tape) is only a *modest* win over Warp's
+  reverse mode on real shared-vertex meshes — ~1.1–1.7× per launch, shrinking as
+  the stencil ``k`` grows (spring k=6 > triangle k=9 > tet k=12) and with element
+  count, and collapsing to near parity under warm CUDA-graph replay. Reverse mode
+  is already close to optimal here; jets are not a general replacement.
+* **Hessians**: this is where jets earn their place. The second-order
+  (``JetSpace2``) forward pass assembles the local Hessian block with no
+  second-order tape and is a GPU small-``k`` specialist. The full ``k×k`` kernel
+  compiles in ~4 s (k=6), ~45 s (k=9), ~2 min (k=12) — one-time, then cached —
+  and is correct at all three; the practical ceiling is compile time, not
+  correctness.
+
+Two open threads recorded as tracking issues:
+
+* A **native symmetric matrix type** with intrinsic ops. Packing the Hessian into
+  the ``k(k+1)/2`` upper triangle to halve storage/compute was prototyped and made
+  compile time *5–6× worse* — the packed form hand-unrolls each op into ``O(L)``
+  scalar statements (6× more generated source) instead of one whole-matrix
+  intrinsic. Genuinely exploiting symmetry needs Warp-core support (GH issue #5).
+* **Jet type generality gaps** blocking arbitrary energies (GH issue #6): matrix
+  jet types (``mat22``/``mat33`` so ``wp.determinant``/``trace``/``inverse`` work
+  on jets — the biggest gap for FEM, distinct from the storage type above);
+  comparisons / ``select`` / ``min`` / ``max`` / ``atan2`` for branching and angle
+  energies; ``pow(jet, jet)`` and integer exponents; shared arithmetic scaffolding
+  so first- and second-order don't diverge; and ``JetSpace2`` vec/`tan`/`abs`
+  parity. Every change is gated on ``test_jet.py`` plus the jet benchmarks for
+  correctness and performance regressions.
+
 ### HVP: Hessian-vector product
 
 Iterative solvers don't need the Hessian materialized. They just need products.
