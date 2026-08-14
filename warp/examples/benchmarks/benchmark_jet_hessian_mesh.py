@@ -24,8 +24,10 @@ differ only in HOW the reverse sweep is taken:
                      launch, no tape, no global .grad. Local, so it scatters into
                      an assembled sparse Hessian without the shared-array aliasing.
 
-The forward-2 second-order jet (one forward pass, no reverse) is compared
-separately in benchmark_element_hessian.py -- it needs scalar-form energies.
+    forward-2        a second-order jet: one forward pass writes the whole k x k
+                     Hessian, no reverse at all. Uses scalar-form energies
+                     (JetSpace2 is scalars-only) and its O(k^2) register state
+                     compiles super-linearly in k, so tet (k=12) is skipped.
 
     uv run warp/examples/benchmarks/benchmark_jet_hessian_mesh.py --device cuda:0
     uv run warp/examples/benchmarks/benchmark_jet_hessian_mesh.py --device cuda:0 --graph
@@ -46,6 +48,7 @@ _LAM = wp.constant(1.0)
 
 J1 = wp.JetSpace(1)  # width-1 dual, for the directional derivatives
 JK = {6: wp.JetSpace(6), 9: wp.JetSpace(9), 12: wp.JetSpace(12)}
+J2K = {6: wp.JetSpace2(6), 9: wp.JetSpace2(9)}  # forward-2; tet k=12 skipped (~2 min compile)
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +82,28 @@ def tet_energy(p0: Any, p1: Any, p2: Any, p3: Any):
     i1 = wp.dot(f0, f0) + wp.dot(f1, f1) + wp.dot(f2, f2)
     logj = wp.log(wp.dot(f0, wp.cross(f1, f2)))
     return 0.5 * _MU * (i1 - 3.0) - _MU * logj + 0.5 * _LAM * logj * logj
+
+
+# Scalar-form energies for the second-order jet (JetSpace2 is scalars-only).
+# Same formulas as above, one scalar per coordinate.
+
+
+@wp.func
+def spring_energy_s(a0: Any, a1: Any, a2: Any, b0: Any, b1: Any, b2: Any):
+    d0, d1, d2 = a0 - b0, a1 - b1, a2 - b2
+    s = wp.sqrt(d0 * d0 + d1 * d1 + d2 * d2) - _REST
+    return 0.5 * s * s
+
+
+@wp.func
+def triangle_energy_s(a0: Any, a1: Any, a2: Any, b0: Any, b1: Any, b2: Any, c0: Any, c1: Any, c2: Any):
+    j00, j01, j02 = b0 - a0, b1 - a1, b2 - a2  # column 0 = p1 - p0
+    j10, j11, j12 = c0 - a0, c1 - a1, c2 - a2  # column 1 = p2 - p0
+    s00 = j00 * j00 + j01 * j01 + j02 * j02
+    s01 = j00 * j10 + j01 * j11 + j02 * j12
+    s11 = j10 * j10 + j11 * j11 + j12 * j12
+    tr = s00 + s11
+    return tr + tr / (s00 * s11 - s01 * s01)
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +199,20 @@ def build_spring():
                 out[i, 0 * 3 + c, j] = ga[c]
                 out[i, 1 * 3 + c, j] = gb[c]
 
-    return 6, grad_wide, directional, hess_w1
+    J2 = J2K[6]
+
+    @wp.kernel(enable_backward=False)
+    def hess_fwd2(x: wp.array2d[wp.vec3], out: wp.array3d[wp.float32]):
+        i = wp.tid()
+        a, b = x[i, 0], x[i, 1]
+        h = spring_energy_s(
+            J2.seed(a[0], 0), J2.seed(a[1], 1), J2.seed(a[2], 2), J2.seed(b[0], 3), J2.seed(b[1], 4), J2.seed(b[2], 5)
+        ).hess
+        for p in range(6):
+            for q in range(6):
+                out[i, p, q] = h[p, q]
+
+    return 6, grad_wide, directional, hess_w1, hess_fwd2
 
 
 def build_triangle():
@@ -222,7 +260,28 @@ def build_triangle():
                 out[i, 1 * 3 + c, j] = g1[c]
                 out[i, 2 * 3 + c, j] = g2[c]
 
-    return 9, grad_wide, directional, hess_w1
+    J2 = J2K[9]
+
+    @wp.kernel(enable_backward=False)
+    def hess_fwd2(x: wp.array2d[wp.vec3], out: wp.array3d[wp.float32]):
+        i = wp.tid()
+        p0, p1, p2 = x[i, 0], x[i, 1], x[i, 2]
+        h = triangle_energy_s(
+            J2.seed(p0[0], 0),
+            J2.seed(p0[1], 1),
+            J2.seed(p0[2], 2),
+            J2.seed(p1[0], 3),
+            J2.seed(p1[1], 4),
+            J2.seed(p1[2], 5),
+            J2.seed(p2[0], 6),
+            J2.seed(p2[1], 7),
+            J2.seed(p2[2], 8),
+        ).hess
+        for p in range(9):
+            for q in range(9):
+                out[i, p, q] = h[p, q]
+
+    return 9, grad_wide, directional, hess_w1, hess_fwd2
 
 
 def build_tet():
@@ -283,7 +342,7 @@ def build_tet():
                 out[i, 2 * 3 + c, j] = g2[c]
                 out[i, 3 * 3 + c, j] = g3[c]
 
-    return 12, grad_wide, directional, hess_w1
+    return 12, grad_wide, directional, hess_w1, None  # forward-2 skipped for tet (compile)
 
 
 @wp.kernel
@@ -390,6 +449,24 @@ class Width1InKernel:
         return self.hessian.numpy()
 
 
+class Forward2:
+    """One second-order jet forward pass writes the whole k x k Hessian; no reverse."""
+
+    label = "forward-2"
+
+    def __init__(self, spec, kernels, x_np, device):
+        self.k, self.device, self.n = spec.k, device, x_np.shape[0]
+        self.kernel = kernels[3]  # None for elements above the compile cap
+        self.x = wp.array(x_np, dtype=wp.vec3, device=device)
+        self.hessian = wp.zeros((self.n, self.k, self.k), dtype=wp.float32, device=device)
+
+    def run(self):
+        wp.launch(self.kernel, dim=self.n, inputs=[self.x], outputs=[self.hessian], device=self.device)
+
+    def hess(self):
+        return self.hessian.numpy()
+
+
 def timeit(fn, device, reps):
     best = float("inf")
     for _ in range(reps):
@@ -428,30 +505,31 @@ def main():
     print(f"device: {wp.get_device(device)}   reps: {args.reps}   timing: {mode}\n")
 
     header = (
-        f"{'element':>9} {'k':>3} {'m':>9} {'width-k(tape)':>14} {'width-1(tape)':>14} {'width-1(ink)':>14}"
-        f" {'ink/wk':>7} {'ink/w1':>7} {'|err|':>9}"
+        f"{'element':>9} {'k':>3} {'m':>9} {'wk-tape':>9} {'w1-tape':>9} {'w1-ink':>9} {'fwd-2':>9}"
+        f" {'ink/wk':>7} {'ink/w1':>7} {'ink/f2':>7} {'|err|':>9}"
     )
     print(header)
     print("-" * len(header))
-    print("(ink = in-kernel wp.grad; ratios <1 mean in-kernel is faster;")
+    print("(ink = in-kernel wp.grad reverse; fwd-2 = second-order jet, no reverse; ratios <1 mean ink faster;")
     print(" |err| = max of inter-method disagreement and FD error on well-conditioned elements)")
 
     for name in [args.element] if args.element else list(ELEMENTS):
         spec = ELEMENTS[name]
         kernels = spec.build()[1:]
+        strategies = list(STRATEGIES) + ([Forward2] if kernels[3] is not None else [])
         for m in args.m:
             x_np = sample(spec.k, m)
-            runs = {S.label: S(spec, kernels, x_np, device) for S in STRATEGIES}
+            runs = {S.label: S(spec, kernels, x_np, device) for S in strategies}
             for s in runs.values():
                 s.run()
             wp.synchronize_device(device)
 
             hs = [s.hess() for s in runs.values()]
             ref = hess_fd(spec.energy_np, x_np.reshape(m, spec.k).astype(np.float64))
-            # Two checks. (1) The three independent reverse routes must agree with
-            # each other to float precision (the strong test). (2) They must match
-            # FD on WELL-CONDITIONED elements -- a rare near-degenerate element (tiny
-            # det) has an enormous, stiff Hessian that FD can't resolve, so exclude it.
+            # Two checks. (1) The independent routes must agree with each other to
+            # float precision (the strong test). (2) They must match FD on WELL-
+            # CONDITIONED elements -- a rare near-degenerate element (tiny det) has an
+            # enormous, stiff Hessian that FD can't resolve, so exclude it.
             mag = np.abs(ref).reshape(m, -1).max(1)
             well = np.isfinite(ref).reshape(m, -1).all(1) & (mag < 1e2)
             fin = np.isfinite(hs[0]).reshape(m, -1).all(1)
@@ -460,12 +538,13 @@ def main():
             err = max(inter, fd)
 
             t = {lbl: time_strategy(s, device, args.reps, args.graph) for lbl, s in runs.items()}
-            twk = t["width-k(tape)"]
-            tw1 = t["width-1(tape)"]
-            tik = t["width-1(ink)"]
+            twk, tw1, tik = t["width-k(tape)"], t["width-1(tape)"], t["width-1(ink)"]
+            tf2 = t.get("forward-2")
+            f2s = f"{tf2 * 1e3:>9.3f}" if tf2 else f"{'-':>9}"
+            f2r = f"{tik / tf2:>6.2f}x" if tf2 else f"{'-':>7}"
             print(
-                f"{name:>9} {spec.k:>3} {m:>9} {twk * 1e3:>14.3f} {tw1 * 1e3:>14.3f} {tik * 1e3:>14.3f}"
-                f" {tik / twk:>6.2f}x {tik / tw1:>6.2f}x {err:>9.1e}"
+                f"{name:>9} {spec.k:>3} {m:>9} {twk * 1e3:>9.3f} {tw1 * 1e3:>9.3f} {tik * 1e3:>9.3f} {f2s}"
+                f" {tik / twk:>6.2f}x {tik / tw1:>6.2f}x {f2r} {err:>9.1e}"
             )
 
 
