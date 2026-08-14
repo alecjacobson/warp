@@ -5,30 +5,36 @@
 # Gradient of a summed element loss: forward jet vs reverse-mode autodiff
 ###########################################################################
 
-"""First-order forward jet vs reverse mode for the gradient of a summed mesh loss.
+"""Three ways to assemble the gradient of a summed mesh loss, compared.
 
 The loss sums a local energy over overlapping elements -- the shape of every mesh
-objective. We assemble the vertex gradient dloss/dx (one vec3 per vertex) two ways
-on real shared-vertex meshes:
+objective. We assemble the vertex gradient dloss/dx (one vec3 per vertex) on real
+shared-vertex meshes:
 
     spring    k=6    chain,           0.5 (||pi - pj|| - r)^2
     triangle  k=9    grid mesh,       symmetric Dirichlet  tr(S) + tr(S)/det(S)
     tet       k=12   cube-Kuhn mesh,  neo-Hookean  0.5 mu (I1-3) - mu lnJ + 0.5 lam lnJ^2
 
     reverse : one scalar-energy launch under wp.Tape, then tape.backward with a
-              unit seed on every element accumulates dloss/dx into x.grad (the
-              idiomatic wp.grad path). O(C) work, plus a backward launch and tape.
+              unit seed on every element accumulates dloss/dx into x.grad -- the
+              idiomatic global path. A separate backward launch plus tape state.
 
     jet     : one width-k forward-jet launch. Each element seeds its nodes as a jet
               (nodes x 3 = k variables); the value's k coeffs ARE the element's
               local gradient, scattered (atomic_add) into the vertex gradient. One
-              launch, forward and gradient fused, no tape.
+              launch, forward and gradient fused, no tape. Arithmetic O(kC).
 
-One generic wp.func per energy feeds both paths (jet arithmetic is registered as
-builtin overloads, so the same vec3 code specializes on jets). The jet launch is
-timed on forward+gradient together; reverse is timed on its backward pass ALONE,
-so the comparison is conservative. As k grows the jet's O(kC) arithmetic grows,
-so its edge over reverse shrinks -- watch the ratio across spring/triangle/tet.
+    wp.grad : one launch. Each element computes its local gradient in-kernel with
+              wp.grad(energy)(nodes) -- a register-resident adjoint sweep, no tape,
+              no global .grad -- and scatters it. Arithmetic O(C).
+
+One generic wp.func per energy feeds all three (jet arithmetic is registered as
+builtin overloads; wp.grad differentiates the plain vec3 form). jet and wp.grad
+are timed on forward+gradient together; reverse is timed on its backward pass
+ALONE, so the comparison is conservative in reverse's favour. All three assemble
+the same global gradient -- the atomics accumulate shared-vertex contributions
+just as reverse mode does, so wp.grad's local-then-scatter also fixes the
+overlapping-element aliasing of taping a shared position array.
 
     uv run warp/examples/benchmarks/benchmark_jet_gradient_mesh.py --device cuda:0
     uv run warp/examples/benchmarks/benchmark_jet_gradient_mesh.py --device cuda:0 --graph
@@ -36,6 +42,7 @@ so its edge over reverse shrinks -- watch the ratio across spring/triangle/tet.
 
 import argparse
 import time
+from collections import namedtuple
 from typing import Any
 
 import numpy as np
@@ -153,6 +160,43 @@ def tet_scalar(x: wp.array[wp.vec3], elem: wp.array[wp.vec4i], en: wp.array[wp.f
 
 
 # ---------------------------------------------------------------------------
+# In-kernel reverse: wp.grad(energy)(nodes) computes the local gradient with a
+# register-resident adjoint sweep -- one launch, no tape, no global .grad. The
+# local gradient scatters into the vertex gradient exactly as the jet path does.
+# ---------------------------------------------------------------------------
+
+
+@wp.kernel(enable_backward=False)
+def spring_wpgrad(x: wp.array[wp.vec3], elem: wp.array[wp.vec2i], g: wp.array[wp.vec3]):
+    t = wp.tid()
+    e = elem[t]
+    ga, gb = wp.grad(spring_energy)(x[e[0]], x[e[1]])
+    wp.atomic_add(g, e[0], ga)
+    wp.atomic_add(g, e[1], gb)
+
+
+@wp.kernel(enable_backward=False)
+def triangle_wpgrad(x: wp.array[wp.vec3], elem: wp.array[wp.vec3i], g: wp.array[wp.vec3]):
+    t = wp.tid()
+    e = elem[t]
+    g0, g1, g2 = wp.grad(triangle_energy)(x[e[0]], x[e[1]], x[e[2]])
+    wp.atomic_add(g, e[0], g0)
+    wp.atomic_add(g, e[1], g1)
+    wp.atomic_add(g, e[2], g2)
+
+
+@wp.kernel(enable_backward=False)
+def tet_wpgrad(x: wp.array[wp.vec3], elem: wp.array[wp.vec4i], g: wp.array[wp.vec3]):
+    t = wp.tid()
+    e = elem[t]
+    g0, g1, g2, g3 = wp.grad(tet_energy)(x[e[0]], x[e[1]], x[e[2]], x[e[3]])
+    wp.atomic_add(g, e[0], g0)
+    wp.atomic_add(g, e[1], g1)
+    wp.atomic_add(g, e[2], g2)
+    wp.atomic_add(g, e[3], g3)
+
+
+# ---------------------------------------------------------------------------
 # Shared-vertex meshes: positions (n, 3) float32 and elements (m, nodes) int32.
 # ---------------------------------------------------------------------------
 
@@ -231,25 +275,27 @@ def tet_mesh(m, seed=0):
     return pos, tets
 
 
-# element -> (k, nodes, jet_kernel, scalar_kernel, elem_dtype, mesh_fn)
+Spec = namedtuple("Spec", "k nodes jet_kernel scalar_kernel wpgrad_kernel elem_dtype mesh_fn")
+
 ELEMENTS = {
-    "spring": (6, 2, spring_jet, spring_scalar, wp.vec2i, chain_mesh),
-    "triangle": (9, 3, triangle_jet, triangle_scalar, wp.vec3i, triangle_mesh),
-    "tet": (12, 4, tet_jet, tet_scalar, wp.vec4i, tet_mesh),
+    "spring": Spec(6, 2, spring_jet, spring_scalar, spring_wpgrad, wp.vec2i, chain_mesh),
+    "triangle": Spec(9, 3, triangle_jet, triangle_scalar, triangle_wpgrad, wp.vec3i, triangle_mesh),
+    "tet": Spec(12, 4, tet_jet, tet_scalar, tet_wpgrad, wp.vec4i, tet_mesh),
 }
 
 
 class Reverse:
+    """Tape-based reverse: a scalar-energy forward under wp.Tape, then tape.backward."""
+
     def __init__(self, spec, pos, elem_np, device):
-        _, _, _, scalar_kernel, elem_dtype, _ = spec
         self.m, self.device = elem_np.shape[0], device
         self.x = wp.array(pos, dtype=wp.vec3, device=device, requires_grad=True)
-        self.elem = wp.array(elem_np, dtype=elem_dtype, device=device)
+        self.elem = wp.array(elem_np, dtype=spec.elem_dtype, device=device)
         self.en = wp.zeros(self.m, dtype=wp.float32, device=device, requires_grad=True)
         self.ones = wp.ones(self.m, dtype=wp.float32, device=device)
         self.tape = wp.Tape()
         with self.tape:
-            wp.launch(scalar_kernel, dim=self.m, inputs=[self.x, self.elem], outputs=[self.en])
+            wp.launch(spec.scalar_kernel, dim=self.m, inputs=[self.x, self.elem], outputs=[self.en])
 
     def run(self):
         self.x.grad.zero_()
@@ -259,12 +305,13 @@ class Reverse:
         return self.x.grad.numpy()
 
 
-class Jet:
-    def __init__(self, spec, pos, elem_np, device):
-        _, _, jet_kernel, _, elem_dtype, _ = spec
-        self.m, self.device, self.kernel = elem_np.shape[0], device, jet_kernel
+class _Scatter:
+    """Common base for the single-launch, scatter-into-vertex-gradient strategies."""
+
+    def __init__(self, spec, pos, elem_np, device, kernel):
+        self.m, self.device, self.kernel = elem_np.shape[0], device, kernel
         self.x = wp.array(pos, dtype=wp.vec3, device=device)
-        self.elem = wp.array(elem_np, dtype=elem_dtype, device=device)
+        self.elem = wp.array(elem_np, dtype=spec.elem_dtype, device=device)
         self.g = wp.zeros(pos.shape[0], dtype=wp.vec3, device=device)
 
     def run(self):
@@ -273,6 +320,20 @@ class Jet:
 
     def grad(self):
         return self.g.numpy()
+
+
+class Jet(_Scatter):
+    """Forward width-k jet: the value's coefficients are the local gradient."""
+
+    def __init__(self, spec, pos, elem_np, device):
+        super().__init__(spec, pos, elem_np, device, spec.jet_kernel)
+
+
+class WpGrad(_Scatter):
+    """In-kernel reverse via wp.grad: register-resident adjoint, no tape."""
+
+    def __init__(self, spec, pos, elem_np, device):
+        super().__init__(spec, pos, elem_np, device, spec.wpgrad_kernel)
 
 
 def timeit(fn, device, reps):
@@ -309,33 +370,40 @@ def main():
     mode = "graph replay (warm)" if args.graph else "per-launch"
     print(f"device: {wp.get_device(device)}   reps: {args.reps}   timing: {mode}\n")
 
-    header = f"{'element':>9} {'k':>3} {'elements':>10} {'jet':>9} {'reverse':>9} {'jet/rev':>9} {'rel-err':>9}"
+    header = (
+        f"{'element':>9} {'k':>3} {'elements':>10} {'jet':>9} {'reverse':>9} {'wp.grad':>9}"
+        f" {'wg/rev':>8} {'wg/jet':>8} {'rel-err':>9}"
+    )
     print(header)
     print("-" * len(header))
-    print("(jet = forward+grad in one launch; reverse timed on backward alone)")
+    print("(jet & wp.grad: forward+grad in one launch; reverse timed on backward alone. <1 = wp.grad faster)")
 
     for name in [args.element] if args.element else list(ELEMENTS):
         spec = ELEMENTS[name]
-        k, _, _, _, _, mesh_fn = spec
         for m in args.m:
-            pos, elem_np = mesh_fn(m)
+            pos, elem_np = spec.mesh_fn(m)
             jet = Jet(spec, pos, elem_np, device)
             rev = Reverse(spec, pos, elem_np, device)
+            wg = WpGrad(spec, pos, elem_np, device)
 
             jet.run()
             rev.run()
+            wg.run()
             wp.synchronize_device(device)
-            gj, gr = jet.grad(), rev.grad()
+            gj, gr, gw = jet.grad(), rev.grad(), wg.grad()
+            denom = max(np.abs(gr).max(), 1.0)
+            # All three assemble the SAME global vertex gradient over shared vertices.
             # Relative error: absolute is dominated by rare near-degenerate elements
-            # (tiny det -> gradient ~1e6), where float32 forward vs reverse legitimately
-            # differ in the last bits though both match double-precision FD.
-            err = np.abs(gj - gr).max() / max(np.abs(gr).max(), 1.0)
+            # (tiny det -> gradient ~1e6) where float32 methods differ in the last bits
+            # though all match double-precision FD.
+            err = max(np.abs(gj - gr).max(), np.abs(gw - gr).max()) / denom
 
             tj = time_strategy(jet, device, args.reps, args.graph)
             tr = time_strategy(rev, device, args.reps, args.graph)
+            tw = time_strategy(wg, device, args.reps, args.graph)
             print(
-                f"{name:>9} {k:>3} {elem_np.shape[0]:>10} {tj * 1e3:>9.3f} {tr * 1e3:>9.3f}"
-                f" {tj / tr:>8.2f}x {err:>9.1e}"
+                f"{name:>9} {spec.k:>3} {elem_np.shape[0]:>10} {tj * 1e3:>9.3f} {tr * 1e3:>9.3f}"
+                f" {tw * 1e3:>9.3f} {tw / tr:>7.2f}x {tw / tj:>7.2f}x {err:>9.1e}"
             )
 
 
