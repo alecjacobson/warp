@@ -141,6 +141,7 @@ def _eval_predicates(out_area: wp.array(dtype=float), out_in: wp.array(dtype=wp.
 
 
 def test_predicates(test, device):
+    """Verify the signed-area and in-circle predicates on a unit right triangle."""
     out_area = wp.empty(2, dtype=float, device=device)
     out_in = wp.empty(2, dtype=wp.int32, device=device)
     wp.launch(_eval_predicates, dim=1, inputs=[out_area, out_in], device=device)
@@ -153,7 +154,12 @@ def test_predicates(test, device):
 
 
 def test_adjacency_single_pair(test, device):
-    # Two triangles sharing edge (0, 2): tri 0 = (0,1,2), tri 1 = (0,2,3).
+    """Verify triangle-triangle adjacency on the smallest interior-edge mesh.
+
+    Two triangles sharing edge (0, 2): tri 0 = (0,1,2), tri 1 = (0,2,3). Checks the
+    shared-edge slots, the reciprocal indices, the boundary entries, and that
+    ``return_reciprocal=False`` yields the same ``TT`` as a single array.
+    """
     indices = wp.array(np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32), dtype=wp.int32, device=device)
     TT, TTi = warp.geometry.triangle_triangle_adjacency(indices, num_verts=4)
     TT_np = TT.numpy()
@@ -179,8 +185,11 @@ def test_adjacency_single_pair(test, device):
 
 
 def test_adjacency_matches_grid(test, device):
-    # On a larger mesh, TT/TTi are mutually consistent and TT matches the
-    # return_reciprocal=False build.
+    """Verify that adjacency pointers round-trip on a larger grid mesh.
+
+    On every interior edge ``TT``/``TTi`` must be mutually consistent, and the
+    ``return_reciprocal=False`` build must agree with the full one.
+    """
     points, tris = _grid_mesh(5, 4, jitter=0.2, seed=11)
     indices = wp.array(tris, dtype=wp.int32, device=device)
     TT, TTi = warp.geometry.triangle_triangle_adjacency(indices, num_verts=points.shape[0])
@@ -201,7 +210,10 @@ def test_adjacency_matches_grid(test, device):
 
 
 def test_flip_single_edge(test, device):
-    # A "thin" quad whose shared horizontal edge (0-1) must flip to the vertical diagonal (2-3).
+    """Flip the one non-Delaunay edge of a thin quad.
+
+    The shared horizontal edge (0-1) must become the vertical diagonal (2-3).
+    """
     points = np.array([[-3.0, 0.0], [3.0, 0.0], [0.0, 1.0], [0.0, -1.0]], dtype=np.float32)
     # tri 0 = (0,1,2) above edge, tri 1 = (1,0,3) below edge; both counterclockwise.
     tris = np.array([[0, 1, 2], [1, 0, 3]], dtype=np.int32)
@@ -239,6 +251,11 @@ def _is_delaunay(points, tris, tol=1e-9):
 
 
 def test_flip_grid(test, device):
+    """Flip a jittered grid to a Delaunay triangulation and confirm it is a fixed point.
+
+    Also checks that the flipped mesh keeps the same vertex set, triangle count,
+    and total area, so connectivity stays a valid triangulation of the domain.
+    """
     points, tris = _grid_mesh(6, 5, jitter=0.3, seed=1234)
     _assert_valid_mesh(test, points, tris)
     test.assertFalse(_is_delaunay(points, tris), "input grid should not already be Delaunay")
@@ -267,9 +284,12 @@ def test_flip_grid(test, device):
 
 
 def test_flip_grid_large(test, device):
-    # A large perturbed grid stresses the parallel independent-set: many flips
-    # are applied per pass, so this is the key check that concurrent flips never
-    # corrupt adjacency (race-freedom) and still converge to a valid Delaunay mesh.
+    """Stress the parallel independent set on a large perturbed grid.
+
+    Many flips are applied per pass, so this is the key check that concurrent
+    flips never corrupt adjacency (race-freedom) and still converge to a valid
+    Delaunay mesh.
+    """
     points, tris = _grid_mesh(40, 40, jitter=0.25, seed=99)
     _assert_valid_mesh(test, points, tris)
     test.assertFalse(_is_delaunay(points, tris))
@@ -291,7 +311,11 @@ def test_flip_grid_large(test, device):
 
 
 def test_flip_already_delaunay(test, device):
-    # A right-triangulated axis-aligned grid is already (weakly) Delaunay; expect no flips.
+    """Leave an already-Delaunay mesh untouched.
+
+    A right-triangulated axis-aligned grid is already (weakly) Delaunay, so the
+    flipper must report zero flips and not modify the connectivity.
+    """
     points, tris = _grid_mesh(4, 4, jitter=0.0)
     positions = wp.array(points, dtype=wp.vec2, device=device)
     indices = wp.array(tris, dtype=wp.int32, device=device)
@@ -302,8 +326,12 @@ def test_flip_already_delaunay(test, device):
 
 
 def test_flip_reference_rejection(test, device):
-    # Same thin quad as the single-edge test, but the reference config is degenerate
-    # (all four points collinear), so the otherwise-valid flip must be rejected.
+    """Reject a flip that would degenerate the reference configuration.
+
+    Same thin quad as the single-edge test, but the reference config is
+    degenerate (all four points collinear), so the otherwise-valid flip must not
+    be applied.
+    """
     points = np.array([[-3.0, 0.0], [3.0, 0.0], [0.0, 1.0], [0.0, -1.0]], dtype=np.float32)
     tris = np.array([[0, 1, 2], [1, 0, 3]], dtype=np.int32)
     ref = np.array([[-3.0, 0.0], [3.0, 0.0], [0.0, 0.0], [0.0, 0.0]], dtype=np.float32)
@@ -318,15 +346,45 @@ def test_flip_reference_rejection(test, device):
 
 
 def test_flip_empty(test, device):
+    """Report zero flips for a mesh with no triangles."""
     positions = wp.zeros(0, dtype=wp.vec2, device=device)
     indices = wp.zeros((0, 3), dtype=wp.int32, device=device)
     num_flips = warp.geometry.delaunay_edge_flip(positions, indices)
     test.assertEqual(num_flips, 0)
 
 
+def test_flip_invalid_arguments(test, device):
+    """Reject malformed arguments before any flip pass runs.
+
+    ``max_passes`` in particular must be validated up front: the convergence loop
+    is seeded to run once, so a non-positive budget would otherwise still modify
+    the connectivity.
+    """
+    points, tris = _grid_mesh(3, 3, jitter=0.3, seed=5)
+    positions = wp.array(points, dtype=wp.vec2, device=device)
+    indices = wp.array(tris, dtype=wp.int32, device=device)
+
+    with test.assertRaises(ValueError):
+        warp.geometry.delaunay_edge_flip(positions, indices, max_passes=0)
+    with test.assertRaises(ValueError):
+        warp.geometry.delaunay_edge_flip(positions, indices, max_passes=-1)
+
+    # A rejected call must leave the connectivity untouched.
+    assert_np_equal(indices.numpy(), tris)
+
+    flat = wp.zeros(4, dtype=wp.int32, device=device)
+    with test.assertRaises(ValueError):
+        warp.geometry.delaunay_edge_flip(positions, flat)
+    with test.assertRaises(ValueError):
+        warp.geometry.triangle_triangle_adjacency(flat)
+
+
 def test_flip_convex_fan(test, device):
-    # A fan triangulation of a convex (elliptical) polygon flips to the full
-    # Delaunay triangulation, since the domain is convex and unconstrained.
+    """Flip a fan triangulation of a convex polygon to the full Delaunay triangulation.
+
+    The domain is convex and unconstrained, so every non-Delaunay edge is
+    flippable and the result must satisfy the empty-circumcircle property.
+    """
     points, tris = _convex_fan_mesh(40, seed=3)
     _assert_valid_mesh(test, points, tris)
     test.assertFalse(_is_delaunay(points, tris))
@@ -348,9 +406,12 @@ def test_flip_convex_fan(test, device):
 
 
 def test_flip_star_polygon(test, device):
-    # A non-convex simple polygon: some interior edges may be un-flippable (the
-    # quad is non-convex), so we verify the flipper reaches a valid fixed point
-    # that preserves the domain rather than asserting full Delaunay.
+    """Preserve a non-convex domain while flipping to a fixed point.
+
+    Some interior edges of a star-shaped polygon are un-flippable because their
+    quad is non-convex, so this verifies the flipper reaches a valid fixed point
+    with the boundary intact rather than asserting full Delaunay.
+    """
     points, tris = _star_mesh(num_points=7)
     _assert_valid_mesh(test, points, tris)
 
@@ -376,6 +437,14 @@ def test_flip_star_polygon(test, device):
 
 
 def test_flip_graph_capture(test, device):
+    """Replay a captured flip loop and match the eager result.
+
+    The convergence loop is driven by ``wp.capture_while()``, which records CUDA
+    conditional graph nodes, so CUDA devices need Toolkit and driver 12.4+.
+    """
+    if device.is_cuda and not wp.is_conditional_graph_supported():
+        test.skipTest("CUDA conditional graph nodes require Toolkit and driver 12.4+")
+
     points, tris = _grid_mesh(8, 7, jitter=0.3, seed=7)
 
     # Eager reference result on a separate copy of the input.
@@ -395,9 +464,21 @@ def test_flip_graph_capture(test, device):
     positions = wp.array(points, dtype=wp.vec2, device=device)
     indices = wp.array(tris, dtype=wp.int32, device=device)
 
+    empty_positions = wp.zeros(0, dtype=wp.vec2, device=device)
+    empty_indices = wp.zeros((0, 3), dtype=wp.int32, device=device)
+
+    # Load the flip kernels up front so no compilation is triggered inside the
+    # capture, which would recursively build modules in single-process test mode.
+    wp.load_module(warp.geometry, device=device)
     with wp.ScopedDevice(device):
-        with wp.ScopedCapture() as capture:
+        with wp.ScopedCapture(force_module_load=False) as capture:
             total = warp.geometry.delaunay_edge_flip(positions, indices)
+            empty_total = warp.geometry.delaunay_edge_flip(empty_positions, empty_indices)
+
+    # An empty mesh under capture returns a device accumulator like the non-empty
+    # path does, rather than a Python int. Its contents are only valid at replay
+    # time, so it is read below with the rest of the results.
+    test.assertIsInstance(empty_total, wp.array)
 
     # Capture records operations without executing them: the mesh is untouched.
     assert_np_equal(indices.numpy(), tris)
@@ -409,6 +490,7 @@ def test_flip_graph_capture(test, device):
     _assert_delaunay(test, points, out)
     assert_np_equal(out, expected)
     test.assertEqual(int(total.numpy()[0]), ref_flips)
+    test.assertEqual(int(empty_total.numpy()[0]), 0)
 
     # The captured graph rebuilds adjacency from the current connectivity each
     # replay, so replaying on the now-Delaunay mesh is a stable no-op.
@@ -436,6 +518,7 @@ add_function_test(TestDelaunay, "test_flip_reference_rejection", test_flip_refer
 add_function_test(TestDelaunay, "test_flip_convex_fan", test_flip_convex_fan, devices=devices)
 add_function_test(TestDelaunay, "test_flip_star_polygon", test_flip_star_polygon, devices=devices)
 add_function_test(TestDelaunay, "test_flip_empty", test_flip_empty, devices=devices)
+add_function_test(TestDelaunay, "test_flip_invalid_arguments", test_flip_invalid_arguments, devices=devices)
 add_function_test(TestDelaunay, "test_flip_graph_capture", test_flip_graph_capture, devices=devices)
 
 
