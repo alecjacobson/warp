@@ -3,11 +3,12 @@
 
 """Geometry processing utilities for triangle meshes.
 
-The public entry points are the reusable predicates :func:`in_circle` and
-:func:`signed_area`, the topology builder :func:`triangle_triangle_adjacency`,
-and the :func:`delaunay_edge_flip` operation. Everything runs on the Warp device
-(CPU or CUDA); the Delaunay convergence loop is driven on-device with
-:func:`warp.capture_while`, so the routines are CUDA-graph capturable.
+The public entry points are the topology builder :func:`triangle_triangle_adjacency`
+and the :func:`delaunay_edge_flip` operation; the predicates :func:`in_circle` and
+:func:`signed_area` are reusable but stay internal until their naming settles.
+Everything runs on the Warp device (CPU or CUDA); the Delaunay convergence loop is
+driven on-device with :func:`warp.capture_while`, so the routines are CUDA-graph
+capturable.
 
 Algorithm-specific kernels that are not meant for reuse are grouped in private
 classes (for example :class:`_DelaunayFlipper`) so their names stay tied to the
@@ -504,7 +505,8 @@ def delaunay_edge_flip(
             would create a degenerate triangle in the reference configuration
             are rejected. Useful when the working mesh is a deformation of a
             reference mesh that must stay non-degenerate.
-        max_passes: Maximum number of parallel flip passes before stopping.
+        max_passes: Maximum number of parallel flip passes before stopping. Must
+            be at least 1.
         area_epsilon: Minimum signed area required for each triangle produced by
             a flip; guards against creating inverted or sliver triangles.
         ref_epsilon: Degeneracy threshold applied to ``ref_positions``.
@@ -523,14 +525,20 @@ def delaunay_edge_flip(
         raise ValueError("indices must be a (num_tris, 3) array of triangle vertex indices")
 
     device = indices.device
-    num_tris = indices.shape[0]
-    if num_tris == 0:
-        return 0
 
     if positions.device != device:
         raise ValueError("positions and indices must be on the same device")
     if ref_positions is not None and ref_positions.device != device:
         raise ValueError("ref_positions and indices must be on the same device")
+    if max_passes < 1:
+        raise ValueError("max_passes must be at least 1")
+
+    num_tris = indices.shape[0]
+    if num_tris == 0:
+        # Match the documented return type: an accumulator under capture, an int otherwise.
+        if device.is_capturing:
+            return wp.zeros(shape=1, dtype=wp.int32, device=device)
+        return 0
 
     num_verts = positions.shape[0]
     TT = triangle_triangle_adjacency(indices, num_verts=num_verts, return_reciprocal=False)
