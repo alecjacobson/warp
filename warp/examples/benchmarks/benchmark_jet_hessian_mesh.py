@@ -26,8 +26,9 @@ differ only in HOW the reverse sweep is taken:
 
     forward-2        a second-order jet: one forward pass writes the whole k x k
                      Hessian, no reverse at all. Uses scalar-form energies
-                     (JetSpace2 is scalars-only) and its O(k^2) register state
-                     compiles super-linearly in k, so tet (k=12) is skipped.
+                     (JetSpace2 is scalars-only). For these short elasticity
+                     energies it compiles fast at every k (tet k=12 ~5 s) and its
+                     single fused pass is the fastest runtime at k=12.
 
     uv run warp/examples/benchmarks/benchmark_jet_hessian_mesh.py --device cuda:0
     uv run warp/examples/benchmarks/benchmark_jet_hessian_mesh.py --device cuda:0 --graph
@@ -48,7 +49,7 @@ _LAM = wp.constant(1.0)
 
 J1 = wp.JetSpace(1)  # width-1 dual, for the directional derivatives
 JK = {6: wp.JetSpace(6), 9: wp.JetSpace(9), 12: wp.JetSpace(12)}
-J2K = {6: wp.JetSpace2(6), 9: wp.JetSpace2(9)}  # forward-2; tet k=12 skipped (~2 min compile)
+J2K = {6: wp.JetSpace2(6), 9: wp.JetSpace2(9), 12: wp.JetSpace2(12)}  # forward-2
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +105,19 @@ def triangle_energy_s(a0: Any, a1: Any, a2: Any, b0: Any, b1: Any, b2: Any, c0: 
     s11 = j10 * j10 + j11 * j11 + j12 * j12
     tr = s00 + s11
     return tr + tr / (s00 * s11 - s01 * s01)
+
+
+@wp.func
+def tet_energy_s(
+    a0: Any, a1: Any, a2: Any, b0: Any, b1: Any, b2: Any, c0: Any, c1: Any, c2: Any, d0: Any, d1: Any, d2: Any
+):
+    f00, f01, f02 = b0 - a0, b1 - a1, b2 - a2
+    f10, f11, f12 = c0 - a0, c1 - a1, c2 - a2
+    f20, f21, f22 = d0 - a0, d1 - a1, d2 - a2
+    i1 = f00 * f00 + f01 * f01 + f02 * f02 + f10 * f10 + f11 * f11 + f12 * f12 + f20 * f20 + f21 * f21 + f22 * f22
+    det = f00 * (f11 * f22 - f12 * f21) + f01 * (f12 * f20 - f10 * f22) + f02 * (f10 * f21 - f11 * f20)
+    logj = wp.log(det)
+    return 0.5 * _MU * (i1 - 3.0) - _MU * logj + 0.5 * _LAM * logj * logj
 
 
 # ---------------------------------------------------------------------------
@@ -342,7 +356,31 @@ def build_tet():
                 out[i, 2 * 3 + c, j] = g2[c]
                 out[i, 3 * 3 + c, j] = g3[c]
 
-    return 12, grad_wide, directional, hess_w1, None  # forward-2 skipped for tet (compile)
+    J2 = J2K[12]
+
+    @wp.kernel(enable_backward=False)
+    def hess_fwd2(x: wp.array2d[wp.vec3], out: wp.array3d[wp.float32]):
+        i = wp.tid()
+        p0, p1, p2, p3 = x[i, 0], x[i, 1], x[i, 2], x[i, 3]
+        h = tet_energy_s(
+            J2.seed(p0[0], 0),
+            J2.seed(p0[1], 1),
+            J2.seed(p0[2], 2),
+            J2.seed(p1[0], 3),
+            J2.seed(p1[1], 4),
+            J2.seed(p1[2], 5),
+            J2.seed(p2[0], 6),
+            J2.seed(p2[1], 7),
+            J2.seed(p2[2], 8),
+            J2.seed(p3[0], 9),
+            J2.seed(p3[1], 10),
+            J2.seed(p3[2], 11),
+        ).hess
+        for p in range(12):
+            for q in range(12):
+                out[i, p, q] = h[p, q]
+
+    return 12, grad_wide, directional, hess_w1, hess_fwd2
 
 
 @wp.kernel
