@@ -232,6 +232,30 @@ def jet_mat3_inverse(a: wp.array2d[float], out: wp.array3d[float]):
                 out[i, 3 * r + c, q] = inv.coeff[3 * r + c, q]
 
 
+def triangle_rect_np(z):
+    p0, p1, p2 = z[:, 0:3], z[:, 3:6], z[:, 6:9]
+    a, b = p1 - p0, p2 - p0
+    s00 = (a * a).sum(1)
+    s01 = (a * b).sum(1)
+    s11 = (b * b).sum(1)
+    tr = s00 + s11
+    return tr + tr / (s00 * s11 - s01 * s01)
+
+
+@wp.kernel(enable_backward=False)
+def jet_triangle_rect(z: wp.array2d[float], grad: wp.array[J9.coeff]):
+    # 3x2 deformation gradient F, then S = F^T F (2x3 * 3x2 = 2x2), symmetric Dirichlet.
+    i = wp.tid()
+    p0 = J9.seed_vec3(wp.vec3(z[i, 0], z[i, 1], z[i, 2]), 0, 1, 2)
+    p1 = J9.seed_vec3(wp.vec3(z[i, 3], z[i, 4], z[i, 5]), 3, 4, 5)
+    p2 = J9.seed_vec3(wp.vec3(z[i, 6], z[i, 7], z[i, 8]), 6, 7, 8)
+    f = J9.make_mat32(p1 - p0, p2 - p0)
+    s = wp.transpose(f) * f
+    tr = wp.trace(s)
+    e = tr + tr / wp.determinant(s)
+    grad[i] = e.coeff
+
+
 class TestJetMatrix(unittest.TestCase):
     def test_mat2_det_trace(self):
         rng = np.random.default_rng(0)
@@ -280,6 +304,18 @@ class TestJetMatrix(unittest.TestCase):
                 am[r, c] -= h
                 dinv = (np.linalg.inv(ap) - np.linalg.inv(am)) / (2 * h)  # 3x3
                 np.testing.assert_allclose(got[n, :, k], dinv.reshape(9), rtol=1e-3, atol=1e-4)
+
+    def test_mat32_triangle(self):
+        rng = np.random.default_rng(3)
+        rest = np.array([0, 0, 0, 1, 0, 0, 0.5, 0.8660254, 0], np.float32)
+        z = (rest + 0.1 * rng.standard_normal((5, 9))).astype(np.float32)
+        grad = wp.zeros(5, dtype=J9.coeff, device="cpu")
+        wp.launch(
+            jet_triangle_rect, dim=5, inputs=[wp.array(z, dtype=float, device="cpu")], outputs=[grad], device="cpu"
+        )
+        np.testing.assert_allclose(
+            grad.numpy().reshape(5, 9), _grad_fd(triangle_rect_np, z.astype(np.float64)), rtol=1e-3, atol=1e-4
+        )
 
 
 class TestJetOps(unittest.TestCase):

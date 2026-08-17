@@ -792,8 +792,11 @@ def _make_jet_space(width: int, dtype):
 
     NativeMat2 = matrix((2, 2), dtype)
     NativeMat3 = matrix((3, 3), dtype)
+    NativeMat32 = matrix((3, 2), dtype)
+    NativeMat23 = matrix((2, 3), dtype)
     CoeffMat4 = matrix((4, width), dtype)
     CoeffMat9 = matrix((9, width), dtype)
+    CoeffMat6 = matrix((6, width), dtype)  # a 3x2 or 2x3 block, row-major
 
     @wp.struct
     class JetMat2:
@@ -804,6 +807,16 @@ def _make_jet_space(width: int, dtype):
     class JetMat3:
         value: NativeMat3
         coeff: CoeffMat9
+
+    @wp.struct
+    class JetMat32:  # 3x2, e.g. a triangle deformation gradient
+        value: NativeMat32
+        coeff: CoeffMat6
+
+    @wp.struct
+    class JetMat23:  # 2x3
+        value: NativeMat23
+        coeff: CoeffMat6
 
     @wp.func
     def mat2_from_cols(c0: JetVec2, c1: JetVec2) -> JetMat2:
@@ -830,6 +843,49 @@ def _make_jet_space(width: int, dtype):
                 m[r * 3 + 1, q] = c1.coeff[r, q]
                 m[r * 3 + 2, q] = c2.coeff[r, q]
         return JetMat3(v, m)
+
+    @wp.func
+    def mat32_from_cols(c0: JetVec3, c1: JetVec3) -> JetMat32:
+        v = NativeMat32()
+        m = CoeffMat6()
+        for r in range(3):
+            v[r, 0] = c0.value[r]
+            v[r, 1] = c1.value[r]
+            for q in range(wp.static(width)):
+                m[r * 2 + 0, q] = c0.coeff[r, q]
+                m[r * 2 + 1, q] = c1.coeff[r, q]
+        return JetMat32(v, m)
+
+    @wp.func
+    def jet_transpose(a: JetMat32) -> JetMat23:
+        m = CoeffMat6()
+        for r in range(3):
+            for c in range(2):
+                for q in range(wp.static(width)):
+                    m[c * 3 + r, q] = a.coeff[r * 2 + c, q]
+        return JetMat23(wp.transpose(a.value), m)
+
+    @wp.func
+    def jet_transpose(a: JetMat23) -> JetMat32:
+        m = CoeffMat6()
+        for r in range(2):
+            for c in range(3):
+                for q in range(wp.static(width)):
+                    m[c * 2 + r, q] = a.coeff[r * 3 + c, q]
+        return JetMat32(wp.transpose(a.value), m)
+
+    @wp.func
+    def jet_mul(a: JetMat23, b: JetMat32) -> JetMat2:
+        # (2x3)(3x2) = 2x2, product rule over the shared dimension.
+        m = CoeffMat4()
+        for i in range(2):
+            for j in range(2):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for k in range(3):
+                        acc += a.coeff[i * 3 + k, q] * b.value[k, j] + a.value[i, k] * b.coeff[k * 2 + j, q]
+                    m[i * 2 + j, q] = acc
+        return JetMat2(a.value * b.value, m)
 
     @wp.func
     def jet_add(a: JetMat2, b: JetMat2) -> JetMat2:
@@ -1035,6 +1091,8 @@ def _make_jet_space(width: int, dtype):
         vec3=JetVec3,
         mat2=JetMat2,
         mat3=JetMat3,
+        mat32=JetMat32,
+        mat23=JetMat23,
         coeff=Coeff,
         native_vec2=NativeVec2,
         native_vec3=NativeVec3,
@@ -1055,6 +1113,7 @@ def _make_jet_space(width: int, dtype):
         directional_vec3=directional_vec3,
         make_mat2=mat2_from_cols,
         make_mat3=mat3_from_cols,
+        make_mat32=mat32_from_cols,
         perp=jet_perp,
         cross2=jet_cross2,
     )
