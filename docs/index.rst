@@ -149,6 +149,15 @@ warp/examples/optim
       - fluid checkpoint
       - particle repulsion
       - navier-stokes perturbation
+    * - .. image:: ./img/examples/optim_implicit_projection.png
+           :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/optim/example_implicit_projection.py
+      -
+      -
+      -
+    * - implicit projection
+      -
+      -
+      -
 
 warp/examples/tile
 ^^^^^^^^^^^^^^^^^^
