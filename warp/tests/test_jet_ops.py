@@ -181,6 +181,7 @@ def _run_hess(kernel, z_np, device):
 # --------------------------------------------------------------------------
 
 J4 = wp.JetSpace(4)
+J9 = wp.JetSpace(9)
 J12 = wp.JetSpace(12)
 
 
@@ -217,6 +218,20 @@ def jet_tet(z: wp.array2d[float], grad: wp.array[J12.coeff]):
     grad[i] = e.coeff
 
 
+@wp.kernel(enable_backward=False)
+def jet_mat3_inverse(a: wp.array2d[float], out: wp.array3d[float]):
+    # Seed the 3x3 entries (row-major dirs 0..8); write d(inv[r,c])/d(entry k).
+    i = wp.tid()
+    c0 = J9.seed_vec3(wp.vec3(a[i, 0], a[i, 3], a[i, 6]), 0, 3, 6)  # column 0
+    c1 = J9.seed_vec3(wp.vec3(a[i, 1], a[i, 4], a[i, 7]), 1, 4, 7)
+    c2 = J9.seed_vec3(wp.vec3(a[i, 2], a[i, 5], a[i, 8]), 2, 5, 8)
+    inv = wp.inverse(J9.make_mat3(c0, c1, c2))
+    for r in range(3):
+        for c in range(3):
+            for q in range(9):
+                out[i, 3 * r + c, q] = inv.coeff[3 * r + c, q]
+
+
 class TestJetMatrix(unittest.TestCase):
     def test_mat2_det_trace(self):
         rng = np.random.default_rng(0)
@@ -246,6 +261,25 @@ class TestJetMatrix(unittest.TestCase):
         np.testing.assert_allclose(
             grad.numpy().reshape(6, 12), _grad_fd(tet_np, z.astype(np.float64)), rtol=1e-3, atol=1e-4
         )
+
+    def test_mat3_inverse(self):
+        rng = np.random.default_rng(2)
+        a = (np.eye(3) + 0.3 * rng.standard_normal((4, 3, 3))).astype(np.float32).reshape(4, 9)
+        out = wp.zeros((4, 9, 9), dtype=float, device="cpu")
+        wp.launch(jet_mat3_inverse, dim=4, inputs=[wp.array(a, dtype=float, device="cpu")], outputs=[out], device="cpu")
+        got = out.numpy()
+        # FD of inv(A) w.r.t. each entry, compared to d(inv[r,c])/d(entry k).
+        h = 1e-4
+        for n in range(4):
+            A = a[n].reshape(3, 3).astype(np.float64)
+            for k in range(9):
+                r, c = k // 3, k % 3
+                ap = A.copy()
+                ap[r, c] += h
+                am = A.copy()
+                am[r, c] -= h
+                dinv = (np.linalg.inv(ap) - np.linalg.inv(am)) / (2 * h)  # 3x3
+                np.testing.assert_allclose(got[n, :, k], dinv.reshape(9), rtol=1e-3, atol=1e-4)
 
 
 class TestJetOps(unittest.TestCase):

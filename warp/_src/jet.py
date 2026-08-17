@@ -950,6 +950,37 @@ def _make_jet_space(width: int, dtype):
             c[q] = m[1, 1] * a.coeff[0, q] - m[1, 0] * a.coeff[1, q] - m[0, 1] * a.coeff[2, q] + m[0, 0] * a.coeff[3, q]
         return JetScalar(m[0, 0] * m[1, 1] - m[0, 1] * m[1, 0], c)
 
+    @wp.func
+    def jet_inverse(a: JetMat3) -> JetMat3:
+        # d(A^-1) = -A^-1 (dA) A^-1.
+        ainv = wp.inverse(a.value)
+        m = CoeffMat9()
+        for q in range(wp.static(width)):
+            da = NativeMat3()
+            for r in range(3):
+                for c in range(3):
+                    da[r, c] = a.coeff[r * 3 + c, q]
+            dinv = -(ainv * da * ainv)
+            for r in range(3):
+                for c in range(3):
+                    m[r * 3 + c, q] = dinv[r, c]
+        return JetMat3(ainv, m)
+
+    @wp.func
+    def jet_inverse(a: JetMat2) -> JetMat2:
+        ainv = wp.inverse(a.value)
+        m = CoeffMat4()
+        for q in range(wp.static(width)):
+            da = NativeMat2()
+            for r in range(2):
+                for c in range(2):
+                    da[r, c] = a.coeff[r * 2 + c, q]
+            dinv = -(ainv * da * ainv)
+            for r in range(2):
+                for c in range(2):
+                    m[r * 2 + c, q] = dinv[r, c]
+        return JetMat2(ainv, m)
+
     # ------------------------------------------------------------------
     # Publish into Warp's builtin overload table.
     #
@@ -994,6 +1025,7 @@ def _make_jet_space(width: int, dtype):
     _register("transpose", jet_transpose)
     _register("determinant", jet_determinant)
     _register("trace", jet_trace)
+    _register("inverse", jet_inverse)
 
     return SimpleNamespace(
         width=width,
