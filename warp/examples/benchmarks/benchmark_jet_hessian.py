@@ -97,10 +97,15 @@ def strip_mine(k):
 
 
 def build(k, dtype=wp.float32):
-    """Return (Jk, width-k gradient kernel, width-1 directional kernel, forward-2 kernel)."""
+    """Return (Jk, width-k gradient kernel, width-1 directional kernel, forward-2 kernel).
+
+    The forward-2 kernel is only created when ``k`` is within FORWARD2_MAX_K,
+    and is ``None`` otherwise. Skipping it at the definition site is what keeps
+    the cap cheap: an O(k**2) second-order kernel costs its compile time as soon
+    as it joins the module, whether or not it is ever launched.
+    """
     Jk = wp.JetSpace(k, dtype=dtype)
     J1 = wp.JetSpace(1, dtype=dtype)
-    J2 = wp.JetSpace2(k, dtype=dtype)
 
     outer, inner = strip_mine(k)
 
@@ -141,6 +146,11 @@ def build(k, dtype=wp.float32):
                     prev = cur
 
         dv[i] = (acc + wp.exp(prev)).coeff[0]
+
+    if k > FORWARD2_MAX_K:
+        return Jk, grad_wide, directional, None
+
+    J2 = wp.JetSpace2(k, dtype=dtype)
 
     @wp.kernel
     def hess_forward(z: wp.array2d[dtype], out: wp.array3d[dtype]):
@@ -359,7 +369,7 @@ def check(k, Jk, kw, kd, kf, device, n=16, seed=0):
     cross = np.abs(hw - hh).max()
     fd = max(np.abs(hw - ref).max(), np.abs(hh - ref).max())
 
-    if k > FORWARD2_MAX_K:
+    if kf is None:
         f2_ok = False
     else:
         try:
@@ -407,8 +417,16 @@ def time_strategy(strategy, device, reps, use_graph):
 
 
 def estimate_bytes(m, k):
-    """Rough peak footprint: z, z.grad, g, g.grad, seed, plus the m x k x k Hessian."""
-    return (5 * m * k + m * k * k) * 4
+    """Rough peak footprint of WidthK, the heaviest strategy.
+
+    z, z.grad, g and g.grad are linear in k; the assembled Hessian and the k
+    seed arrays of shape (m, k) are each quadratic. Counting only one seed
+    understates the total by nearly a full m * k * k block.
+    """
+    linear = 4 * m * k  # z, z.grad, g, g.grad
+    seeds = m * k * k  # k seed arrays, one per gradient component
+    hessian = m * k * k
+    return (linear + seeds + hessian) * 4
 
 
 def run(k_values, m_values, device, reps, tol, max_bytes, skip_check, use_graph):
@@ -430,7 +448,9 @@ def run(k_values, m_values, device, reps, tol, max_bytes, skip_check, use_graph)
 
         if skip_check:
             cross = fd = float("nan")
-            f2_ok = True
+            # Skipping the correctness gate must not also skip the cap; build()
+            # has already declined to create the kernel above it.
+            f2_ok = kf is not None
         else:
             cross, fd, f2_ok = check(k, Jk, kw, kd, kf, device)
 
