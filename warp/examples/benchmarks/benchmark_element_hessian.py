@@ -148,15 +148,48 @@ def tet_np(z):
     return 0.5 * (i1 - 3.0) - logj + 0.5 * logj * logj
 
 
+def _tet_det(z):
+    """Signed volume factor of each tetrahedron, six times its volume."""
+    p0, p1, p2, p3 = z[:, 0:3], z[:, 3:6], z[:, 6:9], z[:, 9:12]
+    return np.linalg.det(np.stack([p1 - p0, p2 - p0, p3 - p0], axis=2))
+
+
 def sample(k, m, seed=0):
-    """Realistic states: reference element + small perturbation (non-degenerate)."""
+    """Realistic states: reference element + small perturbation (non-degenerate).
+
+    Tetrahedra are rejection-sampled on a positive determinant. The neo-Hookean
+    energy takes ``log(det F)``, so an inverted element is outside its domain and
+    evaluates to NaN; at this perturbation scale roughly one sample in 1700
+    inverts, which is enough to poison the finite-difference gate and to leave
+    the timed launches working on invalid states. Springs and triangles need no
+    such filter: the sampled triangles stay well away from zero area.
+    """
     rng = np.random.default_rng(seed)
-    rest = {
-        6: [0, 0, 0, 1, 0, 0],
-        9: [0, 0, 0, 1, 0, 0, 0.5, 0.8660254, 0],
-        12: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1],
-    }[k]
-    return np.array(rest, np.float32) + 0.15 * rng.standard_normal((m, k)).astype(np.float32)
+    rest = np.array(
+        {
+            6: [0, 0, 0, 1, 0, 0],
+            9: [0, 0, 0, 1, 0, 0, 0.5, 0.8660254, 0],
+            12: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1],
+        }[k],
+        np.float32,
+    )
+
+    def draw(n):
+        return rest + 0.15 * rng.standard_normal((n, k)).astype(np.float32)
+
+    if k != 12:
+        return draw(m)
+
+    out = np.empty((m, k), np.float32)
+    filled = 0
+    while filled < m:
+        batch = draw(m - filled)
+        kept = batch[_tet_det(batch) > 1.0e-6]
+        take = min(len(kept), m - filled)
+        out[filled : filled + take] = kept[:take]
+        filled += take
+
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -164,9 +197,8 @@ def sample(k, m, seed=0):
 # ---------------------------------------------------------------------------
 
 
-def build_spring():
+def build_spring(with_forward2=True):
     Jk = wp.JetSpace(6)
-    J2 = wp.JetSpace2(6)
 
     @wp.kernel
     def spring_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff]):
@@ -184,6 +216,13 @@ def build_spring():
     def spring_energy_scalar(z: wp.array2d[wp.float32], e: wp.array[wp.float32]):
         i = wp.tid()
         e[i] = spring_energy(z[i, 0], z[i, 1], z[i, 2], z[i, 3], z[i, 4], z[i, 5])
+
+    if not with_forward2:
+        return Jk, spring_grad_wide, spring_energy_scalar, None
+
+    # Created only past the guard: the O(k**2) second-order kernel costs its
+    # compile as soon as it joins the module, launched or not.
+    J2 = wp.JetSpace2(6)
 
     @wp.kernel
     def spring_hess_forward(z: wp.array2d[wp.float32], out: wp.array3d[wp.float32]):
@@ -203,9 +242,8 @@ def build_spring():
     return Jk, spring_grad_wide, spring_energy_scalar, spring_hess_forward
 
 
-def build_triangle():
+def build_triangle(with_forward2=True):
     Jk = wp.JetSpace(9)
-    J2 = wp.JetSpace2(9)
 
     @wp.kernel
     def triangle_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff]):
@@ -226,6 +264,13 @@ def build_triangle():
     def triangle_energy_scalar(z: wp.array2d[wp.float32], e: wp.array[wp.float32]):
         i = wp.tid()
         e[i] = triangle_energy(z[i, 0], z[i, 1], z[i, 2], z[i, 3], z[i, 4], z[i, 5], z[i, 6], z[i, 7], z[i, 8])
+
+    if not with_forward2:
+        return Jk, triangle_grad_wide, triangle_energy_scalar, None
+
+    # Created only past the guard: the O(k**2) second-order kernel costs its
+    # compile as soon as it joins the module, launched or not.
+    J2 = wp.JetSpace2(9)
 
     @wp.kernel
     def triangle_hess_forward(z: wp.array2d[wp.float32], out: wp.array3d[wp.float32]):
@@ -248,9 +293,8 @@ def build_triangle():
     return Jk, triangle_grad_wide, triangle_energy_scalar, triangle_hess_forward
 
 
-def build_tet():
+def build_tet(with_forward2=True):
     Jk = wp.JetSpace(12)
-    J2 = wp.JetSpace2(12)
 
     @wp.kernel
     def tet_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff]):
@@ -287,6 +331,13 @@ def build_tet():
             z[i, 10],
             z[i, 11],
         )
+
+    if not with_forward2:
+        return Jk, tet_grad_wide, tet_energy_scalar, None
+
+    # Created only past the guard: the O(k**2) second-order kernel costs its
+    # compile as soon as it joins the module, launched or not.
+    J2 = wp.JetSpace2(12)
 
     @wp.kernel
     def tet_hess_forward(z: wp.array2d[wp.float32], out: wp.array3d[wp.float32]):
@@ -481,9 +532,7 @@ def main():
 
     for name in [args.element] if args.element else list(ELEMENTS):
         k, builder, energy_np = ELEMENTS[name]
-        Jk, grad_wide, energy_k, hess_k = builder()
-        if k > args.forward2_max_k:
-            hess_k = None
+        Jk, grad_wide, energy_k, hess_k = builder(with_forward2=k <= args.forward2_max_k)
 
         z_np = sample(k, args.m)
 
