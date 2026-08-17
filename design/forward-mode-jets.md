@@ -46,7 +46,7 @@ assembly step.
 | ID  | Requirement                                                                       | Priority | Notes                                            |
 | --- | --------------------------------------------------------------------------------- | -------- | ------------------------------------------------ |
 | R1  | Evaluating a `@wp.func` over jets yields its gradient with no hand-differentiation | Must     |                                                  |
-| R2  | `wp.Tape` differentiates through jet code, giving reverse-over-forward Hessians    | Must     |                                                  |
+| R2  | Warp's reverse mode differentiates through jet code, giving reverse-over-forward Hessians | Must | Via `wp.Tape`, or in-kernel with `wp.grad` for a local, tape-free sweep |
 | R3  | Ordinary Warp syntax: `a * b`, `wp.sin(a)`, `wp.length(d)`, `v[0]`                 | Must     | No names bound into the caller's module          |
 | R4  | Derivative width independent of geometric dimension                                | Must     | 6 directions over two `vec3` endpoints           |
 | R5  | Several widths and dtypes coexist in one process                                   | Should   |                                                  |
@@ -64,6 +64,43 @@ global Hessian from the local blocks; choosing a sparsity pattern or a linear
 solver.
 
 ## Design
+
+### What `width` is
+
+`width` is the number of derivative directions a jet carries, and it is fixed at
+type-specialization time: `wp.JetSpace(6)` produces types whose `coeff` is a
+6-vector, unrolled into the generated code. It is a **compile-time constant, not
+a runtime length**. This is the single most important thing to understand about
+the API, because it decides what jets are and are not for.
+
+The consequences follow directly:
+
+- **Cost scales with `width`, whether or not you use it.** A first-order jet
+  carries `width` derivative components through every intermediate; a
+  second-order jet carries `width²`. Nothing is sparse and nothing is skipped,
+  so the width you ask for is the width you pay for, in registers and in
+  compile time.
+- **Each distinct width is a distinct specialization.** `wp.JetSpace(6)` and
+  `wp.JetSpace(9)` generate separate struct types and separate builtin
+  overloads. They coexist fine (R5), but a width chosen per launch, or read
+  from data, is not expressible.
+- **This is the right shape for a *local* derivative.** The energies this
+  targets have a small, statically known arity: a spring reads 2 `vec3` nodes
+  (`width = 6`), a triangle 3 (`width = 9`), a tetrahedron 4 (`width = 12`).
+  The width is a property of the element type, known when the kernel is
+  written, and the resulting dense local gradient or Hessian block is exactly
+  what a Newton solver wants to scatter into a sparse global matrix.
+- **It is the wrong shape for a global or unbounded derivative.** Differentiating
+  a loss with respect to all `n` degrees of freedom is not a `width = n` jet.
+  `n` is a runtime quantity, so it cannot specialize a type; and even where it
+  is known, the cost is `n` forward directions to reverse mode's single
+  backward pass. Reverse mode (`wp.Tape`, `wp.grad`) remains the right tool
+  there, and jets do not replace it. Jets are for the inner, fixed-arity term;
+  reverse mode is for the outer sum over an unbounded number of them.
+
+A useful test: if you can write the width as a literal next to the `@wp.func`
+that consumes it, jets fit. If the width depends on the size of the problem,
+they do not.
 
 ### Approach
 
@@ -267,10 +304,32 @@ overloads.
 dense `width × width` Hessian, propagated by the second-order chain rule through
 the same arithmetic, transcendental, and branching overloads as first-order
 jets. One forward evaluation of a scalar energy yields its local Hessian with
-**no tape** -- the alternative to the reverse-over-first-order-jet route above.
-For the small local energies this design targets, the pure-forward route is the
-faster of the two on GPU; the reverse-over-forward route remains useful on CPU
-and for long chains where the quadratic Hessian state inflates compile time.
+**no tape** and no reverse sweep at all.
+
+That is one of several ways to reach a local Hessian with this machinery, and
+which one wins is energy-dependent:
+
+| Route | Mechanism | Cost |
+| ----- | --------- | ---- |
+| Reverse-over-jet, tape | width-`k` forward jet for the gradient, then `k` `tape.backward()` sweeps for the rows | `k` backward launches; needs a global `requires_grad` array |
+| Reverse-over-jet, in-kernel | width-1 dual for each directional derivative, reverse sweep taken *in the kernel* with `wp.grad` | one launch, register-resident, no tape and no global `.grad` |
+| Pure forward | second-order jet | one launch, no reverse at all; `O(k²)` state in registers |
+
+The in-kernel `wp.grad` route matters because it does not force a choice between
+tape overhead and second-order jets. It stays local -- each element's Hessian is
+computed in registers and scattered out -- so it composes with sparse assembly
+the same way the pure-forward route does, without `JetSpace2`'s compile cost.
+
+That compile cost is the main reason to prefer it. A second-order jet holds an
+`O(k²)` Hessian in registers through every intermediate, and NVCC's compile time
+is super-linear in `k`. How much that bites depends on the energy: for the short
+elasticity kernels in `benchmark_jet_hessian_mesh.py` a tet (`k=12`) second-order
+jet compiles in about 5 s and is the fastest route at runtime, while the longer
+scalar-form energies in `benchmark_element_hessian.py` push the same `k=12` case
+to roughly 2 minutes on a cold cache. When compile time dominates -- during
+iteration, or for a wide energy -- in-kernel `wp.grad` over first-order jets gets
+the same Hessian with none of that cost. The tape route remains useful on CPU and
+for long chains.
 
 The payload is **scalar only**. Each intermediate already carries an `O(width²)`
 Hessian; making the payload a vector or matrix multiplies that by the component
@@ -295,7 +354,8 @@ operation family. "FD" marks families verified against finite differences in
 | Geometry (`dot length length_sq normalize cross`)         |        ✓         |          ✓          |            –            |        –         |
 | Matrix (`transpose trace determinant inverse`, matmul)    |        –         |          –          |    ✓ (mat2/3/32/23)     |        –         |
 | Reverse-over-jet Hessian via `wp.Tape`                    |        ✓         |          ✓          |            ✓            |     n/a          |
-| Pure-forward Hessian (no tape)                            |       n/a        |         n/a         |           n/a           |        ✓         |
+| Reverse-over-jet Hessian via in-kernel `wp.grad` (no tape) |        ✓         |          ✓          |            ✓            |     n/a          |
+| Pure-forward Hessian (no tape, no reverse)                |       n/a        |         n/a         |           n/a           |        ✓         |
 
 Not covered (tracked as issues): second-order vector/matrix jets
 ([#11](https://github.com/alecjacobson/warp/issues/11)); a native symmetric
@@ -336,7 +396,7 @@ benchmarks.
 
 ## Benchmarks
 
-Four benchmarks under `warp/examples/benchmarks/` accompany the feature, each
+Five benchmarks under `warp/examples/benchmarks/` accompany the feature, each
 gating its strategies against finite differences before timing (which is also
 the CUDA correctness coverage for the CPU-only `test_jet_ops.py` cases):
 
@@ -347,3 +407,9 @@ the CUDA correctness coverage for the CPU-only `test_jet_ops.py` cases):
   strategies: width-`k` reverse-over-jet tape, width-1 tape, in-kernel width-1
   `wp.grad`, and the pure-forward second-order jet, on real spring/triangle/
   tetrahedron energies.
+- `benchmark_element_hessian.py` -- the same spring/triangle/tetrahedron
+  energies written once as generic scalar `wp.func`s, so one definition feeds
+  every gradient and Hessian strategy. `--forward2-max-k` skips the
+  second-order jet above a chosen width, which is what makes the compile-time
+  trade-off discussed under *Second-order jets* measurable rather than
+  anecdotal.

@@ -1137,6 +1137,24 @@ def JetSpace(width: int, dtype=wp.float32):
         ``vec3``, ``coeff``) and the seeding and construction helpers that have
         no builtin counterpart.
 
+    ``width`` is fixed when the types are specialized, not when a kernel runs:
+    it becomes the length of ``coeff`` and is unrolled into the generated code.
+    Every intermediate value carries all ``width`` derivative components, so
+    cost in registers and compile time scales with the width requested,
+    regardless of how many components are read back. Different widths are
+    independent specializations that may coexist in one process.
+
+    This makes jets suited to *local* derivatives of fixed arity -- a spring
+    over two ``vec3`` nodes is ``width=6``, a triangle ``width=9``, a
+    tetrahedron ``width=12`` -- where the width is known where the kernel is
+    written and the dense local gradient or Hessian block is scattered into a
+    sparse global matrix. They are not suited to differentiating with respect to
+    an unbounded or runtime number of variables: a problem-sized width cannot
+    specialize a type, and even when it could, forward mode would cost one
+    direction per variable against reverse mode's single backward pass. Use
+    :class:`warp.Tape` or :func:`warp.grad` for that outer derivative, and jets
+    for the fixed-arity term inside it.
+
     Registering the arithmetic mutates Warp's global builtin overload table,
     which is what lets ``a * b`` resolve on jets from any module. The effect is
     additive and lasts for the lifetime of the process.
@@ -1472,8 +1490,16 @@ def JetSpace2(width: int, dtype=wp.float32):
     this suits small k. Scalars only.
 
     Args:
-        width: Number of variables differentiated with respect to.
+        width: Number of variables differentiated with respect to. Fixed when
+            the types are specialized, not when a kernel runs.
         dtype: Scalar type the jets are built on.
+
+    As with :func:`warp.JetSpace`, the width is a compile-time constant and the
+    types are for local derivatives of fixed, statically known arity. The
+    quadratic state makes that limit tighter here: register pressure and compile
+    time both grow with ``width**2``, so for wider energies prefer a first-order
+    jet with a reverse sweep over it (via :class:`warp.Tape`, or in-kernel with
+    :func:`warp.grad`), which reaches the same Hessian with linear state.
     """
     width = int(width)
     key = (width, dtype)
