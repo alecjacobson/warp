@@ -231,8 +231,12 @@ Registered names: `add`, `sub`, `mul`, `div`, `pow`, `neg`, `pos`, `sin`,
 and branching families (up through `where`).
 
 The value-branching builtins (`min`, `max`, `clamp`, `where`, `abs`, `sign`)
-select or pass through a derivative along with the chosen value, so a piecewise
-energy stays differentiable. Comparisons themselves (`a < b`) do not overload --
+select or pass through the derivative of the branch they take, alongside the
+value they select. A piecewise energy therefore carries the derivative of the
+active piece, which is the one-sided derivative at a switch point rather than a
+two-sided one: these functions are non-smooth where the branch changes, and jets
+do not smooth them. `abs` at exactly zero returns a zero derivative by
+convention, matching the ordinary `abs`. Comparisons themselves (`a < b`) do not overload --
 Warp lowers them to raw C++ operators rather than through the builtin table --
 so jet code compares `.value` explicitly; making them dispatch is tracked in
 [#10](https://github.com/alecjacobson/warp/issues/10).

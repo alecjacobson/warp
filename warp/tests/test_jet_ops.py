@@ -177,12 +177,109 @@ def _run_hess(kernel, z_np, device):
 
 
 # --------------------------------------------------------------------------
+# pow(jet, jet) with a jet exponent, at and around a base of zero.
+#
+# a**b has finite partials at a = 0 for b > 1, but the textbook factorization
+# a**b * (b/a) evaluates as 0 * inf there. Both orders are checked at a = 0
+# exactly, where finite differences cannot be used as the oracle.
+# --------------------------------------------------------------------------
+
+
+@wp.kernel
+def jet_pow_jet_exponent(z: wp.array2d[float], grad: wp.array[J2.coeff]):
+    i = wp.tid()
+    a = J2.seed(z[i, 0], 0)
+    b = J2.seed(z[i, 1], 1)
+    grad[i] = wp.pow(a, b).coeff
+
+
+@wp.kernel
+def jet2_pow_jet_exponent(z: wp.array2d[float], grad: wp.array2d[float], hess: wp.array3d[float]):
+    i = wp.tid()
+    a = J2_2ND.seed(z[i, 0], 0)
+    b = J2_2ND.seed(z[i, 1], 1)
+    e = wp.pow(a, b)
+    for p in range(2):
+        grad[i, p] = e.grad[p]
+        for q in range(2):
+            hess[i, p, q] = e.hess[p, q]
+
+
+# --------------------------------------------------------------------------
+# Mixed jet/constant overloads that exist at first order must exist at second
+# order too, or an energy written once cannot feed both strategies.
+# --------------------------------------------------------------------------
+
+
+@wp.func
+def mixed_scalar_ops(a: J2.scalar, b: J2.scalar) -> J2.scalar:
+    return wp.pow(a, 2.5) + wp.atan2(a, 0.75) + wp.atan2(1.25, b)
+
+
+@wp.func
+def mixed_scalar_ops2(a: J2_2ND.scalar, b: J2_2ND.scalar) -> J2_2ND.scalar:
+    return wp.pow(a, 2.5) + wp.atan2(a, 0.75) + wp.atan2(1.25, b)
+
+
+def mixed_scalar_np(z):
+    return np.power(z[:, 0], 2.5) + np.arctan2(z[:, 0], 0.75) + np.arctan2(1.25, z[:, 1])
+
+
+@wp.kernel
+def jet_mixed(z: wp.array2d[float], val: wp.array[float], grad: wp.array[J2.coeff]):
+    i = wp.tid()
+    e = mixed_scalar_ops(J2.seed(z[i, 0], 0), J2.seed(z[i, 1], 1))
+    val[i] = e.value
+    grad[i] = e.coeff
+
+
+@wp.kernel
+def jet2_mixed(z: wp.array2d[float], val: wp.array[float], grad: wp.array2d[float], hess: wp.array3d[float]):
+    i = wp.tid()
+    e = mixed_scalar_ops2(J2_2ND.seed(z[i, 0], 0), J2_2ND.seed(z[i, 1], 1))
+    val[i] = e.value
+    for p in range(2):
+        grad[i, p] = e.grad[p]
+        for q in range(2):
+            hess[i, p, q] = e.hess[p, q]
+
+
+# --------------------------------------------------------------------------
 # Square matrix jets: determinant, trace, transpose, matmul via a real energy.
 # --------------------------------------------------------------------------
 
 J4 = wp.JetSpace(4)
 J9 = wp.JetSpace(9)
 J12 = wp.JetSpace(12)
+
+
+# --------------------------------------------------------------------------
+# mat2 multiplication: mat2 * mat2 and mat2 * vec2.
+# --------------------------------------------------------------------------
+
+
+@wp.kernel
+def jet_mat2_matmul(z: wp.array2d[float], out: wp.array[J4.coeff]):
+    i = wp.tid()
+    # A = [[z0, z2], [z1, z3]], built from its two seeded columns. Both
+    # mat2 * mat2 and mat2 * vec2 appear in (A A) v.
+    c0 = J4.make_vec2(J4.seed(z[i, 0], 0), J4.seed(z[i, 1], 1))
+    c1 = J4.make_vec2(J4.seed(z[i, 2], 2), J4.seed(z[i, 3], 3))
+    a = J4.make_mat2(c0, c1)
+    v = J4.make_vec2(J4.constant(1.0), J4.constant(-2.0))
+    w = (a * a) * v
+    out[i] = (w[0] + w[1]).coeff
+
+
+def mat2_matmul_np(z):
+    n = z.shape[0]
+    a = np.empty((n, 2, 2))
+    a[:, 0, 0] = z[:, 0]
+    a[:, 1, 0] = z[:, 1]
+    a[:, 0, 1] = z[:, 2]
+    a[:, 1, 1] = z[:, 3]
+    w = np.einsum("nij,njk,k->ni", a, a, np.array([1.0, -2.0]))
+    return w[:, 0] + w[:, 1]
 
 
 @wp.kernel(enable_backward=False)
@@ -258,6 +355,7 @@ def jet_triangle_rect(z: wp.array2d[float], grad: wp.array[J9.coeff]):
 
 class TestJetMatrix(unittest.TestCase):
     def test_mat2_det_trace(self):
+        """Check mat2 determinant and trace derivatives against finite differences."""
         rng = np.random.default_rng(0)
         a = (rng.standard_normal((5, 4)) + np.array([2.0, 0.1, 0.1, 2.0])).astype(np.float32)  # well-conditioned
         det_g = wp.zeros(5, dtype=J4.coeff, device="cpu")
@@ -277,6 +375,7 @@ class TestJetMatrix(unittest.TestCase):
         np.testing.assert_allclose(tr_g.numpy().reshape(5, 4), tr_expected, rtol=1e-5, atol=1e-6)
 
     def test_mat3_tet_energy(self):
+        """Check a mat3 tetrahedron energy gradient against finite differences."""
         rng = np.random.default_rng(1)
         rest = np.array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1], np.float32)  # unit reference tet
         z = (rest + 0.05 * rng.standard_normal((6, 12))).astype(np.float32)
@@ -287,6 +386,7 @@ class TestJetMatrix(unittest.TestCase):
         )
 
     def test_mat3_inverse(self):
+        """Check the mat3 inverse derivative against finite differences."""
         rng = np.random.default_rng(2)
         a = (np.eye(3) + 0.3 * rng.standard_normal((4, 3, 3))).astype(np.float32).reshape(4, 9)
         out = wp.zeros((4, 9, 9), dtype=float, device="cpu")
@@ -306,6 +406,7 @@ class TestJetMatrix(unittest.TestCase):
                 np.testing.assert_allclose(got[n, :, k], dinv.reshape(9), rtol=1e-3, atol=1e-4)
 
     def test_mat32_triangle(self):
+        """Check a rectangular mat32 triangle energy gradient against finite differences."""
         rng = np.random.default_rng(3)
         rest = np.array([0, 0, 0, 1, 0, 0, 0.5, 0.8660254, 0], np.float32)
         z = (rest + 0.1 * rng.standard_normal((5, 9))).astype(np.float32)
@@ -317,9 +418,25 @@ class TestJetMatrix(unittest.TestCase):
             grad.numpy().reshape(5, 9), _grad_fd(triangle_rect_np, z.astype(np.float64)), rtol=1e-3, atol=1e-4
         )
 
+    def test_mat2_matmul(self):
+        """Check mat2 * mat2 and mat2 * vec2 derivatives against finite differences.
+
+        ``mat2`` is part of the public namespace and is what a rectangular
+        ``mat23 * mat32`` product returns, so ordinary 2D matrix algebra has to
+        work on the result.
+        """
+        rng = np.random.default_rng(0)
+        z = (rng.standard_normal((5, 4)) + np.array([2.0, 0.1, 0.1, 2.0])).astype(np.float32)
+        out = wp.zeros(5, dtype=J4.coeff, device="cpu")
+        wp.launch(jet_mat2_matmul, dim=5, inputs=[wp.array(z, dtype=float, device="cpu")], outputs=[out], device="cpu")
+        np.testing.assert_allclose(
+            out.numpy().reshape(5, 4), _grad_fd(mat2_matmul_np, z.astype(np.float64)), rtol=1e-3, atol=1e-4
+        )
+
 
 class TestJetOps(unittest.TestCase):
     def test_first_order_smooth(self):
+        """Check first-order gradients of the smooth op surface against finite differences."""
         z64 = Z_NP.astype(np.float64)
         for device in DEVICES:
             val, grad = _run_grad(jet_smooth, Z_NP, device)
@@ -327,6 +444,7 @@ class TestJetOps(unittest.TestCase):
             np.testing.assert_allclose(grad, _grad_fd(smooth_np, z64), rtol=1.0e-3, atol=1.0e-4)
 
     def test_first_order_branch(self):
+        """Check first-order gradients of the branching builtins against finite differences."""
         z64 = ZB_NP.astype(np.float64)
         for device in DEVICES:
             val, grad = _run_grad(jet_branch, ZB_NP, device)
@@ -334,6 +452,7 @@ class TestJetOps(unittest.TestCase):
             np.testing.assert_allclose(grad, _grad_fd(branch_np, z64), rtol=1.0e-4, atol=1.0e-5)
 
     def test_second_order_smooth(self):
+        """Check second-order gradients and Hessians of the smooth ops against finite differences."""
         z64 = Z_NP.astype(np.float64)
         for device in DEVICES:
             val, grad, hess = _run_hess(jet2_g3, Z_NP, device)
@@ -343,12 +462,67 @@ class TestJetOps(unittest.TestCase):
             np.testing.assert_allclose(hess, np.transpose(hess, (0, 2, 1)), rtol=1.0e-6, atol=1.0e-7)
 
     def test_second_order_branch(self):
+        """Check second-order gradients and Hessians of the branching builtins against finite differences."""
         z64 = ZB_NP.astype(np.float64)
         for device in DEVICES:
             val, grad, hess = _run_hess(jet2_branch, ZB_NP, device)
             np.testing.assert_allclose(val, branch2_np(z64), rtol=1.0e-5, atol=1.0e-6)
             np.testing.assert_allclose(grad, _grad_fd(branch2_np, z64), rtol=1.0e-3, atol=1.0e-4)
             np.testing.assert_allclose(hess, _hess_fd(branch2_np, z64), rtol=1.0e-2, atol=1.0e-3)
+
+    def test_mixed_jet_and_constant_operands(self):
+        """Check that mixed jet/constant pow and atan2 agree at first and second order.
+
+        An energy written once against numeric literals has to compile and give
+        the same derivatives under both spaces, so the second-order overload set
+        must match the first-order one.
+        """
+        z = np.array([[0.7, 0.4], [1.3, -0.9], [0.2, 1.1]], dtype=np.float32)
+        z64 = z.astype(np.float64)
+
+        for device in DEVICES:
+            val1, grad1 = _run_grad(jet_mixed, z, device)
+            val2, grad2, hess2 = _run_hess(jet2_mixed, z, device)
+
+            np.testing.assert_allclose(val1, mixed_scalar_np(z64), rtol=1.0e-5, atol=1.0e-6)
+            np.testing.assert_allclose(val2, mixed_scalar_np(z64), rtol=1.0e-5, atol=1.0e-6)
+            np.testing.assert_allclose(grad1, _grad_fd(mixed_scalar_np, z64), rtol=1.0e-3, atol=1.0e-4)
+            np.testing.assert_allclose(grad2, grad1, rtol=1.0e-5, atol=1.0e-6)
+            np.testing.assert_allclose(hess2, _hess_fd(mixed_scalar_np, z64), rtol=1.0e-2, atol=1.0e-3)
+
+    def test_pow_with_jet_exponent_at_zero_base(self):
+        """Check that a jet exponent gives finite derivatives at a zero base.
+
+        d(a**b)/da = b a**(b-1) is 0 at a = 0 for b > 1, and d/db is 0 in the
+        limit, but the a**b * (b/a) factorization evaluates as 0 * inf there.
+        Finite differences cannot be the oracle at the endpoint, so the closed
+        form is used directly.
+        """
+        # Rows 2 and 3 straddle the zero base; b > 1 keeps both partials finite.
+        z = np.array([[0.0, 2.0], [0.0, 3.0], [0.5, 2.0]], dtype=np.float32)
+
+        for device in DEVICES:
+            m = z.shape[0]
+            zd = wp.array(z, dtype=float, device=device)
+
+            grad = wp.zeros(m, dtype=J2.coeff, device=device)
+            wp.launch(jet_pow_jet_exponent, dim=m, inputs=[zd], outputs=[grad], device=device)
+            g1 = grad.numpy().reshape(m, 2)
+
+            g2 = wp.zeros((m, 2), dtype=float, device=device)
+            h2 = wp.zeros((m, 2, 2), dtype=float, device=device)
+            wp.launch(jet2_pow_jet_exponent, dim=m, inputs=[zd], outputs=[g2, h2], device=device)
+
+            self.assertTrue(np.isfinite(g1).all(), f"first-order gradient not finite: {g1}")
+            self.assertTrue(np.isfinite(g2.numpy()).all(), f"second-order gradient not finite: {g2.numpy()}")
+            self.assertTrue(np.isfinite(h2.numpy()).all(), f"second-order Hessian not finite: {h2.numpy()}")
+
+            a, b = z[:, 0].astype(np.float64), z[:, 1].astype(np.float64)
+            da = b * np.power(a, b - 1.0)
+            db = np.where(a > 0.0, np.power(a, b) * np.log(np.where(a > 0.0, a, 1.0)), 0.0)
+
+            np.testing.assert_allclose(g1, np.stack([da, db], axis=1), rtol=1.0e-5, atol=1.0e-6)
+            np.testing.assert_allclose(g2.numpy(), np.stack([da, db], axis=1), rtol=1.0e-5, atol=1.0e-6)
 
 
 if __name__ == "__main__":

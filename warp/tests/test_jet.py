@@ -144,6 +144,7 @@ def hessian_from_tape(z_np, device):
 
 
 def test_jet_value(test, device):
+    """Check that evaluating a jet energy reproduces the scalar value."""
     m = Z_NP.shape[0]
     out = wp.zeros(m, dtype=float, device=device)
 
@@ -153,12 +154,18 @@ def test_jet_value(test, device):
 
 
 def test_jet_gradient(test, device):
+    """Check the jet gradient against the closed-form gradient."""
     grad, _ = hessian_from_tape(Z_NP, device)
 
     np.testing.assert_allclose(grad, grad_np(Z_NP.astype(np.float64)), rtol=1.0e-5, atol=1.0e-6)
 
 
 def test_jet_hessian(test, device):
+    """Check the reverse-over-jet Hessian against closed-form and finite differences.
+
+    The two oracles are independent: an analytic NumPy Hessian and float64
+    second differences.
+    """
     _, hessian = hessian_from_tape(Z_NP, device)
 
     z64 = Z_NP.astype(np.float64)
@@ -168,6 +175,11 @@ def test_jet_hessian(test, device):
 
 
 def test_jet_hessian_symmetric(test, device):
+    """Check that the assembled Hessian is symmetric.
+
+    Each off-diagonal comes from a separate backward pass, so agreement
+    between the two is a real check rather than a structural guarantee.
+    """
     _, hessian = hessian_from_tape(Z_NP, device)
 
     # The off-diagonals come from separate backward passes, so this is not
@@ -202,6 +214,7 @@ def spring_gradient(
 
 
 def test_jet_spring_gradient(test, device):
+    """Check a width-6 gradient over two vec3 endpoints against the closed form."""
     x0_np = np.array([[0.0, 0.0, 0.0], [1.0, 2.0, -1.0]], dtype=np.float32)
     x1_np = np.array([[2.0, 0.0, 0.0], [1.0, 2.0, 2.0]], dtype=np.float32)
 
@@ -251,6 +264,7 @@ def extract_and_geometry(out: wp.array[float]):
 
 
 def test_jet_component_and_geometry(test, device):
+    """Check component indexing and the vec3 geometry builtins on jets."""
     out = wp.zeros(8, dtype=float, device=device)
     wp.launch(extract_and_geometry, dim=1, outputs=[out], device=device)
 
@@ -315,6 +329,7 @@ def kernel_f64(out: wp.array[wp.float64]):
 
 
 def test_jet_float64(test, device):
+    """Check that a float64 jet space reaches float64 accuracy."""
     out = wp.zeros(3, dtype=wp.float64, device=device)
     wp.launch(kernel_f64, dim=1, outputs=[out], device=device)
 
@@ -331,19 +346,36 @@ def test_jet_float64(test, device):
 
 class TestJetSpace(unittest.TestCase):
     def test_jet_space_is_cached(self):
+        """Check that repeating a (width, dtype) request returns the cached space."""
         self.assertIs(wp.JetSpace(2), J2)
         self.assertIs(wp.JetSpace(2, dtype=wp.float32), J2)
         self.assertIsNot(wp.JetSpace(2, dtype=wp.float64), J2)
         self.assertIs(wp.JetSpace(2, dtype=wp.float64), J2D)
 
     def test_jet_space_rejects_bad_width(self):
+        """Check that a non-positive width is rejected."""
         with self.assertRaises(ValueError):
             wp.JetSpace(0)
 
         with self.assertRaises(ValueError):
             wp.JetSpace(-1)
 
+    def test_jet_space_rejects_non_float_dtype(self):
+        """Check that an integer dtype is rejected before any overload is registered.
+
+        Registering a space mutates Warp's global builtin overload table for the
+        life of the process, so an integer space cannot simply be discarded once
+        its truncating division shows up in a derivative.
+        """
+        for dtype in (wp.int32, wp.int64, wp.uint8):
+            with self.assertRaises(TypeError):
+                wp.JetSpace(2, dtype=dtype)
+
+            with self.assertRaises(TypeError):
+                wp.JetSpace2(2, dtype=dtype)
+
     def test_jet_space_reports_width(self):
+        """Check that a space reports the width it was created with."""
         self.assertEqual(J2.width, 2)
         self.assertEqual(J6.width, 6)
         self.assertEqual(wp.types.type_size(J2.coeff), 2)
@@ -436,6 +468,7 @@ def _run_jet2(kernel, z_np, device):
 
 
 def test_jet2_value_grad_hessian(test, device):
+    """Check the second-order jet value, gradient, and Hessian in one forward pass."""
     val, grad, hess = _run_jet2(jet2_value_grad_hess, Z_NP, device)
     z64 = Z_NP.astype(np.float64)
 
@@ -451,12 +484,14 @@ def test_jet2_value_grad_hessian(test, device):
 
 
 def test_jet2_hessian_symmetric(test, device):
+    """Check that the pure-forward Hessian is symmetric."""
     # The forward-over-forward Hessian is symmetric by construction.
     _, _, hess = _run_jet2(jet2_value_grad_hess, Z_NP, device)
     np.testing.assert_allclose(hess, np.transpose(hess, (0, 2, 1)), rtol=1.0e-6, atol=1.0e-7)
 
 
 def test_jet2_div_log_sqrt(test, device):
+    """Check second-order division, log, and sqrt against finite differences."""
     # Covers div(jet, jet), log, sqrt, and cos, which local_energy does not.
     val, grad, hess = _run_jet2(jet2_g2, Z_NP, device)
     z64 = Z_NP.astype(np.float64)

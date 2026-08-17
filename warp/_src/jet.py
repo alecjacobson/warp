@@ -77,9 +77,27 @@ from types import SimpleNamespace
 
 import warp as wp
 import warp._src.context
-from warp._src.types import matrix, vector
+from warp._src.types import float_types, matrix, vector
 
+# Specialized namespaces, keyed by (width, dtype): first order and second order.
 _CACHE = {}
+_CACHE2 = {}
+
+
+def _check_space_args(width: int, dtype) -> None:
+    """Validate a jet space's parameters before any type is generated.
+
+    Checked up front because generating a space mutates Warp's global builtin
+    overload table, which cannot be undone for the life of the process.
+    """
+    if width <= 0:
+        raise ValueError("Jet width must be positive")
+    if dtype not in float_types:
+        raise TypeError(
+            f"Jet dtype must be a Warp floating-point type, got {getattr(dtype, '__name__', dtype)}. "
+            "Derivatives are not representable in an integer type: division in the chain rule "
+            "would truncate."
+        )
 
 
 def _register(name: str, fn) -> None:
@@ -97,8 +115,7 @@ def _register(name: str, fn) -> None:
 
 
 def _make_jet_space(width: int, dtype):
-    if width <= 0:
-        raise ValueError("Jet width must be positive")
+    _check_space_args(width, dtype)
 
     # Concrete Warp types generated at Python scope.
     Coeff = vector(width, dtype)
@@ -242,10 +259,19 @@ def _make_jet_space(width: int, dtype):
 
     @wp.func
     def jet_pow(a: JetScalar, b: JetScalar) -> JetScalar:
-        # a**b = exp(b log a); d = a**b (b/a da + log(a) db).
+        # a**b: d = b a**(b-1) da + a**b log(a) db.
+        #
+        # Both partials are formed to stay finite at a.value == 0. Factoring
+        # them out of the value instead -- value * (b / a) and value * log(a) --
+        # each evaluates as 0 * inf there and gives NaN, even though the limits
+        # are finite for b > 0. The da partial below is the same expression the
+        # constant-exponent overload uses; the db partial takes its limit, which
+        # is 0 as a -> 0 from above.
         value = wp.pow(a.value, b.value)
-        coeff = value * ((b.value / a.value) * a.coeff + wp.log(a.value) * b.coeff)
-        return JetScalar(value, coeff)
+        da = b.value * wp.pow(a.value, b.value - dtype(1.0))
+        if a.value > dtype(0.0):
+            return JetScalar(value, da * a.coeff + (value * wp.log(a.value)) * b.coeff)
+        return JetScalar(value, da * a.coeff)
 
     @wp.func
     def jet_pow(a: dtype, b: JetScalar) -> JetScalar:
@@ -908,6 +934,10 @@ def _make_jet_space(width: int, dtype):
         return JetMat2(a.value * s, a.coeff * s)
 
     @wp.func
+    def jet_mul(s: dtype, a: JetMat2) -> JetMat2:
+        return JetMat2(s * a.value, s * a.coeff)
+
+    @wp.func
     def jet_mul(a: JetMat3, s: dtype) -> JetMat3:
         return JetMat3(a.value * s, a.coeff * s)
 
@@ -944,6 +974,29 @@ def _make_jet_space(width: int, dtype):
                         acc += a.coeff[i * 3 + k, q] * b.value[k, j] + a.value[i, k] * b.coeff[k * 3 + j, q]
                     m[i * 3 + j, q] = acc
         return JetMat3(a.value * b.value, m)
+
+    @wp.func
+    def jet_mul(a: JetMat2, b: JetMat2) -> JetMat2:
+        m = CoeffMat4()
+        for i in range(2):
+            for j in range(2):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for k in range(2):
+                        acc += a.coeff[i * 2 + k, q] * b.value[k, j] + a.value[i, k] * b.coeff[k * 2 + j, q]
+                    m[i * 2 + j, q] = acc
+        return JetMat2(a.value * b.value, m)
+
+    @wp.func
+    def jet_mul(a: JetMat2, v: JetVec2) -> JetVec2:
+        c = CoeffMat2()
+        for i in range(2):
+            for q in range(wp.static(width)):
+                acc = dtype(0.0)
+                for k in range(2):
+                    acc += a.coeff[i * 2 + k, q] * v.value[k] + a.value[i, k] * v.coeff[k, q]
+                c[i, q] = acc
+        return JetVec2(a.value * v.value, c)
 
     @wp.func
     def jet_mul(a: JetMat3, v: JetVec3) -> JetVec3:
@@ -1186,12 +1239,9 @@ def JetSpace(width: int, dtype=wp.float32):
 # Scalars only (enough to differentiate a scalar energy); no vec2/vec3.
 # ==========================================================================
 
-_CACHE2 = {}
-
 
 def _make_jet_space2(width: int, dtype):
-    if width <= 0:
-        raise ValueError("Jet width must be positive")
+    _check_space_args(width, dtype)
 
     Grad = vector(width, dtype)
     Hess = matrix((width, width), dtype)
@@ -1340,6 +1390,13 @@ def _make_jet_space2(width: int, dtype):
         return _lift(v, fp, fpp, a)
 
     @wp.func
+    def jet_pow(a: Jet2Scalar, p: dtype) -> Jet2Scalar:
+        v = wp.pow(a.value, p)
+        fp = p * wp.pow(a.value, p - dtype(1.0))
+        fpp = p * (p - dtype(1.0)) * wp.pow(a.value, p - dtype(2.0))
+        return _lift(v, fp, fpp, a)
+
+    @wp.func
     def jet_pow(a: dtype, b: Jet2Scalar) -> Jet2Scalar:
         v = wp.pow(a, b.value)
         la = wp.log(a)
@@ -1389,20 +1446,37 @@ def _make_jet_space2(width: int, dtype):
         )
 
     @wp.func
+    def jet_atan2(y: Jet2Scalar, x: dtype) -> Jet2Scalar:
+        d = x * x + y.value * y.value
+        return _lift(wp.atan2(y.value, x), x / d, -dtype(2.0) * x * y.value / (d * d), y)
+
+    @wp.func
+    def jet_atan2(y: dtype, x: Jet2Scalar) -> Jet2Scalar:
+        d = x.value * x.value + y * y
+        return _lift(wp.atan2(y, x.value), -y / d, dtype(2.0) * x.value * y / (d * d), x)
+
+    @wp.func
     def jet_pow(a: Jet2Scalar, b: Jet2Scalar) -> Jet2Scalar:
+        # Partials written against wp.pow rather than as g / a, for the same
+        # reason as the first-order overload: at a.value == 0 the 1 / a form
+        # gives 0 * inf = NaN where the limit is finite. The three partials
+        # carrying log(a) are zero in that limit for b > 0.
         g = wp.pow(a.value, b.value)
-        la = wp.log(a.value)
-        inva = dtype(1.0) / a.value
-        return _lift2(
-            g,
-            g * b.value * inva,  # d/da
-            g * la,  # d/db
-            g * b.value * (b.value - dtype(1.0)) * inva * inva,  # d2/da2
-            g * la * la,  # d2/db2
-            g * (dtype(1.0) + b.value * la) * inva,  # d2/dadb
-            a,
-            b,
-        )
+        da = b.value * wp.pow(a.value, b.value - dtype(1.0))
+        data = b.value * (b.value - dtype(1.0)) * wp.pow(a.value, b.value - dtype(2.0))
+        if a.value > dtype(0.0):
+            la = wp.log(a.value)
+            return _lift2(
+                g,
+                da,  # d/da
+                g * la,  # d/db
+                data,  # d2/da2
+                g * la * la,  # d2/db2
+                wp.pow(a.value, b.value - dtype(1.0)) * (dtype(1.0) + b.value * la),  # d2/dadb
+                a,
+                b,
+            )
+        return _lift2(g, da, dtype(0.0), data, dtype(0.0), dtype(0.0), a, b)
 
     # ---- branching: value-only comparisons carry the chosen jet's derivatives ----
 
