@@ -217,16 +217,18 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--device", type=str, default=None)
-    parser.add_argument("--num_points", type=int, default=100)
-    parser.add_argument("--steps", type=int, default=200)
-    parser.add_argument("--dt", type=float, default=0.05)
-    parser.add_argument("--plot", type=str, default="example_implicit_projection.png")
-    args = parser.parse_args()
+    parser.add_argument("--device", type=str, default=None, help="Override the default Warp device.")
+    parser.add_argument("--num-points", type=int, default=100, help="Number of points to project.")
+    parser.add_argument("--steps", type=int, default=200, help="Number of RK4 integration steps.")
+    parser.add_argument("--dt", type=float, default=0.05, help="Integration step size.")
+    parser.add_argument("--headless", action="store_true", help="Do not save a plot.")
+    parser.add_argument("--plot", type=str, default="example_implicit_projection.png", help="Output image path.")
+    parser.add_argument("--stage-path", type=str, default=None, help="Unused; accepted for harness compatibility.")
+    args = parser.parse_known_args()[0]
 
     with wp.ScopedDevice(args.device):
         example = Example(num_points=args.num_points, steps=args.steps, dt=args.dt)
         example.run()
         example.report()
-        if args.plot:
+        if not args.headless and args.plot:
             example.plot(args.plot)
