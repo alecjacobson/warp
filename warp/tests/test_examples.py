@@ -216,6 +216,12 @@ add_example_test(TestCoreExamples, name="core.example_mesh", devices=test_device
 add_example_test(
     TestCoreExamples, name="core.example_mesh_intersect", devices=test_devices, test_options={"usd_required": True}
 )
+add_example_test(
+    TestCoreExamples,
+    name="geometry.example_mesh_topology_statistics",
+    devices=test_devices,
+    test_options={"usd_required": True},
+)
 add_example_test(TestCoreExamples, name="core.example_nvdb", devices=test_devices)
 add_example_test(
     TestCoreExamples,
