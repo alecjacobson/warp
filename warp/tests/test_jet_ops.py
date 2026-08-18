@@ -194,6 +194,40 @@ def jet_pow_jet_exponent(z: wp.array2d[float], grad: wp.array[J2.coeff]):
 
 
 @wp.kernel
+def jet_pow_const_exponent(z: wp.array[float], grad: wp.array2d[float]):
+    # Degenerate constant exponents at a zero base: p * a**(p-1) and
+    # p (p-1) a**(p-2) are 0 * inf there for p == 0 and p == 1.
+    i = wp.tid()
+    a = J2.seed(z[i], 0)
+    grad[i, 0] = wp.pow(a, 0.0).coeff[0]
+    grad[i, 1] = wp.pow(a, 1.0).coeff[0]
+    grad[i, 2] = wp.pow(a, 2.0).coeff[0]
+    grad[i, 3] = wp.pow(a, 0).coeff[0]
+    grad[i, 4] = wp.pow(a, 1).coeff[0]
+
+
+@wp.kernel
+def jet2_pow_const_exponent(z: wp.array[float], grad: wp.array2d[float], hess: wp.array2d[float]):
+    i = wp.tid()
+    a = J2_2ND.seed(z[i], 0)
+    e0 = wp.pow(a, 0)
+    grad[i, 0] = e0.grad[0]
+    hess[i, 0] = e0.hess[0, 0]
+
+    e1 = wp.pow(a, 1)
+    grad[i, 1] = e1.grad[0]
+    hess[i, 1] = e1.hess[0, 0]
+
+    e1f = wp.pow(a, 1.0)
+    grad[i, 2] = e1f.grad[0]
+    hess[i, 2] = e1f.hess[0, 0]
+
+    e2 = wp.pow(a, 2)
+    grad[i, 3] = e2.grad[0]
+    hess[i, 3] = e2.hess[0, 0]
+
+
+@wp.kernel
 def jet2_pow_jet_exponent(z: wp.array2d[float], grad: wp.array2d[float], hess: wp.array3d[float]):
     i = wp.tid()
     a = J2_2ND.seed(z[i, 0], 0)
@@ -489,6 +523,28 @@ class TestJetOps(unittest.TestCase):
             np.testing.assert_allclose(grad1, _grad_fd(mixed_scalar_np, z64), rtol=1.0e-3, atol=1.0e-4)
             np.testing.assert_allclose(grad2, grad1, rtol=1.0e-5, atol=1.0e-6)
             np.testing.assert_allclose(hess2, _hess_fd(mixed_scalar_np, z64), rtol=1.0e-2, atol=1.0e-3)
+
+    def test_pow_with_constant_exponent_at_zero_base(self):
+        """Check that the degenerate constant exponents give finite derivatives at a zero base.
+
+        ``x**0`` is constant and ``x**1`` is linear, so their missing
+        derivatives are zero, but the general ``p a**(p-1)`` and
+        ``p (p-1) a**(p-2)`` terms reach them through ``0 * inf``.
+        """
+        for device in DEVICES:
+            z = wp.array(np.zeros(1, np.float32), dtype=float, device=device)
+
+            g1 = wp.zeros((1, 5), dtype=float, device=device)
+            wp.launch(jet_pow_const_exponent, dim=1, inputs=[z], outputs=[g1], device=device)
+            # p = 0, 1, 2 as floats, then 0, 1 as ints.
+            np.testing.assert_allclose(g1.numpy()[0], [0.0, 1.0, 0.0, 0.0, 1.0])
+
+            g2 = wp.zeros((1, 4), dtype=float, device=device)
+            h2 = wp.zeros((1, 4), dtype=float, device=device)
+            wp.launch(jet2_pow_const_exponent, dim=1, inputs=[z], outputs=[g2, h2], device=device)
+            # p = 0, 1 (int), 1.0 (float), 2.
+            np.testing.assert_allclose(g2.numpy()[0], [0.0, 1.0, 1.0, 0.0])
+            np.testing.assert_allclose(h2.numpy()[0], [0.0, 0.0, 0.0, 2.0])
 
     def test_pow_with_jet_exponent_at_zero_base(self):
         """Check that a jet exponent gives finite derivatives at a zero base.
