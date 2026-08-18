@@ -251,10 +251,18 @@ def _make_jet_space(width: int, dtype):
 
     @wp.func
     def jet_pow(a: JetScalar, p: dtype) -> JetScalar:
+        # p == 0 makes this the constant 1, whose derivative is 0. The general
+        # p * a**(p-1) form would evaluate it as 0 * inf at a == 0 and give NaN.
+        # Non-integer p < 1 is left alone: its derivative really is infinite
+        # there, and inf is the honest answer.
+        if p == dtype(0.0):
+            return JetScalar(dtype(1.0), Coeff())
         return _lift1(wp.pow(a.value, p), p * wp.pow(a.value, p - dtype(1.0)), a)
 
     @wp.func
     def jet_pow(a: JetScalar, p: int) -> JetScalar:
+        if p == 0:
+            return JetScalar(dtype(1.0), Coeff())
         return _lift1(wp.pow(a.value, dtype(p)), dtype(p) * wp.pow(a.value, dtype(p) - dtype(1.0)), a)
 
     @wp.func
@@ -1382,19 +1390,32 @@ def _make_jet_space2(width: int, dtype):
         return _lift(wp.atan(a.value), u, -dtype(2.0) * a.value * u * u, a)
 
     @wp.func
+    def _pow_const(a: Jet2Scalar, p: dtype) -> Jet2Scalar:
+        """a**p for a constant exponent, with the degenerate exponents guarded.
+
+        The general term p (p-1) a**(p-2) evaluates as 0 * inf at a == 0 for
+        p == 1, and both derivative terms do so for p == 0, where the true
+        derivatives are zero. Non-integer p below those is left alone: its
+        derivatives really are infinite at zero, so inf is the honest answer.
+        """
+        if p == dtype(0.0):
+            return Jet2Scalar(dtype(1.0), Grad(), Hess())
+
+        v = wp.pow(a.value, p)
+        fp = p * wp.pow(a.value, p - dtype(1.0))
+
+        if p == dtype(1.0):
+            return _lift(v, fp, dtype(0.0), a)
+
+        return _lift(v, fp, p * (p - dtype(1.0)) * wp.pow(a.value, p - dtype(2.0)), a)
+
+    @wp.func
     def jet_pow(a: Jet2Scalar, p: int) -> Jet2Scalar:
-        pf = dtype(p)
-        v = wp.pow(a.value, pf)
-        fp = pf * wp.pow(a.value, pf - dtype(1.0))
-        fpp = pf * (pf - dtype(1.0)) * wp.pow(a.value, pf - dtype(2.0))
-        return _lift(v, fp, fpp, a)
+        return _pow_const(a, dtype(p))
 
     @wp.func
     def jet_pow(a: Jet2Scalar, p: dtype) -> Jet2Scalar:
-        v = wp.pow(a.value, p)
-        fp = p * wp.pow(a.value, p - dtype(1.0))
-        fpp = p * (p - dtype(1.0)) * wp.pow(a.value, p - dtype(2.0))
-        return _lift(v, fp, fpp, a)
+        return _pow_const(a, p)
 
     @wp.func
     def jet_pow(a: dtype, b: Jet2Scalar) -> Jet2Scalar:
