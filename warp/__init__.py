@@ -37,6 +37,7 @@ from warp._src.module_registry import register_module_source as _register_module
 _register_module_source("warp.autograd", "warp._src.autograd")
 _register_module_source("warp.geometry.marching_cubes", "warp._src.marching_cubes")
 _register_module_source("warp.geometry.sparse_marching_cubes", "warp._src.sparse_marching_cubes")
+_register_module_source("warp.geometry.sparse_voxel_grid", "warp._src.sparse_voxel_grid")
 _register_module_source("warp.geometry.surface_nets", "warp._src.surface_nets")
 _register_module_source("warp.math", "warp._src.math")
 _register_module_source("warp.sparse", "warp._src.sparse")

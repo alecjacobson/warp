@@ -19,3 +19,5 @@ API
    lipschitz_octree
    sparse_marching_cubes
    sparse_marching_cubes_from_cells
+   sparse_voxel_grid
+   SparseVoxelGridError
