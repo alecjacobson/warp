@@ -20,7 +20,13 @@
 #
 # By default the example animates a procedural two-link arm, so it runs with no
 # external assets. Pass --usd to run on an animated USD hierarchy instead, such
-# as the UR10 arm from the swept-volume feature request (GH-1824):
+# as the UR10 arm from the swept-volume feature request (GH-1824).
+#
+# Inside/outside is classified with --sign (default 'auto'): the winding number
+# for USD assemblies -- CAD parts like the UR10 are open, non-watertight visual
+# shells, and the faster closest-face-normal classifier is incoherent on them
+# (spurious interior pockets, hundreds of disconnected junk shells) -- and the
+# normal classifier for the watertight procedural arm.
 #
 #   uv run --with usd-core warp/examples/geometry/example_swept_volume.py
 #   uv run --with usd-core warp/examples/geometry/example_swept_volume.py --usd ur10_animated.usda
@@ -147,6 +153,13 @@ def load_usd_assembly(path, num_samples=24, device=None):
     Every ``UsdGeomMesh`` (including through instance proxies) becomes one
     :class:`warp.Mesh`; its per-sample world transform is read from the stage's
     xform cache. Returns ``(meshes, transforms, times)``.
+
+    The meshes are built with ``support_winding_number=True``. CAD assemblies
+    like the UR10 are made of open, non-watertight visual shells, for which
+    closest-face-normal sign classification is unreliable and produces an
+    incoherent field (spurious interior pockets, hundreds of junk shells). The
+    generalized winding number stays robust, so the USD path uses it by default
+    (see :class:`warp.geometry.SweptVolumeSign`).
     """
     stage = Usd.Stage.Open(path, Usd.Stage.LoadAll)
     pred = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
@@ -165,6 +178,7 @@ def load_usd_assembly(path, num_samples=24, device=None):
             wp.Mesh(
                 wp.array(np.asarray(points, dtype=np.float32), dtype=wp.vec3, device=device),
                 wp.array(faces.reshape(-1).astype(np.int32), dtype=wp.int32, device=device),
+                support_winding_number=True,
             )
         )
 
@@ -205,21 +219,34 @@ def write_usd(stage_path, verts, indices):
 
 
 def main(
-    usd_path=None, num_samples=24, voxel_size=0.08, stage_path="example_geometry_swept_volume.usd", show_polyscope=False
+    usd_path=None,
+    num_samples=24,
+    voxel_size=0.08,
+    sign_mode=None,
+    stage_path="example_geometry_swept_volume.usd",
+    show_polyscope=False,
 ):
     device = wp.get_device()
 
     if usd_path is not None:
         meshes, transforms, times = load_usd_assembly(usd_path, num_samples=num_samples, device=device)
         label = usd_path
+        # CAD assemblies are open shells; the normal classifier is incoherent on
+        # them, so default the USD path to the robust winding number.
+        default_sign = warp.geometry.SweptVolumeSign.WINDING_NUMBER
     else:
         meshes, transforms, times = procedural_arm(num_samples=num_samples, device=device)
         label = "procedural two-link arm"
+        # The procedural boxes are watertight, so the faster normal classifier is fine.
+        default_sign = warp.geometry.SweptVolumeSign.NORMAL
+
+    if sign_mode is None:
+        sign_mode = default_sign
 
     total_tris = sum(len(m.indices.numpy()) // 3 for m in meshes)
     print(
         f"{label}: {len(meshes)} meshes, {total_tris} triangles, "
-        f"{num_samples} pose samples over t in [{times[0]:g}, {times[-1]:g}]"
+        f"{num_samples} pose samples over t in [{times[0]:g}, {times[-1]:g}], sign={sign_mode.name}"
     )
 
     with wp.ScopedTimer("swept_volume"):
@@ -227,6 +254,7 @@ def main(
             meshes,
             transforms,
             voxel_size=voxel_size,
+            sign_mode=sign_mode,
             device=device,
         )
         wp.synchronize_device()
@@ -270,6 +298,13 @@ if __name__ == "__main__":
     parser.add_argument("--num_samples", type=int, default=24, help="Number of pose samples to stamp.")
     parser.add_argument("--voxel_size", type=float, default=0.08, help="Grid cell size in world units.")
     parser.add_argument(
+        "--sign",
+        type=str,
+        default="auto",
+        choices=["auto", "normal", "winding"],
+        help="Inside/outside classifier. 'auto' picks winding for USD (non-watertight CAD) and normal for the procedural arm.",
+    )
+    parser.add_argument(
         "--stage_path",
         type=str,
         default="example_geometry_swept_volume.usd",
@@ -279,11 +314,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     stage_path = None if args.stage_path == "None" else args.stage_path
+    sign_mode = {
+        "auto": None,
+        "normal": warp.geometry.SweptVolumeSign.NORMAL,
+        "winding": warp.geometry.SweptVolumeSign.WINDING_NUMBER,
+    }[args.sign]
     with wp.ScopedDevice(args.device):
         main(
             usd_path=args.usd,
             num_samples=args.num_samples,
             voxel_size=args.voxel_size,
+            sign_mode=sign_mode,
             stage_path=stage_path,
             show_polyscope=args.polyscope,
         )

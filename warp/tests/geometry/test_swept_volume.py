@@ -197,6 +197,72 @@ def test_winding_number_sign_mode(test, device):
     np.testing.assert_allclose(v.max(axis=0), [1.0 + radius, radius, radius], atol=0.06)
 
 
+def _open_box_mesh(device, half=0.5, support_winding_number=False):
+    """An axis-aligned box with its +z face removed: a non-watertight shell whose
+    interior the closest-face-normal test cannot classify reliably."""
+    h = half
+    pts = np.array(
+        [
+            [-h, -h, -h],
+            [h, -h, -h],
+            [h, h, -h],
+            [-h, h, -h],
+            [-h, -h, h],
+            [h, -h, h],
+            [h, h, h],
+            [-h, h, h],
+        ],
+        dtype=np.float32,
+    )
+    # Five of the six faces (the +z face, tris [4,5,6]/[4,6,7], is omitted).
+    faces = np.array(
+        [
+            [0, 3, 2],
+            [0, 2, 1],  # -z
+            [0, 1, 5],
+            [0, 5, 4],  # -y
+            [2, 3, 7],
+            [2, 7, 6],  # +y
+            [1, 2, 6],
+            [1, 6, 5],  # +x
+            [3, 0, 4],
+            [3, 4, 7],  # -x
+        ],
+        dtype=np.int32,
+    ).reshape(-1)
+    return wp.Mesh(
+        wp.array(pts, dtype=wp.vec3, device=device),
+        wp.array(faces, dtype=wp.int32, device=device),
+        support_winding_number=support_winding_number,
+    )
+
+
+def test_winding_number_handles_non_watertight(test, device):
+    # A robot's visual meshes are open shells like this box-with-a-missing-face.
+    # The winding number stays robust on them: it classifies the shell interior
+    # as inside (negative field). The closest-face-normal test cannot be relied
+    # on here -- it even disagrees between CPU and CUDA on the same point -- which
+    # is why the USD example defaults to the winding number.
+    mesh = _open_box_mesh(device, half=0.5, support_winding_number=True)
+    tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
+
+    field, lower, upper = geo.swept_volume_field(
+        [mesh], tr, voxel_size=0.05, sign_mode=geo.SweptVolumeSign.WINDING_NUMBER, device=device
+    )
+    wp.synchronize_device()
+    fnp = field.numpy()
+
+    # The box center is half a metre inside the shell, so winding must report it
+    # inside with a distance close to the wall half-thickness (0.5).
+    lower = np.array([lower[0], lower[1], lower[2]])
+    upper = np.array([upper[0], upper[1], upper[2]])
+    spacing = (upper - lower) / (np.array(fnp.shape) - 1)
+    center_node = np.rint((np.zeros(3) - lower) / spacing).astype(int)
+    center_value = float(fnp[center_node[0], center_node[1], center_node[2]])
+    test.assertLess(center_value, 0.0)
+    np.testing.assert_allclose(center_value, -0.5, atol=spacing[0])
+
+
 def test_resolution_argument(test, device):
     # Passing an explicit resolution should produce a field of that shape.
     mesh = _sphere_mesh(device, radius=0.5)
@@ -240,6 +306,12 @@ add_function_test(
 )
 add_function_test(TestSweptVolume, "test_rotation_pose", test_rotation_pose, devices=devices)
 add_function_test(TestSweptVolume, "test_winding_number_sign_mode", test_winding_number_sign_mode, devices=devices)
+add_function_test(
+    TestSweptVolume,
+    "test_winding_number_handles_non_watertight",
+    test_winding_number_handles_non_watertight,
+    devices=devices,
+)
 add_function_test(TestSweptVolume, "test_resolution_argument", test_resolution_argument, devices=devices)
 add_function_test(TestSweptVolume, "test_invalid_arguments", test_invalid_arguments, devices=devices)
 
