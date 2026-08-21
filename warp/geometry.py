@@ -22,12 +22,16 @@ Usage:
 
 from warp._src.geometry import LaplacianWeighting as LaplacianWeighting
 from warp._src.geometry import OBBMeasureType as OBBMeasureType
+from warp._src.geometry import SweptVolumeSign as SweptVolumeSign
 from warp._src.geometry import VertexNormalWeighting as VertexNormalWeighting
 from warp._src.geometry import corner_half_angle as corner_half_angle
 from warp._src.geometry import laplacian as laplacian
 from warp._src.geometry import moments as moments
 from warp._src.geometry import oriented_bounding_box as oriented_bounding_box
 from warp._src.geometry import super_fibonacci as super_fibonacci
+from warp._src.geometry import swept_volume as swept_volume
+from warp._src.geometry import swept_volume_field as swept_volume_field
+from warp._src.geometry import swept_volume_sdf as swept_volume_sdf
 from warp._src.geometry import triangle_areas as triangle_areas
 from warp._src.geometry import triangle_corner_angles as triangle_corner_angles
 from warp._src.geometry import triangle_corner_half_angles as triangle_corner_half_angles
