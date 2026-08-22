@@ -3,5 +3,5 @@ mesh from a flat `int32` triangle-index array (no vertex positions), matching th
 connectivity of gptoolbox's `connected_components`. It returns per-vertex component ids in a
 contiguous `[0, num_components)` range together with the component count. The labeling runs on the
 Warp device (CPU or CUDA) as a parallel union-find -- edge-parallel hooking plus vertex-parallel
-pointer jumping, iterated on-device to a fixpoint -- so it scales to large meshes without a serial
-sweep.
+full path compression, iterated on-device to a fixpoint -- so it scales to large meshes without a
+serial sweep.

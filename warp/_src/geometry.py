@@ -12,8 +12,8 @@ require no vertex positions:
   CSR followed by a per-vertex analysis pass. Only a single small counter array
   is read back to assemble the returned :class:`TriangleMeshTopologyStatistics`.
 * :func:`connected_components` labels the edge-connected components of the mesh
-  with a parallel union-find (edge-parallel hooking plus vertex-parallel pointer
-  jumping, iterated on-device to a fixpoint).
+  with a parallel union-find (edge-parallel hooking plus vertex-parallel full path
+  compression, iterated on-device to a fixpoint).
 
 Kernels and helpers specific to each routine are grouped in the private
 :class:`_TopologyStatistics` and :class:`_ConnectedComponents` classes so their
@@ -488,14 +488,18 @@ class _ConnectedComponents:
 
     @wp.kernel(enable_backward=False)
     def _compress(labels: wp.array[wp.int32], changed: wp.array[wp.int32]):
-        # One thread per vertex. Pointer jumping: replace the parent with the
-        # grandparent, halving tree depth each round. Concurrent updates only ever
-        # shorten paths toward the same root, so this is safe without locking.
+        # One thread per vertex. Full path compression: point straight at the
+        # root. Chasing the whole chain each round (rather than a single
+        # grandparent jump) empirically converges in ~2 rounds regardless of graph
+        # diameter, where single-jump pointer jumping needs O(log diameter) rounds.
+        # Concurrent updates only ever shorten paths toward the same root, so the
+        # chase is safe without locking.
         v = wp.tid()
-        p = labels[v]
-        gp = labels[p]
-        if gp != p:
-            labels[v] = gp
+        r = labels[v]
+        while labels[r] != r:
+            r = labels[r]
+        if r != labels[v]:
+            labels[v] = r
             wp.atomic_max(changed, 0, 1)
 
     @wp.kernel(enable_backward=False)
@@ -532,9 +536,10 @@ def connected_components(
 
     The labeling runs on the Warp device (CPU or CUDA) as a parallel union-find:
     edge-parallel hooking attaches the larger of two component representatives
-    under the smaller, and vertex-parallel pointer jumping flattens the forest.
-    The two passes are iterated to a fixpoint, at which every component collapses
-    to a single root, and the roots are then renumbered to a contiguous range.
+    under the smaller, and vertex-parallel full path compression flattens the
+    forest. The two passes are iterated to a fixpoint, at which every component
+    collapses to a single root, and the roots are then renumbered to a contiguous
+    range.
 
     Args:
         indices: A 1-D :class:`warp.array` of ``int32`` triangle vertex indices,
