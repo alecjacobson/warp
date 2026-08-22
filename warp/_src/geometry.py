@@ -3,20 +3,21 @@
 
 """Geometry processing utilities for triangle meshes.
 
-The public entry point is :func:`triangle_mesh_topology_statistics`, which
-summarizes the combinatorial topology of a triangle mesh -- edge incidence and
-orientation, vertex manifoldness, and degeneracies -- from an oriented flat
-triangle-index array. It requires no vertex positions.
+The public entry points operate on a flat ``int32`` triangle-index array and
+require no vertex positions:
 
-The statistics are gathered on the Warp device (CPU or CUDA) with a
-sort-free pipeline: a per-triangle counting pass, a prefix scan, a scatter that
-builds a vertex-to-incident-corner CSR, and a per-vertex analysis pass. Only a
-single small counter array is read back to the host to assemble the returned
-:class:`TriangleMeshTopologyStatistics`.
+* :func:`triangle_mesh_topology_statistics` summarizes combinatorial topology --
+  edge incidence and orientation, vertex manifoldness, and degeneracies -- with a
+  sort-free count/scan/scatter pipeline that builds a vertex-to-incident-corner
+  CSR followed by a per-vertex analysis pass. Only a single small counter array
+  is read back to assemble the returned :class:`TriangleMeshTopologyStatistics`.
+* :func:`connected_components` labels the edge-connected components of the mesh
+  with a parallel union-find (edge-parallel hooking plus vertex-parallel pointer
+  jumping, iterated on-device to a fixpoint).
 
-Kernels and helpers that are specific to this routine are grouped in the private
-:class:`_TopologyStatistics` class so their names stay tied to the algorithm and
-do not clutter the module namespace.
+Kernels and helpers specific to each routine are grouped in the private
+:class:`_TopologyStatistics` and :class:`_ConnectedComponents` classes so their
+names stay tied to their algorithm and do not clutter the module namespace.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "TriangleMeshTopologyStatistics",
+    "connected_components",
     "triangle_mesh_topology_statistics",
 ]
 
@@ -154,16 +156,6 @@ class _TopologyStatistics:
         _, pa, na = _TopologyStatistics._corner_neighbors(indices, corner_a)
         _, pb, nb = _TopologyStatistics._corner_neighbors(indices, corner_b)
         return pa == pb or pa == nb or na == pb or na == nb
-
-    @wp.kernel(enable_backward=False)
-    def _check_bounds(indices: wp.array[wp.int32], num_points: wp.int32, bad: wp.array[wp.int32]):
-        i = indices[wp.tid()]
-        if i < 0 or i >= num_points:
-            wp.atomic_max(bad, 0, 1)
-
-    @wp.kernel(enable_backward=False)
-    def _max_vertex_index(indices: wp.array[wp.int32], out_max: wp.array[wp.int32]):
-        wp.atomic_max(out_max, 0, indices[wp.tid()])
 
     @wp.kernel(enable_backward=False)
     def _count_incident_corners(
@@ -292,6 +284,23 @@ class _TopologyStatistics:
             wp.atomic_add(raw_stats, _STAT_NUM_NONMANIFOLD_VERTICES, 1)
 
 
+# ---------------------------------------------------------------------------
+# Shared triangle-index validation
+# ---------------------------------------------------------------------------
+
+
+@wp.kernel(enable_backward=False)
+def _max_vertex_index(indices: wp.array[wp.int32], out_max: wp.array[wp.int32]):
+    wp.atomic_max(out_max, 0, indices[wp.tid()])
+
+
+@wp.kernel(enable_backward=False)
+def _check_index_bounds(indices: wp.array[wp.int32], num_points: wp.int32, bad: wp.array[wp.int32]):
+    i = indices[wp.tid()]
+    if i < 0 or i >= num_points:
+        wp.atomic_max(bad, 0, 1)
+
+
 def _resolve_num_points(indices: wp.array, num_points: int | None, device: DeviceLike) -> int:
     """Determine the vertex count of a mesh.
 
@@ -307,8 +316,37 @@ def _resolve_num_points(indices: wp.array, num_points: int | None, device: Devic
         return 0
 
     largest = wp.zeros(1, dtype=wp.int32, device=device)
-    wp.launch(_TopologyStatistics._max_vertex_index, dim=indices.shape[0], inputs=[indices, largest], device=device)
+    wp.launch(_max_vertex_index, dim=indices.shape[0], inputs=[indices, largest], device=device)
     return int(largest.numpy()[0]) + 1
+
+
+def _prepare_indices(indices: wp.array, num_points: int | None, device: DeviceLike | None):
+    """Validate a flat triangle-index array and resolve its vertex count.
+
+    Returns ``(indices, device, num_vertices)`` with ``indices`` moved to the
+    resolved device. Raises :exc:`ValueError` on a malformed array or any index
+    outside ``[0, num_vertices)`` (validated with a single host readback).
+    """
+    if indices.ndim != 1:
+        raise ValueError(f"`indices` must be a 1-D array, but got {indices.ndim} dimensions.")
+    if indices.dtype != wp.int32:
+        raise ValueError("`indices` must have dtype wp.int32.")
+    if indices.shape[0] % 3 != 0:
+        raise ValueError(f"`indices` length must be a multiple of 3, but got {indices.shape[0]}.")
+
+    device = wp.get_device(device) if device is not None else indices.device
+    if indices.device != device:
+        indices = indices.to(device)
+
+    num_vertices = _resolve_num_points(indices, num_points, device)
+
+    if indices.shape[0] > 0:
+        bad = wp.zeros(1, dtype=wp.int32, device=device)
+        wp.launch(_check_index_bounds, dim=indices.shape[0], inputs=[indices, num_vertices, bad], device=device)
+        if int(bad.numpy()[0]) != 0:
+            raise ValueError(f"`indices` contains values outside the range [0, {num_vertices}).")
+
+    return indices, device, num_vertices
 
 
 def triangle_mesh_topology_statistics(
@@ -356,32 +394,10 @@ def triangle_mesh_topology_statistics(
         ValueError: If ``indices`` is not 1-D ``int32``, its length is not a
             multiple of three, or any index is outside ``[0, num_points)``.
     """
-    if indices.ndim != 1:
-        raise ValueError(f"`indices` must be a 1-D array, but got {indices.ndim} dimensions.")
-    if indices.dtype != wp.int32:
-        raise ValueError("`indices` must have dtype wp.int32.")
-    if indices.shape[0] % 3 != 0:
-        raise ValueError(f"`indices` length must be a multiple of 3, but got {indices.shape[0]}.")
-
-    device = wp.get_device(device) if device is not None else indices.device
-    if indices.device != device:
-        indices = indices.to(device)
-
-    num_triangles = indices.shape[0] // 3
-    num_vertices = _resolve_num_points(indices, num_points, device)
-
-    # Validate index bounds up front so out-of-range indices cannot corrupt the
+    # Validate up front so out-of-range indices cannot corrupt the
     # counting/scatter passes (a single host readback).
-    if indices.shape[0] > 0:
-        bad = wp.zeros(1, dtype=wp.int32, device=device)
-        wp.launch(
-            _TopologyStatistics._check_bounds,
-            dim=indices.shape[0],
-            inputs=[indices, num_vertices, bad],
-            device=device,
-        )
-        if int(bad.numpy()[0]) != 0:
-            raise ValueError(f"`indices` contains values outside the range [0, {num_vertices}).")
+    indices, device, num_vertices = _prepare_indices(indices, num_points, device)
+    num_triangles = indices.shape[0] // 3
 
     raw_stats = wp.zeros(_STAT_COUNT, dtype=wp.int32, device=device)
 
@@ -427,3 +443,147 @@ def triangle_mesh_topology_statistics(
         num_unreferenced_vertices=int(stats[_STAT_NUM_UNREFERENCED_VERTICES]),
         num_degenerate_triangles=num_degenerate,
     )
+
+
+# ---------------------------------------------------------------------------
+# Connected components
+# ---------------------------------------------------------------------------
+
+# Backstop on the number of hook/compress rounds. Rounds converge in
+# O(log(num_vertices)) for the pointer-jumping scheme, so this ceiling is only a
+# guard against a would-be infinite loop and is never reached in practice.
+_CC_MAX_ROUNDS = 1000
+
+
+class _ConnectedComponents:
+    """Kernels for :func:`connected_components`.
+
+    ``labels`` is a union-find parent array: ``labels[v]`` points to another
+    vertex in ``v``'s component, always with a smaller-or-equal id, so the forest
+    is acyclic and each component's root is its minimum vertex id.
+    """
+
+    @wp.kernel(enable_backward=False)
+    def _init_labels(labels: wp.array[wp.int32]):
+        v = wp.tid()
+        labels[v] = v
+
+    @wp.kernel(enable_backward=False)
+    def _hook(indices: wp.array[wp.int32], labels: wp.array[wp.int32], changed: wp.array[wp.int32]):
+        # One thread per triangle. Each of the three edges hooks the endpoint with
+        # the larger current label toward the smaller one via atomic-min. Duplicate
+        # edges across triangles just repeat an idempotent min.
+        t = wp.tid()
+        for c in range(3):
+            a = indices[3 * t + c]
+            b = indices[3 * t + (c + 1) % 3]
+            la = labels[a]
+            lb = labels[b]
+            if la != lb:
+                lo = wp.min(la, lb)
+                hi = wp.max(la, lb)
+                old = wp.atomic_min(labels, hi, lo)
+                if lo < old:
+                    wp.atomic_max(changed, 0, 1)
+
+    @wp.kernel(enable_backward=False)
+    def _compress(labels: wp.array[wp.int32], changed: wp.array[wp.int32]):
+        # One thread per vertex. Pointer jumping: replace the parent with the
+        # grandparent, halving tree depth each round. Concurrent updates only ever
+        # shorten paths toward the same root, so this is safe without locking.
+        v = wp.tid()
+        p = labels[v]
+        gp = labels[p]
+        if gp != p:
+            labels[v] = gp
+            wp.atomic_max(changed, 0, 1)
+
+    @wp.kernel(enable_backward=False)
+    def _flag_roots(labels: wp.array[wp.int32], is_root: wp.array[wp.int32]):
+        v = wp.tid()
+        if labels[v] == v:
+            is_root[v] = 1
+        else:
+            is_root[v] = 0
+
+    @wp.kernel(enable_backward=False)
+    def _relabel(labels: wp.array[wp.int32], root_ids: wp.array[wp.int32], out: wp.array[wp.int32]):
+        # ``labels[v]`` is a root; ``root_ids`` is the inclusive scan of the root
+        # flags, so the 0-based component id of root ``r`` is ``root_ids[r] - 1``.
+        v = wp.tid()
+        out[v] = root_ids[labels[v]] - 1
+
+
+def connected_components(
+    indices: wp.array[wp.int32],
+    num_points: int | None = None,
+    *,
+    device: DeviceLike | None = None,
+) -> tuple[wp.array, int]:
+    """Label the edge-connected components of a triangle mesh.
+
+    Two vertices are in the same component when they are joined by a path of
+    triangle edges. Each oriented triangle ``(i, j, k)`` contributes the
+    undirected edges ``(i, j)``, ``(j, k)``, ``(k, i)``; a component may therefore
+    contain non-manifold edges or vertices (the connectivity is purely through
+    shared edges, matching gptoolbox's ``connected_components``). Vertices not
+    referenced by any triangle -- including the lone vertex of a triangle with all
+    three indices equal -- each form their own singleton component.
+
+    The labeling runs on the Warp device (CPU or CUDA) as a parallel union-find:
+    edge-parallel hooking attaches the larger of two component representatives
+    under the smaller, and vertex-parallel pointer jumping flattens the forest.
+    The two passes are iterated to a fixpoint, at which every component collapses
+    to a single root, and the roots are then renumbered to a contiguous range.
+
+    Args:
+        indices: A 1-D :class:`warp.array` of ``int32`` triangle vertex indices,
+            with length a multiple of three.
+        num_points: Number of vertices. If ``None``, inferred as one plus the
+            largest index, which requires a host readback.
+        device: Device on which to run. Defaults to the device of ``indices``.
+
+    Returns:
+        A tuple ``(labels, num_components)`` where ``labels`` is a
+        ``(num_points,)`` ``int32`` :class:`warp.array` on ``device`` giving each
+        vertex's component id in ``[0, num_components)``, and ``num_components`` is
+        the number of connected components as a Python ``int``.
+
+    Raises:
+        ValueError: If ``indices`` is not 1-D ``int32``, its length is not a
+            multiple of three, or any index is outside ``[0, num_points)``.
+    """
+    indices, device, num_vertices = _prepare_indices(indices, num_points, device)
+    num_triangles = indices.shape[0] // 3
+
+    if num_vertices == 0:
+        return wp.zeros(0, dtype=wp.int32, device=device), 0
+
+    labels = wp.empty(num_vertices, dtype=wp.int32, device=device)
+    wp.launch(_ConnectedComponents._init_labels, dim=num_vertices, inputs=[labels], device=device)
+
+    if num_triangles > 0:
+        changed = wp.zeros(1, dtype=wp.int32, device=device)
+        rounds = 0
+        while True:
+            changed.zero_()
+            wp.launch(_ConnectedComponents._hook, dim=num_triangles, inputs=[indices, labels, changed], device=device)
+            wp.launch(_ConnectedComponents._compress, dim=num_vertices, inputs=[labels, changed], device=device)
+            rounds += 1
+            if int(changed.numpy()[0]) == 0:
+                break
+            if rounds >= _CC_MAX_ROUNDS:
+                raise RuntimeError(
+                    f"connected_components did not converge within {_CC_MAX_ROUNDS} rounds; this is a bug."
+                )
+
+    # Renumber the (now fully flattened) roots to a contiguous [0, num_components).
+    is_root = wp.empty(num_vertices, dtype=wp.int32, device=device)
+    wp.launch(_ConnectedComponents._flag_roots, dim=num_vertices, inputs=[labels, is_root], device=device)
+    root_ids = wp.empty(num_vertices, dtype=wp.int32, device=device)
+    array_scan(is_root, root_ids, inclusive=True)
+    num_components = int(root_ids.numpy()[num_vertices - 1])
+
+    out = wp.empty(num_vertices, dtype=wp.int32, device=device)
+    wp.launch(_ConnectedComponents._relabel, dim=num_vertices, inputs=[labels, root_ids, out], device=device)
+    return out, num_components

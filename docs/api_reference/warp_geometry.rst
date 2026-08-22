@@ -14,4 +14,5 @@ API
    :toctree: _generated
 
    TriangleMeshTopologyStatistics
+   connected_components
    triangle_mesh_topology_statistics
