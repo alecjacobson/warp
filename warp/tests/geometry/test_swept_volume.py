@@ -48,11 +48,45 @@ def _grid_points(lower, upper, dims):
     return lower + idx * spacing, idx, spacing
 
 
+@wp.kernel
+def _signed_distance_to_mesh_kernel(
+    mesh_id: wp.uint64,
+    points: wp.array[wp.vec3],
+    max_dist: wp.float32,
+    out: wp.array[wp.float32],
+):
+    i = wp.tid()
+    query = wp.mesh_query_point_sign_winding_number(mesh_id, points[i], max_dist)
+    if query.result:
+        closest = wp.mesh_eval_position(mesh_id, query.face, query.u, query.v)
+        out[i] = query.sign * wp.length(points[i] - closest)
+    else:
+        out[i] = max_dist
+
+
+def _signed_distance_to_mesh(verts, indices, points, device):
+    """Signed distance from every point in ``points`` to the surface ``(verts, indices)``."""
+    mesh = wp.Mesh(verts, indices, support_winding_number=True)
+    pts = wp.array(points.astype(np.float32), dtype=wp.vec3, device=device)
+    out = wp.empty(len(points), dtype=wp.float32, device=device)
+    wp.launch(
+        _signed_distance_to_mesh_kernel,
+        dim=len(points),
+        inputs=[mesh.id, pts, 1.0e6],
+        outputs=[out],
+        device=device,
+    )
+    return out.numpy()
+
+
 def test_swept_sphere_is_a_capsule(test, device):
-    # A sphere of radius r translated along the x axis from -1 to 1 sweeps a
-    # capsule: a segment [-1, 1] on x, dilated by r. The dense field should match
-    # the analytic capsule SDF to within the icosphere's polygonal error plus one
-    # voxel.
+    """Compare the field of a translating sphere against the analytic capsule SDF.
+
+    A sphere of radius ``r`` translated along the x axis from -1 to 1 sweeps a
+    capsule: the segment ``[-1, 1]`` on x, dilated by ``r``. The dense field
+    should match the analytic capsule SDF to within the icosphere's polygonal
+    error plus one voxel.
+    """
     radius = 0.5
     mesh = _sphere_mesh(device, radius=radius, subdivisions=3)
     tr = _translation_transforms([[[x, 0.0, 0.0] for x in np.linspace(-1.0, 1.0, 21)]])
@@ -72,7 +106,7 @@ def test_swept_sphere_is_a_capsule(test, device):
 
 
 def test_swept_sphere_mesh_bounds(test, device):
-    # The extracted envelope of the swept sphere should span the capsule's AABB.
+    """Check that the extracted envelope of a swept sphere spans the capsule's AABB."""
     radius = 0.5
     mesh = _sphere_mesh(device, radius=radius)
     tr = _translation_transforms([[[x, 0.0, 0.0] for x in np.linspace(-1.0, 1.0, 21)]])
@@ -88,8 +122,11 @@ def test_swept_sphere_mesh_bounds(test, device):
 
 
 def test_static_single_pose_matches_mesh(test, device):
-    # With a single identity pose the field reduces to the mesh's own SDF, so the
-    # zero isosurface should recover a sphere of the input radius.
+    """Check that a single identity pose recovers the input mesh.
+
+    With one pose the field reduces to the mesh's own SDF, so the zero
+    isosurface should recover a sphere of the input radius.
+    """
     radius = 0.7
     mesh = _sphere_mesh(device, radius=radius, subdivisions=3)
     tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
@@ -104,8 +141,11 @@ def test_static_single_pose_matches_mesh(test, device):
 
 
 def test_union_of_two_static_spheres(test, device):
-    # Two separated spheres yield two connected components and a field that is the
-    # per-sphere minimum. Sample the midpoint region to confirm the union.
+    """Check that two separated spheres give the per-sphere minimum field.
+
+    Two separated spheres yield two connected components; the midpoint region is
+    sampled to confirm the union.
+    """
     radius = 0.4
     left = _sphere_mesh(device, radius=radius)
     right = _sphere_mesh(device, radius=radius)
@@ -126,8 +166,12 @@ def test_union_of_two_static_spheres(test, device):
 
 
 def test_conservative_encloses_all_poses(test, device):
-    # Every input vertex, at every sampled pose, must lie inside the envelope:
-    # the field there must be non-positive (within one voxel of the surface).
+    """Check that every stamped pose stays inside the envelope.
+
+    Every input vertex, at every sampled pose, must lie inside the field's zero
+    level (within the nearest-node rounding error), and inside the mesh
+    extracted at the documented conservative ``iso``.
+    """
     radius = 0.5
     mesh = _sphere_mesh(device, radius=radius)
     points = mesh.points.numpy().astype(np.float64)
@@ -150,13 +194,24 @@ def test_conservative_encloses_all_poses(test, device):
     d = fnp[node[:, 0], node[:, 1], node[:, 2]]
     # Interior/boundary vertices should be at or inside the surface, allowing the
     # nearest-node rounding of up to half a voxel diagonal.
-    test.assertLessEqual(float(d.max()), 0.5 * float(np.linalg.norm(spacing)) + 1e-4)
+    covering_radius = 0.5 * float(np.linalg.norm(spacing))
+    test.assertLessEqual(float(d.max()), covering_radius + 1e-4)
+
+    # The documented conservative level must enclose the poses in the extracted
+    # mesh too, not just in the sampled field.
+    verts, indices = geo.swept_volume([mesh], tr, voxel_size=voxel, iso=covering_radius, device=device)
+    wp.synchronize_device()
+    test.assertGreater(len(verts.numpy()), 0)
+    signed = _signed_distance_to_mesh(verts, indices, posed, device)
+    test.assertLessEqual(float(signed.max()), 0.0)
 
 
 def test_rotation_pose(test, device):
-    # An off-center sphere rotated 90 degrees about z sweeps a quarter-annulus;
-    # the envelope's radial extent must reach the rotated positions. This checks
-    # that the quaternion inverse-transform path is correct.
+    """Exercise the quaternion inverse-transform path with a rotated pose.
+
+    An off-center sphere rotated 90 degrees about z sweeps a quarter-annulus, so
+    the envelope's radial extent must reach the rotated positions.
+    """
     radius = 0.3
     # Rest-pose sphere centered at +x, so a rotation about z sweeps an arc.
     points, indices = U.icosphere(subdivisions=2, radius=radius, center=(1.0, 0.0, 0.0))
@@ -182,8 +237,7 @@ def test_rotation_pose(test, device):
 
 
 def test_winding_number_sign_mode(test, device):
-    # The winding-number classifier should give the same capsule as the normal
-    # classifier for a watertight sphere.
+    """Check that both sign modes agree on a watertight mesh."""
     radius = 0.5
     mesh = _sphere_mesh(device, radius=radius, support_winding_number=True)
     tr = _translation_transforms([[[x, 0.0, 0.0] for x in np.linspace(-1.0, 1.0, 21)]])
@@ -238,11 +292,14 @@ def _open_box_mesh(device, half=0.5, support_winding_number=False):
 
 
 def test_winding_number_handles_non_watertight(test, device):
-    # A robot's visual meshes are open shells like this box-with-a-missing-face.
-    # The winding number stays robust on them: it classifies the shell interior
-    # as inside (negative field). The closest-face-normal test cannot be relied
-    # on here -- it even disagrees between CPU and CUDA on the same point -- which
-    # is why the USD example defaults to the winding number.
+    """Check that the winding number classifies the interior of an open shell.
+
+    A robot's visual meshes are open shells like this box with a missing face.
+    The winding number stays robust on them and reports the shell interior as
+    inside (negative field). The closest-face-normal classifier cannot be relied
+    on here, since it even disagrees between CPU and CUDA on the same point,
+    which is why the USD example defaults to the winding number.
+    """
     mesh = _open_box_mesh(device, half=0.5, support_winding_number=True)
     tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
 
@@ -264,7 +321,7 @@ def test_winding_number_handles_non_watertight(test, device):
 
 
 def test_resolution_argument(test, device):
-    # Passing an explicit resolution should produce a field of that shape.
+    """Check that an explicit resolution produces a field of that shape."""
     mesh = _sphere_mesh(device, radius=0.5)
     tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
     field, _, _ = geo.swept_volume_field([mesh], tr, resolution=(16, 20, 24), device=device)
@@ -273,6 +330,7 @@ def test_resolution_argument(test, device):
 
 
 def test_invalid_arguments(test, device):
+    """Check that malformed arguments raise ``ValueError``."""
     mesh = _sphere_mesh(device, radius=0.5)
     tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
     with test.assertRaises(ValueError):
@@ -284,6 +342,16 @@ def test_invalid_arguments(test, device):
         geo.swept_volume_field(
             [mesh], _translation_transforms([[[0.0] * 3], [[0.0] * 3]]), voxel_size=0.1, device=device
         )
+    with test.assertRaises(ValueError):
+        geo.swept_volume_field([mesh], tr, voxel_size=0.0, device=device)
+    with test.assertRaises(ValueError):
+        geo.swept_volume_field([mesh], tr, voxel_size=-0.05, device=device)
+    with test.assertRaises(ValueError):
+        geo.swept_volume_field([mesh], np.zeros((1, 0, 7), dtype=np.float32), voxel_size=0.05, device=device)
+    with test.assertRaises(ValueError):
+        geo.swept_volume_field([mesh], tr, resolution=(16, 20), device=device)
+    with test.assertRaises(ValueError):
+        geo.swept_volume_field([mesh], tr, resolution=(16, 20, 1), device=device)
 
 
 devices = get_test_devices()
