@@ -204,6 +204,36 @@ def test_random_soups(test, device):
         _assert_matches_reference(test, tris, num_points, device)
 
 
+def test_graph_capture(test, device):
+    if not wp.get_device(device).is_cuda:
+        test.skipTest("CUDA graph capture requires a CUDA device")
+
+    tris = [(0, 1, 2), (2, 3, 4), (5, 6, 7), (8, 9, 10)]
+    num_points = 11
+    ref_labels, ref_k = _reference(tris, num_points)
+    idx = wp.array(np.asarray(tris, dtype=np.int32).reshape(-1), dtype=wp.int32, device=device)
+
+    # Eager mode returns a Python int; a warm-up also sizes scratch before capture.
+    _, warmup_k = warp.geometry.connected_components(idx, num_points=num_points, device=device)
+    test.assertIsInstance(warmup_k, int)
+    wp.synchronize_device(device)
+
+    with wp.ScopedCapture(device=device) as cap:
+        labels, count = warp.geometry.connected_components(idx, num_points=num_points, device=device)
+
+    # During capture the count is a device array, resolved only after replay.
+    test.assertTrue(hasattr(count, "numpy"))
+    wp.capture_launch(cap.graph)
+    wp.synchronize_device(device)
+    test.assertEqual(int(count.numpy()[0]), ref_k)
+    test.assertEqual(_partition(labels.numpy()), _partition(ref_labels))
+
+    # The graph is reusable: a second replay reproduces the result.
+    wp.capture_launch(cap.graph)
+    wp.synchronize_device(device)
+    test.assertEqual(int(count.numpy()[0]), ref_k)
+
+
 def test_invalid_inputs(test, device):
     with test.assertRaises(ValueError):
         bad = wp.array(np.array([0, 1], dtype=np.int32), dtype=wp.int32, device=device)
@@ -250,6 +280,7 @@ add_function_test(
 )
 add_function_test(TestConnectedComponents, "test_infer_num_points", test_infer_num_points, devices=devices)
 add_function_test(TestConnectedComponents, "test_random_soups", test_random_soups, devices=devices)
+add_function_test(TestConnectedComponents, "test_graph_capture", test_graph_capture, devices=devices)
 add_function_test(TestConnectedComponents, "test_invalid_inputs", test_invalid_inputs, devices=devices)
 
 

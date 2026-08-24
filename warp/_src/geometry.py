@@ -324,8 +324,10 @@ def _prepare_indices(indices: wp.array, num_points: int | None, device: DeviceLi
     """Validate a flat triangle-index array and resolve its vertex count.
 
     Returns ``(indices, device, num_vertices)`` with ``indices`` moved to the
-    resolved device. Raises :exc:`ValueError` on a malformed array or any index
-    outside ``[0, num_vertices)`` (validated with a single host readback).
+    resolved device. Structural checks (rank, dtype, length) are always applied.
+    Vertex-count inference and the index-bounds check each need a host readback,
+    so they are skipped while the device is capturing a CUDA graph; there,
+    ``num_points`` is required and the caller is responsible for valid indices.
     """
     if indices.ndim != 1:
         raise ValueError(f"`indices` must be a 1-D array, but got {indices.ndim} dimensions.")
@@ -337,6 +339,13 @@ def _prepare_indices(indices: wp.array, num_points: int | None, device: DeviceLi
     device = wp.get_device(device) if device is not None else indices.device
     if indices.device != device:
         indices = indices.to(device)
+
+    if device.is_capturing:
+        if num_points is None:
+            raise ValueError("`num_points` must be provided while capturing a CUDA graph (inference needs a readback).")
+        if num_points < 0:
+            raise ValueError(f"`num_points` must be non-negative, but got {num_points}.")
+        return indices, device, num_points
 
     num_vertices = _resolve_num_points(indices, num_points, device)
 
@@ -449,9 +458,10 @@ def triangle_mesh_topology_statistics(
 # Connected components
 # ---------------------------------------------------------------------------
 
-# Backstop on the number of hook/compress rounds. Rounds converge in
-# O(log(num_vertices)) for the pointer-jumping scheme, so this ceiling is only a
-# guard against a would-be infinite loop and is never reached in practice.
+# Backstop on the number of hook/compress rounds. Full path compression converges
+# in ~2 rounds regardless of graph diameter, so this ceiling only guards against a
+# would-be infinite loop (and bounds the device-driven capture loop); it is never
+# reached in practice.
 _CC_MAX_ROUNDS = 1000
 
 
@@ -503,6 +513,26 @@ class _ConnectedComponents:
             wp.atomic_max(changed, 0, 1)
 
     @wp.kernel(enable_backward=False)
+    def _record(
+        changed: wp.array[wp.int32],
+        round_count: wp.array[wp.int32],
+        max_rounds: wp.int32,
+        condition: wp.array[wp.int32],
+    ):
+        # Single-thread bookkeeping for the device-driven (graph-capturable) loop:
+        # continue while the last round made progress and the cap is not reached.
+        round_count[0] += 1
+        if changed[0] != 0 and round_count[0] < max_rounds:
+            condition[0] = 1
+        else:
+            condition[0] = 0
+
+    @wp.kernel(enable_backward=False)
+    def _read_count(root_ids: wp.array[wp.int32], n: wp.int32, count: wp.array[wp.int32]):
+        # The inclusive scan's last element is the number of components.
+        count[0] = root_ids[n - 1]
+
+    @wp.kernel(enable_backward=False)
     def _flag_roots(labels: wp.array[wp.int32], is_root: wp.array[wp.int32]):
         v = wp.tid()
         if labels[v] == v:
@@ -523,7 +553,7 @@ def connected_components(
     num_points: int | None = None,
     *,
     device: DeviceLike | None = None,
-) -> tuple[wp.array, int]:
+) -> tuple[wp.array, int | wp.array]:
     """Label the edge-connected components of a triangle mesh.
 
     Two vertices are in the same component when they are joined by a path of
@@ -551,12 +581,23 @@ def connected_components(
     Returns:
         A tuple ``(labels, num_components)`` where ``labels`` is a
         ``(num_points,)`` ``int32`` :class:`warp.array` on ``device`` giving each
-        vertex's component id in ``[0, num_components)``, and ``num_components`` is
-        the number of connected components as a Python ``int``.
+        vertex's component id in ``[0, num_components)``. In eager mode
+        ``num_components`` is a Python ``int``. While a CUDA graph is being
+        captured the count is not known until replay, so a single-element
+        ``int32`` :class:`warp.array` is returned instead; read it after
+        :func:`warp.capture_launch`.
 
     Raises:
         ValueError: If ``indices`` is not 1-D ``int32``, its length is not a
-            multiple of three, or any index is outside ``[0, num_points)``.
+            multiple of three, or (eager mode only) any index is outside
+            ``[0, num_points)``.
+
+    Note:
+        The whole routine is CUDA-graph capturable: the convergence loop is
+        driven on-device with :func:`warp.capture_while`. Because validation and
+        vertex-count inference need a host readback, during capture ``num_points``
+        is required and indices are assumed in range. A warm-up call before
+        capture is recommended so scratch allocations are sized beforehand.
     """
     indices, device, num_vertices = _prepare_indices(indices, num_points, device)
     num_triangles = indices.shape[0] // 3
@@ -569,26 +610,57 @@ def connected_components(
 
     if num_triangles > 0:
         changed = wp.zeros(1, dtype=wp.int32, device=device)
-        rounds = 0
-        while True:
+
+        def _round():
             changed.zero_()
             wp.launch(_ConnectedComponents._hook, dim=num_triangles, inputs=[indices, labels, changed], device=device)
             wp.launch(_ConnectedComponents._compress, dim=num_vertices, inputs=[labels, changed], device=device)
-            rounds += 1
-            if int(changed.numpy()[0]) == 0:
-                break
-            if rounds >= _CC_MAX_ROUNDS:
-                raise RuntimeError(
-                    f"connected_components did not converge within {_CC_MAX_ROUNDS} rounds; this is a bug."
+
+        if device.is_capturing:
+            # Device-driven loop: a bookkeeping kernel updates the loop condition
+            # so no per-round host readback is needed under graph capture.
+            round_count = wp.zeros(1, dtype=wp.int32, device=device)
+            condition = wp.ones(1, dtype=wp.int32, device=device)  # run the body at least once
+
+            def _body():
+                _round()
+                wp.launch(
+                    _ConnectedComponents._record,
+                    dim=1,
+                    inputs=[changed, round_count, wp.int32(_CC_MAX_ROUNDS), condition],
+                    device=device,
                 )
+
+            wp.capture_while(condition, _body)
+        else:
+            rounds = 0
+            while True:
+                _round()
+                rounds += 1
+                if int(changed.numpy()[0]) == 0:
+                    break
+                if rounds >= _CC_MAX_ROUNDS:
+                    raise RuntimeError(
+                        f"connected_components did not converge within {_CC_MAX_ROUNDS} rounds; this is a bug."
+                    )
 
     # Renumber the (now fully flattened) roots to a contiguous [0, num_components).
     is_root = wp.empty(num_vertices, dtype=wp.int32, device=device)
     wp.launch(_ConnectedComponents._flag_roots, dim=num_vertices, inputs=[labels, is_root], device=device)
     root_ids = wp.empty(num_vertices, dtype=wp.int32, device=device)
     array_scan(is_root, root_ids, inclusive=True)
-    num_components = int(root_ids.numpy()[num_vertices - 1])
 
     out = wp.empty(num_vertices, dtype=wp.int32, device=device)
     wp.launch(_ConnectedComponents._relabel, dim=num_vertices, inputs=[labels, root_ids, out], device=device)
-    return out, num_components
+
+    if device.is_capturing:
+        num_components = wp.empty(1, dtype=wp.int32, device=device)
+        wp.launch(
+            _ConnectedComponents._read_count,
+            dim=1,
+            inputs=[root_ids, wp.int32(num_vertices), num_components],
+            device=device,
+        )
+        return out, num_components
+
+    return out, int(root_ids.numpy()[num_vertices - 1])
