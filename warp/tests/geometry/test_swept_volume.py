@@ -13,7 +13,7 @@ from warp.tests.geometry import utils as U
 from warp.tests.unittest_utils import *
 
 
-def _sphere_mesh(device, radius=0.5, subdivisions=3, support_winding_number=False):
+def _sphere_mesh(device, radius=0.5, subdivisions=3, support_winding_number=True):
     points, indices = U.icosphere(subdivisions=subdivisions, radius=radius)
     return wp.Mesh(
         wp.array(points, dtype=wp.vec3, device=device),
@@ -218,6 +218,7 @@ def test_rotation_pose(test, device):
     mesh = wp.Mesh(
         wp.array(points, dtype=wp.vec3, device=device),
         wp.array(indices, dtype=wp.int32, device=device),
+        support_winding_number=True,
     )
 
     angles = np.linspace(0.0, np.pi / 2.0, 13)
@@ -236,22 +237,21 @@ def test_rotation_pose(test, device):
     test.assertGreater(v[:, 1].max(), 1.0 + radius - 0.06)
 
 
-def test_winding_number_sign_mode(test, device):
-    """Check that both sign modes agree on a watertight mesh."""
+def test_sign_modes_agree_on_watertight_mesh(test, device):
+    """Check that the opt-in NORMAL classifier matches the default on watertight input."""
     radius = 0.5
-    mesh = _sphere_mesh(device, radius=radius, support_winding_number=True)
+    mesh = _sphere_mesh(device, radius=radius)
     tr = _translation_transforms([[[x, 0.0, 0.0] for x in np.linspace(-1.0, 1.0, 21)]])
 
-    verts, _ = geo.swept_volume(
-        [mesh], tr, voxel_size=0.05, sign_mode=geo.SweptVolumeSign.WINDING_NUMBER, device=device
-    )
-    wp.synchronize_device()
-    v = verts.numpy()
-    np.testing.assert_allclose(v.min(axis=0), [-1.0 - radius, -radius, -radius], atol=0.06)
-    np.testing.assert_allclose(v.max(axis=0), [1.0 + radius, radius, radius], atol=0.06)
+    for sign_mode in (geo.SweptVolumeSign.WINDING_NUMBER, geo.SweptVolumeSign.NORMAL):
+        verts, _ = geo.swept_volume([mesh], tr, voxel_size=0.05, sign_mode=sign_mode, device=device)
+        wp.synchronize_device()
+        v = verts.numpy()
+        np.testing.assert_allclose(v.min(axis=0), [-1.0 - radius, -radius, -radius], atol=0.06)
+        np.testing.assert_allclose(v.max(axis=0), [1.0 + radius, radius, radius], atol=0.06)
 
 
-def _open_box_mesh(device, half=0.5, support_winding_number=False):
+def _open_box_mesh(device, half=0.5, support_winding_number=True):
     """An axis-aligned box with its +z face removed: a non-watertight shell whose
     interior the closest-face-normal test cannot classify reliably."""
     h = half
@@ -300,12 +300,10 @@ def test_winding_number_handles_non_watertight(test, device):
     on here, since it even disagrees between CPU and CUDA on the same point,
     which is why the USD example defaults to the winding number.
     """
-    mesh = _open_box_mesh(device, half=0.5, support_winding_number=True)
+    mesh = _open_box_mesh(device, half=0.5)
     tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
 
-    field, lower, upper = geo.swept_volume_field(
-        [mesh], tr, voxel_size=0.05, sign_mode=geo.SweptVolumeSign.WINDING_NUMBER, device=device
-    )
+    field, lower, upper = geo.swept_volume_field([mesh], tr, voxel_size=0.05, device=device)
     wp.synchronize_device()
     fnp = field.numpy()
 
@@ -353,8 +351,9 @@ def test_invalid_arguments(test, device):
     with test.assertRaises(ValueError):
         geo.swept_volume_field([mesh], tr, resolution=(16, 20, 1), device=device)
     with test.assertRaises(ValueError):
-        # The winding number needs a mesh built with support_winding_number=True.
-        geo.swept_volume_field([mesh], tr, voxel_size=0.05, sign_mode=geo.SweptVolumeSign.WINDING_NUMBER, device=device)
+        # The default classifier needs a mesh built with support_winding_number=True.
+        plain = _sphere_mesh(device, radius=0.5, support_winding_number=False)
+        geo.swept_volume_field([plain], tr, voxel_size=0.05, device=device)
 
 
 devices = get_test_devices()
@@ -376,7 +375,12 @@ add_function_test(
     TestSweptVolume, "test_conservative_encloses_all_poses", test_conservative_encloses_all_poses, devices=devices
 )
 add_function_test(TestSweptVolume, "test_rotation_pose", test_rotation_pose, devices=devices)
-add_function_test(TestSweptVolume, "test_winding_number_sign_mode", test_winding_number_sign_mode, devices=devices)
+add_function_test(
+    TestSweptVolume,
+    "test_sign_modes_agree_on_watertight_mesh",
+    test_sign_modes_agree_on_watertight_mesh,
+    devices=devices,
+)
 add_function_test(
     TestSweptVolume,
     "test_winding_number_handles_non_watertight",
