@@ -75,7 +75,7 @@ ps.set_SSAA_factor(4)
 ps.set_window_size(W, H)
 
 env = ps.register_surface_mesh("swept volume", V, F, color=(0.93, 0.42, 0.20), material="wax", smooth_shade=True)
-env.set_transparency(0.4)
+env.set_transparency(0.6)
 
 arm = []
 for i, m in enumerate(meshes):
