@@ -50,17 +50,33 @@ meshes, env_transforms, _ = load_usd_assembly(USD, num_samples=ENVELOPE_SAMPLES,
 _, anim_transforms, _ = load_usd_assembly(USD, num_samples=N_FRAMES, device=device)
 print(f"loaded {len(meshes)} meshes; envelope from {ENVELOPE_SAMPLES} poses, {N_FRAMES} animation frames")
 
-cache = f"/tmp/_env_{VOX}_{ENVELOPE_SAMPLES}.npz"
+# Cache the dense field so the iso level can be re-extracted without recomputing.
+cache = f"/tmp/_field_{VOX}_{ENVELOPE_SAMPLES}.npz"
 if os.path.exists(cache):
     d = np.load(cache)
-    V, F = d["V"], d["F"]
+    field_np, lo, up = d["field"], d["lo"], d["up"]
 else:
-    with wp.ScopedTimer("swept_volume", print=True):
-        verts, indices = geo.swept_volume(meshes, env_transforms, voxel_size=VOX, sign_mode=geo.SweptVolumeSign.WINDING_NUMBER, device=device)
+    with wp.ScopedTimer("swept_volume_field", print=True):
+        field, lower, upper = geo.swept_volume_field(meshes, env_transforms, voxel_size=VOX, sign_mode=geo.SweptVolumeSign.WINDING_NUMBER, device=device)
         wp.synchronize_device()
-    V = verts.numpy()
-    F = indices.numpy().reshape(-1, 3)
-    np.savez(cache, V=V, F=F)
+    field_np = field.numpy()
+    lo = np.array([lower[0], lower[1], lower[2]])
+    up = np.array([upper[0], upper[1], upper[2]])
+    np.savez(cache, field=field_np, lo=lo, up=up)
+
+# Conservative iso = grid covering radius = 0.5*hypot(hx,hy,hz) (= sqrt(3)/2 * h),
+# so every stamped arm pose is guaranteed enclosed despite marching-cubes error.
+spacing = (up - lo) / (np.array(field_np.shape) - 1)
+sigma = 0.5 * float(np.linalg.norm(spacing))
+print(f"conservative iso sigma = {sigma * 1000:.1f} mm (spacing {np.round(spacing, 4)})")
+verts, indices = wp.MarchingCubes.extract_surface_marching_cubes(
+    wp.array(field_np, dtype=wp.float32, device=device),
+    threshold=sigma,
+    domain_bounds_lower_corner=wp.vec3(*lo),
+    domain_bounds_upper_corner=wp.vec3(*up),
+)
+V = verts.numpy()
+F = indices.numpy().reshape(-1, 3)
 print(f"envelope: {len(V)} verts, {len(F)} tris")
 
 ps.set_allow_headless_backends(True)

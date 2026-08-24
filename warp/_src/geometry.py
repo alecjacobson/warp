@@ -2111,8 +2111,15 @@ def swept_volume(
             ``resolution`` is given); see :func:`swept_volume_field`.
         max_dist: Maximum closest-point search distance; see
             :func:`swept_volume_field`.
-        iso: Field level to extract. ``0.0`` traces the exact envelope; a small
-            positive value dilates it outward for a conservative result.
+        iso: Field level to extract. ``0.0`` traces the envelope through the
+            sampled poses; a positive value dilates it outward. Marching cubes
+            reconstructs the 1-Lipschitz field by linear interpolation, which at
+            sharp convex features overestimates the field and pulls the surface
+            inside the true one, so a stamped pose can poke through the ``0.0``
+            isosurface by up to the grid's covering radius. Extracting at
+            ``iso = 0.5 * hypot(hx, hy, hz)`` (the covering radius, ``sqrt(3)/2 *
+            voxel_size`` for a cubic cell of the actual spacings ``hx, hy, hz``)
+            guarantees every stamped pose stays enclosed.
         sign_mode: Inside/outside classification method (see
             :class:`SweptVolumeSign`).
         device: Device on which to run. Defaults to the device of the first mesh.
