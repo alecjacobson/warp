@@ -16,22 +16,23 @@
 # rigid, so one closest-point query per pose is enough), then extracts the zero
 # isosurface with marching cubes. This is the dense-stamping baseline: no root
 # finding or narrow band, so motion *between* the sampled poses is not
-# conservatively bounded -- sample finely enough for the tolerance you need.
+# conservatively bounded. Sample finely enough for the tolerance you need.
 #
 # By default the example animates a procedural two-link arm, so it runs with no
 # external assets. Pass --usd to run on an animated USD hierarchy instead, such
 # as the UR10 arm from the swept-volume feature request (GH-1824).
 #
-# Inside/outside is classified with --sign (default 'auto'): the winding number
-# for USD assemblies -- CAD parts like the UR10 are open, non-watertight visual
-# shells, and the faster closest-face-normal classifier is incoherent on them
-# (spurious interior pockets, hundreds of disconnected junk shells) -- and the
-# normal classifier for the watertight procedural arm.
+# Inside/outside is classified with --sign (default 'auto'), which picks the
+# winding number for USD assemblies and the faster closest-face-normal
+# classifier for the watertight procedural arm. CAD parts like the UR10 are open,
+# non-watertight visual shells, on which the normal classifier is incoherent
+# (spurious interior pockets, hundreds of disconnected junk shells).
 #
 #   uv run --with usd-core warp/examples/geometry/example_swept_volume.py
 #   uv run --with usd-core warp/examples/geometry/example_swept_volume.py --usd ur10_animated.usda
-#   uv run --with usd-core --with polyscope warp/examples/geometry/example_swept_volume.py --polyscope
 ###########################################################################
+
+import math
 
 import numpy as np
 
@@ -81,19 +82,6 @@ def quat_pitch(angle):
     return np.array([0.0, np.sin(0.5 * angle), 0.0, np.cos(0.5 * angle)], dtype=np.float32)
 
 
-def _rotate_np(q, v):
-    """Rotate row vectors ``v`` (..., 3) by quaternion ``q`` = (x, y, z, w)."""
-    x, y, z, w = q
-    R = np.array(
-        [
-            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-        ]
-    )
-    return v @ R.T
-
-
 def compose(a, b):
     """Compose two transforms given as (7,) arrays: result applies b then a."""
     ta = wp.transform(wp.vec3(*a[:3]), wp.quat(*a[3:]))
@@ -114,10 +102,15 @@ def procedural_arm(num_samples=24, device=None):
     upper_pts, upper_idx = box_mesh((0.25, 0.25, 1.2), center=(0.0, 0.0, 0.6))
     fore_pts, fore_idx = box_mesh((0.2, 0.2, 1.0), center=(0.0, 0.0, 0.5))
 
+    # Built with winding-number support so --sign winding works here too, even
+    # though these boxes are watertight and the normal classifier suffices.
     meshes = [
-        wp.Mesh(wp.array(base_pts, dtype=wp.vec3, device=device), wp.array(base_idx, dtype=wp.int32, device=device)),
-        wp.Mesh(wp.array(upper_pts, dtype=wp.vec3, device=device), wp.array(upper_idx, dtype=wp.int32, device=device)),
-        wp.Mesh(wp.array(fore_pts, dtype=wp.vec3, device=device), wp.array(fore_idx, dtype=wp.int32, device=device)),
+        wp.Mesh(
+            wp.array(pts, dtype=wp.vec3, device=device),
+            wp.array(idx, dtype=wp.int32, device=device),
+            support_winding_number=True,
+        )
+        for pts, idx in ((base_pts, base_idx), (upper_pts, upper_idx), (fore_pts, fore_idx))
     ]
 
     # Joint frames: the shoulder sits atop the base (z=0.3), the elbow atop the
@@ -186,7 +179,11 @@ def load_usd_assembly(path, num_samples=24, device=None):
         points = geom.GetPointsAttr().Get()
         if not points:
             continue
-        faces = _triangulate(geom.GetFaceVertexCountsAttr().Get(), geom.GetFaceVertexIndicesAttr().Get())
+        counts = geom.GetFaceVertexCountsAttr().Get()
+        vertex_indices = geom.GetFaceVertexIndicesAttr().Get()
+        if not counts or not vertex_indices:
+            continue
+        faces = _triangulate(counts, vertex_indices)
         prims.append(prim)
         meshes.append(
             wp.Mesh(
@@ -240,7 +237,6 @@ def main(
     voxel_size=0.08,
     sign_mode=None,
     stage_path="example_geometry_swept_volume.usd",
-    show_polyscope=False,
 ):
     device = wp.get_device()
 
@@ -265,11 +261,16 @@ def main(
         f"{num_samples} pose samples over t in [{times[0]:g}, {times[-1]:g}], sign={sign_mode.name}"
     )
 
+    # Extract at the grid's covering radius rather than at 0, which is the level
+    # warp.geometry.swept_volume documents as enclosing every stamped pose.
+    iso = 0.5 * math.sqrt(3.0) * voxel_size
+
     with wp.ScopedTimer("swept_volume"):
         verts, indices = warp.geometry.swept_volume(
             meshes,
             transforms,
             voxel_size=voxel_size,
+            iso=iso,
             sign_mode=sign_mode,
             device=device,
         )
@@ -282,28 +283,6 @@ def main(
     if stage_path:
         write_usd(stage_path, verts, indices)
         print(f"wrote {stage_path}")
-
-    if show_polyscope:
-        import polyscope as ps  # noqa: PLC0415
-
-        ps.set_up_dir("z_up")
-        ps.init()
-        ps.register_surface_mesh("swept volume", v, indices.numpy().reshape(-1, 3), color=(0.92, 0.41, 0.20))
-        # Overlay the stamped input poses as a translucent point cloud. Transform
-        # a capped, random subset of each mesh's vertices with NumPy so large USD
-        # assemblies (hundreds of thousands of points) stay responsive.
-        rng = np.random.default_rng(0)
-        clouds = []
-        for m in range(len(meshes)):
-            pts = meshes[m].points.numpy().astype(np.float64)
-            keep = rng.choice(len(pts), size=min(2000, len(pts)), replace=False)
-            pts = pts[keep]
-            for s in range(num_samples):
-                q = transforms[m, s, 3:]  # (x, y, z, w)
-                t = transforms[m, s, :3]
-                clouds.append(_rotate_np(q, pts) + t)
-        ps.register_point_cloud("stamped poses", np.concatenate(clouds), radius=0.001, color=(0.16, 0.47, 0.84))
-        ps.show()
 
 
 if __name__ == "__main__":
@@ -332,7 +311,6 @@ if __name__ == "__main__":
         default="example_geometry_swept_volume.usd",
         help="Path to the output USD file.",
     )
-    parser.add_argument("--polyscope", action="store_true", help="Show the result in an interactive polyscope viewer.")
     args = parser.parse_known_args()[0]
 
     sign_mode = {
@@ -347,5 +325,4 @@ if __name__ == "__main__":
             voxel_size=args.voxel_size,
             sign_mode=sign_mode,
             stage_path=args.stage_path,
-            show_polyscope=args.polyscope,
         )

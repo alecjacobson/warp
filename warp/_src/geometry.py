@@ -266,13 +266,30 @@ def swept_volume_field(
         raise ValueError("'meshes' must contain at least one mesh.")
     if voxel_size is None and resolution is None:
         raise ValueError("Provide either 'voxel_size' or 'resolution'.")
+    if voxel_size is not None and voxel_size <= 0.0:
+        raise ValueError(f"'voxel_size' must be positive, got {voxel_size}.")
+
+    dims = None
+    if resolution is not None:
+        dims = tuple(int(n) for n in resolution)
+        if len(dims) != 3:
+            raise ValueError(f"'resolution' must have exactly 3 entries, got {dims}.")
+        if any(n < 2 for n in dims):
+            raise ValueError(f"'resolution' must be at least 2 along each axis, got {dims}.")
 
     device = wp.get_device(device) if device is not None else meshes[0].device
+
+    # The kernel launches on a single device, so every mesh must already live there.
+    for i, mesh in enumerate(meshes):
+        if mesh.device != device:
+            raise ValueError(f"'meshes[{i}]' is on device '{mesh.device}' but the launch device is '{device}'.")
 
     mesh_ids = wp.array([mesh.id for mesh in meshes], dtype=wp.uint64, device=device)
     transforms_wp = _swept_volume_transforms(transforms, device)
     if transforms_wp.shape[0] != len(meshes):
         raise ValueError(f"'transforms' has {transforms_wp.shape[0]} rows but there are {len(meshes)} meshes.")
+    if transforms_wp.shape[1] == 0:
+        raise ValueError("'transforms' must contain at least one pose sample.")
 
     if margin is None:
         margin = 2.0 * voxel_size if voxel_size is not None else 0.0
@@ -280,11 +297,7 @@ def swept_volume_field(
     lower, upper = _swept_volume_bounds(meshes, transforms_wp, margin, device)
     extent = (upper[0] - lower[0], upper[1] - lower[1], upper[2] - lower[2])
 
-    if resolution is not None:
-        dims = tuple(int(n) for n in resolution)
-        if any(n < 2 for n in dims):
-            raise ValueError(f"'resolution' must be at least 2 along each axis, got {dims}.")
-    else:
+    if dims is None:
         # Number of nodes = number of cells + 1; guarantee at least 2 nodes.
         dims = tuple(max(2, int(math.ceil(extent[a] / voxel_size)) + 1) for a in range(3))
 
