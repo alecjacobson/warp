@@ -29,13 +29,13 @@ class SweptVolumeSign(enum.IntEnum):
     """
 
     NORMAL = 0
-    """Sign from the closest face's normal, via
+    """Sign from the angle-weighted pseudonormal at the closest point, via
     :func:`warp.mesh_query_point_sign_normal`. Fast; assumes each input mesh is
-    watertight and consistently oriented. The sign comes from the closest
-    *face*, so it can flip where the closest point is an edge or a vertex. On
-    coarse or sharply featured geometry that shows up as wrong signs far from
-    the surface, and as spurious isosurface components; prefer
-    ``WINDING_NUMBER`` there."""
+    watertight and consistently oriented. Far from a coarse mesh it can still
+    report the wrong sign, because distinct features at nearly equal distance
+    are merged into one pseudonormal (GH-1836). In a swept field that shows up
+    as spurious isosurface components away from the geometry, so prefer
+    ``WINDING_NUMBER`` on coarse or sharply featured input."""
 
     WINDING_NUMBER = 1
     """Sign from the solid angle (generalized winding number), via
