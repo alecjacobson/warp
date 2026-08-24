@@ -217,7 +217,7 @@ def swept_volume_field(
     resolution: tuple[int, int, int] | None = None,
     margin: float | None = None,
     max_dist: float | None = None,
-    sign_mode: SweptVolumeSign = SweptVolumeSign.NORMAL,
+    sign_mode: SweptVolumeSign = SweptVolumeSign.WINDING_NUMBER,
     device: DeviceLike | None = None,
 ) -> tuple[wp.array, wp.vec3, wp.vec3]:
     """Sample the swept-volume signed-distance field on a dense regular grid.
@@ -256,7 +256,10 @@ def swept_volume_field(
             Defaults to the grid's diagonal length so the field is valid
             everywhere.
         sign_mode: Inside/outside classification method (see
-            :class:`SweptVolumeSign`).
+            :class:`SweptVolumeSign`). The default requires every mesh to be
+            built with ``support_winding_number=True``; pass
+            :attr:`SweptVolumeSign.NORMAL` to use the faster classifier
+            instead.
         device: Device on which to build the field. Defaults to the device of
             the first mesh.
 
@@ -291,8 +294,9 @@ def swept_volume_field(
         # signs rather than failing, so reject that combination up front.
         if sign_mode == SweptVolumeSign.WINDING_NUMBER and not mesh.support_winding_number:
             raise ValueError(
-                f"'meshes[{i}]' was not built with support_winding_number=True, which "
-                "SweptVolumeSign.WINDING_NUMBER requires."
+                f"'meshes[{i}]' was not built with support_winding_number=True, which the default "
+                "SweptVolumeSign.WINDING_NUMBER requires. Rebuild it with "
+                "wp.Mesh(..., support_winding_number=True), or pass sign_mode=SweptVolumeSign.NORMAL."
             )
 
     mesh_ids = wp.array([mesh.id for mesh in meshes], dtype=wp.uint64, device=device)
@@ -345,7 +349,7 @@ def swept_volume(
     margin: float | None = None,
     max_dist: float | None = None,
     iso: float = 0.0,
-    sign_mode: SweptVolumeSign = SweptVolumeSign.NORMAL,
+    sign_mode: SweptVolumeSign = SweptVolumeSign.WINDING_NUMBER,
     device: DeviceLike | None = None,
 ) -> tuple[wp.array, wp.array]:
     """Extract the swept volume (motion envelope) of animated rigid meshes.
@@ -379,8 +383,8 @@ def swept_volume(
             ``iso = 0.5 * hypot(hx, hy, hz)`` (the covering radius, ``sqrt(3)/2 *
             voxel_size`` for a cubic cell of the actual spacings ``hx, hy, hz``)
             guarantees every stamped pose stays enclosed.
-        sign_mode: Inside/outside classification method (see
-            :class:`SweptVolumeSign`).
+        sign_mode: Inside/outside classification method; see
+            :func:`swept_volume_field`.
         device: Device on which to run. Defaults to the device of the first mesh.
 
     Returns:
@@ -402,11 +406,7 @@ def swept_volume(
         >>> xforms[0, :, 0] = np.linspace(0.0, 1.0, 8)  # translate along x
         >>> voxel_size = 0.05
         >>> vertices, indices = geo.swept_volume(
-        ...     [tet],
-        ...     xforms,
-        ...     voxel_size=voxel_size,
-        ...     iso=0.5 * np.sqrt(3.0) * voxel_size,
-        ...     sign_mode=geo.SweptVolumeSign.WINDING_NUMBER,
+        ...     [tet], xforms, voxel_size=voxel_size, iso=0.5 * np.sqrt(3.0) * voxel_size
         ... )
         >>> v = vertices.numpy()
         >>> bool(np.all(v.min(axis=0) <= 0.0) and np.all(v.max(axis=0) >= [2.0, 1.0, 1.0]))
