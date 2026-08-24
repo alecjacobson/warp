@@ -130,6 +130,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
     from warp.tests.geometry.test_mesh_query_aabb import TestMeshQueryAABBMethods
     from warp.tests.geometry.test_mesh_query_point import TestMeshQueryPoint
     from warp.tests.geometry.test_mesh_query_ray import TestMeshQueryRay
+    from warp.tests.geometry.test_swept_volume import TestSweptVolume
     from warp.tests.geometry.test_volume import TestVolume
     from warp.tests.geometry.test_volume_write import TestVolumeWrite
     from warp.tests.interop.test_dlpack import TestDLPack
@@ -182,6 +183,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
     from warp.tests.test_enum import TestEnum
     from warp.tests.test_examples import (
         TestCoreExamples,
+        TestGeometryExamples,
         TestOptimExamples,
     )
     from warp.tests.test_fabricarray import TestFabricArray
@@ -334,6 +336,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
         TestDLPack,
         TestEnum,
         TestCoreExamples,
+        TestGeometryExamples,
         TestOptimExamples,
         TestFactoryStyleArrayAnnotations,
         TestFabricArray,
@@ -385,6 +388,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
         TestMeshQueryAABBMethods,
         TestMeshQueryPoint,
         TestMeshQueryRay,
+        TestSweptVolume,
         TestModuleContamination,
         TestModuleHashing,
         TestModuleLite,
