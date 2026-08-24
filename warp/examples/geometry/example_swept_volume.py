@@ -22,11 +22,12 @@
 # external assets. Pass --usd to run on an animated USD hierarchy instead, such
 # as the UR10 arm from the swept-volume feature request (GH-1824).
 #
-# Inside/outside is classified with --sign (default 'auto'), which picks the
-# winding number for USD assemblies and the faster closest-face-normal
-# classifier for the watertight procedural arm. CAD parts like the UR10 are open,
-# non-watertight visual shells, on which the normal classifier is incoherent
-# (spurious interior pockets, hundreds of disconnected junk shells).
+# Inside/outside is classified with the generalized winding number, which is
+# what warp.geometry defaults to. Pass --sign normal for the faster
+# closest-face-normal classifier, which suits watertight input like the
+# procedural arm but is incoherent on the open, non-watertight visual shells
+# that CAD parts like the UR10 are made of (spurious interior pockets, hundreds
+# of disconnected junk shells).
 #
 #   uv run --with usd-core warp/examples/geometry/example_swept_volume.py
 #   uv run --with usd-core warp/examples/geometry/example_swept_volume.py --usd ur10_animated.usda
@@ -102,8 +103,7 @@ def procedural_arm(num_samples=24, device=None):
     upper_pts, upper_idx = box_mesh((0.25, 0.25, 1.2), center=(0.0, 0.0, 0.6))
     fore_pts, fore_idx = box_mesh((0.2, 0.2, 1.0), center=(0.0, 0.0, 0.5))
 
-    # Built with winding-number support so --sign winding works here too, even
-    # though these boxes are watertight and the normal classifier suffices.
+    # Built with winding-number support, which the default classifier requires.
     meshes = [
         wp.Mesh(
             wp.array(pts, dtype=wp.vec3, device=device),
@@ -159,12 +159,12 @@ def load_usd_assembly(path, num_samples=24, device=None):
     :class:`warp.Mesh`; its per-sample world transform is read from the stage's
     xform cache. Returns ``(meshes, transforms, times)``.
 
-    The meshes are built with ``support_winding_number=True``. CAD assemblies
-    like the UR10 are made of open, non-watertight visual shells, for which
-    closest-face-normal sign classification is unreliable and produces an
-    incoherent field (spurious interior pockets, hundreds of junk shells). The
-    generalized winding number stays robust, so the USD path uses it by default
-    (see :class:`warp.geometry.SweptVolumeSign`).
+    The meshes are built with ``support_winding_number=True``, which the
+    default classifier requires. CAD assemblies like the UR10 are made of open,
+    non-watertight visual shells, for which closest-face-normal sign
+    classification is unreliable and produces an incoherent field (spurious
+    interior pockets, hundreds of junk shells), so the winding number matters
+    here (see :class:`warp.geometry.SweptVolumeSign`).
     """
     from pxr import Gf, Usd, UsdGeom  # noqa: PLC0415
 
@@ -235,7 +235,7 @@ def main(
     usd_path=None,
     num_samples=24,
     voxel_size=0.08,
-    sign_mode=None,
+    sign_mode=warp.geometry.SweptVolumeSign.WINDING_NUMBER,
     stage_path="example_geometry_swept_volume.usd",
 ):
     device = wp.get_device()
@@ -243,17 +243,9 @@ def main(
     if usd_path is not None:
         meshes, transforms, times = load_usd_assembly(usd_path, num_samples=num_samples, device=device)
         label = usd_path
-        # CAD assemblies are open shells; the normal classifier is incoherent on
-        # them, so default the USD path to the robust winding number.
-        default_sign = warp.geometry.SweptVolumeSign.WINDING_NUMBER
     else:
         meshes, transforms, times = procedural_arm(num_samples=num_samples, device=device)
         label = "procedural two-link arm"
-        # The procedural boxes are watertight, so the faster normal classifier is fine.
-        default_sign = warp.geometry.SweptVolumeSign.NORMAL
-
-    if sign_mode is None:
-        sign_mode = default_sign
 
     total_tris = sum(len(m.indices.numpy()) // 3 for m in meshes)
     print(
@@ -301,9 +293,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sign",
         type=str,
-        default="auto",
-        choices=["auto", "normal", "winding"],
-        help="Inside/outside classifier. 'auto' picks winding for USD (non-watertight CAD) and normal for the procedural arm.",
+        default="winding",
+        choices=["normal", "winding"],
+        help="Inside/outside classifier.",
     )
     parser.add_argument(
         "--stage-path",
@@ -314,7 +306,6 @@ if __name__ == "__main__":
     args = parser.parse_known_args()[0]
 
     sign_mode = {
-        "auto": None,
         "normal": warp.geometry.SweptVolumeSign.NORMAL,
         "winding": warp.geometry.SweptVolumeSign.WINDING_NUMBER,
     }[args.sign]
