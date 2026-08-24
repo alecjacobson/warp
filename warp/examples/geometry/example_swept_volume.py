@@ -82,6 +82,19 @@ def quat_pitch(angle):
     return np.array([0.0, np.sin(0.5 * angle), 0.0, np.cos(0.5 * angle)], dtype=np.float32)
 
 
+def _rotate_np(q, v):
+    """Rotate row vectors ``v`` (..., 3) by quaternion ``q`` = (x, y, z, w)."""
+    x, y, z, w = q
+    R = np.array(
+        [
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+        ]
+    )
+    return v @ R.T
+
+
 def compose(a, b):
     """Compose two transforms given as (7,) arrays: result applies b then a."""
     ta = wp.transform(wp.vec3(*a[:3]), wp.quat(*a[3:]))
@@ -273,13 +286,19 @@ def main(
         ps.set_up_dir("z_up")
         ps.init()
         ps.register_surface_mesh("swept volume", v, indices.numpy().reshape(-1, 3), color=(0.92, 0.41, 0.20))
-        # Overlay the stamped input poses as a translucent point cloud.
+        # Overlay the stamped input poses as a translucent point cloud. Transform
+        # a capped, random subset of each mesh's vertices with NumPy so large USD
+        # assemblies (hundreds of thousands of points) stay responsive.
+        rng = np.random.default_rng(0)
         clouds = []
         for m in range(len(meshes)):
             pts = meshes[m].points.numpy().astype(np.float64)
+            keep = rng.choice(len(pts), size=min(2000, len(pts)), replace=False)
+            pts = pts[keep]
             for s in range(num_samples):
-                x = warp.transform(wp.vec3(*transforms[m, s, :3]), wp.quat(*transforms[m, s, 3:]))
-                clouds.append(np.array([wp.transform_point(x, wp.vec3(*p)) for p in pts]))
+                q = transforms[m, s, 3:]  # (x, y, z, w)
+                t = transforms[m, s, :3]
+                clouds.append(_rotate_np(q, pts) + t)
         ps.register_point_cloud("stamped poses", np.concatenate(clouds), radius=0.001, color=(0.16, 0.47, 0.84))
         ps.show()
 

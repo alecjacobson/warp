@@ -1842,8 +1842,8 @@ class SweptVolumeSign(enum.IntEnum):
 @wp.func
 def swept_volume_sdf(
     p: wp.vec3,
-    mesh_ids: wp.array(dtype=wp.uint64),
-    transforms: wp.array2d(dtype=wp.transform),
+    mesh_ids: wp.array[wp.uint64],
+    transforms: wp.array2d[wp.transform],
     max_dist: wp.float32,
     sign_mode: wp.int32,
 ) -> wp.float32:
@@ -1882,13 +1882,13 @@ def swept_volume_sdf(
 
 @wp.kernel
 def swept_volume_field_kernel(
-    mesh_ids: wp.array(dtype=wp.uint64),
-    transforms: wp.array2d(dtype=wp.transform),
+    mesh_ids: wp.array[wp.uint64],
+    transforms: wp.array2d[wp.transform],
     origin: wp.vec3,
     spacing: wp.vec3,
     max_dist: wp.float32,
     sign_mode: wp.int32,
-    out_field: wp.array3d(dtype=wp.float32),
+    out_field: wp.array3d[wp.float32],
 ):
     i, j, k = wp.tid()
     p = origin + wp.cw_mul(spacing, wp.vec3(wp.float32(i), wp.float32(j), wp.float32(k)))
@@ -2008,7 +2008,9 @@ def swept_volume_field(
         resolution: Optional explicit node counts ``(nx, ny, nz)``. Overrides
             ``voxel_size`` for choosing the grid dimensions.
         margin: Padding added on every side of the swept bounding box, in world
-            units. Defaults to twice the cell size so the surface is not clipped.
+            units. Defaults to twice ``voxel_size`` so the surface is not
+            clipped, or to ``0`` when only ``resolution`` is given (pass an
+            explicit ``margin`` to avoid clipping the surface at the boundary).
         max_dist: Maximum search distance for the closest-point queries. Nodes
             farther than this from every posed mesh are left at ``+max_dist``.
             Defaults to the grid's diagonal length so the field is valid
@@ -2105,7 +2107,8 @@ def swept_volume(
             ``resolution`` is given.
         resolution: Optional explicit node counts ``(nx, ny, nz)``.
         margin: Padding added on every side of the swept bounding box, in world
-            units. Defaults to twice the cell size.
+            units. Defaults to twice ``voxel_size`` (or ``0`` when only
+            ``resolution`` is given); see :func:`swept_volume_field`.
         max_dist: Maximum closest-point search distance; see
             :func:`swept_volume_field`.
         iso: Field level to extract. ``0.0`` traces the exact envelope; a small
