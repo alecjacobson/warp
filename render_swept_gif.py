@@ -24,7 +24,7 @@ USD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parallel-swept-v
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs/img/examples/swept_volume.gif")
 device = "cuda:0"
 
-ENVELOPE_SAMPLES = 900  # dense time sampling stamped into the field (~1 min on GPU)
+ENVELOPE_SAMPLES = 1800  # dense time sampling stamped into the field (~2 min on GPU)
 VOX = 0.015  # dense grid
 N_FRAMES = 60  # arm-animation frames (camera is fixed)
 W, H = 800, 800
@@ -75,7 +75,7 @@ ps.set_SSAA_factor(4)
 ps.set_window_size(W, H)
 
 env = ps.register_surface_mesh("swept volume", V, F, color=(0.93, 0.42, 0.20), material="wax", smooth_shade=True)
-env.set_transparency(0.8)
+env.set_transparency(0.4)
 
 arm = []
 for i, m in enumerate(meshes):
