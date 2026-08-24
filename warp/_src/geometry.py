@@ -31,7 +31,11 @@ class SweptVolumeSign(enum.IntEnum):
     NORMAL = 0
     """Sign from the closest face's normal, via
     :func:`warp.mesh_query_point_sign_normal`. Fast; assumes each input mesh is
-    watertight and consistently oriented."""
+    watertight and consistently oriented. The sign comes from the closest
+    *face*, so it can flip where the closest point is an edge or a vertex. On
+    coarse or sharply featured geometry that shows up as wrong signs far from
+    the surface, and as spurious isosurface components; prefer
+    ``WINDING_NUMBER`` there."""
 
     WINDING_NUMBER = 1
     """Sign from the solid angle (generalized winding number), via
@@ -383,6 +387,30 @@ def swept_volume(
         A tuple ``(vertices, indices)`` where ``vertices`` is a
         ``wp.array(dtype=wp.vec3)`` in world coordinates and ``indices`` is a
         flat ``wp.array(dtype=wp.int32)`` with three entries per triangle.
+
+    Examples:
+        Sweep a tetrahedron one unit along x. The swept solid spans
+        ``(0, 0, 0)`` to ``(2, 1, 1)``, and extracting at the conservative
+        ``iso`` guarantees the envelope encloses it.
+
+        >>> import warp.geometry as geo
+        >>> points = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+        >>> faces = [0, 2, 1, 0, 3, 2, 0, 1, 3, 1, 2, 3]
+        >>> tet = wp.Mesh(wp.array(points, dtype=wp.vec3), wp.array(faces, dtype=wp.int32), support_winding_number=True)
+        >>> xforms = np.zeros((1, 8, 7), dtype=np.float32)  # one mesh, eight poses
+        >>> xforms[..., 6] = 1.0  # identity quaternions
+        >>> xforms[0, :, 0] = np.linspace(0.0, 1.0, 8)  # translate along x
+        >>> voxel_size = 0.05
+        >>> vertices, indices = geo.swept_volume(
+        ...     [tet],
+        ...     xforms,
+        ...     voxel_size=voxel_size,
+        ...     iso=0.5 * np.sqrt(3.0) * voxel_size,
+        ...     sign_mode=geo.SweptVolumeSign.WINDING_NUMBER,
+        ... )
+        >>> v = vertices.numpy()
+        >>> bool(np.all(v.min(axis=0) <= 0.0) and np.all(v.max(axis=0) >= [2.0, 1.0, 1.0]))
+        True
     """
     field, lower, upper = swept_volume_field(
         meshes,
