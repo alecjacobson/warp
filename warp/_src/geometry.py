@@ -283,6 +283,13 @@ def swept_volume_field(
     for i, mesh in enumerate(meshes):
         if mesh.device != device:
             raise ValueError(f"'meshes[{i}]' is on device '{mesh.device}' but the launch device is '{device}'.")
+        # Querying the winding number of a mesh built without it returns garbage
+        # signs rather than failing, so reject that combination up front.
+        if sign_mode == SweptVolumeSign.WINDING_NUMBER and not mesh.support_winding_number:
+            raise ValueError(
+                f"'meshes[{i}]' was not built with support_winding_number=True, which "
+                "SweptVolumeSign.WINDING_NUMBER requires."
+            )
 
     mesh_ids = wp.array([mesh.id for mesh in meshes], dtype=wp.uint64, device=device)
     transforms_wp = _swept_volume_transforms(transforms, device)

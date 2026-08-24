@@ -352,6 +352,9 @@ def test_invalid_arguments(test, device):
         geo.swept_volume_field([mesh], tr, resolution=(16, 20), device=device)
     with test.assertRaises(ValueError):
         geo.swept_volume_field([mesh], tr, resolution=(16, 20, 1), device=device)
+    with test.assertRaises(ValueError):
+        # The winding number needs a mesh built with support_winding_number=True.
+        geo.swept_volume_field([mesh], tr, voxel_size=0.05, sign_mode=geo.SweptVolumeSign.WINDING_NUMBER, device=device)
 
 
 devices = get_test_devices()

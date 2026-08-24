@@ -5947,6 +5947,9 @@ class Mesh:
         self._velocities = velocities
         self.indices = indices
         self.groups = groups
+        self.support_winding_number = support_winding_number
+        """Whether the mesh was built with the data structures that
+        :func:`warp.mesh_query_point_sign_winding_number` requires."""
         self.runtime = warp._src.context.runtime
 
         if bvh_constructor is None:
