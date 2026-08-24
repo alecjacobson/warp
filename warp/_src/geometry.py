@@ -1917,56 +1917,91 @@ def _swept_volume_transforms(transforms, device):
     return wp.array2d(arr, dtype=wp.transform, device=device)
 
 
-def _swept_volume_bounds(meshes, transforms_np, margin):
+@wp.kernel(enable_backward=False)
+def swept_volume_mesh_aabb_kernel(
+    points: wp.array[wp.vec3],
+    slot: int,
+    out_lower: wp.array[wp.vec3],
+    out_upper: wp.array[wp.vec3],
+):
+    # Rest-pose axis-aligned bounds of one mesh, reduced into slot ``slot``.
+    i = wp.tid()
+    p = points[i]
+    wp.atomic_min(out_lower, slot, p)
+    wp.atomic_max(out_upper, slot, p)
+
+
+@wp.kernel(enable_backward=False)
+def swept_volume_bounds_kernel(
+    mesh_lower: wp.array[wp.vec3],
+    mesh_upper: wp.array[wp.vec3],
+    transforms: wp.array2d[wp.transform],
+    out_lower: wp.array[wp.vec3],
+    out_upper: wp.array[wp.vec3],
+):
+    # Union, over every (mesh, sample), of the pose-transformed rest-pose AABB.
+    m, s = wp.tid()
+    lo = mesh_lower[m]
+    hi = mesh_upper[m]
+    if lo[0] > hi[0]:  # empty mesh: nothing was reduced into this slot
+        return
+    xform = transforms[m, s]
+    # A rigid map sends the box to one whose axis-aligned bounds are spanned by
+    # its eight transformed corners, so it suffices to reduce those.
+    for a in range(2):
+        cx = wp.where(a == 0, lo[0], hi[0])
+        for b in range(2):
+            cy = wp.where(b == 0, lo[1], hi[1])
+            for c in range(2):
+                cz = wp.where(c == 0, lo[2], hi[2])
+                p = wp.transform_point(xform, wp.vec3(cx, cy, cz))
+                wp.atomic_min(out_lower, 0, p)
+                wp.atomic_max(out_upper, 0, p)
+
+
+def _swept_volume_bounds(meshes, transforms, margin, device):
     """World-space axis-aligned bounds of every mesh over every sampled pose.
 
-    Transforms each mesh's rest-pose corner cloud by all of its poses and unions
-    the results, then pads by ``margin`` on every side.
+    Reduces each mesh's rest-pose vertices to an axis-aligned box, then transforms
+    the eight box corners by every pose and reduces their union, entirely with
+    Warp kernels. Pads by ``margin`` on every side and returns ``(lower, upper)``
+    as :class:`warp.vec3`.
     """
-    lower = np.full(3, np.inf, dtype=np.float64)
-    upper = np.full(3, -np.inf, dtype=np.float64)
+    num_meshes, num_samples = transforms.shape[0], transforms.shape[1]
 
+    pos_inf = wp.vec3(math.inf, math.inf, math.inf)
+    neg_inf = wp.vec3(-math.inf, -math.inf, -math.inf)
+
+    mesh_lower = wp.full(num_meshes, pos_inf, dtype=wp.vec3, device=device)
+    mesh_upper = wp.full(num_meshes, neg_inf, dtype=wp.vec3, device=device)
     for m, mesh in enumerate(meshes):
-        pts = mesh.points.numpy().astype(np.float64)
-        if pts.size == 0:
-            continue
-        # Rest-pose AABB corners are enough: a rigid map sends the AABB into a
-        # box whose extent is bounded by transforming the 8 corners.
-        lo = pts.min(axis=0)
-        hi = pts.max(axis=0)
-        corners = np.array(
-            [[[lo[0], hi[0]][a], [lo[1], hi[1]][b], [lo[2], hi[2]][c]] for a in (0, 1) for b in (0, 1) for c in (0, 1)]
-        )
+        if mesh.points.shape[0] > 0:
+            wp.launch(
+                swept_volume_mesh_aabb_kernel,
+                dim=mesh.points.shape[0],
+                inputs=[mesh.points, m],
+                outputs=[mesh_lower, mesh_upper],
+                device=device,
+            )
 
-        for pose in transforms_np[m]:
-            t = pose[:3]
-            qx, qy, qz, qw = pose[3], pose[4], pose[5], pose[6]
-            # Rotate the corners by the pose quaternion (x, y, z, w) and translate.
-            rotated = _quat_rotate_np(np.array([qx, qy, qz, qw]), corners) + t
-            lower = np.minimum(lower, rotated.min(axis=0))
-            upper = np.maximum(upper, rotated.max(axis=0))
-
-    if not np.all(np.isfinite(lower)):
-        raise ValueError("Could not compute swept-volume bounds: all input meshes are empty.")
-
-    lower -= margin
-    upper += margin
-    return lower, upper
-
-
-def _quat_rotate_np(q, v):
-    """Rotate row vectors ``v`` (..., 3) by quaternion ``q`` = (x, y, z, w)."""
-    x, y, z, w = q
-    # Rotation matrix from a unit quaternion.
-    R = np.array(
-        [
-            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-        ],
-        dtype=np.float64,
+    out_lower = wp.full(1, pos_inf, dtype=wp.vec3, device=device)
+    out_upper = wp.full(1, neg_inf, dtype=wp.vec3, device=device)
+    wp.launch(
+        swept_volume_bounds_kernel,
+        dim=(num_meshes, num_samples),
+        inputs=[mesh_lower, mesh_upper, transforms],
+        outputs=[out_lower, out_upper],
+        device=device,
     )
-    return v @ R.T
+
+    # Read back the six numbers (as the OBB code does) and pad on the host.
+    lo = out_lower.numpy()[0]
+    hi = out_upper.numpy()[0]
+    if not math.isfinite(float(lo[0])):
+        raise ValueError("Could not compute swept-volume bounds: all input meshes are empty.")
+    lower = wp.vec3(float(lo[0]) - margin, float(lo[1]) - margin, float(lo[2]) - margin)
+    upper = wp.vec3(float(hi[0]) + margin, float(hi[1]) + margin, float(hi[2]) + margin)
+    return lower, upper
 
 
 def swept_volume_field(
@@ -2037,13 +2072,12 @@ def swept_volume_field(
     transforms_wp = _swept_volume_transforms(transforms, device)
     if transforms_wp.shape[0] != len(meshes):
         raise ValueError(f"'transforms' has {transforms_wp.shape[0]} rows but there are {len(meshes)} meshes.")
-    transforms_np = transforms_wp.numpy()
 
     if margin is None:
         margin = 2.0 * voxel_size if voxel_size is not None else 0.0
 
-    lower, upper = _swept_volume_bounds(meshes, transforms_np, margin)
-    extent = upper - lower
+    lower, upper = _swept_volume_bounds(meshes, transforms_wp, margin, device)
+    extent = (upper[0] - lower[0], upper[1] - lower[1], upper[2] - lower[2])
 
     if resolution is not None:
         dims = tuple(int(n) for n in resolution)
@@ -2051,17 +2085,17 @@ def swept_volume_field(
             raise ValueError(f"'resolution' must be at least 2 along each axis, got {dims}.")
     else:
         # Number of nodes = number of cells + 1; guarantee at least 2 nodes.
-        dims = tuple(max(2, int(math.ceil(e / voxel_size)) + 1) for e in extent)
+        dims = tuple(max(2, int(math.ceil(extent[a] / voxel_size)) + 1) for a in range(3))
 
     # Snap the upper corner so the node spacing is exactly (extent / cells).
-    spacing = np.array([extent[a] / (dims[a] - 1) for a in range(3)], dtype=np.float64)
-    upper = lower + spacing * (np.array(dims) - 1)
+    spacing = tuple(extent[a] / (dims[a] - 1) for a in range(3))
+    upper = wp.vec3(*(lower[a] + spacing[a] * (dims[a] - 1) for a in range(3)))
 
     if max_dist is None:
-        max_dist = float(np.linalg.norm(extent))
+        max_dist = math.sqrt(extent[0] * extent[0] + extent[1] * extent[1] + extent[2] * extent[2])
 
-    origin = wp.vec3(float(lower[0]), float(lower[1]), float(lower[2]))
-    spacing_v = wp.vec3(float(spacing[0]), float(spacing[1]), float(spacing[2]))
+    origin = lower
+    spacing_v = wp.vec3(*spacing)
 
     field = wp.empty(dims, dtype=wp.float32, device=device)
     wp.launch(
@@ -2072,8 +2106,8 @@ def swept_volume_field(
         device=device,
     )
 
-    lower_v = wp.vec3(float(lower[0]), float(lower[1]), float(lower[2]))
-    upper_v = wp.vec3(float(upper[0]), float(upper[1]), float(upper[2]))
+    lower_v = lower
+    upper_v = upper
     return field, lower_v, upper_v
 
 
