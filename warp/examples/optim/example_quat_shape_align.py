@@ -35,6 +35,10 @@
 # finite-difference gate up front checks the jet's gradient and Hessian against
 # central differences on the active device.
 #
+# Passing --render-gif PATH animates the per-iteration fit as a grid of
+# candidates, each colored by its current alignment error with the best fit
+# boxed (needs the optional polyscope and Pillow packages; runs headless).
+#
 ###########################################################################
 
 import numpy as np
@@ -126,6 +130,69 @@ def grad_hess_at_identity(
     hess[0] = e.hess
 
 
+@wp.struct
+class StepResult:
+    q: wp.quatd
+    improved: wp.int32
+
+
+@wp.func
+def newton_step(
+    q: wp.quatd,
+    query: wp.array[wp.vec3d],
+    cand: wp.array2d[wp.vec3d],
+    c: int,
+    n: int,
+) -> StepResult:
+    """One eigenvalue-clamped Newton step with an Armijo line search."""
+    dtheta = J.seed_vec3(wp.vec3d(0.0, 0.0, 0.0), 0, 1, 2)
+    e = align_energy(dtheta, q, query, cand, c, n)
+    g = e.grad
+    f0 = e.value
+
+    # PD-modified Newton direction (as in the reference MATLAB): the robust
+    # Hessian can be indefinite away from the optimum, so symmetrize it, clamp
+    # its eigenvalues to a positive floor -- flipping negative-curvature
+    # directions rather than inflating the whole diagonal the way
+    # Levenberg-Marquardt would -- and solve in the eigenbasis.
+    hs = wp.float64(0.5) * (e.hess + wp.transpose(e.hess))
+    eig_q, eig_d = wp.eig3(hs)
+    gq = wp.transpose(eig_q) * g
+    y = wp.vec3d(
+        gq[0] / wp.max(eig_d[0], EIG_FLOOR),
+        gq[1] / wp.max(eig_d[1], EIG_FLOOR),
+        gq[2] / wp.max(eig_d[2], EIG_FLOOR),
+    )
+    step = -(eig_q * y)
+
+    sn = wp.length(step)
+    if sn > DTHETA_CLAMP:
+        step = step * (DTHETA_CLAMP / sn)
+
+    # Armijo backtracking along the clamped Newton direction.
+    gts = wp.dot(g, step)
+    alpha = wp.float64(1.0)
+    for _ls in range(30):
+        # rotvec_to_quat(...) and q are unit, so the product is unit in exact
+        # arithmetic; normalize only mops up floating-point drift.
+        qn = wp.normalize(rotvec_to_quat(alpha * step) * q)
+        if energy_value(qn, query, cand, c, n) <= f0 + ARMIJO_C * alpha * gts:
+            return StepResult(qn, wp.int32(1))
+        alpha = wp.float64(0.5) * alpha
+
+    return StepResult(q, wp.int32(0))
+
+
+@wp.func
+def rmsd(q: wp.quatd, query: wp.array[wp.vec3d], cand: wp.array2d[wp.vec3d], c: int, n: int) -> wp.float64:
+    """Plain geometric RMSD (not the robust objective), an interpretable score."""
+    ssd = wp.float64(0.0)
+    for a in range(n):
+        r = wp.quat_rotate(q, query[a]) - cand[c, a]
+        ssd += wp.dot(r, r)
+    return wp.sqrt(ssd / wp.float64(n))
+
+
 @wp.kernel
 def fit_dataset(
     query: wp.array[wp.vec3d],
@@ -139,55 +206,26 @@ def fit_dataset(
     q = wp.quatd(0.0, 0.0, 0.0, 1.0)
 
     for _it in range(iters):
-        dtheta = J.seed_vec3(wp.vec3d(0.0, 0.0, 0.0), 0, 1, 2)
-        e = align_energy(dtheta, q, query, cand, c, n)
-        g = e.grad
-        f0 = e.value
-
-        # PD-modified Newton direction (as in the reference MATLAB): the robust
-        # Hessian can be indefinite away from the optimum, so symmetrize it,
-        # clamp its eigenvalues to a positive floor -- flipping negative-
-        # curvature directions rather than inflating the whole diagonal the way
-        # Levenberg-Marquardt would -- and solve in the eigenbasis.
-        hs = wp.float64(0.5) * (e.hess + wp.transpose(e.hess))
-        eig_q, eig_d = wp.eig3(hs)
-        gq = wp.transpose(eig_q) * g
-        y = wp.vec3d(
-            gq[0] / wp.max(eig_d[0], EIG_FLOOR),
-            gq[1] / wp.max(eig_d[1], EIG_FLOOR),
-            gq[2] / wp.max(eig_d[2], EIG_FLOOR),
-        )
-        step = -(eig_q * y)
-
-        sn = wp.length(step)
-        if sn > DTHETA_CLAMP:
-            step = step * (DTHETA_CLAMP / sn)
-
-        # Armijo backtracking along the clamped Newton direction.
-        gts = wp.dot(g, step)
-        alpha = wp.float64(1.0)
-        accepted = int(0)
-        for _ls in range(30):
-            # rotvec_to_quat(...) and q are unit, so the product is unit in
-            # exact arithmetic; normalize only mops up floating-point drift.
-            qn = wp.normalize(rotvec_to_quat(alpha * step) * q)
-            if energy_value(qn, query, cand, c, n) <= f0 + ARMIJO_C * alpha * gts:
-                q = qn
-                accepted = int(1)
-                break
-            alpha = wp.float64(0.5) * alpha
-
-        if accepted == 0:
+        res = newton_step(q, query, cand, c, n)
+        q = res.q
+        if res.improved == 0:
             break
 
-    # Report a plain geometric RMSD (not the robust objective) so the ranking
-    # is an interpretable distance.
-    ssd = wp.float64(0.0)
-    for a in range(n):
-        r = wp.quat_rotate(q, query[a]) - cand[c, a]
-        ssd += wp.dot(r, r)
-    out_rmsd[c] = wp.sqrt(ssd / wp.float64(n))
+    out_rmsd[c] = rmsd(q, query, cand, c, n)
     out_q[c] = q
+
+
+@wp.kernel
+def newton_step_inplace(
+    query: wp.array[wp.vec3d],
+    cand: wp.array2d[wp.vec3d],
+    n: int,
+    q_io: wp.array[wp.quatd],
+):
+    # One Newton step in place -- drives the rendered animation one frame at a
+    # time. Thread c touches only index c, so the read-modify-write is safe.
+    c = wp.tid()
+    q_io[c] = newton_step(q_io[c], query, cand, c, n).q
 
 
 # --------------------------------------------------------------------------
@@ -212,6 +250,31 @@ def _qrot(q, X):
         ]
     )
     return (R @ X.T).T
+
+
+def _nn_tree_bonds(points):
+    """A nearest-neighbor spanning tree, so the molecule renders with edges.
+
+    Correspondence is shared across query and candidates, so one bond list drawn
+    on both makes the overlay easy to read. Rendering only.
+    """
+    n = len(points)
+    if n < 2:
+        return np.zeros((0, 2), dtype=np.int32)
+    d = np.linalg.norm(points[:, None, :] - points[None, :, :], axis=2)
+    in_tree = [0]
+    remaining = set(range(1, n))
+    edges = []
+    while remaining:
+        best_i, best_j, best_d = 0, -1, np.inf
+        for i in in_tree:
+            for j in remaining:
+                if d[i, j] < best_d:
+                    best_i, best_j, best_d = i, j, d[i, j]
+        edges.append((best_i, best_j))
+        in_tree.append(best_j)
+        remaining.discard(best_j)
+    return np.array(edges, dtype=np.int32)
 
 
 def make_dataset(n_atoms=12, n_candidates=64, n_matches=4, seed=0):
@@ -288,6 +351,7 @@ class Example:
         self.is_match = is_match
         self.query_np = query
         self.cands_np = cands
+        self.bonds = _nn_tree_bonds(query)
 
         self.query = wp.array([wp.vec3d(*row) for row in query], dtype=wp.vec3d)
         self.cands = wp.array(
@@ -344,13 +408,164 @@ class Example:
         print(f"matches separated from decoys: {separated}")
         return separated
 
+    def record_trajectory(self):
+        """Run the fit one Newton step at a time, recording every pose.
 
-def main(device=None):
+        Returns an array of shape ``(iters + 1, n_candidates, 4)``.
+        """
+        q_io = wp.array(
+            np.tile(np.array([0.0, 0.0, 0.0, 1.0]), (self.n_candidates, 1)),
+            dtype=wp.quatd,
+        )
+        poses = [q_io.numpy().copy()]
+        for _ in range(self.iters):
+            wp.launch(newton_step_inplace, dim=self.n_candidates, inputs=[self.query, self.cands, self.n_atoms, q_io])
+            wp.synchronize_device()
+            poses.append(q_io.numpy().copy())
+        return np.stack(poses)
+
+    def render(self, gif_path, fps=8, size=900):
+        """Animate the per-iteration fit as a grid and save a GIF.
+
+        Each cell shows one candidate (gray, static) with the query overlaid and
+        rotated by that candidate's current estimate, colored by the current
+        alignment error; the best-fit cell is boxed. Requires ``polyscope`` and
+        ``Pillow``.
+        """
+        try:
+            import polyscope as ps  # noqa: PLC0415
+            from PIL import Image  # noqa: PLC0415
+        except ImportError as err:
+            raise ImportError(
+                "Rendering requires the 'polyscope' and 'Pillow' packages. "
+                "Install them with 'pip install polyscope Pillow'."
+            ) from err
+
+        poses = self.record_trajectory()
+        frames_n, n_cand, _ = poses.shape
+        n = self.n_atoms
+
+        # Grid layout in the XY plane, one cell per candidate.
+        cols = int(np.ceil(np.sqrt(n_cand)))
+        span = float(np.abs(self.query_np).max())
+        spacing = 2.8 * span
+        offsets = np.array([[(c % cols) * spacing, -(c // cols) * spacing, 0.0] for c in range(n_cand)])
+
+        edges = np.concatenate([self.bonds + c * n for c in range(n_cand)], axis=0)
+        targets = np.concatenate([self.cands_np[c] + offsets[c] for c in range(n_cand)], axis=0)
+
+        # Per-frame fitted atom positions and per-candidate error.
+        fitted = np.zeros((frames_n, n_cand * n, 3))
+        errs = np.zeros((frames_n, n_cand))
+        for f in range(frames_n):
+            for c in range(n_cand):
+                fr = _qrot(poses[f, c], self.query_np)
+                errs[f, c] = np.sqrt(np.mean(np.sum((fr - self.cands_np[c]) ** 2, axis=1)))
+                fitted[f, c * n : (c + 1) * n] = fr + offsets[c]
+        err_atom = np.repeat(errs, n, axis=1)
+        vmax = float(np.percentile(errs[0], 85))
+
+        def ring(center):
+            h = 0.5 * spacing
+            corners = center + np.array([[-h, -h, 0.0], [h, -h, 0.0], [h, h, 0.0], [-h, h, 0.0]])
+            return corners
+
+        ring_edges = np.array([[0, 1], [1, 2], [2, 3], [3, 0]], dtype=np.int32)
+
+        ps.set_program_name("quat shape alignment")
+        ps.set_use_prefs_file(False)
+        ps.set_allow_headless_backends(True)
+        ps.init()
+        if hasattr(ps, "set_window_size"):
+            ps.set_window_size(size, size)
+        ps.set_ground_plane_mode("none")
+        ps.set_view_projection_mode("orthographic")
+        ps.set_SSAA_factor(2)
+
+        gray = (0.72, 0.72, 0.74)
+        atom_r, bond_r = 0.10 * span, 0.045 * span
+
+        tgt_pc = ps.register_point_cloud("target atoms", targets, radius=atom_r, color=gray)
+        tgt_pc.set_radius(atom_r, relative=False)
+        ps.register_curve_network("target bonds", targets, edges, radius=bond_r, color=gray).set_radius(
+            bond_r, relative=False
+        )
+
+        fit_pc = ps.register_point_cloud("fit atoms", fitted[0])
+        fit_pc.set_radius(atom_r, relative=False)
+        fit_pc.add_scalar_quantity("error", err_atom[0], enabled=True, cmap="viridis", vminmax=(0.0, vmax))
+        fit_cn = ps.register_curve_network("fit bonds", fitted[0], edges)
+        fit_cn.set_radius(bond_r, relative=False)
+        fit_cn.add_scalar_quantity(
+            "error", err_atom[0], defined_on="nodes", enabled=True, cmap="viridis", vminmax=(0.0, vmax)
+        )
+
+        win = ps.register_curve_network(
+            "best fit", ring(offsets[int(np.argmin(errs[0]))]), ring_edges, color=(0.95, 0.45, 0.1)
+        )
+        win.set_radius(0.35 * bond_r, relative=False)
+
+        center = offsets.mean(0)
+        eye = center + spacing * cols * np.array([0.12, -0.18, 1.2])
+        ps.look_at(tuple(eye), tuple(center))
+
+        frames = []
+        for f in range(frames_n):
+            fit_pc.update_point_positions(fitted[f])
+            fit_pc.add_scalar_quantity("error", err_atom[f], enabled=True, cmap="viridis", vminmax=(0.0, vmax))
+            fit_cn.update_node_positions(fitted[f])
+            fit_cn.add_scalar_quantity(
+                "error", err_atom[f], defined_on="nodes", enabled=True, cmap="viridis", vminmax=(0.0, vmax)
+            )
+            win.update_node_positions(ring(offsets[int(np.argmin(errs[f]))]))
+            buf = ps.screenshot_to_buffer(transparent_bg=False)
+            frame = buf[..., :3]
+            if frame.dtype != np.uint8:
+                frame = (np.clip(frame, 0.0, 1.0) * 255).astype(np.uint8)
+            frames.append(Image.fromarray(frame))
+
+        # Crop the shared whitespace margin so the grid fills the frame. The
+        # union of per-frame content boxes keeps every rotating molecule inside.
+        boxes = [np.asarray(f.convert("L")) < 250 for f in frames]
+        rows = np.any([m.any(axis=1) for m in boxes], axis=0)
+        cols_mask = np.any([m.any(axis=0) for m in boxes], axis=0)
+        ys, xs = np.where(rows)[0], np.where(cols_mask)[0]
+        if len(ys) and len(xs):
+            m = 16
+            box = (
+                max(int(xs[0]) - m, 0),
+                max(int(ys[0]) - m, 0),
+                min(int(xs[-1]) + m, size),
+                min(int(ys[-1]) + m, size),
+            )
+            frames = [f.crop(box) for f in frames]
+
+        # Per-frame duration in ms; hold longer on the converged final frame.
+        durations = [int(1000 / fps)] * frames_n
+        durations[-1] += 1500
+        frames[0].save(
+            gif_path,
+            save_all=True,
+            append_images=frames[1:],
+            duration=durations,
+            loop=0,
+            optimize=True,
+            disposal=2,
+        )
+        print(f"wrote {gif_path} ({frames_n} frames, {n_cand} candidates)")
+
+
+def main(device=None, render_gif=None):
     with wp.ScopedDevice(device):
-        example = Example()
-        example.verify_derivatives()
-        _, rmsd = example.fit()
-        example.report(rmsd)
+        if render_gif is not None:
+            example = Example(n_candidates=64, n_matches=6)
+            example.verify_derivatives()
+            example.render(render_gif, size=2000)
+        else:
+            example = Example()
+            example.verify_derivatives()
+            _, rmsd = example.fit()
+            example.report(rmsd)
 
 
 if __name__ == "__main__":
@@ -358,6 +573,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--device", type=str, default=None, help="Override the default Warp device.")
+    parser.add_argument(
+        "--render-gif",
+        type=str,
+        default=None,
+        help="Render the per-iteration fit as an animated grid GIF to this path (needs polyscope, imageio).",
+    )
     args = parser.parse_known_args()[0]
 
-    main(device=args.device)
+    main(device=args.device, render_gif=args.render_gif)
