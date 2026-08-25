@@ -53,12 +53,14 @@ assembly step.
 | R6  | Geometry helpers: `dot`, `length`, `normalize`, `cross`                            | Should   |                                                  |
 | R7  | Matrix jets: `determinant`, `trace`, `transpose`, `inverse`, matmul                | Should   | Square `mat2`/`mat3` and rectangular `mat32`/`mat23` for deformation gradients |
 | R8  | Second-order scalar jets giving a dense local Hessian in one forward pass           | Should   | `wp.JetSpace2`; no tape required                 |
+| R9  | Quaternion jets for rotation optimization: `mul`, `quat_rotate`, and an `exp_map` tangent chart, first and second order | Should | `quat`/`vec3` payloads; one-pass `3×3` tangent Hessian for intrinsic Newton on SO(3) |
 
-**Non-goals**: second-order jets for vector/matrix payloads
-([#11](https://github.com/alecjacobson/warp/issues/11) -- may not be
-worthwhile); quaternion jet types; a native symmetric matrix type for the
-Hessian ([#5](https://github.com/alecjacobson/warp/issues/5)); comparison
-operators dispatching through the overload table so `a < b` works on a jet
+**Non-goals**: second-order jets for general matrix payloads
+([#11](https://github.com/alecjacobson/warp/issues/11) -- second-order `vec3`
+and quaternion payloads are now provided for rotation optimization; wider matrix
+payloads may not be worthwhile); a native symmetric matrix type for the Hessian
+([#5](https://github.com/alecjacobson/warp/issues/5)); comparison operators
+dispatching through the overload table so `a < b` works on a jet
 ([#10](https://github.com/alecjacobson/warp/issues/10)); assembling the sparse
 global Hessian from the local blocks; choosing a sparsity pattern or a linear
 solver.
@@ -335,12 +337,51 @@ iteration, or for a wide energy -- in-kernel `wp.grad` over first-order jets get
 the same Hessian with none of that cost. The tape route remains useful on CPU and
 for long chains.
 
-The payload is **scalar only**. Each intermediate already carries an `O(width²)`
-Hessian; making the payload a vector or matrix multiplies that by the component
-count (`9×` for a `mat3`), which is a large compile-time and register cost for a
-rare use case, so it is deferred
-([#11](https://github.com/alecjacobson/warp/issues/11)). Vector-valued second
-derivatives, where genuinely needed, decompose into per-component scalar jets.
+The payload was originally **scalar only**: each intermediate already carries an
+`O(width²)` Hessian, and making the payload a vector or matrix multiplies that by
+the component count (`9×` for a `mat3`), a large compile-time and register cost.
+Second-order `vec3` and `quat` payloads were since added for rotation
+optimization (see [Quaternion jets](#quaternion-jets) below), where the small
+component count (3 and 4) keeps that cost modest and the one-pass tangent Hessian
+is exactly what an intrinsic Newton step wants. Wider matrix payloads remain
+deferred ([#11](https://github.com/alecjacobson/warp/issues/11)); second
+derivatives of a general matrix decompose into per-component scalar jets where
+genuinely needed.
+
+### Quaternion jets
+
+Both `wp.JetSpace` and `wp.JetSpace2` carry `quat` and `vec3` payloads for
+optimizing over 3D rotations. The quaternion is stored `[x, y, z, w]` to match
+`wp.quat`; a first-order payload adds a `(4, width)` `coeff` block, and a
+second-order payload adds a per-component gradient and a row-stacked Hessian
+(`hess[c * width + i, j]` is entry `(i, j)` of component `c`'s Hessian). The
+overloads cover the Hamilton product (`mul`), `quat_rotate` / `quat_rotate_inv`,
+`dot`, `length`, and `normalize`, plus a rotation-vector exponential map
+`J.exp_map` on the namespace. Each is written by extracting components to scalar
+jets, composing with the scalar chain rule, and reassembling, so nothing here
+derives a second derivative by hand -- the quadratic Hessian bookkeeping rides
+on the tested scalar overloads.
+
+The exponential map `q(v) = [v * sinc½(s), cos½(s)]` with `s = |v|²` is the one
+subtle piece. It is smooth even though `|v|` has a kink at the origin, because it
+depends on `v` only through the even quantity `s`; the implementation uses a
+truncated series in `s` near zero -- itself differentiated exactly by the scalar
+chain rule -- and the closed form (`sqrt`, `sin`, `cos`) away from it, selected
+by `where`. At the tangent-chart origin `v.value = 0`, which is where an
+intrinsic Newton step evaluates it, so the series branch supplies the value and
+the first two `s`-derivatives the second-order jet reads.
+
+**Unit versus full-space.** A quaternion jet is *not* auto-normalized, and
+`quat_rotate` presumes a unit quaternion, exactly as in plain Warp. Unit-ness is
+a property of the parametrization, not the type. Seeding a 3-vector tangent and
+calling `exp_map` gives on-manifold derivatives: the quaternion stays unit to
+second order and the width-3 gradient and Hessian are the intrinsic SO(3)
+quantities a Newton step on rotation wants -- a clean, full-rank `3×3`. Seeding
+the four quaternion components directly instead gives honest full-space `∂/∂q`
+derivatives. Because neither route hides a normalization, a user who wants one
+is not surprised by the other. Differentiating through an explicit `normalize`
+is possible too, but yields a rank-deficient Hessian (a null direction along the
+radial), so the exp-map chart is the recommended unit route.
 
 ## Coverage
 
@@ -357,19 +398,19 @@ operation family. "FD" marks families verified against finite differences in
 | Indexing (`v[i]`, `extract`)                              |        ✓         |          ✓          |            ✓            |        –         |
 | Geometry (`dot length length_sq normalize cross`)         |        ✓         |          ✓          |            –            |        –         |
 | Matrix (`transpose trace determinant inverse`, matmul)    |        –         |          –          |    ✓ (mat2/3/32/23)     |        –         |
+| Quaternion (`mul quat_rotate quat_rotate_inv dot length normalize exp_map`) — FD | – | ✓ (`quat`) | – | ✓ (`vec3`/`quat`) |
 | Reverse-over-jet Hessian via `wp.Tape`                    |        ✓         |          ✓          |            ✓            |     n/a          |
 | Reverse-over-jet Hessian via in-kernel `wp.grad` (no tape) |        ✓         |          ✓          |            ✓            |     n/a          |
 | Pure-forward Hessian (no tape, no reverse)                |       n/a        |         n/a         |           n/a           |        ✓         |
 
-Not covered (tracked as issues): second-order vector/matrix jets
+Not covered (tracked as issues): second-order jets for general matrix payloads
 ([#11](https://github.com/alecjacobson/warp/issues/11)); a native symmetric
 matrix type for the Hessian ([#5](https://github.com/alecjacobson/warp/issues/5));
-overloaded comparisons ([#10](https://github.com/alecjacobson/warp/issues/10));
-quaternion jets.
+overloaded comparisons ([#10](https://github.com/alecjacobson/warp/issues/10)).
 
 ## Testing Strategy
 
-Two modules, both registered in `default_suite`:
+Three modules, all registered in `default_suite`:
 
 **`warp/tests/test_jet.py`** (`TestJet`, `TestJetSpace`). Device-parametrized
 tests via `add_function_test`, plus a fixed-device `TestJetSpace` for namespace
@@ -397,6 +438,18 @@ perturbs shared hash state, so a kernel's symbol is looked up under a hash that
 differs from the one it compiled with. Single device keeps the hashes consistent;
 CUDA correctness of these ops is covered by the finite-difference gates in the jet
 benchmarks.
+
+**`warp/tests/test_jet_quat.py`** (`TestJetQuat`). Drives a rigid-alignment
+energy through the quaternion overloads and checks its gradient and Hessian
+against finite differences: the second-order tangent (`3×3`) grad and Hessian at
+a generic base orientation, Hessian symmetry, the vanishing gradient and PSD
+Hessian at the optimum, the full-space (`4×4`) route from seeding the four
+quaternion components, and the first-order tangent gradient read off `.coeff`. A
+short intrinsic-Newton loop is asserted to recover a known rotation. CPU-only for
+the same module-hasher reason as `test_jet_ops.py`. The generated jet code is
+device-independent, so these checks cover the math on both backends;
+`example_quat_shape_align.py` additionally runs the finite-difference check on
+the active device (CPU or CUDA) each time it is launched.
 
 ## Benchmarks
 
