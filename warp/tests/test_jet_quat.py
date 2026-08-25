@@ -180,6 +180,42 @@ def _fullspace_grad_hess(
 
 
 @wp.func
+def _geometry_energy(
+    q: J4.quat,
+    X: wp.array[wp.vec3d],
+    Y: wp.array[wp.vec3d],
+    n: int,
+) -> J4.scalar:
+    # Drives the second-order quaternion geometry overloads that the tangent
+    # route never reaches: normalize, length and dot on a quat jet,
+    # quat_rotate_inv, and length/length_sq on the vec3 residual.
+    u = wp.normalize(q)
+    e = J4.constant(wp.float64(0.0))
+    for a in range(n):
+        r = wp.quat_rotate_inv(u, Y[a]) - X[a]
+        d = wp.length(r)
+        e = e + wp.float64(0.5) * d * d + wp.float64(0.25) * wp.length_sq(r)
+    off = wp.length(q) - wp.float64(1.0)
+    return e + off * off + wp.float64(0.1) * wp.dot(q, q)
+
+
+@wp.kernel
+def _geometry_grad_hess(
+    q0: wp.array[wp.quatd],
+    X: wp.array[wp.vec3d],
+    Y: wp.array[wp.vec3d],
+    n: int,
+    grad: wp.array[wp.vec4d],
+    hess: wp.array[wp.mat44d],
+):
+    i = wp.tid()
+    q = J4.seed_quat(q0[i], 0, 1, 2, 3)
+    e = _geometry_energy(q, X, Y, n)
+    grad[i] = e.grad
+    hess[i] = e.hess
+
+
+@wp.func
 def _tangent_energy_1st(
     dtheta: JF3.vec3,
     q0: wp.quatd,
@@ -318,6 +354,46 @@ class TestJetQuat(unittest.TestCase):
         H_jet = np.array(h_w.numpy()[0])
         np.testing.assert_allclose(g_jet, g_fd, atol=1e-5, rtol=1e-5)
         np.testing.assert_allclose(H_jet, H_fd, atol=1e-4, rtol=1e-4)
+
+    def test_fullspace_quat_geometry(self):
+        # normalize / length / dot / quat_rotate_inv at second order, evaluated
+        # at a deliberately non-unit quaternion so normalize and length are not
+        # sitting at a trivial point.
+        X, Y, _ = _make_problem(seed=8)
+        q0 = np.array([0.2, -0.3, 0.5, 0.9])
+
+        def energy(q):
+            u = q / np.linalg.norm(q)
+            uc = np.array([-u[0], -u[1], -u[2], u[3]])
+            r = qrot(uc, Y) - X
+            e = 0.75 * np.sum(r * r)
+            off = np.linalg.norm(q) - 1.0
+            return e + off * off + 0.1 * np.dot(q, q)
+
+        g_fd, H_fd = _grad_hess_fd(energy, q0)
+
+        q0_w = wp.array([wp.quatd(*q0)], dtype=wp.quatd, device=DEVICE)
+        X_w = wp.array([wp.vec3d(*row) for row in X], dtype=wp.vec3d, device=DEVICE)
+        Y_w = wp.array([wp.vec3d(*row) for row in Y], dtype=wp.vec3d, device=DEVICE)
+        g_w = wp.zeros(1, dtype=wp.vec4d, device=DEVICE)
+        h_w = wp.zeros(1, dtype=wp.mat44d, device=DEVICE)
+        wp.launch(_geometry_grad_hess, dim=1, inputs=[q0_w, X_w, Y_w, len(X)], outputs=[g_w, h_w], device=DEVICE)
+        wp.synchronize_device(DEVICE)
+
+        g_jet = np.array(g_w.numpy()[0])
+        H_jet = np.array(h_w.numpy()[0])
+        np.testing.assert_allclose(g_jet, g_fd, atol=1e-5, rtol=1e-5)
+        np.testing.assert_allclose(H_jet, H_fd, atol=1e-4, rtol=1e-4)
+        np.testing.assert_allclose(H_jet, H_jet.T, atol=1e-12)
+
+    def test_exp_map_finite_at_origin(self):
+        # The exp-map closed form divides by |v|, and the chart origin is
+        # exactly where an intrinsic Newton step evaluates it, so the value,
+        # gradient and Hessian there must all be finite.
+        X, Y, _ = _make_problem(seed=9)
+        g_jet, H_jet = self._launch_tangent(np.array([0.0, 0.0, 0.0, 1.0]), X, Y)
+        self.assertTrue(np.all(np.isfinite(g_jet)), f"non-finite gradient at the chart origin: {g_jet}")
+        self.assertTrue(np.all(np.isfinite(H_jet)), f"non-finite Hessian at the chart origin: {H_jet}")
 
     def test_first_order_tangent_gradient(self):
         # The first-order jet reads the same tangent gradient off .coeff; its

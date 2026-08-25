@@ -359,7 +359,7 @@ class Example:
             dtype=wp.vec3d,
         )
 
-    def verify_derivatives(self, c=0, tol=1e-6):
+    def verify_derivatives(self, c=0, grad_tol=1e-4, hess_tol=1e-3):
         """Gate the jet gradient/Hessian against finite differences on-device."""
         grad = wp.zeros(1, dtype=wp.vec3d)
         hess = wp.zeros(1, dtype=wp.mat33d)
@@ -377,7 +377,7 @@ class Example:
         print(f"  |grad_jet - grad_fd|_inf = {g_err:.3e}")
         print(f"  |hess_jet - hess_fd|_inf = {h_err:.3e}")
         print(f"  Hessian asymmetry        = {sym:.3e}")
-        assert g_err < 1e-4 and h_err < 1e-3, "jet derivatives disagree with finite differences"
+        assert g_err < grad_tol and h_err < hess_tol, "jet derivatives disagree with finite differences"
         return g_err, h_err
 
     def fit(self):
@@ -577,7 +577,7 @@ if __name__ == "__main__":
         "--render-gif",
         type=str,
         default=None,
-        help="Render the per-iteration fit as an animated grid GIF to this path (needs polyscope, imageio).",
+        help="Render the per-iteration fit as an animated grid GIF to this path (needs polyscope, Pillow).",
     )
     args = parser.parse_known_args()[0]
 

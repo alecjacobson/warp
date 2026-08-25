@@ -1298,14 +1298,16 @@ def _make_jet_space(width: int, dtype):
             jet_mul(s3, dtype(-1.0 / 645120.0)),
         )
 
-        a = jet_sqrt(s)
-        h = jet_mul(a, dtype(0.5))
-        cw_closed = jet_cos(h)
-        g_closed = jet_div(jet_sin(h), a)
-
-        small = s.value < dtype(1.0e-3)
-        cw = jet_where(small, cw_series, cw_closed)
-        g = jet_where(small, g_series, g_closed)
+        # Branch rather than select: the closed form divides by sqrt(s), so at
+        # the chart origin (s = 0, where an intrinsic Newton step evaluates it)
+        # evaluating it at all would produce Inf/NaN for a `where` to discard.
+        cw = cw_series
+        g = g_series
+        if s.value >= dtype(1.0e-3):
+            a = jet_sqrt(s)
+            h = jet_mul(a, dtype(0.5))
+            cw = jet_cos(h)
+            g = jet_div(jet_sin(h), a)
 
         return quat_from_scalars(
             jet_mul(jet_extract(v, 0), g),
@@ -1929,6 +1931,19 @@ def _make_jet_space2(width: int, dtype):
     def jet2_length_sq(a: Jet2Vec3) -> Jet2Scalar:
         return jet2_dot(a, a)
 
+    @wp.func
+    def jet2_length(a: Jet2Vec3) -> Jet2Scalar:
+        return jet_sqrt(jet2_length_sq(a))
+
+    @wp.func
+    def jet2_normalize(a: Jet2Vec3) -> Jet2Vec3:
+        inv = jet_div(dtype(1.0), jet2_length(a))
+        return vec3_from_scalars(
+            jet_mul(vec3_extract(a, 0), inv),
+            jet_mul(vec3_extract(a, 1), inv),
+            jet_mul(vec3_extract(a, 2), inv),
+        )
+
     # ---- quaternion products (Hamilton, [x, y, z, w] storage) ----
 
     @wp.func
@@ -2021,6 +2036,45 @@ def _make_jet_space2(width: int, dtype):
         )
         return vec3_from_scalars(rx, ry, rz)
 
+    @wp.func
+    def jet2_quat_rotate_inv(q: Jet2Quat, x: NativeVec3) -> Jet2Vec3:
+        qc = quat_from_scalars(
+            jet_neg(quat_extract(q, 0)),
+            jet_neg(quat_extract(q, 1)),
+            jet_neg(quat_extract(q, 2)),
+            quat_extract(q, 3),
+        )
+        return jet2_quat_rotate(qc, x)
+
+    # ---- quaternion geometry (four-component, i.e. full-space) ----
+
+    @wp.func
+    def jet2_qdot(a: Jet2Quat, b: Jet2Quat) -> Jet2Scalar:
+        return jet_add(
+            jet_add(
+                jet_add(
+                    jet_mul(quat_extract(a, 0), quat_extract(b, 0)),
+                    jet_mul(quat_extract(a, 1), quat_extract(b, 1)),
+                ),
+                jet_mul(quat_extract(a, 2), quat_extract(b, 2)),
+            ),
+            jet_mul(quat_extract(a, 3), quat_extract(b, 3)),
+        )
+
+    @wp.func
+    def jet2_qlength(q: Jet2Quat) -> Jet2Scalar:
+        return jet_sqrt(jet2_qdot(q, q))
+
+    @wp.func
+    def jet2_qnormalize(q: Jet2Quat) -> Jet2Quat:
+        inv = jet_div(dtype(1.0), jet2_qlength(q))
+        return quat_from_scalars(
+            jet_mul(quat_extract(q, 0), inv),
+            jet_mul(quat_extract(q, 1), inv),
+            jet_mul(quat_extract(q, 2), inv),
+            jet_mul(quat_extract(q, 3), inv),
+        )
+
     # ---- rotation-vector exp map: R^3 tangent -> unit quaternion ----
 
     @wp.func
@@ -2053,14 +2107,16 @@ def _make_jet_space2(width: int, dtype):
             jet_mul(s3, dtype(-1.0 / 645120.0)),
         )
 
-        a = jet_sqrt(s)
-        h = jet_mul(a, dtype(0.5))
-        cw_closed = jet_cos(h)
-        g_closed = jet_div(jet_sin(h), a)
-
-        small = s.value < dtype(1.0e-3)
-        cw = jet_where(small, cw_series, cw_closed)
-        g = jet_where(small, g_series, g_closed)
+        # Branch rather than select: the closed form divides by sqrt(s), so at
+        # the chart origin (s = 0, where an intrinsic Newton step evaluates it)
+        # evaluating it at all would produce Inf/NaN for a `where` to discard.
+        cw = cw_series
+        g = g_series
+        if s.value >= dtype(1.0e-3):
+            a = jet_sqrt(s)
+            h = jet_mul(a, dtype(0.5))
+            cw = jet_cos(h)
+            g = jet_div(jet_sin(h), a)
 
         return quat_from_scalars(
             jet_mul(vec3_extract(v, 0), g),
@@ -2081,7 +2137,14 @@ def _make_jet_space2(width: int, dtype):
     _register("sub", jet2_sub)
     _register("mul", jet2_mul)
     _register("dot", jet2_dot)
+    _register("length", jet2_length)
+    _register("length_sq", jet2_length_sq)
+    _register("normalize", jet2_normalize)
     _register("quat_rotate", jet2_quat_rotate)
+    _register("quat_rotate_inv", jet2_quat_rotate_inv)
+    _register("dot", jet2_qdot)
+    _register("length", jet2_qlength)
+    _register("normalize", jet2_qnormalize)
     _register("extract", vec3_extract)
     _register("extract", quat_extract)
 

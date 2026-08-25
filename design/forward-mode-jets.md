@@ -366,10 +366,12 @@ The exponential map `q(v) = [v * sinc½(s), cos½(s)]` with `s = |v|²` is the o
 subtle piece. It is smooth even though `|v|` has a kink at the origin, because it
 depends on `v` only through the even quantity `s`; the implementation uses a
 truncated series in `s` near zero -- itself differentiated exactly by the scalar
-chain rule -- and the closed form (`sqrt`, `sin`, `cos`) away from it, selected
-by `where`. At the tangent-chart origin `v.value = 0`, which is where an
-intrinsic Newton step evaluates it, so the series branch supplies the value and
-the first two `s`-derivatives the second-order jet reads.
+chain rule -- and the closed form (`sqrt`, `sin`, `cos`) away from it. The two
+are chosen by a real branch rather than a `where`, so the closed form -- which
+divides by `sqrt(s)` -- is never evaluated at the origin. At the tangent-chart
+origin `v.value = 0`, which is where an intrinsic Newton step evaluates it, so
+the series branch supplies the value and the first two `s`-derivatives the
+second-order jet reads.
 
 **Unit versus full-space.** A quaternion jet is *not* auto-normalized, and
 `quat_rotate` presumes a unit quaternion, exactly as in plain Warp. Unit-ness is
@@ -398,7 +400,7 @@ operation family. "FD" marks families verified against finite differences in
 | Indexing (`v[i]`, `extract`)                              |        ✓         |          ✓          |            ✓            |        –         |
 | Geometry (`dot length length_sq normalize cross`)         |        ✓         |          ✓          |            –            |        –         |
 | Matrix (`transpose trace determinant inverse`, matmul)    |        –         |          –          |    ✓ (mat2/3/32/23)     |        –         |
-| Quaternion (`mul quat_rotate quat_rotate_inv dot length normalize exp_map`) — FD | – | ✓ (`quat`) | – | ✓ (`vec3`/`quat`) |
+| Quaternion (`mul quat_rotate quat_rotate_inv dot length length_sq normalize exp_map`) — FD | – | ✓ (`quat`) | – | ✓ (`vec3`/`quat`) |
 | Reverse-over-jet Hessian via `wp.Tape`                    |        ✓         |          ✓          |            ✓            |     n/a          |
 | Reverse-over-jet Hessian via in-kernel `wp.grad` (no tape) |        ✓         |          ✓          |            ✓            |     n/a          |
 | Pure-forward Hessian (no tape, no reverse)                |       n/a        |         n/a         |           n/a           |        ✓         |
