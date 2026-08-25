@@ -531,12 +531,16 @@ class Example:
         cols_mask = np.any([m.any(axis=0) for m in boxes], axis=0)
         ys, xs = np.where(rows)[0], np.where(cols_mask)[0]
         if len(ys) and len(xs):
+            # Clamp against the frame itself, not `size`: on a HiDPI display the
+            # screenshot buffer is a multiple of the requested window size, and
+            # clamping to `size` would crop away everything past the top-left.
+            fw, fh = frames[0].size
             m = 16
             box = (
                 max(int(xs[0]) - m, 0),
                 max(int(ys[0]) - m, 0),
-                min(int(xs[-1]) + m, size),
-                min(int(ys[-1]) + m, size),
+                min(int(xs[-1]) + m, fw),
+                min(int(ys[-1]) + m, fh),
             )
             frames = [f.crop(box) for f in frames]
 
