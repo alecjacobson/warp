@@ -278,33 +278,126 @@ def _nn_tree_bonds(points):
 
 
 def make_dataset(n_atoms=12, n_candidates=64, n_matches=4, seed=0):
-    """One query molecule and a dataset of candidates.
+    """One query molecule and a dataset of candidate molecules.
 
-    ``n_matches`` candidates are rotated near-copies of the query (small
-    structural noise); the rest are unrelated molecules. Everything is
-    centered, so only orientation distinguishes them.
+    Molecules are generated as small self-avoiding 3D chains with approximately
+    fixed bond lengths and tetrahedral bond angles. This gives much more
+    molecule-like ball-and-stick geometry than independent Gaussian points,
+    while keeping the example deliberately simple.
+
+    ``n_matches`` candidates are rotated, slightly distorted copies of the query;
+    the remaining candidates are independently generated decoys.
+
+    Everything is centered, so the fitting problem remains rotation-only.
     """
     rng = np.random.default_rng(seed)
 
-    query = rng.standard_normal((n_atoms, 3))
-    query -= query.mean(0)
+    def random_molecule():
+        # These are not intended as chemically exact units, just pleasant
+        # ball-and-stick proportions.
+        bond_length = 0.75
+        bond_jitter = 0.05
 
-    cands = np.empty((n_candidates, n_atoms, 3))
+        # For three consecutive atoms A-B-C, tetrahedral chemistry gives
+        # angle ABC ~= 109.5 degrees. Since `prev` points A->B and the new
+        # direction points B->C, their vector angle is 180 - 109.5 = 70.5 deg.
+        turn_angle = np.deg2rad(70.5)
+        angle_jitter = np.deg2rad(8.0)
+
+        # Keep non-neighboring atoms from collapsing onto one another.
+        min_separation = 0.62 * bond_length
+
+        X = np.zeros((n_atoms, 3), dtype=np.float64)
+
+        if n_atoms <= 1:
+            return X
+
+        # Arbitrary first bond; the entire molecule will subsequently be
+        # subjected to a random rotation anyway.
+        X[1] = np.array([bond_length, 0.0, 0.0])
+
+        for i in range(2, n_atoms):
+            prev = X[i - 1] - X[i - 2]
+            prev /= np.linalg.norm(prev)
+
+            accepted = False
+            for _attempt in range(64):
+                # Random unit direction perpendicular to the previous bond.
+                u = rng.standard_normal(3)
+                u -= np.dot(u, prev) * prev
+                un = np.linalg.norm(u)
+                if un < 1.0e-10:
+                    continue
+                u /= un
+
+                theta = turn_angle + rng.normal(scale=angle_jitter)
+                length = bond_length * (1.0 + rng.normal(scale=bond_jitter))
+
+                direction = np.cos(theta) * prev + np.sin(theta) * u
+                p = X[i - 1] + length * direction
+
+                # Adjacent atoms are supposed to be close; only test against
+                # atoms before the immediate predecessor.
+                if i <= 2:
+                    accepted = True
+                else:
+                    d = np.linalg.norm(X[: i - 1] - p, axis=1)
+                    accepted = np.all(d > min_separation)
+
+                if accepted:
+                    X[i] = p
+                    break
+
+            if not accepted:
+                # Extremely unlikely fallback: accept the last proposal rather
+                # than complicating this toy generator with backtracking.
+                X[i] = p
+
+        # Make the generated molecule itself randomly oriented. This prevents
+        # the query/decoys from sharing an accidental preferred construction
+        # direction.
+        X = _qrot(_rand_rotation(rng), X)
+
+        X -= X.mean(axis=0)
+        return X
+
+    # ----------------------------------------------------------------------
+    # Query molecule
+    # ----------------------------------------------------------------------
+
+    query = random_molecule()
+
+    # ----------------------------------------------------------------------
+    # Candidate dataset
+    # ----------------------------------------------------------------------
+
+    cands = np.empty((n_candidates, n_atoms, 3), dtype=np.float64)
     is_match = np.zeros(n_candidates, dtype=bool)
-    match_ids = rng.choice(n_candidates, size=n_matches, replace=False)
+
+    n_matches = min(n_matches, n_candidates)
+    match_ids = set(rng.choice(n_candidates, size=n_matches, replace=False))
 
     for c in range(n_candidates):
         if c in match_ids:
-            noise = 0.02 * rng.standard_normal((n_atoms, 3))  # same molecule, slightly perturbed
+            # A true match has the same underlying geometry, with small
+            # per-atom structural distortion. Subtracting the mean again
+            # removes the tiny translation introduced by the noise.
+            noise = 0.025 * rng.standard_normal((n_atoms, 3))
             base = query + noise
+            base -= base.mean(axis=0)
+
             is_match[c] = True
-            # A modest generating rotation, as in the reference MATLAB tests, so
-            # the intrinsic Newton fit reliably reaches the global optimum.
+
+            # Keep planted matches within a reasonably large but reliable
+            # Newton basin from the identity initialization.
             rot = _rand_rotation(rng, max_angle=np.deg2rad(50.0))
+
         else:
-            base = rng.standard_normal((n_atoms, 3))  # a different molecule
+            # Independently generated molecule: similar geometric statistics
+            # and scale, but genuinely different shape.
+            base = random_molecule()
             rot = _rand_rotation(rng)
-        base -= base.mean(0)
+
         cands[c] = _qrot(rot, base)
 
     return query, cands, is_match
