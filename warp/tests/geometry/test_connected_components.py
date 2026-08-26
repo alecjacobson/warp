@@ -10,12 +10,18 @@ import warp.geometry
 from warp.tests.unittest_utils import *
 
 # ---------------------------------------------------------------------------
-# Independent CPU reference (union-find over triangle edges, no Warp)
+# Independent CPU reference (serial union-find over simplices, no Warp)
 # ---------------------------------------------------------------------------
 
 
-def _reference(tris, num_points):
-    """Return ``(labels, num_components)`` from a serial union-find over triangle edges."""
+def _reference(simplices, num_points, simplex_size=3):
+    """Return ``(labels, num_components)`` from a serial union-find over simplices.
+
+    Every vertex of a simplex is unioned with its first, which for connected
+    components induces the same partition as any spanning set of intra-simplex
+    edges.
+    """
+    flat = np.asarray(simplices, dtype=np.int64).reshape(-1)
     parent = list(range(num_points))
 
     def find(x):
@@ -31,11 +37,11 @@ def _reference(tris, num_points):
         if ra != rb:
             parent[max(ra, rb)] = min(ra, rb)
 
-    for tri in tris:
-        i, j, k = int(tri[0]), int(tri[1]), int(tri[2])
-        union(i, j)
-        union(j, k)
-        union(k, i)
+    for s in range(len(flat) // simplex_size):
+        base = s * simplex_size
+        first = int(flat[base])
+        for c in range(1, simplex_size):
+            union(first, int(flat[base + c]))
 
     roots = sorted({find(v) for v in range(num_points)})
     remap = {r: c for c, r in enumerate(roots)}
@@ -51,16 +57,18 @@ def _partition(labels):
     return {frozenset(s) for s in groups.values()}
 
 
-def _compute(tris, num_points, device):
-    flat = np.asarray(tris, dtype=np.int32).reshape(-1)
+def _compute(simplices, num_points, device, simplex_size=3):
+    flat = np.asarray(simplices, dtype=np.int32).reshape(-1)
     indices = wp.array(flat, dtype=wp.int32, device=device)
-    labels, k = warp.geometry.connected_components(indices, num_points=num_points, device=device)
+    labels, k = warp.geometry.connected_components(
+        indices, num_points=num_points, simplex_size=simplex_size, device=device
+    )
     return labels.numpy(), k
 
 
-def _assert_matches_reference(test, tris, num_points, device):
-    labels, k = _compute(tris, num_points, device)
-    ref_labels, ref_k = _reference(tris, num_points)
+def _assert_matches_reference(test, simplices, num_points, device, simplex_size=3):
+    labels, k = _compute(simplices, num_points, device, simplex_size=simplex_size)
+    ref_labels, ref_k = _reference(simplices, num_points, simplex_size=simplex_size)
 
     test.assertEqual(k, ref_k, "component count mismatch")
     # Labels must be a contiguous [0, k) range...
@@ -204,6 +212,44 @@ def test_random_soups(test, device):
         _assert_matches_reference(test, tris, num_points, device)
 
 
+def test_segments(test, device):
+    # simplex_size=2: a path 0-1-2, an isolated edge 5-6, isolated vertices 3,4.
+    _, k = _assert_matches_reference(test, [0, 1, 1, 2, 5, 6], 7, device, simplex_size=2)
+    test.assertEqual(k, 4)
+
+
+def test_tetrahedra(test, device):
+    # Two disjoint tets, then two tets sharing a vertex.
+    _, k = _assert_matches_reference(test, [0, 1, 2, 3, 4, 5, 6, 7], 8, device, simplex_size=4)
+    test.assertEqual(k, 2)
+    _, k = _assert_matches_reference(test, [0, 1, 2, 3, 3, 4, 5, 6], 7, device, simplex_size=4)
+    test.assertEqual(k, 1)
+
+
+def test_points(test, device):
+    # simplex_size=1: no edges, every vertex is its own component.
+    _, k = _assert_matches_reference(test, [0, 1, 2, 3], 4, device, simplex_size=1)
+    test.assertEqual(k, 4)
+
+
+def test_random_soups_multi_size(test, device):
+    rng = np.random.default_rng(2026_08_26)
+    for simplex_size in (1, 2, 3, 4, 5):
+        for _ in range(25):
+            num_points = int(rng.integers(2, 25))
+            num_simplices = int(rng.integers(0, 40))
+            flat = rng.integers(0, num_points, size=num_simplices * simplex_size).astype(np.int32)
+            _assert_matches_reference(test, flat, num_points, device, simplex_size=simplex_size)
+
+
+def test_invalid_simplex_size(test, device):
+    idx = wp.array(np.array([0, 1, 2, 3], dtype=np.int32), dtype=wp.int32, device=device)
+    with test.assertRaises(ValueError):  # simplex_size < 1
+        warp.geometry.connected_components(idx, num_points=4, simplex_size=0)
+    with test.assertRaises(ValueError):  # length not a multiple of simplex_size
+        warp.geometry.connected_components(idx, num_points=4, simplex_size=3)
+
+
 def test_graph_capture(test, device):
     if not wp.get_device(device).is_cuda:
         test.skipTest("CUDA graph capture requires a CUDA device")
@@ -280,6 +326,13 @@ add_function_test(
 )
 add_function_test(TestConnectedComponents, "test_infer_num_points", test_infer_num_points, devices=devices)
 add_function_test(TestConnectedComponents, "test_random_soups", test_random_soups, devices=devices)
+add_function_test(TestConnectedComponents, "test_segments", test_segments, devices=devices)
+add_function_test(TestConnectedComponents, "test_tetrahedra", test_tetrahedra, devices=devices)
+add_function_test(TestConnectedComponents, "test_points", test_points, devices=devices)
+add_function_test(
+    TestConnectedComponents, "test_random_soups_multi_size", test_random_soups_multi_size, devices=devices
+)
+add_function_test(TestConnectedComponents, "test_invalid_simplex_size", test_invalid_simplex_size, devices=devices)
 add_function_test(TestConnectedComponents, "test_graph_capture", test_graph_capture, devices=devices)
 add_function_test(TestConnectedComponents, "test_invalid_inputs", test_invalid_inputs, devices=devices)
 
