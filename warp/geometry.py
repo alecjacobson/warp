@@ -8,14 +8,15 @@ computed without vertex positions: combinatorial topology statistics (edge
 incidence and orientation, vertex manifoldness, and degeneracies) and
 edge-connected component labeling.
 
-.. figure:: /img/warp_geometry_connected_components.png
+.. figure:: /img/warp_geometry_connected_components.gif
    :align: center
    :width: 80%
 
    The 50 edge-connected components of the libigl *truck* mesh (2,956 vertices,
    4,770 triangles) labeled by :func:`connected_components` -- the body is a
    single component while each wheel, tire, and the spare are separate. Rendered
-   with `polyscope <https://polyscope.run>`_ using one color per component.
+   with `polyscope <https://polyscope.run>`_ using one color per component,
+   orbiting the up axis.
 
 Usage:
     This module must be explicitly imported::
