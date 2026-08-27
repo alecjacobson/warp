@@ -92,7 +92,7 @@ def _scipy_time(tris, num_points, warmup=1, iters=3):
 
 def _run(name, tris, num_points, device):
     num_triangles = len(tris) // 3
-    indices = wp.array(tris, dtype=wp.int32, device=device)
+    indices = wp.array(tris.reshape(-1, 3), dtype=wp.int32, device=device)
 
     _, k = warp.geometry.connected_components(indices, num_points=num_points, device=device)
     t_warp = _time(lambda: warp.geometry.connected_components(indices, num_points=num_points, device=device), device)

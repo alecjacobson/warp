@@ -58,11 +58,9 @@ def _partition(labels):
 
 
 def _compute(simplices, num_points, device, simplex_size=3):
-    flat = np.asarray(simplices, dtype=np.int32).reshape(-1)
-    indices = wp.array(flat, dtype=wp.int32, device=device)
-    labels, k = warp.geometry.connected_components(
-        indices, num_points=num_points, simplex_size=simplex_size, device=device
-    )
+    arr = np.asarray(simplices, dtype=np.int32).reshape(-1, simplex_size)
+    indices = wp.array(arr, dtype=wp.int32, device=device)
+    labels, k = warp.geometry.connected_components(indices, num_points=num_points, device=device)
     return labels.numpy(), k
 
 
@@ -195,8 +193,8 @@ def test_permutation_and_relabel_invariance(test, device):
 
 def test_infer_num_points(test, device):
     tris = [(0, 1, 2), (2, 3, 4)]
-    flat = np.asarray(tris, dtype=np.int32).reshape(-1)
-    indices = wp.array(flat, dtype=wp.int32, device=device)
+    arr = np.asarray(tris, dtype=np.int32).reshape(-1, 3)
+    indices = wp.array(arr, dtype=wp.int32, device=device)
     labels, k = warp.geometry.connected_components(indices, device=device)
     ref_labels, ref_k = _reference(tris, 5)
     test.assertEqual(k, ref_k)
@@ -242,14 +240,6 @@ def test_random_soups_multi_size(test, device):
             _assert_matches_reference(test, flat, num_points, device, simplex_size=simplex_size)
 
 
-def test_invalid_simplex_size(test, device):
-    idx = wp.array(np.array([0, 1, 2, 3], dtype=np.int32), dtype=wp.int32, device=device)
-    with test.assertRaises(ValueError):  # simplex_size < 1
-        warp.geometry.connected_components(idx, num_points=4, simplex_size=0)
-    with test.assertRaises(ValueError):  # length not a multiple of simplex_size
-        warp.geometry.connected_components(idx, num_points=4, simplex_size=3)
-
-
 def test_graph_capture(test, device):
     if not wp.get_device(device).is_cuda:
         test.skipTest("CUDA graph capture requires a CUDA device")
@@ -257,7 +247,7 @@ def test_graph_capture(test, device):
     tris = [(0, 1, 2), (2, 3, 4), (5, 6, 7), (8, 9, 10)]
     num_points = 11
     ref_labels, ref_k = _reference(tris, num_points)
-    idx = wp.array(np.asarray(tris, dtype=np.int32).reshape(-1), dtype=wp.int32, device=device)
+    idx = wp.array(np.asarray(tris, dtype=np.int32).reshape(-1, 3), dtype=wp.int32, device=device)
 
     # Eager mode returns a Python int; a warm-up also sizes scratch before capture.
     _, warmup_k = warp.geometry.connected_components(idx, num_points=num_points, device=device)
@@ -281,14 +271,21 @@ def test_graph_capture(test, device):
 
 
 def test_invalid_inputs(test, device):
+    # Not 2-D.
     with test.assertRaises(ValueError):
-        bad = wp.array(np.array([0, 1], dtype=np.int32), dtype=wp.int32, device=device)
+        bad = wp.array(np.array([0, 1, 2], dtype=np.int32), dtype=wp.int32, device=device)
         warp.geometry.connected_components(bad)
+    # Index out of range.
     with test.assertRaises(ValueError):
-        bad = wp.array(np.array([0, 1, 5], dtype=np.int32), dtype=wp.int32, device=device)
+        bad = wp.array(np.array([[0, 1, 5]], dtype=np.int32), dtype=wp.int32, device=device)
         warp.geometry.connected_components(bad, num_points=3)
+    # Negative index.
     with test.assertRaises(ValueError):
-        bad = wp.array(np.array([0, 1, -1], dtype=np.int32), dtype=wp.int32, device=device)
+        bad = wp.array(np.array([[0, 1, -1]], dtype=np.int32), dtype=wp.int32, device=device)
+        warp.geometry.connected_components(bad, num_points=3)
+    # Wrong dtype.
+    with test.assertRaises(ValueError):
+        bad = wp.array(np.array([[0, 1, 2]], dtype=np.int64), dtype=wp.int64, device=device)
         warp.geometry.connected_components(bad, num_points=3)
 
 
@@ -332,7 +329,6 @@ add_function_test(TestConnectedComponents, "test_points", test_points, devices=d
 add_function_test(
     TestConnectedComponents, "test_random_soups_multi_size", test_random_soups_multi_size, devices=devices
 )
-add_function_test(TestConnectedComponents, "test_invalid_simplex_size", test_invalid_simplex_size, devices=devices)
 add_function_test(TestConnectedComponents, "test_graph_capture", test_graph_capture, devices=devices)
 add_function_test(TestConnectedComponents, "test_invalid_inputs", test_invalid_inputs, devices=devices)
 

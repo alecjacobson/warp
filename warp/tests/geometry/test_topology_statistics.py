@@ -119,8 +119,8 @@ def _reference(tris, num_points):
 
 
 def _compute(tris, num_points, device):
-    flat = np.asarray(tris, dtype=np.int32).reshape(-1)
-    indices = wp.array(flat, dtype=wp.int32, device=device)
+    arr = np.asarray(tris, dtype=np.int32).reshape(-1, 3)
+    indices = wp.array(arr, dtype=wp.int32, device=device)
     return warp.geometry.triangle_mesh_topology_statistics(indices, num_points=num_points, device=device)
 
 
@@ -349,8 +349,8 @@ def test_random_soups_infer_num_points(test, device):
         tris = _random_soup(rng, num_points, int(rng.integers(1, 20)))
         # Ensure the largest vertex is referenced so inference matches num_points.
         tris.append((num_points - 1, (num_points - 2) % num_points, (num_points - 3) % num_points))
-        flat = np.asarray(tris, dtype=np.int32).reshape(-1)
-        indices = wp.array(flat, dtype=wp.int32, device=device)
+        arr = np.asarray(tris, dtype=np.int32).reshape(-1, 3)
+        indices = wp.array(arr, dtype=wp.int32, device=device)
         stats = warp.geometry.triangle_mesh_topology_statistics(indices, device=device)
         scalars, predicates = _reference(tris, num_points)
         for field, expected in {**scalars, **predicates}.items():
@@ -358,21 +358,25 @@ def test_random_soups_infer_num_points(test, device):
 
 
 def test_invalid_inputs(test, device):
-    # Non-multiple-of-three length.
+    # Not 2-D.
     with test.assertRaises(ValueError):
-        bad = wp.array(np.array([0, 1], dtype=np.int32), dtype=wp.int32, device=device)
+        bad = wp.array(np.array([0, 1, 2], dtype=np.int32), dtype=wp.int32, device=device)
         warp.geometry.triangle_mesh_topology_statistics(bad)
+    # Wrong number of columns.
+    with test.assertRaises(ValueError):
+        bad = wp.array(np.zeros((2, 4), dtype=np.int32), dtype=wp.int32, device=device)
+        warp.geometry.triangle_mesh_topology_statistics(bad, num_points=4)
     # Index out of range.
     with test.assertRaises(ValueError):
-        bad = wp.array(np.array([0, 1, 5], dtype=np.int32), dtype=wp.int32, device=device)
+        bad = wp.array(np.array([[0, 1, 5]], dtype=np.int32), dtype=wp.int32, device=device)
         warp.geometry.triangle_mesh_topology_statistics(bad, num_points=3)
     # Negative index.
     with test.assertRaises(ValueError):
-        bad = wp.array(np.array([0, 1, -1], dtype=np.int32), dtype=wp.int32, device=device)
+        bad = wp.array(np.array([[0, 1, -1]], dtype=np.int32), dtype=wp.int32, device=device)
         warp.geometry.triangle_mesh_topology_statistics(bad, num_points=3)
     # Wrong dtype.
     with test.assertRaises(ValueError):
-        bad = wp.array(np.array([0, 1, 2], dtype=np.int64), dtype=wp.int64, device=device)
+        bad = wp.array(np.array([[0, 1, 2]], dtype=np.int64), dtype=wp.int64, device=device)
         warp.geometry.triangle_mesh_topology_statistics(bad, num_points=3)
 
 

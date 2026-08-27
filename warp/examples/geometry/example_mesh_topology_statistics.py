@@ -32,10 +32,9 @@ except ImportError:
 
 
 def _report(name, indices, num_points, device):
-    """Print the topology statistics for a flat triangle-index array."""
-    stats = warp.geometry.triangle_mesh_topology_statistics(
-        wp.array(indices, dtype=wp.int32, device=device), num_points=num_points, device=device
-    )
+    """Print the topology statistics for a triangle-index array (flat or (num_tris, 3))."""
+    tris = wp.array(np.asarray(indices, dtype=np.int32).reshape(-1, 3), dtype=wp.int32, device=device)
+    stats = warp.geometry.triangle_mesh_topology_statistics(tris, num_points=num_points, device=device)
     print(f"\n{name}")
     print(f"  vertices={stats.num_vertices}  triangles={stats.num_triangles}  edges={stats.num_edges}")
     print(

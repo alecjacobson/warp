@@ -3,8 +3,8 @@
 
 """Geometry processing utilities for triangle meshes.
 
-The public entry points operate on a flat ``int32`` index array and require no
-vertex positions:
+The public entry points operate on a 2-D ``int32`` index array (one simplex per
+row) and require no vertex positions:
 
 * :func:`triangle_mesh_topology_statistics` summarizes combinatorial topology of a
   triangle mesh -- edge incidence and orientation, vertex manifoldness, and
@@ -133,7 +133,7 @@ class _TopologyStatistics:
     """
 
     @wp.func
-    def _corner_neighbors(indices: wp.array[wp.int32], corner: wp.int32):
+    def _corner_neighbors(indices: wp.array2d[wp.int32], corner: wp.int32):
         """Return ``(v, prev, next)`` for an incident corner id ``3 * tri + local``.
 
         ``v`` is the corner's vertex; in the triangle's orientation the boundary
@@ -142,13 +142,13 @@ class _TopologyStatistics:
         """
         t = corner // 3
         c = corner % 3
-        v = indices[3 * t + c]
-        prv = indices[3 * t + (c + 2) % 3]
-        nxt = indices[3 * t + (c + 1) % 3]
+        v = indices[t, c]
+        prv = indices[t, (c + 2) % 3]
+        nxt = indices[t, (c + 1) % 3]
         return v, prv, nxt
 
     @wp.func
-    def _faces_adjacent_at_v(indices: wp.array[wp.int32], corner_a: wp.int32, corner_b: wp.int32) -> bool:
+    def _faces_adjacent_at_v(indices: wp.array2d[wp.int32], corner_a: wp.int32, corner_b: wp.int32) -> bool:
         """Return whether two faces incident to a shared vertex also share a mesh edge.
 
         Two triangles around vertex ``v`` are adjacent iff they share an edge
@@ -161,7 +161,7 @@ class _TopologyStatistics:
 
     @wp.kernel(enable_backward=False)
     def _count_incident_corners(
-        indices: wp.array[wp.int32],
+        indices: wp.array2d[wp.int32],
         vertex_offsets: wp.array[wp.int32],
         raw_stats: wp.array[wp.int32],
     ):
@@ -169,9 +169,9 @@ class _TopologyStatistics:
         # one so an inclusive scan turns the counts into CSR offsets), and set
         # aside combinatorially degenerate triangles.
         t = wp.tid()
-        i = indices[3 * t + 0]
-        j = indices[3 * t + 1]
-        k = indices[3 * t + 2]
+        i = indices[t, 0]
+        j = indices[t, 1]
+        k = indices[t, 2]
         if i == j or j == k or k == i:
             wp.atomic_add(raw_stats, _STAT_DEGENERATE_TRIANGLES, 1)
             return
@@ -181,7 +181,7 @@ class _TopologyStatistics:
 
     @wp.kernel(enable_backward=False)
     def _scatter_incident_corners(
-        indices: wp.array[wp.int32],
+        indices: wp.array2d[wp.int32],
         vertex_offsets: wp.array[wp.int32],
         vertex_cursors: wp.array[wp.int32],
         incident_corners: wp.array[wp.int32],
@@ -189,19 +189,19 @@ class _TopologyStatistics:
         # One thread per triangle. Scatter each corner id into its vertex's CSR
         # range; ordering within a range is unspecified.
         t = wp.tid()
-        i = indices[3 * t + 0]
-        j = indices[3 * t + 1]
-        k = indices[3 * t + 2]
+        i = indices[t, 0]
+        j = indices[t, 1]
+        k = indices[t, 2]
         if i == j or j == k or k == i:
             return
         for c in range(3):
-            v = indices[3 * t + c]
+            v = indices[t, c]
             slot = vertex_offsets[v] + wp.atomic_add(vertex_cursors, v, 1)
             incident_corners[slot] = 3 * t + c
 
     @wp.kernel(enable_backward=False)
     def _analyze_vertices(
-        indices: wp.array[wp.int32],
+        indices: wp.array2d[wp.int32],
         vertex_offsets: wp.array[wp.int32],
         incident_corners: wp.array[wp.int32],
         raw_stats: wp.array[wp.int32],
@@ -287,19 +287,21 @@ class _TopologyStatistics:
 
 
 # ---------------------------------------------------------------------------
-# Shared triangle-index validation
+# Shared simplex-index validation
 # ---------------------------------------------------------------------------
 
 
 @wp.kernel(enable_backward=False)
-def _max_vertex_index(indices: wp.array[wp.int32], out_max: wp.array[wp.int32]):
-    wp.atomic_max(out_max, 0, indices[wp.tid()])
+def _max_vertex_index(indices: wp.array2d[wp.int32], out_max: wp.array[wp.int32]):
+    i, j = wp.tid()
+    wp.atomic_max(out_max, 0, indices[i, j])
 
 
 @wp.kernel(enable_backward=False)
-def _check_index_bounds(indices: wp.array[wp.int32], num_points: wp.int32, bad: wp.array[wp.int32]):
-    i = indices[wp.tid()]
-    if i < 0 or i >= num_points:
+def _check_index_bounds(indices: wp.array2d[wp.int32], num_points: wp.int32, bad: wp.array[wp.int32]):
+    i, j = wp.tid()
+    x = indices[i, j]
+    if x < 0 or x >= num_points:
         wp.atomic_max(bad, 0, 1)
 
 
@@ -318,28 +320,26 @@ def _resolve_num_points(indices: wp.array, num_points: int | None, device: Devic
         return 0
 
     largest = wp.zeros(1, dtype=wp.int32, device=device)
-    wp.launch(_max_vertex_index, dim=indices.shape[0], inputs=[indices, largest], device=device)
+    wp.launch(_max_vertex_index, dim=indices.shape, inputs=[indices, largest], device=device)
     return int(largest.numpy()[0]) + 1
 
 
-def _prepare_indices(indices: wp.array, num_points: int | None, device: DeviceLike | None, simplex_size: int = 3):
-    """Validate a flat simplex-index array and resolve its vertex count.
+def _prepare_indices(indices: wp.array, num_points: int | None, device: DeviceLike | None):
+    """Validate a ``(num_simplices, simplex_size)`` index array and resolve its vertex count.
 
-    Each consecutive group of ``simplex_size`` indices is one simplex. Returns
-    ``(indices, device, num_vertices)`` with ``indices`` moved to the resolved
-    device. Structural checks (rank, dtype, length) are always applied.
-    Vertex-count inference and the index-bounds check each need a host readback,
-    so they are skipped while the device is capturing a CUDA graph; there,
-    ``num_points`` is required and the caller is responsible for valid indices.
+    Each row is one simplex. Returns ``(indices, device, num_vertices)`` with
+    ``indices`` moved to the resolved device. Structural checks (rank, dtype,
+    non-empty simplex size) are always applied. Vertex-count inference and the
+    index-bounds check each need a host readback, so they are skipped while the
+    device is capturing a CUDA graph; there, ``num_points`` is required and the
+    caller is responsible for valid indices.
     """
-    if simplex_size < 1:
-        raise ValueError(f"`simplex_size` must be at least 1, but got {simplex_size}.")
-    if indices.ndim != 1:
-        raise ValueError(f"`indices` must be a 1-D array, but got {indices.ndim} dimensions.")
+    if indices.ndim != 2:
+        raise ValueError(f"`indices` must be a 2-D (num_simplices, simplex_size) array, but got {indices.ndim} dims.")
     if indices.dtype != wp.int32:
         raise ValueError("`indices` must have dtype wp.int32.")
-    if indices.shape[0] % simplex_size != 0:
-        raise ValueError(f"`indices` length must be a multiple of {simplex_size}, but got {indices.shape[0]}.")
+    if indices.shape[1] < 1:
+        raise ValueError(f"`indices` must have at least one column (simplex size), but got shape {indices.shape}.")
 
     device = wp.get_device(device) if device is not None else indices.device
     if indices.device != device:
@@ -356,7 +356,7 @@ def _prepare_indices(indices: wp.array, num_points: int | None, device: DeviceLi
 
     if indices.shape[0] > 0:
         bad = wp.zeros(1, dtype=wp.int32, device=device)
-        wp.launch(_check_index_bounds, dim=indices.shape[0], inputs=[indices, num_vertices, bad], device=device)
+        wp.launch(_check_index_bounds, dim=indices.shape, inputs=[indices, num_vertices, bad], device=device)
         if int(bad.numpy()[0]) != 0:
             raise ValueError(f"`indices` contains values outside the range [0, {num_vertices}).")
 
@@ -364,16 +364,16 @@ def _prepare_indices(indices: wp.array, num_points: int | None, device: DeviceLi
 
 
 def triangle_mesh_topology_statistics(
-    indices: wp.array[wp.int32],
+    indices: wp.array2d[wp.int32],
     num_points: int | None = None,
     *,
     device: DeviceLike | None = None,
 ) -> TriangleMeshTopologyStatistics:
     """Compute combinatorial topology statistics for an oriented triangle mesh.
 
-    The mesh is given by a flat ``int32`` array of oriented triangle vertex
-    indices (three per triangle); no vertex positions are needed. For every
-    oriented triangle ``(i, j, k)`` the three half-edges ``i -> j``, ``j -> k``,
+    The mesh is given by a ``(num_triangles, 3)`` ``int32`` array of oriented
+    triangle vertex indices; no vertex positions are needed. For every oriented
+    triangle ``(i, j, k)`` the three half-edges ``i -> j``, ``j -> k``,
     ``k -> i`` are folded onto canonical undirected edges ``(min, max)``, and for
     each unique edge the incidence ``count`` and ``signed_count`` (``+1`` per
     ``u -> v`` half-edge, ``-1`` per ``v -> u``) classify it:
@@ -393,9 +393,8 @@ def triangle_mesh_topology_statistics(
     statistics. Any degenerate triangle makes the manifold predicates ``False``.
 
     Args:
-        indices: A 1-D :class:`warp.array` of ``int32`` triangle vertex indices,
-            with length a multiple of three. Each consecutive triple is one
-            oriented triangle.
+        indices: A ``(num_triangles, 3)`` :class:`warp.array` of ``int32``
+            oriented triangle vertex indices.
         num_points: Number of vertices. If ``None``, inferred as one plus the
             largest index, which requires a host readback.
         device: Device on which to run. Defaults to the device of ``indices``.
@@ -405,13 +404,15 @@ def triangle_mesh_topology_statistics(
         derived manifoldness/orientation predicates.
 
     Raises:
-        ValueError: If ``indices`` is not 1-D ``int32``, its length is not a
-            multiple of three, or any index is outside ``[0, num_points)``.
+        ValueError: If ``indices`` is not a 2-D ``int32`` array with three
+            columns, or any index is outside ``[0, num_points)``.
     """
     # Validate up front so out-of-range indices cannot corrupt the
     # counting/scatter passes (a single host readback).
+    if indices.ndim == 2 and indices.shape[1] != 3:
+        raise ValueError(f"`indices` must have shape (num_triangles, 3), but got {indices.shape}.")
     indices, device, num_vertices = _prepare_indices(indices, num_points, device)
-    num_triangles = indices.shape[0] // 3
+    num_triangles = indices.shape[0]
 
     raw_stats = wp.zeros(_STAT_COUNT, dtype=wp.int32, device=device)
 
@@ -484,23 +485,17 @@ class _ConnectedComponents:
         labels[v] = v
 
     @wp.kernel(enable_backward=False)
-    def _hook(
-        indices: wp.array[wp.int32],
-        simplex_size: wp.int32,
-        labels: wp.array[wp.int32],
-        changed: wp.array[wp.int32],
-    ):
-        # One thread per simplex. Connecting every vertex of the simplex to its
-        # first vertex (a star) is enough to put them in one component -- the exact
-        # intra-simplex edge set is irrelevant for connected components. Each hook
-        # attaches the endpoint with the larger current label under the smaller via
-        # atomic-min; the outer round loop propagates across shared vertices.
+    def _hook(indices: wp.array2d[wp.int32], labels: wp.array[wp.int32], changed: wp.array[wp.int32]):
+        # One thread per simplex (row). Connecting every vertex of the simplex to
+        # its first vertex (a star) is enough to put them in one component -- the
+        # exact intra-simplex edge set is irrelevant for connected components. Each
+        # hook attaches the endpoint with the larger current label under the smaller
+        # via atomic-min; the outer round loop propagates across shared vertices.
         t = wp.tid()
-        base = simplex_size * t
-        first = indices[base]
-        for c in range(1, simplex_size):
+        first = indices[t, 0]
+        for c in range(1, indices.shape[1]):
             la = labels[first]
-            lb = labels[indices[base + c]]
+            lb = labels[indices[t, c]]
             if la != lb:
                 lo = wp.min(la, lb)
                 hi = wp.max(la, lb)
@@ -561,23 +556,22 @@ class _ConnectedComponents:
 
 
 def connected_components(
-    indices: wp.array[wp.int32],
+    indices: wp.array2d[wp.int32],
     num_points: int | None = None,
     *,
-    simplex_size: int = 3,
     device: DeviceLike | None = None,
 ) -> tuple[wp.array, int | wp.array]:
     """Label the connected components of a simplicial mesh.
 
-    The mesh is a flat ``int32`` index array in which each consecutive group of
-    ``simplex_size`` indices is one simplex (``simplex_size=3`` triangles by
-    default, ``2`` segments, ``4`` tetrahedra, and so on). Two vertices are in the
-    same component when they are joined by a path through simplices that share a
-    vertex; equivalently, all vertices of a simplex are mutually connected. This
-    matches the edge-based connectivity of gptoolbox's ``connected_components`` and
-    may span non-manifold edges or vertices. Vertices not referenced by any
-    simplex -- including a repeated vertex that shares its simplex with no other
-    distinct vertex -- each form their own singleton component.
+    The mesh is a ``(num_simplices, simplex_size)`` ``int32`` array, one simplex
+    per row; the simplex size is read from the second dimension (``3`` triangles,
+    ``2`` segments, ``4`` tetrahedra, and so on). Two vertices are in the same
+    component when they are joined by a path through simplices that share a vertex;
+    equivalently, all vertices of a simplex are mutually connected. This matches
+    the edge-based connectivity of gptoolbox's ``connected_components`` and may
+    span non-manifold edges or vertices. Vertices not referenced by any simplex --
+    including a repeated vertex that shares its simplex with no other distinct
+    vertex -- each form their own singleton component.
 
     The labeling runs on the Warp device (CPU or CUDA) as a parallel union-find:
     simplex-parallel hooking attaches the larger of two component representatives
@@ -587,12 +581,10 @@ def connected_components(
     and the roots are then renumbered to a contiguous range.
 
     Args:
-        indices: A 1-D :class:`warp.array` of ``int32`` vertex indices, with length
-            a multiple of ``simplex_size``.
+        indices: A ``(num_simplices, simplex_size)`` :class:`warp.array` of
+            ``int32`` vertex indices, one simplex per row.
         num_points: Number of vertices. If ``None``, inferred as one plus the
             largest index, which requires a host readback.
-        simplex_size: Number of vertices per simplex (e.g. ``2`` edges, ``3``
-            triangles, ``4`` tetrahedra).
         device: Device on which to run. Defaults to the device of ``indices``.
 
     Returns:
@@ -605,9 +597,8 @@ def connected_components(
         :func:`warp.capture_launch`.
 
     Raises:
-        ValueError: If ``simplex_size`` is less than 1, ``indices`` is not 1-D
-            ``int32``, its length is not a multiple of ``simplex_size``, or (eager
-            mode only) any index is outside ``[0, num_points)``.
+        ValueError: If ``indices`` is not a 2-D ``int32`` array with at least one
+            column, or (eager mode only) any index is outside ``[0, num_points)``.
 
     Note:
         The whole routine is CUDA-graph capturable: the convergence loop is
@@ -616,8 +607,8 @@ def connected_components(
         is required and indices are assumed in range. A warm-up call before
         capture is recommended so scratch allocations are sized beforehand.
     """
-    indices, device, num_vertices = _prepare_indices(indices, num_points, device, simplex_size)
-    num_simplices = indices.shape[0] // simplex_size
+    indices, device, num_vertices = _prepare_indices(indices, num_points, device)
+    num_simplices = indices.shape[0]
 
     if num_vertices == 0:
         return wp.zeros(0, dtype=wp.int32, device=device), 0
@@ -627,16 +618,10 @@ def connected_components(
 
     if num_simplices > 0:
         changed = wp.zeros(1, dtype=wp.int32, device=device)
-        simplex_size_i = wp.int32(simplex_size)
 
         def _round():
             changed.zero_()
-            wp.launch(
-                _ConnectedComponents._hook,
-                dim=num_simplices,
-                inputs=[indices, simplex_size_i, labels, changed],
-                device=device,
-            )
+            wp.launch(_ConnectedComponents._hook, dim=num_simplices, inputs=[indices, labels, changed], device=device)
             wp.launch(_ConnectedComponents._compress, dim=num_vertices, inputs=[labels, changed], device=device)
 
         if device.is_capturing:

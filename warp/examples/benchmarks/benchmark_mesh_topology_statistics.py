@@ -95,7 +95,7 @@ def _build_csr_sort(indices, num_vertices, device):
 
 def _run(name, tris, num_points, device):
     num_triangles = len(tris) // 3
-    indices = wp.array(tris, dtype=wp.int32, device=device)
+    indices = wp.array(tris.reshape(-1, 3), dtype=wp.int32, device=device)
     max_valence = int(np.max(np.bincount(tris)))
 
     t_nosort = _time(lambda: _build_csr_nosort(indices, num_points, num_triangles, device), device)
