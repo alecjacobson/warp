@@ -1453,6 +1453,18 @@ def JetSpace(width: int, dtype=wp.float32):
     Registering the arithmetic mutates Warp's global builtin overload table,
     which is what lets ``a * b`` resolve on jets from any module. The effect is
     additive and lasts for the lifetime of the process.
+
+    .. note::
+        Jets are compatible with Warp's default ``enable_backward=True``, and the
+        reverse-over-jet Hessian route needs it: it differentiates *through* the
+        jet arithmetic with a :class:`warp.Tape` or an in-kernel
+        :func:`warp.grad` sweep. But generating that adjoint roughly doubles the
+        emitted code for the unrolled jet chain, and on the CUDA backend NVRTC
+        compile time is super-linear in code size, so it can dominate. A kernel
+        that only reads a gradient off ``.coeff`` (no tape, no ``wp.grad``) never
+        uses that adjoint. Skip it with ``@wp.kernel(enable_backward=False)`` or,
+        per module, ``wp.set_module_options({"enable_backward": False})`` to cut
+        compile time substantially, with identical forward results.
     """
     width = int(width)
     key = (width, dtype)
@@ -2210,6 +2222,16 @@ def JetSpace2(width: int, dtype=wp.float32):
     time both grow with ``width**2``, so for wider energies prefer a first-order
     jet with a reverse sweep over it (via :class:`warp.Tape`, or in-kernel with
     :func:`warp.grad`), which reaches the same Hessian with linear state.
+
+    .. note::
+        A second-order jet gives the Hessian in one forward pass with no reverse
+        pass, so a kernel that uses it typically needs no adjoint at all. Warp
+        still emits one under the default ``enable_backward=True``, which roughly
+        doubles the generated code and, on CUDA, can dominate NVRTC compile time
+        for the long jet chain. Unless the kernel is separately differentiated in
+        reverse mode, disable it with ``@wp.kernel(enable_backward=False)`` or
+        ``wp.set_module_options({"enable_backward": False})``; the forward result
+        is unchanged. See :func:`warp.JetSpace` for the full trade-off.
     """
     width = int(width)
     key = (width, dtype)
