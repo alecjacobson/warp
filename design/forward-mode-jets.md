@@ -263,6 +263,22 @@ scan during code generation only.
 globals; deferred annotations would turn the locally-generated types into
 strings that no longer resolve.
 
+**Backward code and compile time.** Jets work with Warp's default
+`enable_backward=True`, and the reverse-over-jet Hessian route (R2) *requires*
+it: it differentiates through the jet arithmetic with `wp.Tape` or in-kernel
+`wp.grad`. But generating that adjoint is expensive. The reverse pass unrolls
+over the same width-dependent jet chain as the forward pass, so the emitted code
+roughly doubles, and on the CUDA backend NVRTC compile time is super-linear in
+code size -- so the adjoint can dominate. A kernel that never takes a reverse
+pass over its jets -- anything purely forward: a second-order `wp.JetSpace2`
+Hessian, or a first-order gradient read straight off `.coeff` without a tape or
+`wp.grad` -- pays that cost for nothing. Turn it off for those kernels, per
+kernel with `@wp.kernel(enable_backward=False)` or for a whole module with
+`wp.set_module_options({"enable_backward": False})`. The effect is large: the
+pure-forward `example_quat_shape_align.py` compiles in about 6 s instead of 59 s
+on CUDA (and 2.8 s instead of 4.7 s on CPU) with backward disabled, bit-for-bit
+identical results. Leave it on only where the reverse pass is actually used.
+
 ### Usage
 
 Seeding the identity makes one forward pass yield the whole local gradient:

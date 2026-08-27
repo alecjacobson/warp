@@ -45,6 +45,11 @@ import numpy as np
 
 import warp as wp
 
+# This example is pure forward-mode (second-order jets, no tape / reverse pass),
+# so skip generating adjoint code for its kernels -- it is unused here and, on
+# the CUDA (NVRTC) backend, dominates compile time for the long jet chain.
+wp.set_module_options({"enable_backward": False})
+
 # Width 3: the SO(3) tangent chart. One forward pass yields the 3x3 Hessian.
 J = wp.JetSpace2(3, wp.float64)
 
