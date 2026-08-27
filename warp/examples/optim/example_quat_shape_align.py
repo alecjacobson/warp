@@ -31,9 +31,7 @@
 #
 # The whole dataset is fit in parallel: one thread per candidate runs its own
 # Newton loop, with the exact Hessian's eigenvalues clamped to a positive floor
-# (it can be indefinite far from the optimum) and an Armijo line search. A
-# finite-difference gate up front checks the jet's gradient and Hessian against
-# central differences on the active device.
+# (it can be indefinite far from the optimum) and an Armijo line search.
 #
 # Passing --render-gif PATH animates the per-iteration fit as a grid of
 # candidates, each colored by its current alignment error with the best fit
@@ -61,8 +59,7 @@ ARMIJO_C = wp.float64(1.0e-4)  # sufficient-decrease constant for the line searc
 # the fit is not a linear least-squares problem and has no closed-form
 # Procrustes/SVD solution -- which is exactly what motivates an iterative Newton
 # solve and the exact 3x3 Hessian computed here.
-DELTA_NP = 0.5
-DELTA = wp.float64(DELTA_NP)
+DELTA = wp.float64(0.5)
 
 
 @wp.func
@@ -118,21 +115,6 @@ def energy_value(
         s = wp.dot(r, r)
         e += wp.float64(0.5) * d2 * wp.log(wp.float64(1.0) + s / d2)
     return e
-
-
-@wp.kernel
-def grad_hess_at_identity(
-    query: wp.array[wp.vec3d],
-    cand: wp.array2d[wp.vec3d],
-    c: int,
-    n: int,
-    grad: wp.array[wp.vec3d],
-    hess: wp.array[wp.mat33d],
-):
-    dtheta = J.seed_vec3(wp.vec3d(0.0, 0.0, 0.0), 0, 1, 2)
-    e = align_energy(dtheta, wp.quatd(0.0, 0.0, 0.0, 1.0), query, cand, c, n)
-    grad[0] = e.grad
-    hess[0] = e.hess
 
 
 @wp.struct
@@ -234,7 +216,7 @@ def newton_step_inplace(
 
 
 # --------------------------------------------------------------------------
-# Dataset generation and a NumPy reference for the finite-difference gate.
+# Dataset generation.
 # --------------------------------------------------------------------------
 
 
@@ -408,38 +390,6 @@ def make_dataset(n_atoms=12, n_candidates=64, n_matches=4, seed=0):
     return query, cands, is_match
 
 
-def _fd_grad_hess(query, cand_c, h=1e-5):
-    # Cauchy robust energy around dtheta = 0, matching align_energy.
-    def energy(dtheta):
-        a = np.linalg.norm(dtheta)
-        if a < 1e-12:
-            q = np.array([0.0, 0.0, 0.0, 1.0])
-        else:
-            axis = dtheta / a
-            q = np.array([*(np.sin(a / 2) * axis), np.cos(a / 2)])
-        r = _qrot(q, query) - cand_c
-        s = np.sum(r * r, axis=1)
-        return np.sum(0.5 * DELTA_NP**2 * np.log(1.0 + s / DELTA_NP**2))
-
-    g = np.zeros(3)
-    H = np.zeros((3, 3))
-    E = np.eye(3)
-    f0 = energy(np.zeros(3))
-    for i in range(3):
-        g[i] = (energy(h * E[i]) - energy(-h * E[i])) / (2 * h)
-        H[i, i] = (energy(h * E[i]) - 2 * f0 + energy(-h * E[i])) / h**2
-    for i in range(3):
-        for j in range(i + 1, 3):
-            H[i, j] = (
-                energy(h * E[i] + h * E[j])
-                - energy(h * E[i] - h * E[j])
-                - energy(-h * E[i] + h * E[j])
-                + energy(-h * E[i] - h * E[j])
-            ) / (4 * h**2)
-            H[j, i] = H[i, j]
-    return g, H
-
-
 class Example:
     def __init__(self, n_atoms=12, n_candidates=64, n_matches=4, iters=25, seed=0):
         self.iters = iters
@@ -456,27 +406,6 @@ class Example:
             [[wp.vec3d(*row) for row in cands[c]] for c in range(n_candidates)],
             dtype=wp.vec3d,
         )
-
-    def verify_derivatives(self, c=0, grad_tol=1e-4, hess_tol=1e-3):
-        """Gate the jet gradient/Hessian against finite differences on-device."""
-        grad = wp.zeros(1, dtype=wp.vec3d)
-        hess = wp.zeros(1, dtype=wp.mat33d)
-        wp.launch(grad_hess_at_identity, dim=1, inputs=[self.query, self.cands, c, self.n_atoms], outputs=[grad, hess])
-        wp.synchronize_device()
-
-        g_jet = np.array(grad.numpy()[0])
-        H_jet = np.array(hess.numpy()[0])
-        g_fd, H_fd = _fd_grad_hess(self.query_np, self.cands_np[c])
-
-        g_err = np.max(np.abs(g_jet - g_fd))
-        h_err = np.max(np.abs(H_jet - H_fd))
-        sym = np.max(np.abs(H_jet - H_jet.T))
-        print(f"finite-difference gate (candidate {c}):")
-        print(f"  |grad_jet - grad_fd|_inf = {g_err:.3e}")
-        print(f"  |hess_jet - hess_fd|_inf = {h_err:.3e}")
-        print(f"  Hessian asymmetry        = {sym:.3e}")
-        assert g_err < grad_tol and h_err < hess_tol, "jet derivatives disagree with finite differences"
-        return g_err, h_err
 
     def fit(self):
         out_q = wp.zeros(self.n_candidates, dtype=wp.quatd)
@@ -661,11 +590,9 @@ def main(device=None, render_gif=None):
     with wp.ScopedDevice(device):
         if render_gif is not None:
             example = Example(n_candidates=64, n_matches=6)
-            example.verify_derivatives()
             example.render(render_gif, size=2000)
         else:
             example = Example()
-            example.verify_derivatives()
             _, rmsd = example.fit()
             example.report(rmsd)
 

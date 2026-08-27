@@ -11,8 +11,7 @@
 # and building one module for both CPU and CUDA in the same process trips a
 # Warp module-hasher instability where a kernel is then looked up under a hash
 # that differs from the one it compiled with. The generated jet code is
-# device-independent, so the CPU checks cover the math on both; the runnable
-# example_quat_shape_align.py additionally self-verifies on the active device.
+# device-independent, so the CPU checks cover the math on both.
 
 import unittest
 

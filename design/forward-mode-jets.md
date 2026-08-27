@@ -465,9 +465,7 @@ Hessian at the optimum, the full-space (`4×4`) route from seeding the four
 quaternion components, and the first-order tangent gradient read off `.coeff`. A
 short intrinsic-Newton loop is asserted to recover a known rotation. CPU-only for
 the same module-hasher reason as `test_jet_ops.py`. The generated jet code is
-device-independent, so these checks cover the math on both backends;
-`example_quat_shape_align.py` additionally runs the finite-difference check on
-the active device (CPU or CUDA) each time it is launched.
+device-independent, so these checks cover the math on both backends.
 
 ## Benchmarks
 
