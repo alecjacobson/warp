@@ -328,7 +328,7 @@ def load_bunny():
 
 
 class Example:
-    def __init__(self, num_particles=1000, integrator="newmark", beta=1.0, gamma=1.0, friction=0.0, seed=0):
+    def __init__(self, num_particles=10000, integrator="newmark", beta=1.0, gamma=1.0, friction=0.005, seed=0):
         self.integrator = 1 if integrator == "newmark" else 0  # matches NEWMARK / BACKWARD_EULER
         self.beta = beta
         self.gamma = gamma
@@ -397,11 +397,11 @@ class Example:
 
 def main(
     device=None,
-    num_particles=1000,
+    num_particles=10000,
     integrator="newmark",
     beta=1.0,
     gamma=1.0,
-    friction=0.0,
+    friction=0.005,
     nsubsteps=10,
     fps=30,
     t_max=3.0,
@@ -426,8 +426,12 @@ def main(
         ps.register_surface_mesh("mesh", example.V, example.F, color=(0.95, 0.95, 0.95), smooth_shade=True)
         pc = ps.register_point_cloud("particles", example.positions(), radius=0.0045)
         pc.add_color_quantity("color", example.colors, enabled=True)
-        center = example.V.mean(axis=0)
-        ps.look_at((center[0] + 2.0, center[1] - 2.5, center[2] + 1.5), tuple(center))
+        # Frame the mesh at ~80% of the view height (distance calibrated to fill).
+        bbox_center = 0.5 * (example.V.min(axis=0) + example.V.max(axis=0))
+        view_dir = np.array([2.0, -2.5, 1.5])
+        view_dir /= np.linalg.norm(view_dir)
+        camera = bbox_center + view_dir * 1.8
+        ps.look_at(tuple(camera.astype(float)), tuple(bbox_center.astype(float)))
 
         dt = 1.0 / fps / nsubsteps
         n_frames = int(t_max * fps)
@@ -448,11 +452,11 @@ def main(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--device", type=str, default=None)
-    parser.add_argument("--num-particles", type=int, default=1000)
+    parser.add_argument("--num-particles", type=int, default=10000)
     parser.add_argument("--integrator", choices=["newmark", "backward-euler"], default="newmark")
     parser.add_argument("--beta", type=float, default=1.0)
     parser.add_argument("--gamma", type=float, default=1.0)
-    parser.add_argument("--friction", type=float, default=0.0, help="Tangential contact damping in [0, 1].")
+    parser.add_argument("--friction", type=float, default=0.005, help="Tangential contact damping in [0, 1].")
     parser.add_argument("--nsubsteps", type=int, default=10)
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--t-max", type=float, default=3.0)
