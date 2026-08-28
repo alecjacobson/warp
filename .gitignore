@@ -63,3 +63,4 @@ asv/warp-lang
 
 # Core dumps
 core.[0-9]*
+imgui.ini

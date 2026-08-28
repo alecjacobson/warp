@@ -223,7 +223,7 @@ class Example:
         self.P_dot_out = wp.zeros_like(self.P_dot)
         self.P_ddot_out = wp.zeros_like(self.P_ddot)
 
-    def step(self, dt, max_inner=20, max_ls=20):
+    def step(self, dt, max_inner=40, max_ls=40):
         wp.launch(
             step_kernel,
             dim=len(self.P),
