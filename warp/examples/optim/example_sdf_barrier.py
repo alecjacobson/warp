@@ -333,7 +333,7 @@ class Example:
         )
 
         rng = np.random.default_rng(seed)
-        xy = rng.standard_normal((num_particles, 2)) * 0.1 + self.V[:, :2].mean(axis=0)
+        xy = rng.standard_normal((num_particles, 2)) * 0.15 + self.V[:, :2].mean(axis=0)
         z = self.V[:, 2].max() + self.d_hat * 10.0 + self.d_hat * rng.standard_normal((num_particles, 1))
         P0 = np.hstack([xy, z]).astype(np.float32)
 
