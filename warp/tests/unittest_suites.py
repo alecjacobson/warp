@@ -232,6 +232,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
     from warp.tests.test_runlength_encode import TestRunlengthEncode
     from warp.tests.test_sanitize import TestSanitize
     from warp.tests.test_scalar_ops import TestScalarOps
+    from warp.tests.test_sdf_hessian import TestSDFHessian
     from warp.tests.test_sgd import TestSGD
     from warp.tests.test_smoothstep import TestSmoothstep
     from warp.tests.test_snippet import TestSnippets
@@ -372,6 +373,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
         TestJetOps,
         TestJetMatrix,
         TestJetQuat,
+        TestSDFHessian,
         TestKernelCache,
         TestLarge,
         TestLaunch,
