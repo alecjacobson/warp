@@ -61,7 +61,7 @@ TAU = max(TAU_REPR, TAU_GEOM)
 
 
 @wp.func
-def feature_tangent_projector(mesh: wp.uint64, face: int, u: float, v: float, n: wp.vec3) -> wp.mat33:
+def feature_tangent_projector(p0: wp.vec3, p1: wp.vec3, p2: wp.vec3, u: float, v: float, n: wp.vec3) -> wp.mat33:
     """Projector ``T`` onto the directions the closest point is free to slide along.
 
     ==================  ================================  ============================
@@ -110,10 +110,6 @@ def feature_tangent_projector(mesh: wp.uint64, face: int, u: float, v: float, n:
     # One near-zero weight: closest point slides along the edge of the other two
     # vertices. T removes that tangent direction from the curvature.
     if zu or zv or zw:
-        m = wp.mesh_get(mesh)
-        p0 = m.points[m.indices[face * 3 + 0]]
-        p1 = m.points[m.indices[face * 3 + 1]]
-        p2 = m.points[m.indices[face * 3 + 2]]
         if zw:
             t = wp.normalize(p1 - p0)  # weight of vertex 2 vanished -> edge (0, 1)
         elif zv:
@@ -147,7 +143,11 @@ def signed_distance_derivs(mesh: wp.uint64, p: wp.vec3, max_dist: float):
     value = s * dist  # signed distance
     grad = s * n  # gradient of the signed distance is the outward unit normal
 
-    tangent = feature_tangent_projector(mesh, q.face, q.u, q.v, n)
+    m = wp.mesh_get(mesh)
+    p0 = m.points[m.indices[q.face * 3 + 0]]
+    p1 = m.points[m.indices[q.face * 3 + 1]]
+    p2 = m.points[m.indices[q.face * 3 + 2]]
+    tangent = feature_tangent_projector(p0, p1, p2, q.u, q.v, n)
     normal_proj = wp.identity(n=3, dtype=float) - wp.outer(n, n)
     hess = (s / dist) * (normal_proj - tangent)
     return 1, value, grad, hess
