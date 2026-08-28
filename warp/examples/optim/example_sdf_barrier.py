@@ -348,10 +348,10 @@ class Example:
         z = self.V[:, 2].max() + self.d_hat * 10.0 + self.d_hat * rng.standard_normal((num_particles, 1))
         P0 = np.hstack([xy, z]).astype(np.float32)
 
-        # Categorical colors assigned per particle (green omitted; it is the mesh color).
+        # Categorical colors (ColorBrewer Set1 + extras) assigned per particle.
         palette = (
             np.array(
-                [0xE41A1C, 0x377EB8, 0x984EA3, 0xFF7F00, 0xFFFF33, 0xA65628, 0xF781BF],
+                [0xE41A1C, 0x377EB8, 0x4DAF4A, 0x984EA3, 0xFF7F00, 0xFFFF33, 0xA65628, 0xF781BF],
                 dtype=np.uint32,
             )[:, None]
             >> np.array([16, 8, 0], dtype=np.uint32)
@@ -423,7 +423,7 @@ def main(
         ps.init()
         ps.set_ground_plane_mode("shadow_only")
         ps.set_up_dir("z_up")
-        ps.register_surface_mesh("mesh", example.V, example.F, color=(0.463, 0.725, 0.0), smooth_shade=True)
+        ps.register_surface_mesh("mesh", example.V, example.F, color=(0.95, 0.95, 0.95), smooth_shade=True)
         pc = ps.register_point_cloud("particles", example.positions(), radius=0.0045)
         pc.add_color_quantity("color", example.colors, enabled=True)
         center = example.V.mean(axis=0)
