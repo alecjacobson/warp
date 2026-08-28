@@ -228,6 +228,7 @@ def step_kernel(
     integrator: int,
     beta: float,
     gamma: float,
+    friction: float,
     max_inner: int,
     max_ls: int,
     P_out: wp.array[wp.vec3],
@@ -295,6 +296,15 @@ def step_kernel(
         a_next = (p - on - dt * vn - dt * dt * (0.5 - beta) * an) / (beta * dt * dt)
         v_next = vn + dt * ((1.0 - gamma) * an + gamma * a_next)
 
+    # Ad-hoc tangential contact damping (a cheap stand-in for friction, applied
+    # to the velocity outside the potential): in contact, shrink the component
+    # of velocity in the surface tangent plane so sliding decays instead of
+    # persisting forever. Not IPC-consistent -- just enough to let piles settle.
+    d_c, n_c, _h_c = distance_and_derivs(mesh, p, max_dist)
+    if d_c < d_hat:
+        v_normal = wp.dot(v_next, n_c) * n_c
+        v_next = v_normal + (1.0 - friction) * (v_next - v_normal)
+
     P_out[i] = p
     P_dot_out[i] = v_next
     P_ddot_out[i] = a_next
@@ -318,10 +328,11 @@ def load_bunny():
 
 
 class Example:
-    def __init__(self, num_particles=1000, integrator="newmark", beta=1.0, gamma=1.0, seed=0):
+    def __init__(self, num_particles=1000, integrator="newmark", beta=1.0, gamma=1.0, friction=0.0, seed=0):
         self.integrator = 1 if integrator == "newmark" else 0  # matches NEWMARK / BACKWARD_EULER
         self.beta = beta
         self.gamma = gamma
+        self.friction = friction
         self.d_hat = 0.01
         self.max_dist = 1.0e6
         self.gravity = wp.vec3(0.0, 0.0, -9.81)
@@ -337,10 +348,10 @@ class Example:
         z = self.V[:, 2].max() + self.d_hat * 10.0 + self.d_hat * rng.standard_normal((num_particles, 1))
         P0 = np.hstack([xy, z]).astype(np.float32)
 
-        # Categorical colors (ColorBrewer Set1 + extras) assigned per particle.
+        # Categorical colors assigned per particle (green omitted; it is the mesh color).
         palette = (
             np.array(
-                [0xE41A1C, 0x377EB8, 0x4DAF4A, 0x984EA3, 0xFF7F00, 0xFFFF33, 0xA65628, 0xF781BF],
+                [0xE41A1C, 0x377EB8, 0x984EA3, 0xFF7F00, 0xFFFF33, 0xA65628, 0xF781BF],
                 dtype=np.uint32,
             )[:, None]
             >> np.array([16, 8, 0], dtype=np.uint32)
@@ -370,6 +381,7 @@ class Example:
                 self.integrator,
                 self.beta,
                 self.gamma,
+                self.friction,
                 max_inner,
                 max_ls,
             ],
@@ -389,6 +401,7 @@ def main(
     integrator="newmark",
     beta=1.0,
     gamma=1.0,
+    friction=0.0,
     nsubsteps=10,
     fps=30,
     t_max=3.0,
@@ -403,14 +416,14 @@ def main(
     os.makedirs(os.path.dirname(out), exist_ok=True)
 
     with wp.ScopedDevice(device):
-        example = Example(num_particles, integrator, beta, gamma)
+        example = Example(num_particles, integrator, beta, gamma, friction)
 
         ps.set_allow_headless_backends(True)
         ps.set_program_name("warp gravity")
         ps.init()
         ps.set_ground_plane_mode("shadow_only")
         ps.set_up_dir("z_up")
-        ps.register_surface_mesh("mesh", example.V, example.F, color=(0.85, 0.72, 0.55), smooth_shade=True)
+        ps.register_surface_mesh("mesh", example.V, example.F, color=(0.463, 0.725, 0.0), smooth_shade=True)
         pc = ps.register_point_cloud("particles", example.positions(), radius=0.0045)
         pc.add_color_quantity("color", example.colors, enabled=True)
         center = example.V.mean(axis=0)
@@ -439,6 +452,7 @@ if __name__ == "__main__":
     parser.add_argument("--integrator", choices=["newmark", "backward-euler"], default="newmark")
     parser.add_argument("--beta", type=float, default=1.0)
     parser.add_argument("--gamma", type=float, default=1.0)
+    parser.add_argument("--friction", type=float, default=0.0, help="Tangential contact damping in [0, 1].")
     parser.add_argument("--nsubsteps", type=int, default=10)
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--t-max", type=float, default=3.0)
@@ -451,6 +465,7 @@ if __name__ == "__main__":
         integrator=args.integrator,
         beta=args.beta,
         gamma=args.gamma,
+        friction=args.friction,
         nsubsteps=args.nsubsteps,
         fps=args.fps,
         t_max=args.t_max,
