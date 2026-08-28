@@ -44,7 +44,7 @@ class UniformSamplerState:
 
     It bundles the mesh identifier with the cumulative area distribution needed
     to pick a triangle with probability proportional to its area. Obtain an
-    instance from :attr:`UniformSampler.state` and pass it as a kernel argument.
+    instance from ``UniformSampler.state`` and pass it as a kernel argument.
     """
 
     mesh: wp.uint64
@@ -83,7 +83,7 @@ def draw(state: UniformSamplerState, rng: wp.uint32) -> MeshSample:
     uniformly within that triangle. Callable from within a :func:`warp.kernel`.
 
     Args:
-        state: Sampler state, typically :attr:`UniformSampler.state` passed as a
+        state: Sampler state, typically ``UniformSampler.state`` passed as a
             kernel argument.
         rng: Random number generator state, updated in place by each draw. A
             single ``rng`` can therefore feed repeated ``draw`` calls in a loop.

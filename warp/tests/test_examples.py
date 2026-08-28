@@ -371,6 +371,18 @@ add_example_test(
 )
 
 
+class TestGeometryExamples(unittest.TestCase):
+    pass
+
+
+add_example_test(
+    TestGeometryExamples,
+    name="geometry.example_uniform_sampling",
+    devices=test_devices,
+    test_options_cpu={"num_frames": 1},
+)
+
+
 if __name__ == "__main__":
     # force rebuild of all kernels
     unittest.main(verbosity=2)

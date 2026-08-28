@@ -4,19 +4,22 @@
 ###########################################################################
 # Example Sample Mesh
 #
-# Shows how to sample points on a mesh's surface using
-# a Cumulative Distribution Function (CDF).
+# Shows how to sample points uniformly on a mesh's surface with
+# warp.geometry.UniformSampler.
 #
-# The CDF enables uniform sampling of points across the mesh's surface,
-# even when the density of triangles varies. It represents the cumulative
-# probability of selecting a triangle from the mesh, with each triangle
-# weighted by its area relative to the total surface area of the mesh.
+# The sampler weights each triangle by its area, so points are spread evenly
+# across the surface even when the tessellation is non-uniform. It precomputes a
+# cumulative area distribution once; each draw is then a binary search plus a
+# within-triangle sample. Here the per-sample device function is called inside a
+# kernel via the sampler's `draw` member so that positions are evaluated on the
+# GPU without a round trip.
 #
 ###########################################################################
 
 import numpy as np
 
 import warp as wp
+import warp.geometry
 import warp.render
 
 # fmt: off
@@ -98,124 +101,30 @@ FACE_VERTEX_INDICES = np.array(
 
 
 @wp.kernel(enable_backward=False)
-def compute_tri_areas(
-    points: wp.array[wp.vec3],
-    face_vertex_indices: wp.array[int],
-    out_tri_areas: wp.array[float],
-    out_total_area: wp.array[float],
-):
-    tri = wp.tid()
-
-    # Retrieve the indices of the three vertices that form the current triangle.
-    vtx_0 = face_vertex_indices[tri * 3]
-    vtx_1 = face_vertex_indices[tri * 3 + 1]
-    vtx_2 = face_vertex_indices[tri * 3 + 2]
-
-    # Retrieve their 3D position.
-    pt_0 = points[vtx_0]
-    pt_1 = points[vtx_1]
-    pt_2 = points[vtx_2]
-
-    # Calculate the cross product of two edges of the triangle,
-    # which gives a vector whose magnitude is twice the area of the triangle.
-    cross = wp.cross((pt_1 - pt_0), (pt_2 - pt_0))
-    area = wp.length(cross) * 0.5
-
-    # Store the result.
-    out_tri_areas[tri] = area
-    wp.atomic_add(out_total_area, 0, area)
-
-
-@wp.kernel(enable_backward=False)
-def compute_probability_distribution(
-    tri_areas: wp.array[float],
-    total_area: wp.array[float],
-    out_probabilities: wp.array[float],
-):
-    tri = wp.tid()
-
-    # Calculate the probability of selecting this triangle,
-    # which is proportional to the triangle's area relative to total mesh area.
-    out_probabilities[tri] = tri_areas[tri] / total_area[0]
-
-
-@wp.kernel(enable_backward=False)
-def accumulate_cdf(
-    tri_count: int,
-    out_cdf: wp.array[float],
-):
-    # Transform probability values into a Cumulative Distribution Function (CDF).
-    for tri in range(1, tri_count):
-        out_cdf[tri] += out_cdf[tri - 1]
-
-
-@wp.kernel(enable_backward=False)
 def sample_mesh(
-    mesh: wp.uint64,
-    cdf: wp.array[float],
+    sampler: warp.geometry.UniformSamplerState,
     seed: int,
-    out_points: wp.array[wp.vec3],
+    out_points: wp.array(dtype=wp.vec3),
 ):
     tid = wp.tid()
 
     rng = wp.rand_init(seed, tid)
 
-    # Sample the triangle index using the CDF.
-    sample = wp.randf(rng)
-    tri = wp.lower_bound(cdf, sample)
+    # Draw a point uniformly on the surface: a triangle chosen with probability
+    # proportional to its area, plus a uniform location within that triangle.
+    s = warp.geometry.draw(sampler, rng)
 
-    # Sample the location in that triangle using random barycentric coordinates.
-    ru = wp.randf(rng)
-    rv = wp.randf(rng)
-    tri_u = 1.0 - wp.sqrt(ru)
-    tri_v = wp.sqrt(ru) * (1.0 - rv)
-    pos = wp.mesh_eval_position(mesh, tri, tri_u, tri_v)
-
-    # Store the result.
-    out_points[tid] = pos
+    # Evaluate the world-space position from the sampled face and barycentrics.
+    out_points[tid] = wp.mesh_eval_position(sampler.mesh, s.face, s.uv[0], s.uv[1])
 
 
 class Example:
     def __init__(self, stage_path="example_sample_mesh.usd"):
-        self.mesh = wp.Mesh(
+        # Build a uniform surface sampler. This constructs the mesh and its
+        # cumulative area distribution once, up front.
+        self.sampler = warp.geometry.UniformSampler(
             points=wp.array(POINTS, dtype=wp.vec3),
-            indices=wp.array(FACE_VERTEX_INDICES, dtype=int),
-        )
-        self.tri_count = len(FACE_VERTEX_INDICES) // 3
-
-        # Compute the area of each triangle and the total area of the mesh.
-        tri_areas = wp.empty(shape=(self.tri_count,), dtype=float)
-        total_area = wp.zeros(shape=(1,), dtype=float)
-        wp.launch(
-            compute_tri_areas,
-            dim=tri_areas.shape,
-            inputs=(
-                self.mesh.points,
-                self.mesh.indices,
-            ),
-            outputs=(
-                tri_areas,
-                total_area,
-            ),
-        )
-
-        # Build a Cumulative Distribution Function (CDF) where the probability
-        # of sampling a given triangle is proportional to its area.
-        self.cdf = wp.empty(shape=(self.tri_count,), dtype=float)
-        wp.launch(
-            compute_probability_distribution,
-            dim=self.cdf.shape,
-            inputs=(
-                tri_areas,
-                total_area,
-            ),
-            outputs=(self.cdf,),
-        )
-        wp.launch(
-            accumulate_cdf,
-            dim=(1,),
-            inputs=(self.tri_count,),
-            outputs=(self.cdf,),
+            faces=wp.array(FACE_VERTEX_INDICES, dtype=wp.int32),
         )
 
         # Array to store the sampled points.
@@ -231,14 +140,13 @@ class Example:
 
     def step(self):
         with wp.ScopedTimer("step"):
-            # Sample new points on the mesh using the CDF and the current frame
-            # number as seed to ensure different samples each frame.
+            # Sample new points on the mesh, using the current frame number as
+            # the seed so each frame draws a fresh set.
             wp.launch(
                 sample_mesh,
                 dim=self.points.shape,
                 inputs=(
-                    self.mesh.id,
-                    self.cdf,
+                    self.sampler.state,
                     self.frame,
                 ),
                 outputs=(self.points,),
@@ -254,8 +162,8 @@ class Example:
             self.renderer.begin_frame(self.frame / self.fps)
             self.renderer.render_mesh(
                 name="mesh",
-                points=self.mesh.points.numpy(),
-                indices=self.mesh.indices.numpy(),
+                points=self.sampler.mesh.points.numpy(),
+                indices=self.sampler.mesh.indices.numpy(),
                 colors=(0.35, 0.55, 0.9),
             )
             self.renderer.render_points(name="points", points=self.points.numpy(), radius=0.05, colors=(0.8, 0.3, 0.2))
