@@ -411,7 +411,7 @@ def main(
         ps.set_ground_plane_mode("shadow_only")
         ps.set_up_dir("z_up")
         ps.register_surface_mesh("mesh", example.V, example.F, color=(0.85, 0.72, 0.55), smooth_shade=True)
-        pc = ps.register_point_cloud("particles", example.positions(), radius=0.006)
+        pc = ps.register_point_cloud("particles", example.positions(), radius=0.0045)
         pc.add_color_quantity("color", example.colors, enabled=True)
         center = example.V.mean(axis=0)
         ps.look_at((center[0] + 2.0, center[1] - 2.5, center[2] + 1.5), tuple(center))
