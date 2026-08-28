@@ -1,22 +1,18 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for the point-mesh SDF Hessian example (second-order jets).
+"""Tests for the point-mesh signed-distance derivatives in the SDF barrier example.
 
-The example computes the value, gradient, and Hessian of the signed distance to
-a mesh by injecting the analytic derivatives into a seeded second-order jet. The
-tests here validate the pieces that do not depend on the closest-feature
-classifier (which is a placeholder in the example):
+``signed_distance_derivs`` returns the signed distance to a mesh, its gradient,
+and its feature-classified Hessian (face/edge/vertex). These tests validate:
 
-* ``lift_seed_vec3`` -- the second-order chain rule composes correctly. For a
-  seeded point jet the Jacobian is the identity, so injected ``(grad, hess)``
-  must come back out unchanged.
 * value and gradient of the mesh signed distance, against a finite-difference
   reference. These are exact and feature-independent.
-* the Hessian is zero on a flat face (matching the placeholder) and symmetric.
+* the Hessian is zero on a flat face, symmetric, and matches independent analytic
+  ground truth at face / edge / vertex hits on a cube.
 
-The finite-difference Hessian check on curved features (edges/vertices) is
-present but skipped until ``feature_tangent_projector`` is implemented.
+Two ``expectedFailure`` tests pin the known limitation that barycentric
+classification recovers the triangulation simplex, not the geometric feature.
 """
 
 import unittest
@@ -24,7 +20,7 @@ import unittest
 import numpy as np
 
 import warp as wp
-from warp.examples.optim import example_sdf_hessian as ex
+from warp.examples.optim import example_sdf_barrier as ex
 from warp.tests.unittest_utils import *
 
 MAX_DIST = 1.0e6
@@ -79,21 +75,21 @@ def _cube_mesh(device):
 
 
 @wp.kernel(enable_backward=False)
-def _lift_probe_kernel(
-    p_in: wp.array[wp.vec3],
-    g_in: wp.array[wp.vec3],
-    h_in: wp.array[wp.mat33],
-    grad_out: wp.array[ex.J2.grad],
-    hess_out: wp.array[ex.J2.hess],
+def _sdf_derivs_kernel(
+    points: wp.array[wp.vec3],
+    mesh: wp.uint64,
+    max_dist: float,
+    valid: wp.array[wp.int32],
+    value: wp.array[float],
+    grad: wp.array[wp.vec3],
+    hess: wp.array[wp.mat33],
 ):
-    # Feed a known (grad, hess) through lift on a seeded point. With directions
-    # 0, 1, 2 the seed Jacobian is the identity, so the outputs must equal the
-    # inputs -- an exact check of the chain-rule composition.
     i = wp.tid()
-    p = ex.J2.seed_vec3(p_in[i], 0, 1, 2)
-    out = ex.lift_seed_vec3(0.0, g_in[i], h_in[i], p)
-    grad_out[i] = out.grad
-    hess_out[i] = out.hess
+    hit, v, g, H = ex.signed_distance_derivs(mesh, points[i], max_dist)
+    valid[i] = hit
+    value[i] = v
+    grad[i] = g
+    hess[i] = H
 
 
 @wp.kernel(enable_backward=False)
@@ -124,10 +120,10 @@ def _run_example(points_np, mesh, device):
     points = wp.array(points_np, dtype=wp.vec3, device=device)
     valid = wp.zeros(n, dtype=wp.int32, device=device)
     value = wp.zeros(n, dtype=float, device=device)
-    grad = wp.zeros(n, dtype=ex.J2.grad, device=device)
-    hess = wp.zeros(n, dtype=ex.J2.hess, device=device)
+    grad = wp.zeros(n, dtype=wp.vec3, device=device)
+    hess = wp.zeros(n, dtype=wp.mat33, device=device)
     wp.launch(
-        ex.sdf_hessian_kernel,
+        _sdf_derivs_kernel,
         dim=n,
         inputs=[points, mesh.id, MAX_DIST],
         outputs=[valid, value, grad, hess],
@@ -162,34 +158,6 @@ def _fd_gradient(points_np, mesh, device, h=1.0e-2):
 # ----------------------------------------------------------------------------
 # Tests.
 # ----------------------------------------------------------------------------
-
-
-def test_lift_seed_identity(test, device):
-    rng = np.random.default_rng(0)
-    n = 64
-    p = rng.uniform(-5.0, 5.0, size=(n, 3)).astype(np.float32)
-    g = rng.uniform(-2.0, 2.0, size=(n, 3)).astype(np.float32)
-    a = rng.uniform(-2.0, 2.0, size=(n, 3, 3)).astype(np.float32)
-    h = 0.5 * (a + np.transpose(a, (0, 2, 1)))  # symmetric, like a real Hessian
-
-    grad_out = wp.zeros(n, dtype=ex.J2.grad, device=device)
-    hess_out = wp.zeros(n, dtype=ex.J2.hess, device=device)
-    wp.launch(
-        _lift_probe_kernel,
-        dim=n,
-        inputs=[
-            wp.array(p, dtype=wp.vec3, device=device),
-            wp.array(g, dtype=wp.vec3, device=device),
-            wp.array(h, dtype=wp.mat33, device=device),
-        ],
-        outputs=[grad_out, hess_out],
-        device=device,
-    )
-    wp.synchronize_device(device)
-
-    # Seed Jacobian is the identity, so lift is a no-op on (grad, hess).
-    np.testing.assert_allclose(grad_out.numpy(), g, rtol=1.0e-5, atol=1.0e-5)
-    np.testing.assert_allclose(hess_out.numpy(), h, rtol=1.0e-5, atol=1.0e-5)
 
 
 def test_plane_value_and_gradient(test, device):
@@ -238,12 +206,12 @@ def test_cube_hessian_symmetric(test, device):
     valid, _, _, hess = _run_example(points, mesh, device)
     hess = hess[valid == 1]
     test.assertGreater(hess.shape[0], 0)
-    # The compose builds JᵀHJ with symmetric H, so the result stays symmetric.
+    # The Hessian is (s/dist)(P - T) with symmetric P and T, so it stays symmetric.
     np.testing.assert_allclose(hess, np.transpose(hess, (0, 2, 1)), rtol=1.0e-5, atol=1.0e-5)
 
 
 def test_cube_feature_hessians(test, device):
-    """Jet Hessian at face / edge / vertex hits vs. independent analytic ground truth.
+    """Feature-classified Hessian at face / edge / vertex hits vs. analytic ground truth.
 
     Points are placed in the Voronoi region of a single cube feature, where the
     mesh signed distance equals a distance to that feature with a known Hessian:
@@ -281,7 +249,7 @@ def test_cube_feature_hessians(test, device):
 devices = get_test_devices()
 
 
-class TestSDFHessian(unittest.TestCase):
+class TestSDFBarrier(unittest.TestCase):
     # Known limitations: barycentric classification recovers the triangulation
     # simplex, not the geometric feature, so it gives spurious curvature on a flat
     # feature (a collapsed normal cone). These assert the geometrically-correct
@@ -309,11 +277,10 @@ class TestSDFHessian(unittest.TestCase):
         np.testing.assert_allclose(hess[0], np.zeros((3, 3)), atol=1.0e-4)
 
 
-add_function_test(TestSDFHessian, "test_lift_seed_identity", test_lift_seed_identity, devices=devices)
-add_function_test(TestSDFHessian, "test_plane_value_and_gradient", test_plane_value_and_gradient, devices=devices)
-add_function_test(TestSDFHessian, "test_plane_hessian_zero", test_plane_hessian_zero, devices=devices)
-add_function_test(TestSDFHessian, "test_cube_hessian_symmetric", test_cube_hessian_symmetric, devices=devices)
-add_function_test(TestSDFHessian, "test_cube_feature_hessians", test_cube_feature_hessians, devices=devices)
+add_function_test(TestSDFBarrier, "test_plane_value_and_gradient", test_plane_value_and_gradient, devices=devices)
+add_function_test(TestSDFBarrier, "test_plane_hessian_zero", test_plane_hessian_zero, devices=devices)
+add_function_test(TestSDFBarrier, "test_cube_hessian_symmetric", test_cube_hessian_symmetric, devices=devices)
+add_function_test(TestSDFBarrier, "test_cube_feature_hessians", test_cube_feature_hessians, devices=devices)
 
 
 if __name__ == "__main__":

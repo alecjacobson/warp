@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ###########################################################################
-# Example Gravity (particle-vs-mesh IPC contact)
+# Example SDF Barrier (particle-vs-mesh IPC contact)
 #
 # Particles fall under gravity onto a static mesh and a ground plane. Each
 # particle is advanced independently (no particle-particle contact) as an
@@ -14,17 +14,19 @@
 # p_hat and coefficient c that depend on the time integrator (backward Euler
 # or Newmark), and an in-kernel Newton solve with backtracking line search.
 #
-# The distance d(p) = min(distance-to-mesh, distance-to-ground) and, crucially,
-# its gradient and *Hessian* come from the feature-classified signed-distance
-# derivatives in example_sdf_hessian.py -- the mesh query is a primal oracle and
-# its analytic derivatives are injected by hand. One Warp thread solves one
-# particle; the whole step is a single kernel launch.
+# The distance d(p) = min(distance-to-mesh, distance-to-ground). Its gradient
+# and, crucially, its *Hessian* come from the point-mesh signed distance whose
+# closest feature (face/edge/vertex) is classified after the fact from the
+# barycentric coordinates the mesh query returns -- the mesh query is a primal
+# oracle and its analytic derivatives are supplied in closed form
+# (``signed_distance_derivs`` / ``feature_tangent_projector`` below). One Warp
+# thread solves one particle; the whole step is a single kernel launch.
 #
 # This is a Warp port of the test_gravity.m prototype. Rendering uses polyscope
 # in headless (EGL) mode and writes an animated GIF.
 #
 # Extra dependencies (not required by Warp): polyscope, imageio. Run with e.g.
-#   uv run --with polyscope --with imageio python -m warp.examples.optim.example_gravity
+#   uv run --with polyscope --with imageio python -m warp.examples.optim.example_sdf_barrier
 ###########################################################################
 
 import argparse
@@ -34,11 +36,126 @@ import numpy as np
 
 import warp as wp
 import warp.examples
-from warp.examples.optim.example_sdf_hessian import signed_distance_derivs
 
 # Integrator tags (kept as ints so they can be passed to the kernel).
 BACKWARD_EULER = wp.constant(0)
 NEWMARK = wp.constant(1)
+
+# Tolerance for calling a returned barycentric coordinate "zero", used to
+# classify the closest feature (face/edge/vertex) after the fact from the
+# ``(u, v)`` the mesh query returns.
+#
+# TAU_REPR repairs only the floating-point residue of an *exact* edge hit. Under
+# strict IEEE binary32 the native closest-point routine (see
+# ``closest_point_to_triangle`` in warp/native/intersect.h) sets one coordinate
+# to zero on an edge, but packs the result as two floats and lets the third be
+# reconstructed by subtraction; that reconstruction can leave a residue of up to
+# 2^-25 = 1/4 FLT_EPSILON. Measured against the actual CPU and CUDA builds, the
+# worst-case edge residue is exactly 2^-25, so the comparison must be inclusive
+# (``<=``). This is a representation-repair constant, not a geometric tolerance:
+# a face point whose true third weight is within 2^-25 of zero is deliberately
+# classified as an edge (a face can lie arbitrarily close to an edge, so every
+# positive tolerance absorbs a thin face collar into the edge case).
+#
+# TAU_GEOM is an optional, application-chosen geometric collar. Leave it at 0 for
+# the narrowest post-facto convention; raise it to intentionally treat a band of
+# near-edge faces as edges (collar behavior like the native sign query).
+TAU_REPR = float.fromhex("0x1p-25")  # 2.9802322e-08
+TAU_GEOM = 0.0
+TAU = max(TAU_REPR, TAU_GEOM)
+
+
+@wp.func
+def feature_tangent_projector(p0: wp.vec3, p1: wp.vec3, p2: wp.vec3, u: float, v: float, n: wp.vec3) -> wp.mat33:
+    """Projector ``T`` onto the directions the closest point is free to slide along.
+
+    ==================  ================================  ============================
+    Closest feature     Projector ``T``                   Resulting Hessian
+    ==================  ================================  ============================
+    face interior       ``I - n nᵀ``  (2 dims)            ``0`` (a plane is flat)
+    edge                ``t tᵀ``      (1 dim, edge ``t``)  rank 1
+    vertex              ``0``         (0 dims)             ``(s/dist)(I - n nᵀ)``, rank 2
+    ==================  ================================  ============================
+
+    The closest feature is recovered from the barycentric weights the mesh query
+    returns. With ``w = 1 - u - v``, the weights map to the triangle vertices as
+    ``u -> vertex 0, v -> vertex 1, w -> vertex 2`` (matching
+    :func:`warp.mesh_eval_position`). Counting weights within :data:`TAU` of zero
+    gives the feature: two zeros -> vertex, one zero -> edge (spanned by the two
+    non-zero-weight vertices), none -> face interior. See :data:`TAU_REPR` for why
+    that tolerance is what it is.
+
+    ``.. note::`` **This recovers the triangle feature, not the surface feature.**
+    The per-simplex curvature is exact only in the full-dimensional part of a
+    feature's normal cone, and discrete curvature measures that cone's size:
+    ``pi - dihedral`` for an edge, the angle defect ``2*pi - sum(theta)`` for a
+    vertex. A flat feature has a collapsed cone, so the formula is spurious there:
+
+    * a coplanar internal edge (dihedral ~ pi, e.g. a face diagonal) is read as an
+      edge and given rank-1 curvature where the surface is flat and the Hessian is
+      really zero;
+    * a zero-defect vertex (a flat fan, or a subdivision point on a straight
+      crease) is read as a vertex and given rank-2 curvature where the true feature
+      is a face (zero) or an edge (rank 1).
+
+    Fixing this needs adjacency / discrete curvature to demote flat features, which
+    a single query does not return. But it only bites on the measure-zero set of
+    points whose closest point lands exactly on such a feature -- probability zero
+    for generic sampling -- so this example leaves it unhandled.
+    """
+    w = 1.0 - u - v
+    zu = wp.abs(u) <= wp.static(TAU)
+    zv = wp.abs(v) <= wp.static(TAU)
+    zw = wp.abs(w) <= wp.static(TAU)
+
+    # Two near-zero weights: closest point is a vertex, fixed as the query moves.
+    if (zv and zw) or (zu and zw) or (zu and zv):
+        return wp.mat33(0.0)
+
+    # One near-zero weight: closest point slides along the edge of the other two
+    # vertices. T removes that tangent direction from the curvature.
+    if zu or zv or zw:
+        if zw:
+            t = wp.normalize(p1 - p0)  # weight of vertex 2 vanished -> edge (0, 1)
+        elif zv:
+            t = wp.normalize(p2 - p0)  # weight of vertex 1 vanished -> edge (0, 2)
+        else:
+            t = wp.normalize(p2 - p1)  # weight of vertex 0 vanished -> edge (1, 2)
+        return wp.outer(t, t)
+
+    # Face interior: the two free tangent directions are the whole tangent plane.
+    return wp.identity(n=3, dtype=float) - wp.outer(n, n)
+
+
+@wp.func
+def signed_distance_derivs(mesh: wp.uint64, p: wp.vec3, max_dist: float):
+    """Signed distance and its analytic gradient/Hessian at ``p`` (plain floats).
+
+    Returns ``(hit, value, grad, hess)`` where ``hit`` is 0 when no surface lies
+    within ``max_dist``. ``grad`` is the outward unit normal; ``hess`` is
+    ``(s/dist)(I - n nᵀ - T)`` with ``T`` from :func:`feature_tangent_projector`.
+    """
+    q = wp.mesh_query_point_sign_normal(mesh, p, max_dist)
+    if not q.result:
+        return 0, 0.0, wp.vec3(), wp.mat33()
+
+    c = wp.mesh_eval_position(mesh, q.face, q.u, q.v)
+    r = p - c
+    dist = wp.length(r)
+    n = r / dist  # unit direction from the surface toward the query point
+    s = q.sign  # +1 outside, -1 inside
+
+    value = s * dist  # signed distance
+    grad = s * n  # gradient of the signed distance is the outward unit normal
+
+    m = wp.mesh_get(mesh)
+    p0 = m.points[m.indices[q.face * 3 + 0]]
+    p1 = m.points[m.indices[q.face * 3 + 1]]
+    p2 = m.points[m.indices[q.face * 3 + 2]]
+    tangent = feature_tangent_projector(p0, p1, p2, q.u, q.v, n)
+    normal_proj = wp.identity(n=3, dtype=float) - wp.outer(n, n)
+    hess = (s / dist) * (normal_proj - tangent)
+    return 1, value, grad, hess
 
 
 @wp.func
@@ -191,6 +308,10 @@ def load_bunny():
     geom = UsdGeom.Mesh(stage.GetPrimAtPath("/root/bunny"))
     V = np.array(geom.GetPointsAttr().Get(), dtype=np.float32)
     F = np.array(geom.GetFaceVertexIndicesAttr().Get(), dtype=np.int32).reshape(-1, 3)
+    # The bunny's native up-axis is +y; rotate +90 deg about x so it stands
+    # upright (feet down) relative to gravity (-z): (x, y, z) -> (x, -z, y).
+    Rx = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], dtype=np.float32)
+    V = V @ Rx.T
     V = V - V.min(axis=0)
     V = V / np.abs(V).max()
     return V, F
@@ -215,6 +336,16 @@ class Example:
         xy = rng.standard_normal((num_particles, 2)) * 0.1 + self.V[:, :2].mean(axis=0)
         z = self.V[:, 2].max() + self.d_hat * 10.0 + self.d_hat * rng.standard_normal((num_particles, 1))
         P0 = np.hstack([xy, z]).astype(np.float32)
+
+        # Categorical colors (ColorBrewer Set1 + extras) assigned per particle.
+        palette = (
+            np.array(
+                [0xE41A1C, 0x377EB8, 0x4DAF4A, 0x984EA3, 0xFF7F00, 0xFFFF33, 0xA65628, 0xF781BF],
+                dtype=np.uint32,
+            )[:, None]
+            >> np.array([16, 8, 0], dtype=np.uint32)
+        ) & 0xFF
+        self.colors = (palette / 255.0)[rng.integers(0, len(palette), num_particles)].astype(np.float32)
 
         self.P = wp.array(P0, dtype=wp.vec3)
         self.P_dot = wp.zeros(num_particles, dtype=wp.vec3)
@@ -280,24 +411,23 @@ def main(
         ps.set_ground_plane_mode("shadow_only")
         ps.set_up_dir("z_up")
         ps.register_surface_mesh("mesh", example.V, example.F, color=(0.85, 0.72, 0.55), smooth_shade=True)
-        pc = ps.register_point_cloud("particles", example.positions(), radius=0.006, color=(0.4, 0.2, 0.1))
+        pc = ps.register_point_cloud("particles", example.positions(), radius=0.006)
+        pc.add_color_quantity("color", example.colors, enabled=True)
         center = example.V.mean(axis=0)
         ps.look_at((center[0] + 2.0, center[1] - 2.5, center[2] + 1.5), tuple(center))
 
         dt = 1.0 / fps / nsubsteps
         n_frames = int(t_max * fps)
         frames = []
-        tmp = out + ".frame.png"
         for _frame in range(n_frames):
             for _ in range(nsubsteps):
                 example.step(dt)
             pc.update_point_positions(example.positions())
-            ps.screenshot(tmp)
-            frames.append(imageio.imread(tmp))
-        if os.path.exists(tmp):
-            os.remove(tmp)
+            # Opaque RGB frames: a transparent background would make the GIF
+            # composite each frame over the last, smearing the moving particles.
+            frames.append(ps.screenshot_to_buffer(transparent_bg=False)[:, :, :3])
 
-        imageio.mimsave(out, frames, duration=1.0 / fps, loop=0)
+        imageio.mimsave(out, frames, duration=1000.0 / fps, loop=0)
         print(f"wrote {out} ({len(frames)} frames)")
         return out
 
