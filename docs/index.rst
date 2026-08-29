@@ -93,7 +93,7 @@ warp/examples/geometry
     :widths: 25 25 25 25
     :class: gallery
 
-    * - .. image:: ./img/examples/geometry_poisson_disk_sampling.gif
+    * - .. image:: ./img/examples/geometry_poisson_disk_sampling.png
            :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_poisson_disk_sampling.py
       -
       -
