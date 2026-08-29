@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 import warp as wp
-from warp._src.utils import array_scan
+from warp._src.utils import array_scan, array_sum
 
 if TYPE_CHECKING:
     from warp._src.context import DeviceLike
@@ -184,6 +184,9 @@ class UniformSampler:
         device: Device on which to build the sampler. Defaults to the device of
             ``points`` when it is a :class:`warp.array`, otherwise the current
             device.
+
+    Attributes:
+        total_area: Total surface area of the mesh.
     """
 
     # Expose the device sampling function as a member ``@wp.func`` so that it can
@@ -217,6 +220,10 @@ class UniformSampler:
         )
         cumulative = wp.empty(self.num_triangles, dtype=wp.float32, device=self.device)
         array_scan(areas, cumulative, inclusive=True)
+
+        # Total surface area, handy for sizing candidate pools (e.g. Poisson-disk
+        # sampling) without a second pass over the triangles.
+        self.total_area = float(array_sum(areas))
 
         self.cdf = wp.empty(self.num_triangles, dtype=wp.float32, device=self.device)
         wp.launch(
@@ -342,3 +349,530 @@ def uniformly_sample(
     """
     sampler = UniformSampler(points, faces, device=device)
     return sampler.sample(num_samples, seed=seed)
+
+
+##########################################################################
+## Parallel Poisson-disk (blue-noise) sampling on surfaces
+##
+## Bowers, Wang, Wei and Maletz, "Parallel Poisson Disk Sampling with
+## Spectrum Analysis on Surfaces", ACM SIGGRAPH Asia 2010.
+##########################################################################
+
+# Candidate status values used by the parallel maximal-independent-set solver.
+_POISSON_ACTIVE = wp.constant(wp.int32(0))
+_POISSON_ACCEPTED = wp.constant(wp.int32(1))
+
+
+@wp.kernel(enable_backward=False)
+def _poisson_priority_kernel(seed: wp.int32, out_priority: wp.array(dtype=wp.float32)):
+    tid = wp.tid()
+    rng = wp.rand_init(seed, tid)
+    out_priority[tid] = wp.randf(rng)
+
+
+@wp.kernel(enable_backward=False)
+def _poisson_mask_kernel(status: wp.array(dtype=wp.int32), out_mask: wp.array(dtype=wp.int32)):
+    tid = wp.tid()
+    if status[tid] == _POISSON_ACCEPTED:
+        out_mask[tid] = 1
+    else:
+        out_mask[tid] = 0
+
+
+@wp.kernel(enable_backward=False)
+def _poisson_compact_kernel(
+    status: wp.array(dtype=wp.int32),
+    offsets: wp.array(dtype=wp.int32),
+    in_faces: wp.array(dtype=wp.int32),
+    in_uv: wp.array(dtype=wp.vec2),
+    in_points: wp.array(dtype=wp.vec3),
+    out_faces: wp.array(dtype=wp.int32),
+    out_uv: wp.array(dtype=wp.vec2),
+    out_points: wp.array(dtype=wp.vec3),
+):
+    # ``offsets`` is an inclusive prefix sum of the accepted mask, so an accepted
+    # candidate writes to slot ``offsets[tid] - 1``.
+    tid = wp.tid()
+    if status[tid] == _POISSON_ACCEPTED:
+        idx = offsets[tid] - 1
+        out_faces[idx] = in_faces[tid]
+        out_uv[idx] = in_uv[tid]
+        out_points[idx] = in_points[tid]
+
+
+##########################################################################
+## Single-entry spatial hash + phase groups (the paper's Euclidean path)
+##
+## Following Bowers et al., the grid cell edge is ``radius / sqrt(3)`` so a
+## cell's diagonal equals ``radius``: two points in one cell are always closer
+## than ``radius``, hence a cell holds at most one accepted sample. Only the
+## few cells that actually contain candidates are ever stored, in a compact
+## spatial hash keyed by the integer cell id (``key % table_size`` with linear
+## probing) -- so memory scales with the sampled *surface*, not the 3D bounding
+## volume. Conflicts span at most ``ceil(sqrt(3)) = 2`` cells, so a candidate
+## checks a 5x5x5 block of the hash. Cells are resolved in 27 phase groups
+## (coordinates modulo 3): two cells of the same group are at least 3 cells
+## apart, so samples accepted within one group can never conflict, and each
+## group is one fully parallel pass.
+##########################################################################
+
+_POISSON_SEARCH = wp.constant(wp.int32(2))
+_POISSON_PERIOD = wp.constant(wp.int32(3))
+_POISSON_EMPTY = wp.constant(wp.int64(-1))  # empty hash slot (cell ids are >= 0)
+
+
+@wp.func
+def _cell_coord(p: wp.vec3, lo: wp.vec3, inv_mu: wp.float32, gx: wp.int32, gy: wp.int32, gz: wp.int32) -> wp.vec3i:
+    cx = wp.clamp(wp.int32((p[0] - lo[0]) * inv_mu), 0, gx - 1)
+    cy = wp.clamp(wp.int32((p[1] - lo[1]) * inv_mu), 0, gy - 1)
+    cz = wp.clamp(wp.int32((p[2] - lo[2]) * inv_mu), 0, gz - 1)
+    return wp.vec3i(cx, cy, cz)
+
+
+@wp.func
+def _cell_id(cx: wp.int32, cy: wp.int32, cz: wp.int32, gx: wp.int32, gy: wp.int32) -> wp.int64:
+    # 64-bit so the id space can exceed 2^31 for fine grids on large meshes.
+    return (wp.int64(cz) * wp.int64(gy) + wp.int64(cy)) * wp.int64(gx) + wp.int64(cx)
+
+
+@wp.func
+def _cell_phase(c: wp.vec3i) -> wp.int32:
+    return (c[2] % _POISSON_PERIOD) * 9 + (c[1] % _POISSON_PERIOD) * 3 + (c[0] % _POISSON_PERIOD)
+
+
+@wp.func
+def _hash_slot0(key: wp.int64, table_size: wp.int32) -> wp.int32:
+    # A multiplicative mix keeps sequential cell ids from clustering under linear
+    # probing, then reduce into ``[0, table_size)``.
+    m = key * wp.int64(2654435761)
+    m = m ^ (m >> wp.int64(21))
+    r = m % wp.int64(table_size)
+    if r < wp.int64(0):
+        r = r + wp.int64(table_size)
+    return wp.int32(r)
+
+
+@wp.func
+def _hash_find(key: wp.int64, table_size: wp.int32, slot_key: wp.array(dtype=wp.int64)) -> wp.int32:
+    # Return the slot holding ``key``, or -1 if the cell is absent (empty slot).
+    slot = _hash_slot0(key, table_size)
+    for _ in range(table_size):
+        cur = slot_key[slot]
+        if cur == key:
+            return slot
+        if cur == _POISSON_EMPTY:
+            return -1
+        slot = slot + 1
+        if slot >= table_size:
+            slot = 0
+    return -1
+
+
+@wp.kernel(enable_backward=False)
+def _poisson_hash_insert_kernel(
+    points: wp.array(dtype=wp.vec3),
+    lo: wp.vec3,
+    inv_mu: wp.float32,
+    gx: wp.int32,
+    gy: wp.int32,
+    gz: wp.int32,
+    table_size: wp.int32,
+    slot_key: wp.array(dtype=wp.int64),
+):
+    # Insert each candidate's cell id once (deduplicated by CAS on an empty slot).
+    tid = wp.tid()
+    c = _cell_coord(points[tid], lo, inv_mu, gx, gy, gz)
+    key = _cell_id(c[0], c[1], c[2], gx, gy)
+    slot = _hash_slot0(key, table_size)
+    for _ in range(table_size):
+        cur = slot_key[slot]
+        if cur == key:
+            return
+        if cur == _POISSON_EMPTY:
+            old = wp.atomic_cas(slot_key, slot, _POISSON_EMPTY, key)
+            if old == _POISSON_EMPTY or old == key:
+                return
+        slot = slot + 1
+        if slot >= table_size:
+            slot = 0
+
+
+@wp.kernel(enable_backward=False)
+def _poisson_setup_kernel(
+    points: wp.array(dtype=wp.vec3),
+    lo: wp.vec3,
+    inv_mu: wp.float32,
+    gx: wp.int32,
+    gy: wp.int32,
+    gz: wp.int32,
+    table_size: wp.int32,
+    slot_key: wp.array(dtype=wp.int64),
+    out_slot: wp.array(dtype=wp.int32),
+    out_phase: wp.array(dtype=wp.int32),
+):
+    # Cache each candidate's hash slot and phase group so the phase passes below
+    # avoid recomputing them.
+    tid = wp.tid()
+    c = _cell_coord(points[tid], lo, inv_mu, gx, gy, gz)
+    out_slot[tid] = _hash_find(_cell_id(c[0], c[1], c[2], gx, gy), table_size, slot_key)
+    out_phase[tid] = _cell_phase(c)
+
+
+@wp.func
+def _cell_free(
+    pos: wp.vec3,
+    c: wp.vec3i,
+    gx: wp.int32,
+    gy: wp.int32,
+    gz: wp.int32,
+    table_size: wp.int32,
+    slot_key: wp.array(dtype=wp.int64),
+    slot_sample: wp.array(dtype=wp.int32),
+    points: wp.array(dtype=wp.vec3),
+    r_sq: wp.float32,
+) -> bool:
+    # True if no accepted sample in the surrounding 5x5x5 block is within radius.
+    for dz in range(-_POISSON_SEARCH, _POISSON_SEARCH + 1):
+        nz = c[2] + dz
+        if nz >= 0 and nz < gz:
+            for dy in range(-_POISSON_SEARCH, _POISSON_SEARCH + 1):
+                ny = c[1] + dy
+                if ny >= 0 and ny < gy:
+                    for dx in range(-_POISSON_SEARCH, _POISSON_SEARCH + 1):
+                        nx = c[0] + dx
+                        if nx >= 0 and nx < gx:
+                            slot = _hash_find(_cell_id(nx, ny, nz, gx, gy), table_size, slot_key)
+                            if slot >= 0:
+                                s = slot_sample[slot]
+                                if s >= 0:
+                                    d = points[s] - pos
+                                    if wp.dot(d, d) < r_sq:
+                                        return False
+    return True
+
+
+@wp.kernel(enable_backward=False)
+def _poisson_phase_max_kernel(
+    phase: wp.int32,
+    points: wp.array(dtype=wp.vec3),
+    lo: wp.vec3,
+    inv_mu: wp.float32,
+    gx: wp.int32,
+    gy: wp.int32,
+    gz: wp.int32,
+    table_size: wp.int32,
+    radius: wp.float32,
+    slot_key: wp.array(dtype=wp.int64),
+    slot_sample: wp.array(dtype=wp.int32),
+    cand_slot: wp.array(dtype=wp.int32),
+    cand_phase: wp.array(dtype=wp.int32),
+    priority: wp.array(dtype=wp.float32),
+    status: wp.array(dtype=wp.int32),
+    free: wp.array(dtype=wp.int32),
+    cell_best: wp.array(dtype=wp.float32),
+):
+    tid = wp.tid()
+    if status[tid] != _POISSON_ACTIVE or cand_phase[tid] != phase:
+        return
+    p = points[tid]
+    c = _cell_coord(p, lo, inv_mu, gx, gy, gz)
+    if _cell_free(p, c, gx, gy, gz, table_size, slot_key, slot_sample, points, radius * radius):
+        free[tid] = 1
+        wp.atomic_max(cell_best, cand_slot[tid], priority[tid])
+    else:
+        free[tid] = 0
+
+
+@wp.kernel(enable_backward=False)
+def _poisson_phase_pick_kernel(
+    phase: wp.int32,
+    cand_slot: wp.array(dtype=wp.int32),
+    cand_phase: wp.array(dtype=wp.int32),
+    priority: wp.array(dtype=wp.float32),
+    status: wp.array(dtype=wp.int32),
+    free: wp.array(dtype=wp.int32),
+    cell_best: wp.array(dtype=wp.float32),
+    cell_winner: wp.array(dtype=wp.int32),
+):
+    # Among conflict-free candidates sharing the winning priority in a cell, the
+    # lowest index claims it (a deterministic tie-break).
+    tid = wp.tid()
+    if status[tid] != _POISSON_ACTIVE or cand_phase[tid] != phase or free[tid] == 0:
+        return
+    slot = cand_slot[tid]
+    if priority[tid] == cell_best[slot]:
+        wp.atomic_min(cell_winner, slot, tid)
+
+
+@wp.kernel(enable_backward=False)
+def _poisson_phase_accept_kernel(
+    phase: wp.int32,
+    cand_slot: wp.array(dtype=wp.int32),
+    cand_phase: wp.array(dtype=wp.int32),
+    status: wp.array(dtype=wp.int32),
+    free: wp.array(dtype=wp.int32),
+    cell_winner: wp.array(dtype=wp.int32),
+    slot_sample: wp.array(dtype=wp.int32),
+):
+    tid = wp.tid()
+    if status[tid] != _POISSON_ACTIVE or cand_phase[tid] != phase or free[tid] == 0:
+        return
+    slot = cand_slot[tid]
+    if cell_winner[slot] == tid:
+        slot_sample[slot] = tid
+        status[tid] = _POISSON_ACCEPTED
+
+
+class PoissonDiskSampler:
+    """Draw a Poisson-disk (blue-noise) point set over a triangle mesh surface.
+
+    No two returned samples are closer than ``radius`` in Euclidean distance, and
+    the set is *maximal*: no further candidate could be added without violating
+    that spacing. The distribution therefore has the characteristic blue-noise
+    spectrum -- suppressed low frequencies and no structured aliasing -- which
+    makes it well suited to stippling, scattering, remeshing seeds, and
+    Monte-Carlo integration.
+
+    The sampler follows Bowers et al., *"Parallel Poisson Disk Sampling with
+    Spectrum Analysis on Surfaces"* (SIGGRAPH Asia 2010): it draws a dense pool of
+    area-weighted candidates with :class:`UniformSampler`, then resolves conflicts
+    entirely in parallel as a priority-based maximal independent set over the
+    graph connecting candidates closer than ``radius``. Euclidean distance is used
+    as the (standard) approximation to geodesic distance, which is accurate when
+    ``radius`` is small relative to the surface's curvature.
+
+    Args:
+        points: Vertex positions, either a :class:`warp.array` of
+            :class:`warp.vec3` or an array-like of shape ``(num_vertices, 3)``.
+        faces: Triangle vertex indices, either a flat :class:`warp.array` of
+            :class:`warp.int32` (length ``3 * num_triangles``) or an array-like
+            reshapeable to ``(num_triangles, 3)``.
+        radius: Minimum Euclidean distance between any two samples.
+        num_candidates: Size of the candidate pool. If ``None``, it is set to
+            ``candidate_multiplier`` times the theoretical maximal sample count.
+        candidate_multiplier: Oversampling factor used when ``num_candidates`` is
+            ``None``. Larger values give a denser, more nearly maximal result at
+            higher cost.
+        seed: Seed for candidate generation and priorities. Fixing it makes the
+            result deterministic.
+        device: Device on which to run. Defaults to the device of ``points``.
+
+    Attributes:
+        points: :class:`warp.array` of :class:`warp.vec3` sample positions.
+        faces: :class:`warp.array` of :class:`warp.int32` face indices.
+        uv: :class:`warp.array` of :class:`warp.vec2` barycentric coordinates.
+        num_samples: Number of samples in the result.
+        radius: The minimum-distance radius used.
+        total_area: Total surface area of the mesh.
+    """
+
+    def __init__(
+        self,
+        points,
+        faces,
+        radius: float,
+        *,
+        num_candidates: int | None = None,
+        candidate_multiplier: float = 20.0,
+        seed: int = 0,
+        device: DeviceLike | None = None,
+    ):
+        if radius <= 0.0:
+            raise ValueError(f"`radius` must be positive, got {radius}.")
+
+        self._sampler = UniformSampler(points, faces, device=device)
+        self.device = self._sampler.device
+        self.radius = float(radius)
+        self.total_area = self._sampler.total_area
+
+        # Theoretical maximal count assumes hexagonal packing of disks of radius
+        # ``radius / 2``, i.e. one sample per ``sqrt(3)/2 * radius^2`` of area.
+        n_est = self.total_area / (0.8660254037844386 * self.radius * self.radius)
+        if num_candidates is None:
+            num_candidates = int(max(1.0, candidate_multiplier * n_est))
+        self.num_candidates = int(num_candidates)
+
+        # Stage 1: dense area-weighted candidate pool and its world positions.
+        cand_faces, cand_uv = self._sampler.sample(self.num_candidates, seed=seed)
+        cand_points = wp.empty(self.num_candidates, dtype=wp.vec3, device=self.device)
+        wp.launch(
+            _eval_positions_kernel,
+            dim=self.num_candidates,
+            inputs=[self._sampler.mesh.id, cand_faces, cand_uv],
+            outputs=[cand_points],
+            device=self.device,
+        )
+
+        # Stage 2: parallel conflict resolution.
+        priority = wp.empty(self.num_candidates, dtype=wp.float32, device=self.device)
+        wp.launch(
+            _poisson_priority_kernel,
+            dim=self.num_candidates,
+            inputs=[seed],
+            outputs=[priority],
+            device=self.device,
+        )
+        pts_np = cand_points.numpy()
+        lo = pts_np.min(axis=0)
+        hi = pts_np.max(axis=0)
+        status = self._solve_hash(cand_points, priority, lo, hi, seed)
+
+        # Stage 3: compact accepted candidates into tight output arrays.
+        self.points, self.faces, self.uv = self._compact(status, cand_points, cand_faces, cand_uv)
+        self.num_samples = int(self.points.shape[0])
+
+    def _solve_hash(
+        self, cand_points: wp.array, priority: wp.array, lo: np.ndarray, hi: np.ndarray, seed: int
+    ) -> wp.array:
+        """The paper's Euclidean path: single-entry spatial hash + 27 phase groups.
+
+        Memory scales with the sampled surface (only non-empty cells are stored),
+        and every conflict check reads a constant 5x5x5 block of the hash.
+        """
+        mu = self.radius / 1.7320508075688772  # radius / sqrt(3)
+        inv_mu = float(1.0 / mu)
+        gx, gy, gz = (int(v) for v in np.maximum(np.ceil((hi - lo) / mu).astype(np.int64) + 1, 1))
+        lo_vec = wp.vec3(float(lo[0]), float(lo[1]), float(lo[2]))
+
+        # Table sized to at least twice the candidate count bounds the load factor
+        # below 1/2 (distinct cells <= candidates), so linear probing stays short.
+        table_size = 2 * self.num_candidates + 1
+        slot_key = wp.full(table_size, -1, dtype=wp.int64, device=self.device)  # -1 = empty
+
+        grid_args = [lo_vec, inv_mu, gx, gy, gz, table_size]
+        wp.launch(
+            _poisson_hash_insert_kernel,
+            dim=self.num_candidates,
+            inputs=[cand_points, *grid_args, slot_key],
+            device=self.device,
+        )
+
+        cand_slot = wp.empty(self.num_candidates, dtype=wp.int32, device=self.device)
+        cand_phase = wp.empty(self.num_candidates, dtype=wp.int32, device=self.device)
+        wp.launch(
+            _poisson_setup_kernel,
+            dim=self.num_candidates,
+            inputs=[cand_points, *grid_args, slot_key],
+            outputs=[cand_slot, cand_phase],
+            device=self.device,
+        )
+
+        status = wp.zeros(self.num_candidates, dtype=wp.int32, device=self.device)
+        free = wp.zeros(self.num_candidates, dtype=wp.int32, device=self.device)
+        slot_sample = wp.full(table_size, -1, dtype=wp.int32, device=self.device)
+        cell_best = wp.empty(table_size, dtype=wp.float32, device=self.device)
+        cell_winner = wp.empty(table_size, dtype=wp.int32, device=self.device)
+
+        # Process the 27 phase groups in a seed-dependent random order to avoid
+        # directional bias, as recommended in the paper.
+        rng = np.random.default_rng(seed)
+        phase_order = rng.permutation(27)
+        for phase in phase_order:
+            cell_best.fill_(-1.0)
+            cell_winner.fill_(self.num_candidates)
+            wp.launch(
+                _poisson_phase_max_kernel,
+                dim=self.num_candidates,
+                inputs=[
+                    int(phase),
+                    cand_points,
+                    lo_vec,
+                    inv_mu,
+                    gx,
+                    gy,
+                    gz,
+                    table_size,
+                    self.radius,
+                    slot_key,
+                    slot_sample,
+                    cand_slot,
+                    cand_phase,
+                    priority,
+                    status,
+                    free,
+                    cell_best,
+                ],
+                device=self.device,
+            )
+            wp.launch(
+                _poisson_phase_pick_kernel,
+                dim=self.num_candidates,
+                inputs=[int(phase), cand_slot, cand_phase, priority, status, free, cell_best, cell_winner],
+                device=self.device,
+            )
+            wp.launch(
+                _poisson_phase_accept_kernel,
+                dim=self.num_candidates,
+                inputs=[int(phase), cand_slot, cand_phase, status, free, cell_winner, slot_sample],
+                device=self.device,
+            )
+        return status
+
+    def _compact(
+        self, status: wp.array, cand_points: wp.array, cand_faces: wp.array, cand_uv: wp.array
+    ) -> tuple[wp.array, wp.array, wp.array]:
+        mask = wp.empty(self.num_candidates, dtype=wp.int32, device=self.device)
+        wp.launch(_poisson_mask_kernel, dim=self.num_candidates, inputs=[status], outputs=[mask], device=self.device)
+
+        offsets = wp.empty(self.num_candidates, dtype=wp.int32, device=self.device)
+        array_scan(mask, offsets, inclusive=True)
+        num = int(offsets.numpy()[-1])
+
+        out_points = wp.empty(num, dtype=wp.vec3, device=self.device)
+        out_faces = wp.empty(num, dtype=wp.int32, device=self.device)
+        out_uv = wp.empty(num, dtype=wp.vec2, device=self.device)
+        wp.launch(
+            _poisson_compact_kernel,
+            dim=self.num_candidates,
+            inputs=[status, offsets, cand_faces, cand_uv, cand_points],
+            outputs=[out_faces, out_uv, out_points],
+            device=self.device,
+        )
+        return out_points, out_faces, out_uv
+
+
+def poisson_disk_sample(
+    points,
+    faces,
+    radius: float,
+    *,
+    num_candidates: int | None = None,
+    candidate_multiplier: float = 20.0,
+    seed: int = 0,
+    device: DeviceLike | None = None,
+) -> tuple[wp.array, wp.array, wp.array]:
+    """Sample a Poisson-disk (blue-noise) point set over a triangle mesh surface.
+
+    No two returned samples are closer than ``radius``, and the set is maximal.
+    This is a convenience wrapper that builds a :class:`PoissonDiskSampler` and
+    reads back its result; construct the class directly to inspect the sampler or
+    reuse the candidate pool.
+
+    Args:
+        points: Vertex positions, either a :class:`warp.array` of
+            :class:`warp.vec3` or an array-like of shape ``(num_vertices, 3)``.
+        faces: Triangle vertex indices, either a flat :class:`warp.array` of
+            :class:`warp.int32` (length ``3 * num_triangles``) or an array-like
+            reshapeable to ``(num_triangles, 3)``.
+        radius: Minimum Euclidean distance between any two samples.
+        num_candidates: Size of the candidate pool. If ``None``, it is set to
+            ``candidate_multiplier`` times the theoretical maximal sample count.
+        candidate_multiplier: Oversampling factor used when ``num_candidates`` is
+            ``None``.
+        seed: Seed for candidate generation and priorities.
+        device: Device on which to run. Defaults to the device of ``points``.
+
+    Returns:
+        A tuple ``(faces, uv, points)`` of :class:`warp.array` giving the face
+        index, barycentric coordinates, and world-space position of each sample.
+    """
+    sampler = PoissonDiskSampler(
+        points,
+        faces,
+        radius,
+        num_candidates=num_candidates,
+        candidate_multiplier=candidate_multiplier,
+        seed=seed,
+        device=device,
+    )
+    return sampler.faces, sampler.uv, sampler.points

@@ -21,8 +21,10 @@ Usage:
 # isort: skip_file
 
 from warp._src.geometry import MeshSample as MeshSample
+from warp._src.geometry import PoissonDiskSampler as PoissonDiskSampler
 from warp._src.geometry import UniformSampler as UniformSampler
 from warp._src.geometry import UniformSamplerState as UniformSamplerState
 from warp._src.geometry import draw as draw
+from warp._src.geometry import poisson_disk_sample as poisson_disk_sample
 from warp._src.geometry import sample_barycentrics as sample_barycentrics
 from warp._src.geometry import uniformly_sample as uniformly_sample
