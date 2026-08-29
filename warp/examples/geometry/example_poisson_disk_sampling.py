@@ -101,7 +101,7 @@ class Example:
         # Pin the shadow plane to the lowest point of the mesh so the dragon rests
         # on its shadow (no floating gap) rather than at the bounding-box bottom.
         ps.set_ground_plane_height_mode("manual")
-        ps.set_ground_plane_height(float(self.points[:, 1].min()), is_relative=False)
+        ps.set_ground_plane_height(float(self.points[:, 1].min()))
         ps.set_SSAA_factor(4)
         ps.set_window_size(1920, 1080)
 
