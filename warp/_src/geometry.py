@@ -830,6 +830,14 @@ class PoissonDiskSampler:
         )
         return out_points, out_faces, out_uv
 
+    def pair_correlation(self, *, r_max: float | None = None, num_bins: int = 64) -> tuple[np.ndarray, np.ndarray]:
+        """Pair-correlation function of this sampler's points (see :func:`pair_correlation`).
+
+        Uses the sampler's own :attr:`total_area` for the density normalization.
+        For a Poisson-disk set, ``g(r)`` is near zero below :attr:`radius`.
+        """
+        return pair_correlation(self.points, self.total_area, r_max=r_max, num_bins=num_bins, device=self.device)
+
 
 def poisson_disk_sample(
     points,
@@ -876,3 +884,109 @@ def poisson_disk_sample(
         device=device,
     )
     return sampler.faces, sampler.uv, sampler.points
+
+
+##########################################################################
+## Spectrum analysis on surfaces: the pair-correlation function (PCF)
+##
+## The paper measures blue-noise quality with a Fourier power spectrum in a
+## spectral mesh basis (mesh-Laplacian eigenfunctions). That basis is expensive
+## to build. The differential-domain pair-correlation function is the modern,
+## basis-free equivalent (Wei and Wang 2011): it works directly on the surface
+## samples via pairwise distances and reveals the same signature -- ``g(r) ~ 0``
+## inside the Poisson radius, a peak just past it, and ``g(r) -> 1`` far away.
+##########################################################################
+
+
+@wp.kernel(enable_backward=False)
+def _pcf_histogram_kernel(
+    grid: wp.uint64,
+    points: wp.array(dtype=wp.vec3),
+    r_max: wp.float32,
+    inv_dr: wp.float32,
+    num_bins: wp.int32,
+    counts: wp.array(dtype=wp.int32),
+):
+    tid = wp.tid()
+    pi = points[tid]
+    neighbors = wp.hash_grid_query(grid, pi, r_max)
+    for j in neighbors:
+        if j != tid:
+            d = wp.length(points[j] - pi)
+            if d < r_max:
+                b = wp.int32(d * inv_dr)
+                if b < num_bins:
+                    wp.atomic_add(counts, b, 1)
+
+
+def pair_correlation(
+    points: wp.array,
+    area: float,
+    *,
+    r_max: float | None = None,
+    num_bins: int = 64,
+    device: DeviceLike | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Estimate the pair-correlation function of a point set on a surface.
+
+    The pair-correlation function ``g(r)`` is the differential-domain measure of
+    blue-noise quality: the density of sample pairs at separation ``r``,
+    normalized so that a uniform Poisson (white-noise) process gives ``g(r) = 1``
+    everywhere. A Poisson-disk set instead shows ``g(r) ~ 0`` below its minimum
+    distance, a peak just beyond it, and mild oscillations that decay to ``1`` --
+    the surface analog of the radial power spectrum used in the paper.
+
+    Distances are Euclidean, accumulated over every pair within ``r_max`` using a
+    :class:`warp.HashGrid`, then normalized per radial bin by the count expected
+    for a uniform process of the same density ``N / area``.
+
+    Args:
+        points: Sample positions, a :class:`warp.array` of :class:`warp.vec3`.
+        area: Total surface area the samples are drawn from, used to set the
+            reference density.
+        r_max: Largest separation to measure. Defaults to ``6`` times the mean
+            sample spacing ``sqrt(area / N)``.
+        num_bins: Number of radial bins in ``[0, r_max]``.
+        device: Device on which to run. Defaults to the device of ``points``.
+
+    Returns:
+        A tuple ``(radii, g)`` of NumPy arrays: the bin-center radii and the
+        pair-correlation value in each bin.
+    """
+    device = wp.get_device(device) if device is not None else points.device
+    num_points = int(points.shape[0])
+    if num_points < 2:
+        raise ValueError("`pair_correlation` needs at least two points.")
+    if area <= 0.0:
+        raise ValueError(f"`area` must be positive, got {area}.")
+
+    if r_max is None:
+        r_max = 6.0 * float(np.sqrt(area / num_points))
+    r_max = float(r_max)
+    dr = r_max / num_bins
+
+    pts_np = points.numpy().reshape(-1, 3)
+    lo = pts_np.min(axis=0)
+    hi = pts_np.max(axis=0)
+    extent = np.maximum(hi - lo, r_max)
+    dims = np.clip(np.ceil(extent / r_max).astype(np.int64), 1, 512)
+    grid = wp.HashGrid(int(dims[0]), int(dims[1]), int(dims[2]), device=device)
+    grid.build(points, r_max)
+
+    counts = wp.zeros(num_bins, dtype=wp.int32, device=device)
+    wp.launch(
+        _pcf_histogram_kernel,
+        dim=num_points,
+        inputs=[grid.id, points, r_max, float(1.0 / dr), num_bins],
+        outputs=[counts],
+        device=device,
+    )
+
+    counts_np = counts.numpy().astype(np.float64)
+    radii = (np.arange(num_bins) + 0.5) * dr
+    # Expected ordered-pair count for a uniform process: for each of N points,
+    # density * area of the annulus [r, r + dr] ~ rho * 2*pi*r*dr neighbors.
+    density = num_points / area
+    expected = num_points * density * 2.0 * np.pi * radii * dr
+    g = np.divide(counts_np, expected, out=np.zeros_like(counts_np), where=expected > 0.0)
+    return radii, g
