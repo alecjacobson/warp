@@ -30,7 +30,7 @@ back the exact count only when it might be done). As a check, the benchmark
 reproduces the FPS author's reference point, N=10^6, k=1024:
 
 ```
-[validation] FPS N=1e6 k=1024: 20.4 ms   (author: 26.5 ms on RTX 3090 Ti)
+[validation] FPS N=1e6 k=1024: ~22 ms   (author: 26.5 ms on RTX 3090 Ti)
 ```
 
 (The L40 lands a bit under the 3090 Ti figure, as expected.)
@@ -44,12 +44,13 @@ that FPS got gratis).
 
 | radius | output pts | candidates | PDS solve | PDS total | FPS       | FPS / PDS-solve | min-dist/r (PDS / FPS) |
 | ------ | ---------- | ---------- | --------- | --------- | --------- | --------------- | ---------------------- |
-| 0.020  | 9,758      | 219,936    | 3.8 ms    | 4.4 ms    | 24.9 ms   | 7x              | 1.000 / 0.959          |
-| 0.010  | 39,087     | 879,745    | 9.9 ms    | 10.5 ms   | 122.1 ms  | 12x             | 1.000 / 0.960          |
-| 0.005  | 156,796    | 3,518,980  | 34.3 ms   | 35.4 ms   | 1271.5 ms | 37x             | 1.000 / 0.960          |
+| 0.020  | 9,758      | 219,936    | 3.6 ms    | 4.1 ms    | 24.9 ms   | 7x              | 1.000 / 0.959          |
+| 0.010  | 39,087     | 879,745    | 5.3 ms    | 5.8 ms    | 122.2 ms  | 23x             | 1.000 / 0.960          |
+| 0.005  | 156,796    | 3,518,980  | 16.8 ms   | 19.3 ms   | 1282.5 ms | 76x             | 1.000 / 0.960          |
 
 Candidate generation is cheap (`total - solve` < 1 ms), so the two PDS columns
-nearly coincide. The Poisson sampler sustains ~4.5M samples/s.
+nearly coincide. The Poisson sampler sustains ~9M samples/s (the phase passes
+are cache-friendly because the candidates are cell-sorted first -- see below).
 
 FPS cost scales with the **output** count `k`: each round radix-sorts the whole
 pool and accepts a head-chunk of up to 512 points, so it needs ~`k/512` sorts.
@@ -75,3 +76,13 @@ Both are blue noise (no low-frequency power, a peak near the mean spacing,
 decaying to 1), but the Poisson-disk sampler gives a stronger, cleaner
 blue-noise signature and a guaranteed minimum distance -- at a fraction of the
 cost.
+
+### What the comparison taught us
+
+FPS leans hard on `radix_sort_pairs` to keep its per-round work local. That is a
+reminder that our own bottleneck is memory locality: the phase passes are bound
+on random single-entry-hash lookups. Sorting the candidate pool by grid cell
+first (one `radix_sort_pairs` + a gather, all on the GPU) makes neighboring
+threads read overlapping `5x5x5` blocks, turning those lookups into cache hits.
+That change alone roughly halved the solve time (~4.5M -> ~9M samples/s) with an
+identical result, and is now built into `PoissonDiskSampler`.
