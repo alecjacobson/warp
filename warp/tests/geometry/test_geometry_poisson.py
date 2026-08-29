@@ -28,6 +28,99 @@ def _plane(n=64, size=2.0):
     return points, np.array(faces, dtype=np.int32), size * size
 
 
+def _icosphere(subdiv=3, radius=2.0):
+    """A subdivided icosphere of the given radius, centered at the origin."""
+    t = (1.0 + np.sqrt(5.0)) / 2.0
+    verts = [
+        [-1, t, 0],
+        [1, t, 0],
+        [-1, -t, 0],
+        [1, -t, 0],
+        [0, -1, t],
+        [0, 1, t],
+        [0, -1, -t],
+        [0, 1, -t],
+        [t, 0, -1],
+        [t, 0, 1],
+        [-t, 0, -1],
+        [-t, 0, 1],
+    ]
+    faces = [
+        [0, 11, 5],
+        [0, 5, 1],
+        [0, 1, 7],
+        [0, 7, 10],
+        [0, 10, 11],
+        [1, 5, 9],
+        [5, 11, 4],
+        [11, 10, 2],
+        [10, 7, 6],
+        [7, 1, 8],
+        [3, 9, 4],
+        [3, 4, 2],
+        [3, 2, 6],
+        [3, 6, 8],
+        [3, 8, 9],
+        [4, 9, 5],
+        [2, 4, 11],
+        [6, 2, 10],
+        [8, 6, 7],
+        [9, 8, 1],
+    ]
+    verts = [np.array(v, dtype=np.float64) for v in verts]
+    for _ in range(subdiv):
+        mid: dict = {}
+        new_faces = []
+
+        def midpoint(a, b):
+            key = (min(a, b), max(a, b))
+            if key not in mid:
+                mid[key] = len(verts)
+                verts.append((verts[a] + verts[b]) * 0.5)
+            return mid[key]
+
+        for a, b, c in faces:
+            ab, bc, ca = midpoint(a, b), midpoint(b, c), midpoint(c, a)
+            new_faces += [[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]]
+        faces = new_faces
+    v = np.array(verts)
+    v = (v / np.linalg.norm(v, axis=1, keepdims=True) * radius).astype(np.float32)
+    return v, np.array(faces, dtype=np.int32).reshape(-1)
+
+
+def _two_sheets(n=40, size=1.0, gap=0.065):
+    """Two disjoint parallel unit sheets a distance ``gap`` apart (a thin slab),
+    with opposite winding so their normals point apart."""
+
+    def sheet(z, flip):
+        xs = np.linspace(0.0, size, n)
+        xv, yv = np.meshgrid(xs, xs, indexing="ij")
+        pts = np.stack([xv, yv, np.full_like(xv, z)], axis=-1).reshape(-1, 3).astype(np.float32)
+        f = []
+        for i in range(n - 1):
+            for j in range(n - 1):
+                a, b = i * n + j, (i + 1) * n + j
+                c, d = (i + 1) * n + (j + 1), i * n + (j + 1)
+                f += [a, c, b, a, d, c] if flip else [a, b, c, a, c, d]
+        return pts, np.array(f, dtype=np.int32)
+
+    p0, f0 = sheet(0.0, False)
+    p1, f1 = sheet(gap, True)
+    return np.vstack([p0, p1]), np.concatenate([f0, f1 + len(p0)])
+
+
+@wp.kernel
+def _geodesic_distance_kernel(
+    p1: wp.array(dtype=wp.vec3),
+    n1: wp.array(dtype=wp.vec3),
+    p2: wp.array(dtype=wp.vec3),
+    n2: wp.array(dtype=wp.vec3),
+    out: wp.array(dtype=wp.float32),
+):
+    i = wp.tid()
+    out[i] = geo.geodesic_distance(p1[i], n1[i], p2[i], n2[i])
+
+
 def _min_pairwise_distance(pts: np.ndarray) -> float:
     """Smallest distance between any two distinct points, via a uniform cell hash
     so it stays cheap for large point sets."""
@@ -203,6 +296,69 @@ def test_pair_correlation_invalid_r_max_raises(test, device):
         sampler.pair_correlation(r_max=0.0)
 
 
+def test_geodesic_distance_exact_on_sphere(test, device):
+    # The approximation is exact on a sphere: dg equals the arc length R*theta.
+    R = 3.0
+    rng = np.random.default_rng(0)
+    a = rng.standard_normal((2000, 3))
+    a /= np.linalg.norm(a, axis=1, keepdims=True)
+    b = rng.standard_normal((2000, 3))
+    b /= np.linalg.norm(b, axis=1, keepdims=True)
+    p1 = wp.array(R * a, dtype=wp.vec3, device=device)
+    p2 = wp.array(R * b, dtype=wp.vec3, device=device)
+    n1 = wp.array(a.astype(np.float32), dtype=wp.vec3, device=device)
+    n2 = wp.array(b.astype(np.float32), dtype=wp.vec3, device=device)
+    out = wp.empty(2000, dtype=wp.float32, device=device)
+    wp.launch(_geodesic_distance_kernel, dim=2000, inputs=[p1, n1, p2, n2], outputs=[out], device=device)
+    wp.synchronize_device()
+
+    true_geodesic = R * np.arccos(np.clip(np.sum(a * b, axis=1), -1.0, 1.0))
+    np.testing.assert_allclose(out.numpy(), true_geodesic, rtol=2e-5, atol=1e-4)
+
+
+def test_geodesic_flat_equals_euclidean(test, device):
+    # On a flat sheet the normals are constant, so geodesic == Euclidean and the
+    # result should match the Euclidean sampler exactly for the same seed.
+    points, faces, _ = _plane(48, 2.0)
+    e = geo.PoissonDiskSampler(points, faces, radius=0.12, seed=3, geodesic=False, device=device)
+    g = geo.PoissonDiskSampler(points, faces, radius=0.12, seed=3, geodesic=True, device=device)
+    wp.synchronize_device()
+    test.assertEqual(e.num_samples, g.num_samples)
+    np.testing.assert_array_equal(e.points.numpy(), g.points.numpy())
+
+
+def test_geodesic_spacing_on_sphere(test, device):
+    # On a sphere the approximation is exact, so geodesic-mode samples must be at
+    # least `radius` apart in TRUE geodesic distance (arc length).
+    R = 2.0
+    verts, faces = _icosphere(subdiv=4, radius=R)
+    radius = 0.35
+    sampler = geo.PoissonDiskSampler(verts, faces, radius=radius, seed=0, geodesic=True, device=device)
+    wp.synchronize_device()
+    P = sampler.points.numpy()
+    test.assertGreater(sampler.num_samples, 0)
+    dirs = P / np.linalg.norm(P, axis=1, keepdims=True)
+    # Nearest-neighbor true geodesic distance for each sample.
+    for i in range(0, len(P), 512):
+        block = dirs[i : i + 512]
+        cos = np.clip(block @ dirs.T, -1.0, 1.0)
+        cos[np.arange(len(block)), np.arange(i, i + len(block))] = -1.0  # exclude self
+        nn_geo = R * np.arccos(cos.max(axis=1))
+        test.assertGreaterEqual(float(nn_geo.min()), radius - 2e-2)
+
+
+def test_geodesic_helps_thin_feature(test, device):
+    # On a thin slab whose gap is a bit over one grid cell, geodesic mode should
+    # place at least as many samples as Euclidean (it stops the two sheets from
+    # over-separating across the gap).
+    radius = 0.1
+    points, faces = _two_sheets(n=40, size=1.0, gap=0.065)
+    n_eucl = geo.PoissonDiskSampler(points, faces, radius=radius, seed=0, geodesic=False, device=device).num_samples
+    n_geo = geo.PoissonDiskSampler(points, faces, radius=radius, seed=0, geodesic=True, device=device).num_samples
+    wp.synchronize_device()
+    test.assertGreaterEqual(n_geo, n_eucl)
+
+
 def test_scale_regression(test, device):
     # Regression at scale: a fine radius drives a large candidate pool (~10^6 on
     # CUDA), verifying the sampler still returns a valid, maximal set at size.
@@ -243,6 +399,21 @@ add_function_test(
     TestGeometryPoisson, "test_invalid_num_candidates_raises", test_invalid_num_candidates_raises, devices=devices
 )
 add_function_test(TestGeometryPoisson, "test_function_matches_class", test_function_matches_class, devices=devices)
+add_function_test(
+    TestGeometryPoisson,
+    "test_geodesic_distance_exact_on_sphere",
+    test_geodesic_distance_exact_on_sphere,
+    devices=devices,
+)
+add_function_test(
+    TestGeometryPoisson, "test_geodesic_flat_equals_euclidean", test_geodesic_flat_equals_euclidean, devices=devices
+)
+add_function_test(
+    TestGeometryPoisson, "test_geodesic_spacing_on_sphere", test_geodesic_spacing_on_sphere, devices=devices
+)
+add_function_test(
+    TestGeometryPoisson, "test_geodesic_helps_thin_feature", test_geodesic_helps_thin_feature, devices=devices
+)
 add_function_test(
     TestGeometryPoisson,
     "test_pair_correlation_invalid_r_max_raises",

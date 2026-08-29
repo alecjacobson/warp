@@ -75,6 +75,42 @@ def sample_barycentrics(rng: wp.uint32) -> wp.vec2:
 
 
 @wp.func
+def geodesic_distance(p1: wp.vec3, n1: wp.vec3, p2: wp.vec3, n2: wp.vec3) -> wp.float32:
+    """Approximate the geodesic (on-surface) distance between two surface points.
+
+    Uses the fast normal-based estimate of Bowers et al. (SIGGRAPH Asia 2010),
+    which needs only the two points and their unit surface normals -- no mesh
+    connectivity or parametrization. It integrates the differential arc length of
+    a curve whose normal turns linearly from ``n1`` to ``n2`` along the connecting
+    direction. The estimate is never smaller than the Euclidean distance, equals
+    it on a flat region (``n1 == n2``), and is *exact* on a sphere.
+
+    Args:
+        p1: First surface point.
+        n1: Unit surface normal at ``p1``.
+        p2: Second surface point.
+        n2: Unit surface normal at ``p2``.
+
+    Returns:
+        The approximate geodesic distance ``dg >= ||p2 - p1||``.
+    """
+    d = p2 - p1
+    de = wp.length(d)
+    if de == 0.0:
+        return 0.0
+    v = d / de
+    c1 = wp.clamp(wp.dot(n1, v), -1.0, 1.0)
+    c2 = wp.clamp(wp.dot(n2, v), -1.0, 1.0)
+    denom = c1 - c2
+    if wp.abs(denom) < 1.0e-6:
+        # Limit c2 -> c1: dg = de / sqrt(1 - c1^2). Guard the near-fold case where
+        # the normal aligns with the connecting direction (distance -> large).
+        s = wp.max(1.0 - c1 * c1, 1.0e-12)
+        return de / wp.sqrt(s)
+    return de * (wp.asin(c1) - wp.asin(c2)) / denom
+
+
+@wp.func
 def draw(state: UniformSamplerState, rng: wp.uint32) -> MeshSample:
     """Draw one point uniformly over the surface of a mesh.
 
@@ -624,6 +660,109 @@ def _poisson_phase_accept_kernel(
         status[tid] = _POISSON_ACCEPTED
 
 
+##########################################################################
+## Geodesic variant (optional): identical single-entry hash + phase groups,
+## but the conflict test uses the approximate geodesic distance instead of the
+## Euclidean one. Only the "free" (conflict-check) kernel differs; the pick and
+## accept passes are shared. Kept as a separate kernel so the Euclidean path
+## above is untouched (no extra arguments, no branch).
+##########################################################################
+
+
+@wp.func
+def _cell_free_geodesic(
+    pos: wp.vec3,
+    normal: wp.vec3,
+    c: wp.vec3i,
+    gx: wp.int32,
+    gy: wp.int32,
+    gz: wp.int32,
+    table_size: wp.int32,
+    slot_key: wp.array(dtype=wp.int64),
+    slot_sample: wp.array(dtype=wp.int32),
+    points: wp.array(dtype=wp.vec3),
+    normals: wp.array(dtype=wp.vec3),
+    radius: wp.float32,
+    r_sq: wp.float32,
+) -> bool:
+    # As _cell_free, but a Euclidean-close accepted sample only conflicts when its
+    # approximate geodesic distance is also below the radius. dg >= de, so the
+    # cheap Euclidean test still prunes everything beyond the radius first.
+    for dz in range(-_POISSON_SEARCH, _POISSON_SEARCH + 1):
+        nz = c[2] + dz
+        if nz >= 0 and nz < gz:
+            for dy in range(-_POISSON_SEARCH, _POISSON_SEARCH + 1):
+                ny = c[1] + dy
+                if ny >= 0 and ny < gy:
+                    for dx in range(-_POISSON_SEARCH, _POISSON_SEARCH + 1):
+                        nx = c[0] + dx
+                        if nx >= 0 and nx < gx:
+                            slot = _hash_find(_cell_id(nx, ny, nz, gx, gy), table_size, slot_key)
+                            if slot >= 0:
+                                s = slot_sample[slot]
+                                if s >= 0:
+                                    d = points[s] - pos
+                                    if wp.dot(d, d) < r_sq:
+                                        if geodesic_distance(pos, normal, points[s], normals[s]) < radius:
+                                            return False
+    return True
+
+
+@wp.kernel(enable_backward=False)
+def _poisson_phase_max_geodesic_kernel(
+    phase: wp.int32,
+    points: wp.array(dtype=wp.vec3),
+    normals: wp.array(dtype=wp.vec3),
+    lo: wp.vec3,
+    inv_mu: wp.float32,
+    gx: wp.int32,
+    gy: wp.int32,
+    gz: wp.int32,
+    table_size: wp.int32,
+    radius: wp.float32,
+    slot_key: wp.array(dtype=wp.int64),
+    slot_sample: wp.array(dtype=wp.int32),
+    cand_slot: wp.array(dtype=wp.int32),
+    cand_phase: wp.array(dtype=wp.int32),
+    priority: wp.array(dtype=wp.float32),
+    status: wp.array(dtype=wp.int32),
+    free: wp.array(dtype=wp.int32),
+    cell_best: wp.array(dtype=wp.float32),
+):
+    tid = wp.tid()
+    if status[tid] != _POISSON_ACTIVE or cand_phase[tid] != phase:
+        return
+    p = points[tid]
+    c = _cell_coord(p, lo, inv_mu, gx, gy, gz)
+    if _cell_free_geodesic(
+        p, normals[tid], c, gx, gy, gz, table_size, slot_key, slot_sample, points, normals, radius, radius * radius
+    ):
+        free[tid] = 1
+        wp.atomic_max(cell_best, cand_slot[tid], priority[tid])
+    else:
+        free[tid] = 0
+
+
+@wp.kernel(enable_backward=False)
+def _eval_normals_kernel(
+    mesh: wp.uint64,
+    faces: wp.array(dtype=wp.int32),
+    out_normals: wp.array(dtype=wp.vec3),
+):
+    tid = wp.tid()
+    out_normals[tid] = wp.mesh_eval_face_normal(mesh, faces[tid])
+
+
+@wp.kernel(enable_backward=False)
+def _gather_vec3_kernel(
+    order: wp.array(dtype=wp.int32),
+    in_v: wp.array(dtype=wp.vec3),
+    out_v: wp.array(dtype=wp.vec3),
+):
+    tid = wp.tid()
+    out_v[tid] = in_v[order[tid]]
+
+
 @wp.kernel(enable_backward=False)
 def _bounds_kernel(
     points: wp.array(dtype=wp.vec3),
@@ -701,9 +840,15 @@ class PoissonDiskSampler:
     Spectrum Analysis on Surfaces"* (SIGGRAPH Asia 2010): it draws a dense pool of
     area-weighted candidates with :class:`UniformSampler`, then resolves conflicts
     entirely in parallel as a priority-based maximal independent set over the
-    graph connecting candidates closer than ``radius``. Euclidean distance is used
-    as the (standard) approximation to geodesic distance, which is accurate when
-    ``radius`` is small relative to the surface's curvature.
+    graph connecting candidates closer than ``radius``.
+
+    By default the minimum distance is Euclidean, the standard approximation to
+    geodesic distance, accurate when ``radius`` is small relative to the surface's
+    curvature. Set ``geodesic`` to instead measure the approximate on-surface
+    distance (:func:`geodesic_distance`): this stops samples on opposite sides of
+    a thin feature -- close in 3D but far along the surface -- from over-separating,
+    at the cost of a normal per candidate and a slightly heavier conflict test.
+    The geodesic path is a strict addition; the Euclidean path is unchanged.
 
     Args:
         points: Vertex positions, either a :class:`warp.array` of
@@ -711,7 +856,8 @@ class PoissonDiskSampler:
         faces: Triangle vertex indices, either a flat :class:`warp.array` of
             :class:`warp.int32` (length ``3 * num_triangles``) or an array-like
             reshapeable to ``(num_triangles, 3)``.
-        radius: Minimum Euclidean distance between any two samples.
+        radius: Minimum distance between any two samples (Euclidean, or geodesic
+            when ``geodesic`` is set).
         num_candidates: Size of the candidate pool. If ``None``, it is set to
             ``candidate_multiplier`` times the theoretical maximal sample count.
         candidate_multiplier: Oversampling factor used when ``num_candidates`` is
@@ -719,6 +865,10 @@ class PoissonDiskSampler:
             higher cost.
         seed: Seed for candidate generation and priorities. Fixing it makes the
             result deterministic.
+        geodesic: If set, use the approximate geodesic metric for the minimum
+            distance instead of the Euclidean one. Uses a single sample per grid
+            cell (the paper's multiple-samples-per-cell extension for very thin
+            features is not implemented).
         device: Device on which to run. Defaults to the device of ``points``.
 
     Attributes:
@@ -739,6 +889,7 @@ class PoissonDiskSampler:
         num_candidates: int | None = None,
         candidate_multiplier: float = 12.0,
         seed: int = 0,
+        geodesic: bool = False,
         device: DeviceLike | None = None,
     ):
         if radius <= 0.0:
@@ -749,6 +900,7 @@ class PoissonDiskSampler:
         self._sampler = UniformSampler(points, faces, device=device)
         self.device = self._sampler.device
         self.radius = float(radius)
+        self.geodesic = bool(geodesic)
         self.total_area = self._sampler.total_area
 
         # Theoretical maximal count assumes hexagonal packing of disks of radius
@@ -774,6 +926,18 @@ class PoissonDiskSampler:
             device=self.device,
         )
 
+        # Geodesic mode also needs a surface normal per candidate (face normal).
+        cand_normals = None
+        if self.geodesic:
+            cand_normals = wp.empty(self.num_candidates, dtype=wp.vec3, device=self.device)
+            wp.launch(
+                _eval_normals_kernel,
+                dim=self.num_candidates,
+                inputs=[self._sampler.mesh.id, cand_faces],
+                outputs=[cand_normals],
+                device=self.device,
+            )
+
         # Stage 2: parallel conflict resolution.
         priority = wp.empty(self.num_candidates, dtype=wp.float32, device=self.device)
         wp.launch(
@@ -791,11 +955,21 @@ class PoissonDiskSampler:
         # overlapping 5x5x5 blocks, which turns those lookups into cache hits and
         # roughly halves the solve time. This mirrors the paper's step of sorting
         # the point cloud by cell id.
-        cand_points, cand_faces, cand_uv, priority = self._sort_by_cell(
+        cand_points, cand_faces, cand_uv, priority, order = self._sort_by_cell(
             cand_points, cand_faces, cand_uv, priority, lo, hi
         )
+        if self.geodesic:
+            sorted_normals = wp.empty(self.num_candidates, dtype=wp.vec3, device=self.device)
+            wp.launch(
+                _gather_vec3_kernel,
+                dim=self.num_candidates,
+                inputs=[order, cand_normals],
+                outputs=[sorted_normals],
+                device=self.device,
+            )
+            cand_normals = sorted_normals
 
-        status = self._solve_hash(cand_points, priority, lo, hi, seed)
+        status = self._solve_hash(cand_points, priority, lo, hi, seed, cand_normals)
 
         # Stage 3: compact accepted candidates into tight output arrays.
         self.points, self.faces, self.uv = self._compact(status, cand_points, cand_faces, cand_uv)
@@ -820,7 +994,7 @@ class PoissonDiskSampler:
         priority: wp.array,
         lo: np.ndarray,
         hi: np.ndarray,
-    ) -> tuple[wp.array, wp.array, wp.array, wp.array]:
+    ) -> tuple[wp.array, wp.array, wp.array, wp.array, wp.array]:
         n = self.num_candidates
         inv_mu, gx, gy, gz, lo_vec = self._grid_params(lo, hi)
 
@@ -844,10 +1018,18 @@ class PoissonDiskSampler:
             outputs=[out_points, out_faces, out_uv, out_priority],
             device=self.device,
         )
-        return out_points, out_faces, out_uv, out_priority
+        # ``order`` holds the sort permutation in its first n entries, so callers
+        # can gather auxiliary per-candidate arrays (e.g. normals) the same way.
+        return out_points, out_faces, out_uv, out_priority, order
 
     def _solve_hash(
-        self, cand_points: wp.array, priority: wp.array, lo: np.ndarray, hi: np.ndarray, seed: int
+        self,
+        cand_points: wp.array,
+        priority: wp.array,
+        lo: np.ndarray,
+        hi: np.ndarray,
+        seed: int,
+        cand_normals: wp.array | None = None,
     ) -> wp.array:
         """The paper's Euclidean path: single-entry spatial hash + 27 phase groups.
 
@@ -893,30 +1075,57 @@ class PoissonDiskSampler:
         rng = np.random.default_rng(seed)
         phase_order = rng.permutation(27)
         for phase in phase_order:
-            wp.launch(
-                _poisson_phase_max_kernel,
-                dim=self.num_candidates,
-                inputs=[
-                    int(phase),
-                    cand_points,
-                    lo_vec,
-                    inv_mu,
-                    gx,
-                    gy,
-                    gz,
-                    table_size,
-                    self.radius,
-                    slot_key,
-                    slot_sample,
-                    cand_slot,
-                    cand_phase,
-                    priority,
-                    status,
-                    free,
-                    cell_best,
-                ],
-                device=self.device,
-            )
+            if cand_normals is None:
+                wp.launch(
+                    _poisson_phase_max_kernel,
+                    dim=self.num_candidates,
+                    inputs=[
+                        int(phase),
+                        cand_points,
+                        lo_vec,
+                        inv_mu,
+                        gx,
+                        gy,
+                        gz,
+                        table_size,
+                        self.radius,
+                        slot_key,
+                        slot_sample,
+                        cand_slot,
+                        cand_phase,
+                        priority,
+                        status,
+                        free,
+                        cell_best,
+                    ],
+                    device=self.device,
+                )
+            else:
+                wp.launch(
+                    _poisson_phase_max_geodesic_kernel,
+                    dim=self.num_candidates,
+                    inputs=[
+                        int(phase),
+                        cand_points,
+                        cand_normals,
+                        lo_vec,
+                        inv_mu,
+                        gx,
+                        gy,
+                        gz,
+                        table_size,
+                        self.radius,
+                        slot_key,
+                        slot_sample,
+                        cand_slot,
+                        cand_phase,
+                        priority,
+                        status,
+                        free,
+                        cell_best,
+                    ],
+                    device=self.device,
+                )
             wp.launch(
                 _poisson_phase_pick_kernel,
                 dim=self.num_candidates,
@@ -972,6 +1181,7 @@ def poisson_disk_sample(
     num_candidates: int | None = None,
     candidate_multiplier: float = 12.0,
     seed: int = 0,
+    geodesic: bool = False,
     device: DeviceLike | None = None,
 ) -> tuple[wp.array, wp.array, wp.array]:
     """Sample a Poisson-disk (blue-noise) point set over a triangle mesh surface.
@@ -987,12 +1197,17 @@ def poisson_disk_sample(
         faces: Triangle vertex indices, either a flat :class:`warp.array` of
             :class:`warp.int32` (length ``3 * num_triangles``) or an array-like
             reshapeable to ``(num_triangles, 3)``.
-        radius: Minimum Euclidean distance between any two samples.
+        radius: Minimum distance between any two samples (Euclidean, or geodesic
+            when ``geodesic`` is set).
         num_candidates: Size of the candidate pool. If ``None``, it is set to
             ``candidate_multiplier`` times the theoretical maximal sample count.
         candidate_multiplier: Oversampling factor used when ``num_candidates`` is
             ``None``.
         seed: Seed for candidate generation and priorities.
+        geodesic: If set, measure the minimum distance with the approximate
+            geodesic (on-surface) metric of :func:`geodesic_distance` instead of
+            the Euclidean one, which avoids over-separating samples across thin
+            features. See :class:`PoissonDiskSampler`.
         device: Device on which to run. Defaults to the device of ``points``.
 
     Returns:
@@ -1003,6 +1218,7 @@ def poisson_disk_sample(
         points,
         faces,
         radius,
+        geodesic=geodesic,
         num_candidates=num_candidates,
         candidate_multiplier=candidate_multiplier,
         seed=seed,
