@@ -1527,14 +1527,7 @@ Hessian.
            s[i] = wp.exp(x[i] - m)
            Z += s[i]
        s = s / Z
-       # diag(s) - s sᵀ, built with an explicit loop: wp.diag(s) - wp.outer(s, s)
-       # each materialize a throwaway K x K matrix and are much slower here.
-       H = Mat()
-       for i in range(K):
-           for j in range(K):
-               H[i, j] = -s[i] * s[j]
-           H[i, i] += s[i]
-       return J2.scalar(m + wp.log(Z), s, H)
+       return J2.scalar(m + wp.log(Z), s, wp.diag(s) - wp.outer(s, s))  # gradient s, Hessian diag(s) - s sᵀ
 
    # An ordinary jet computation the custom rule composes with.
    @wp.func
