@@ -623,6 +623,28 @@ def _poisson_phase_accept_kernel(
         status[tid] = _POISSON_ACCEPTED
 
 
+@wp.kernel(enable_backward=False)
+def _bounds_kernel(
+    points: wp.array(dtype=wp.vec3),
+    out_lo: wp.array(dtype=wp.float32),
+    out_hi: wp.array(dtype=wp.float32),
+):
+    tid = wp.tid()
+    p = points[tid]
+    for k in range(3):
+        wp.atomic_min(out_lo, k, p[k])
+        wp.atomic_max(out_hi, k, p[k])
+
+
+def _bounding_box(points: wp.array, device) -> tuple[np.ndarray, np.ndarray]:
+    """Axis-aligned bounds of ``points``, reduced on the GPU (only 6 floats are
+    read back, rather than the whole array)."""
+    lo = wp.full(3, 1.0e30, dtype=wp.float32, device=device)
+    hi = wp.full(3, -1.0e30, dtype=wp.float32, device=device)
+    wp.launch(_bounds_kernel, dim=points.shape[0], inputs=[points], outputs=[lo, hi], device=device)
+    return lo.numpy(), hi.numpy()
+
+
 class PoissonDiskSampler:
     """Draw a Poisson-disk (blue-noise) point set over a triangle mesh surface.
 
@@ -673,7 +695,7 @@ class PoissonDiskSampler:
         radius: float,
         *,
         num_candidates: int | None = None,
-        candidate_multiplier: float = 20.0,
+        candidate_multiplier: float = 12.0,
         seed: int = 0,
         device: DeviceLike | None = None,
     ):
@@ -691,6 +713,11 @@ class PoissonDiskSampler:
         if num_candidates is None:
             num_candidates = int(max(1.0, candidate_multiplier * n_est))
         self.num_candidates = int(num_candidates)
+
+        # The whole pipeline stays on the GPU: candidate generation, the bounding
+        # box (reduced on device), the hash and phase passes, and compaction. Only
+        # a few scalars ever cross to the host (total area, the bounds, the final
+        # sample count).
 
         # Stage 1: dense area-weighted candidate pool and its world positions.
         cand_faces, cand_uv = self._sampler.sample(self.num_candidates, seed=seed)
@@ -712,9 +739,7 @@ class PoissonDiskSampler:
             outputs=[priority],
             device=self.device,
         )
-        pts_np = cand_points.numpy()
-        lo = pts_np.min(axis=0)
-        hi = pts_np.max(axis=0)
+        lo, hi = _bounding_box(self._sampler.points, self.device)
         status = self._solve_hash(cand_points, priority, lo, hi, seed)
 
         # Stage 3: compact accepted candidates into tight output arrays.
@@ -760,16 +785,17 @@ class PoissonDiskSampler:
         status = wp.zeros(self.num_candidates, dtype=wp.int32, device=self.device)
         free = wp.zeros(self.num_candidates, dtype=wp.int32, device=self.device)
         slot_sample = wp.full(table_size, -1, dtype=wp.int32, device=self.device)
-        cell_best = wp.empty(table_size, dtype=wp.float32, device=self.device)
-        cell_winner = wp.empty(table_size, dtype=wp.int32, device=self.device)
+        # Each cell's hash slot belongs to exactly one phase group, so a slot is
+        # written in only one of the 27 passes. The per-cell election scratch can
+        # therefore be initialized once, not reset per phase.
+        cell_best = wp.full(table_size, -1.0, dtype=wp.float32, device=self.device)
+        cell_winner = wp.full(table_size, self.num_candidates, dtype=wp.int32, device=self.device)
 
         # Process the 27 phase groups in a seed-dependent random order to avoid
         # directional bias, as recommended in the paper.
         rng = np.random.default_rng(seed)
         phase_order = rng.permutation(27)
         for phase in phase_order:
-            cell_best.fill_(-1.0)
-            cell_winner.fill_(self.num_candidates)
             wp.launch(
                 _poisson_phase_max_kernel,
                 dim=self.num_candidates,
@@ -816,7 +842,9 @@ class PoissonDiskSampler:
 
         offsets = wp.empty(self.num_candidates, dtype=wp.int32, device=self.device)
         array_scan(mask, offsets, inclusive=True)
-        num = int(offsets.numpy()[-1])
+        # Read back only the final prefix-sum entry (the accepted count), not the
+        # whole offsets array.
+        num = int(offsets[self.num_candidates - 1 :].numpy()[0])
 
         out_points = wp.empty(num, dtype=wp.vec3, device=self.device)
         out_faces = wp.empty(num, dtype=wp.int32, device=self.device)
