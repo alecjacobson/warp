@@ -86,6 +86,23 @@ warp/examples/core
       -
       -
 
+warp/examples/geometry
+^^^^^^^^^^^^^^^^^^^^^^^
+
+.. list-table::
+    :widths: 25 25 25 25
+    :class: gallery
+
+    * - .. image:: ./img/examples/geometry_poisson_disk_sampling.gif
+           :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_poisson_disk_sampling.py
+      -
+      -
+      -
+    * - parallel Poisson-disk sampling
+      -
+      -
+      -
+
 warp/examples/fem
 ^^^^^^^^^^^^^^^^^
 

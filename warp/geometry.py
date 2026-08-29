@@ -3,14 +3,17 @@
 
 """Geometry processing operations for triangle meshes.
 
-This module provides GPU-accelerated operations on triangle mesh geometry. It
-begins with uniform surface sampling: drawing points spread evenly across a
-mesh regardless of how finely it is tessellated.
+This module provides GPU-accelerated surface sampling on triangle meshes:
 
-Two tiers of API are exposed. The host-level function :func:`uniformly_sample`
-and the :class:`UniformSampler` class launch kernels over a whole mesh. The
-device function :func:`draw` operates on a single sample and may be called from
-within your own :func:`warp.kernel` definitions.
+* **Uniform sampling** (:func:`uniformly_sample`, :class:`UniformSampler`) draws
+  points spread evenly across a mesh regardless of how finely it is tessellated,
+  and the device function :func:`draw` samples a single point from within your
+  own :func:`warp.kernel` definitions.
+* **Poisson-disk sampling** (:func:`poisson_disk_sample`,
+  :class:`PoissonDiskSampler`) draws blue-noise point sets in which no two
+  samples are closer than a given radius, using the parallel algorithm of
+  Bowers et al. (SIGGRAPH Asia 2010). :func:`pair_correlation` measures the
+  resulting spectrum on the surface.
 
 Usage:
     This module must be explicitly imported::

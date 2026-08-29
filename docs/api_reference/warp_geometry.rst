@@ -14,8 +14,11 @@ API
    :toctree: _generated
 
    MeshSample
+   PoissonDiskSampler
    UniformSampler
    UniformSamplerState
    draw
+   pair_correlation
+   poisson_disk_sample
    sample_barycentrics
    uniformly_sample
