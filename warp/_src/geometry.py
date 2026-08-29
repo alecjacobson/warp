@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 import warp as wp
-from warp._src.utils import array_scan, array_sum, radix_sort_pairs
+from warp._src.utils import array_scan, radix_sort_pairs
 
 if TYPE_CHECKING:
     from warp._src.context import DeviceLike
@@ -221,9 +221,10 @@ class UniformSampler:
         cumulative = wp.empty(self.num_triangles, dtype=wp.float32, device=self.device)
         array_scan(areas, cumulative, inclusive=True)
 
-        # Total surface area, handy for sizing candidate pools (e.g. Poisson-disk
-        # sampling) without a second pass over the triangles.
-        self.total_area = float(array_sum(areas))
+        # The inclusive scan's final entry is the total surface area, handy for
+        # sizing candidate pools (e.g. Poisson-disk sampling). Reading that one
+        # element avoids a second full reduction over the triangles.
+        self.total_area = float(cumulative[self.num_triangles - 1 :].numpy()[0])
 
         self.cdf = wp.empty(self.num_triangles, dtype=wp.float32, device=self.device)
         wp.launch(
@@ -742,6 +743,8 @@ class PoissonDiskSampler:
     ):
         if radius <= 0.0:
             raise ValueError(f"`radius` must be positive, got {radius}.")
+        if num_candidates is not None and num_candidates < 1:
+            raise ValueError(f"`num_candidates` must be at least 1, got {num_candidates}.")
 
         self._sampler = UniformSampler(points, faces, device=device)
         self.device = self._sampler.device
@@ -798,6 +801,17 @@ class PoissonDiskSampler:
         self.points, self.faces, self.uv = self._compact(status, cand_points, cand_faces, cand_uv)
         self.num_samples = int(self.points.shape[0])
 
+    def _grid_params(self, lo: np.ndarray, hi: np.ndarray) -> tuple[float, int, int, int, wp.vec3]:
+        """Grid geometry shared by the cell sort and the hash solve, so the two
+        always agree on cell size and dimensions. The cell edge is
+        ``radius / sqrt(3)`` (diagonal ``radius``), giving at most one sample per
+        cell."""
+        mu = self.radius / 1.7320508075688772  # radius / sqrt(3)
+        inv_mu = float(1.0 / mu)
+        gx, gy, gz = (int(v) for v in np.maximum(np.ceil((hi - lo) / mu).astype(np.int64) + 1, 1))
+        lo_vec = wp.vec3(float(lo[0]), float(lo[1]), float(lo[2]))
+        return inv_mu, gx, gy, gz, lo_vec
+
     def _sort_by_cell(
         self,
         cand_points: wp.array,
@@ -808,10 +822,7 @@ class PoissonDiskSampler:
         hi: np.ndarray,
     ) -> tuple[wp.array, wp.array, wp.array, wp.array]:
         n = self.num_candidates
-        mu = self.radius / 1.7320508075688772  # radius / sqrt(3)
-        inv_mu = float(1.0 / mu)
-        gx, gy, gz = (int(v) for v in np.maximum(np.ceil((hi - lo) / mu).astype(np.int64) + 1, 1))
-        lo_vec = wp.vec3(float(lo[0]), float(lo[1]), float(lo[2]))
+        inv_mu, gx, gy, gz, lo_vec = self._grid_params(lo, hi)
 
         # radix_sort_pairs needs 2*n storage for both keys and values.
         cellid = wp.empty(2 * n, dtype=wp.int64, device=self.device)
@@ -843,10 +854,7 @@ class PoissonDiskSampler:
         Memory scales with the sampled surface (only non-empty cells are stored),
         and every conflict check reads a constant 5x5x5 block of the hash.
         """
-        mu = self.radius / 1.7320508075688772  # radius / sqrt(3)
-        inv_mu = float(1.0 / mu)
-        gx, gy, gz = (int(v) for v in np.maximum(np.ceil((hi - lo) / mu).astype(np.int64) + 1, 1))
-        lo_vec = wp.vec3(float(lo[0]), float(lo[1]), float(lo[2]))
+        inv_mu, gx, gy, gz, lo_vec = self._grid_params(lo, hi)
 
         # Table sized to at least twice the candidate count bounds the load factor
         # below 1/2 (distinct cells <= candidates), so linear probing stays short.
@@ -962,7 +970,7 @@ def poisson_disk_sample(
     radius: float,
     *,
     num_candidates: int | None = None,
-    candidate_multiplier: float = 20.0,
+    candidate_multiplier: float = 12.0,
     seed: int = 0,
     device: DeviceLike | None = None,
 ) -> tuple[wp.array, wp.array, wp.array]:
@@ -1080,11 +1088,12 @@ def pair_correlation(
     if r_max is None:
         r_max = 6.0 * float(np.sqrt(area / num_points))
     r_max = float(r_max)
+    if r_max <= 0.0:
+        raise ValueError(f"`r_max` must be positive, got {r_max}.")
     dr = r_max / num_bins
 
-    pts_np = points.numpy().reshape(-1, 3)
-    lo = pts_np.min(axis=0)
-    hi = pts_np.max(axis=0)
+    # Reduce the bounds on the GPU (6 floats back) rather than reading back every point.
+    lo, hi = _bounding_box(points, device)
     extent = np.maximum(hi - lo, r_max)
     dims = np.clip(np.ceil(extent / r_max).astype(np.int64), 1, 512)
     grid = wp.HashGrid(int(dims[0]), int(dims[1]), int(dims[2]), device=device)
