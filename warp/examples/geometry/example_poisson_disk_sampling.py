@@ -45,7 +45,12 @@ def load_bunny():
 
 
 def load_obj(path):
-    """Minimal triangle-.obj reader (positions and faces only, fan-triangulated)."""
+    """Minimal triangle-.obj reader (positions and faces only, fan-triangulated).
+
+    Drops vertices that no face references and remaps the indices accordingly.
+    Stray unreferenced vertices (common in test meshes) would otherwise skew the
+    bounding box used for camera framing and the ground-plane shadow height.
+    """
     verts, faces = [], []
     with open(path) as f:
         for line in f:
@@ -55,7 +60,14 @@ def load_obj(path):
                 idx = [int(tok.split("/")[0]) - 1 for tok in line.split()[1:]]
                 for k in range(1, len(idx) - 1):
                     faces.extend([idx[0], idx[k], idx[k + 1]])
-    return np.array(verts, dtype=np.float32), np.array(faces, dtype=np.int32)
+    verts = np.array(verts, dtype=np.float32)
+    faces = np.array(faces, dtype=np.int32)
+
+    # Keep only vertices referenced by a face and renumber the faces to match.
+    used = np.unique(faces)
+    remap = np.full(len(verts), -1, dtype=np.int32)
+    remap[used] = np.arange(len(used), dtype=np.int32)
+    return verts[used], remap[faces]
 
 
 class Example:
@@ -117,10 +129,10 @@ class Example:
         lo, hi = self.points.min(0), self.points.max(0)
         center = 0.5 * (lo + hi)
         extent = hi - lo
-        # Aim a little below the mesh center so the ground shadow beneath the feet
-        # stays comfortably inside the lower part of the frame (not clipped).
+        # Aim a touch below the mesh center so the ground shadow beneath the feet
+        # stays inside the lower part of the frame (not clipped).
         center = center.copy()
-        center[1] -= 0.18 * float(extent[1])
+        center[1] -= 0.08 * float(extent[1])
         # Side profile: look essentially along the -Z axis so the X-Y plane faces
         # the camera, with only a hint of downward tilt. A near-horizontal view keeps
         # the dragon resting on its shadow and keeps the shadow inside the frame.
