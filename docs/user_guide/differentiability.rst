@@ -1468,6 +1468,107 @@ However, this only works because the ``x`` array adjoints do not require an inte
 value for ``sum``; they only need the adjoint of ``sum``. In general this workaround is only valid for simple add/subtract operations such as
 ``+=`` or ``-=``.
 
-.. note:: 
+.. note::
 
     In a subsequent release, we will enable users to force-unroll dynamic loops in some circumstances, thereby obviating these workarounds.
+
+.. _forward_mode_jets:
+
+Forward-Mode Jets and Custom Hessians
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Everything above is **reverse-mode** autodiff: the :class:`Tape` records a forward
+pass and replays it backward. Warp also provides **forward-mode jets**
+(:func:`warp.JetSpace2`), an independent mechanism with no tape and no backward
+pass. A second-order jet carries a scalar's value, gradient, and full Hessian
+through a single forward evaluation, so a function written over jet types yields
+its Hessian directly when you run it once.
+
+Because jet arithmetic is ordinary Warp code, a smooth function usually just works
+when written over jets. But when a scalar's derivatives are known in closed form,
+you can skip propagating the jet through every operation: evaluate in floats and
+inject the derivatives into a jet you build yourself with ``J2.scalar(value, grad,
+hess)``. Such a custom rule composes with ordinary jet arithmetic like any other
+term.
+
+The example shows both -- log-sum-exp written the natural way (seed each input and
+let the jet propagate) and a custom version (evaluate in floats, inject the softmax
+gradient and ``diag(s) - s sᵀ`` Hessian) -- then composes the custom rule into a
+larger loss alongside an ordinary jet computation. The two versions produce the same
+Hessian.
+
+.. testcode:: jets_custom
+
+   K = 8
+   J2 = wp.JetSpace2(K)
+   Vec = J2.grad   # a length-K float vector
+   Mat = J2.hess   # a K x K float matrix
+
+   # Natural: seed each input and let the jet propagate through the scalar ops.
+   @wp.func
+   def logsumexp(x: Vec) -> J2.scalar:
+       m = J2.seed(x[0], 0)
+       for i in range(1, K):
+           m = wp.max(m, J2.seed(x[i], i))
+       z = J2.constant(0.0)
+       for i in range(K):
+           z = z + wp.exp(J2.seed(x[i], i) - m)
+       return m + wp.log(z)
+
+   # Custom: evaluate in floats, then inject the softmax gradient and Hessian.
+   @wp.func
+   def logsumexp_custom(x: Vec) -> J2.scalar:
+       m = x[0]
+       for i in range(1, K):
+           m = wp.max(m, x[i])
+       s = Vec()
+       Z = float(0.0)
+       for i in range(K):
+           s[i] = wp.exp(x[i] - m)
+           Z += s[i]
+       s = s / Z
+       # diag(s) - s sᵀ, built with an explicit loop: wp.diag(s) - wp.outer(s, s)
+       # each materialize a throwaway K x K matrix and are much slower here.
+       H = Mat()
+       for i in range(K):
+           for j in range(K):
+               H[i, j] = -s[i] * s[j]
+           H[i, i] += s[i]
+       return J2.scalar(m + wp.log(Z), s, H)
+
+   # An ordinary jet computation the custom rule composes with.
+   @wp.func
+   def quadratic(x: Vec) -> J2.scalar:
+       total = J2.constant(0.0)
+       for i in range(K):
+           xi = J2.seed(x[i], i)
+           total = total + xi * xi
+       return total
+
+   @wp.func
+   def total_loss(x: Vec) -> J2.scalar:
+       return 0.1 * logsumexp_custom(x) + 0.01 * quadratic(x)
+
+   @wp.kernel(enable_backward=False)
+   def eval_hessians(x: wp.array(dtype=Vec), native: wp.array(dtype=Mat),
+                     custom: wp.array(dtype=Mat), total: wp.array(dtype=Mat)):
+       t = wp.tid()
+       native[t] = logsumexp(x[t]).hess
+       custom[t] = logsumexp_custom(x[t]).hess
+       total[t] = total_loss(x[t]).hess
+
+   x = wp.array([[0.3, -1.2, 2.0, 0.5, -0.7, 1.1, 0.0, -2.3]], dtype=Vec)
+   native = wp.zeros(1, dtype=Mat)
+   custom = wp.zeros(1, dtype=Mat)
+   total = wp.zeros(1, dtype=Mat)
+   wp.launch(eval_hessians, dim=1, inputs=[x], outputs=[native, custom, total])
+
+   # The custom rule reproduces what the jet propagation computes.
+   assert np.allclose(native.numpy()[0], custom.numpy()[0], atol=1e-5)
+
+.. note::
+   The natural and custom versions compute the same Hessian but scale very
+   differently: propagating a second-order jet carries a ``K x K`` Hessian through
+   every operation, so its generated code and compile time grow quickly with ``K``,
+   while the custom rule stays compact. Forward-only jet kernels never need an
+   adjoint, so build them with ``@wp.kernel(enable_backward=False)``.
