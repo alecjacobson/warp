@@ -28,6 +28,7 @@ from warp._src.geometry import PoissonDiskSampler as PoissonDiskSampler
 from warp._src.geometry import UniformSampler as UniformSampler
 from warp._src.geometry import UniformSamplerState as UniformSamplerState
 from warp._src.geometry import draw as draw
+from warp._src.geometry import geodesic_distance as geodesic_distance
 from warp._src.geometry import pair_correlation as pair_correlation
 from warp._src.geometry import poisson_disk_sample as poisson_disk_sample
 from warp._src.geometry import sample_barycentrics as sample_barycentrics
