@@ -99,22 +99,27 @@ class Example:
         ps.set_shadow_darkness(0.35)
         ps.set_up_dir("y_up")
         ps.set_SSAA_factor(4)
+        ps.set_window_size(1920, 1080)
 
         surf = ps.register_surface_mesh("mesh", self.points, self.faces.reshape(-1, 3), smooth_shade=True)
         surf.set_color((0.72, 0.74, 0.78))
 
         cloud = ps.register_point_cloud("poisson samples", self.samples)
-        cloud.set_color((1.0, 0.45, 0.1))  # orange
+        cloud.set_color((0.12, 0.35, 0.9))  # saturated blue
         cloud.set_radius(0.5 * radius, relative=False)
 
     def render(self):
         ps = self.ps
         lo, hi = self.points.min(0), self.points.max(0)
         center = 0.5 * (lo + hi)
-        diag = float(np.linalg.norm(hi - lo))
-        direction = np.array([0.5, 0.35, 1.0])
+        extent = hi - lo
+        # Side profile: look along the Z axis so the X-Y plane faces the camera.
+        # The mesh's long axis is X; frame so it fills the width with head on the left.
+        direction = np.array([0.0, 0.0, -1.0])
         direction /= np.linalg.norm(direction)
-        cam = center + direction * 0.85 * diag
+        # Distance tuned to the X (width) extent so the dragon fills the frame.
+        dist = 0.82 * float(extent[0])
+        cam = center + direction * dist
         ps.look_at(tuple(float(x) for x in cam), tuple(float(x) for x in center))
         if self.stage_path:
             ps.screenshot(self.stage_path, transparent_bg=False)
