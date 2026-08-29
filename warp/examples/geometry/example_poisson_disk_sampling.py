@@ -97,8 +97,11 @@ class Example:
         ps.init()
         ps.set_ground_plane_mode("shadow_only")
         ps.set_shadow_darkness(0.35)
-        ps.set_ground_plane_height_factor(0.0)  # rest the mesh on the shadow plane
         ps.set_up_dir("y_up")
+        # Pin the shadow plane to the lowest point of the mesh so the dragon rests
+        # on its shadow (no floating gap) rather than at the bounding-box bottom.
+        ps.set_ground_plane_height_mode("manual")
+        ps.set_ground_plane_height(float(self.points[:, 1].min()), is_relative=False)
         ps.set_SSAA_factor(4)
         ps.set_window_size(1920, 1080)
 
@@ -114,14 +117,19 @@ class Example:
         lo, hi = self.points.min(0), self.points.max(0)
         center = 0.5 * (lo + hi)
         extent = hi - lo
-        # Side profile: look along the Z axis so the X-Y plane faces the camera,
-        # tilted slightly from above with a small +Y component in the view direction.
+        # Aim a little below the mesh center so the ground shadow beneath the feet
+        # stays comfortably inside the lower part of the frame (not clipped).
+        center = center.copy()
+        center[1] -= 0.18 * float(extent[1])
+        # Side profile: look essentially along the -Z axis so the X-Y plane faces
+        # the camera, with only a hint of downward tilt. A near-horizontal view keeps
+        # the dragon resting on its shadow and keeps the shadow inside the frame.
         # The mesh's long axis is X; frame so it fills the width with head on the left.
-        direction = np.array([0.0, 0.09, -1.0])
+        direction = np.array([0.0, 0.03, -1.0])
         direction /= np.linalg.norm(direction)
         # Distance tuned to the X (width) extent so the dragon fills the frame,
-        # with a little extra margin so the full ground shadow stays in view.
-        dist = 0.92 * float(extent[0])
+        # with extra margin so the full ground shadow stays in view.
+        dist = 1.08 * float(extent[0])
         cam = center + direction * dist
         ps.look_at(tuple(float(x) for x in cam), tuple(float(x) for x in center))
         if self.stage_path:
