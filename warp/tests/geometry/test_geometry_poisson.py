@@ -178,6 +178,31 @@ def test_invalid_radius_raises(test, device):
         geo.PoissonDiskSampler(points, faces, radius=0.0, device=device)
 
 
+def test_invalid_num_candidates_raises(test, device):
+    points, faces, _ = _plane(16, 1.0)
+    with test.assertRaises(ValueError):
+        geo.PoissonDiskSampler(points, faces, radius=0.1, num_candidates=0, device=device)
+
+
+def test_function_matches_class(test, device):
+    # The convenience function and the class must share defaults, so identical
+    # arguments and seed give identical results.
+    points, faces, _ = _plane(48, 2.0)
+    f, uv, pos = geo.poisson_disk_sample(points, faces, radius=0.12, seed=1, device=device)
+    sampler = geo.PoissonDiskSampler(points, faces, radius=0.12, seed=1, device=device)
+    wp.synchronize_device()
+    np.testing.assert_array_equal(f.numpy(), sampler.faces.numpy())
+    np.testing.assert_array_equal(pos.numpy(), sampler.points.numpy())
+    np.testing.assert_array_equal(uv.numpy(), sampler.uv.numpy())
+
+
+def test_pair_correlation_invalid_r_max_raises(test, device):
+    points, faces, _ = _plane(24, 1.0)
+    sampler = geo.PoissonDiskSampler(points, faces, radius=0.1, device=device)
+    with test.assertRaises(ValueError):
+        sampler.pair_correlation(r_max=0.0)
+
+
 def test_scale_regression(test, device):
     # Regression at scale: a fine radius drives a large candidate pool (~10^6 on
     # CUDA), verifying the sampler still returns a valid, maximal set at size.
@@ -214,6 +239,16 @@ add_function_test(
     TestGeometryPoisson, "test_pair_correlation_blue_noise", test_pair_correlation_blue_noise, devices=devices
 )
 add_function_test(TestGeometryPoisson, "test_invalid_radius_raises", test_invalid_radius_raises, devices=devices)
+add_function_test(
+    TestGeometryPoisson, "test_invalid_num_candidates_raises", test_invalid_num_candidates_raises, devices=devices
+)
+add_function_test(TestGeometryPoisson, "test_function_matches_class", test_function_matches_class, devices=devices)
+add_function_test(
+    TestGeometryPoisson,
+    "test_pair_correlation_invalid_r_max_raises",
+    test_pair_correlation_invalid_r_max_raises,
+    devices=devices,
+)
 add_function_test(TestGeometryPoisson, "test_scale_regression", test_scale_regression, devices=devices)
 
 
