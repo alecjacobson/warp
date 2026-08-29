@@ -4,15 +4,19 @@
 ###########################################################################
 # Example Parallel Poisson-Disk Sampling on Surfaces
 #
-# Draws a dense blue-noise (Poisson-disk) point set on the Stanford bunny with
+# Draws a dense blue-noise (Poisson-disk) point set on a mesh surface with
 # warp.geometry.PoissonDiskSampler, the parallel algorithm of Bowers et al.,
 # "Parallel Poisson Disk Sampling with Spectrum Analysis on Surfaces"
 # (SIGGRAPH Asia 2010).
 #
-# It renders the mesh and its samples with polyscope and saves a still image.
-# Rendering runs headless (offscreen via EGL), so no display is needed. The
-# printed pair-correlation statistics confirm the blue-noise spectrum: no two
-# samples are closer than the radius.
+# It renders the mesh and its samples with polyscope (orange points, soft
+# ground shadow) and saves a still image. Rendering runs headless (offscreen via
+# EGL), so no display is needed. The printed pair-correlation statistics confirm
+# the blue-noise spectrum: no two samples are closer than the radius.
+#
+# By default it samples the bundled Stanford bunny. Pass --mesh to load any
+# triangle .obj instead; the gallery image uses the xyzrgb dragon from
+# https://github.com/alecjacobson/common-3d-test-models
 #
 #   uv run --with usd-core --with polyscope \
 #       warp/examples/geometry/example_poisson_disk_sampling.py
@@ -40,14 +44,37 @@ def load_bunny():
     raise RuntimeError("no mesh found in bunny.usd")
 
 
+def load_obj(path):
+    """Minimal triangle-.obj reader (positions and faces only, fan-triangulated)."""
+    verts, faces = [], []
+    with open(path) as f:
+        for line in f:
+            if line.startswith("v "):
+                verts.append([float(x) for x in line.split()[1:4]])
+            elif line.startswith("f "):
+                idx = [int(tok.split("/")[0]) - 1 for tok in line.split()[1:]]
+                for k in range(1, len(idx) - 1):
+                    faces.extend([idx[0], idx[k], idx[k + 1]])
+    return np.array(verts, dtype=np.float32), np.array(faces, dtype=np.int32)
+
+
 class Example:
-    def __init__(self, stage_path="example_poisson_disk_sampling.png", radius=0.012):
+    def __init__(self, stage_path="example_poisson_disk_sampling.png", mesh=None, radius=None):
         import polyscope as ps  # noqa: PLC0415
 
         self.ps = ps
         self.stage_path = stage_path
 
-        self.points, self.faces = load_bunny()
+        if mesh is None:
+            self.points, self.faces = load_bunny()
+            radius = radius if radius is not None else 0.012
+        else:
+            self.points, self.faces = load_obj(mesh)
+            # Default to roughly 32k samples if no radius was given.
+            if radius is None:
+                lo, hi = self.points.min(0), self.points.max(0)
+                area = float(np.prod(hi - lo))
+                radius = 0.02 * float(np.cbrt(area))
 
         # Dense blue-noise sampling: no two points closer than `radius`.
         self.sampler = warp.geometry.PoissonDiskSampler(
@@ -62,29 +89,33 @@ class Example:
         wp.synchronize_device()
         inside = float(g[r < 0.85 * radius].mean())
         print(
-            f"bunny: radius={radius}  samples={self.sampler.num_samples}  "
+            f"radius={radius:.4g}  samples={self.sampler.num_samples}  "
             f"candidates={self.sampler.num_candidates}  g(r<0.85r)={inside:.3f}  peak_g={float(g.max()):.2f}"
         )
 
         ps.set_allow_headless_backends(True)
         ps.init()
         ps.set_ground_plane_mode("shadow_only")
+        ps.set_shadow_darkness(0.35)
         ps.set_up_dir("y_up")
-        ps.set_front_dir("z_front")
         ps.set_SSAA_factor(4)
 
-        mesh = ps.register_surface_mesh("bunny", self.points, self.faces.reshape(-1, 3), smooth_shade=True)
-        mesh.set_color((0.5, 0.55, 0.62))
+        surf = ps.register_surface_mesh("mesh", self.points, self.faces.reshape(-1, 3), smooth_shade=True)
+        surf.set_color((0.72, 0.74, 0.78))
 
         cloud = ps.register_point_cloud("poisson samples", self.samples)
-        cloud.set_radius(0.45 * radius, relative=False)
-        # Color the samples by height for a bit of depth in the still.
-        h = self.samples[:, 1]
-        cloud.add_scalar_quantity("height", h, enabled=True, cmap="viridis")
+        cloud.set_color((1.0, 0.45, 0.1))  # orange
+        cloud.set_radius(0.5 * radius, relative=False)
 
     def render(self):
         ps = self.ps
-        ps.look_at((1.85, 1.2, 1.85), (-0.15, 0.82, 0.02))
+        lo, hi = self.points.min(0), self.points.max(0)
+        center = 0.5 * (lo + hi)
+        diag = float(np.linalg.norm(hi - lo))
+        direction = np.array([0.5, 0.35, 1.0])
+        direction /= np.linalg.norm(direction)
+        cam = center + direction * 0.85 * diag
+        ps.look_at(tuple(float(x) for x in cam), tuple(float(x) for x in center))
         if self.stage_path:
             ps.screenshot(self.stage_path, transparent_bg=False)
             print(f"wrote {self.stage_path}")
@@ -101,10 +132,11 @@ if __name__ == "__main__":
         default="example_poisson_disk_sampling.png",
         help="Path to the output image.",
     )
-    parser.add_argument("--radius", type=float, default=0.012, help="Poisson-disk minimum distance.")
+    parser.add_argument("--mesh", type=str, default=None, help="Optional triangle .obj to sample instead of the bunny.")
+    parser.add_argument("--radius", type=float, default=None, help="Poisson-disk minimum distance.")
 
     args = parser.parse_known_args()[0]
 
     with wp.ScopedDevice(args.device):
-        example = Example(stage_path=args.stage_path, radius=args.radius)
+        example = Example(stage_path=args.stage_path, mesh=args.mesh, radius=args.radius)
         example.render()
