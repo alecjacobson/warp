@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 import warp as wp
-from warp._src.utils import array_scan, array_sum
+from warp._src.utils import array_scan, array_sum, radix_sort_pairs
 
 if TYPE_CHECKING:
     from warp._src.context import DeviceLike
@@ -645,6 +645,47 @@ def _bounding_box(points: wp.array, device) -> tuple[np.ndarray, np.ndarray]:
     return lo.numpy(), hi.numpy()
 
 
+@wp.kernel(enable_backward=False)
+def _poisson_cellid_kernel(
+    points: wp.array(dtype=wp.vec3),
+    lo: wp.vec3,
+    inv_mu: wp.float32,
+    gx: wp.int32,
+    gy: wp.int32,
+    gz: wp.int32,
+    out_cellid: wp.array(dtype=wp.int64),
+):
+    tid = wp.tid()
+    c = _cell_coord(points[tid], lo, inv_mu, gx, gy, gz)
+    out_cellid[tid] = _cell_id(c[0], c[1], c[2], gx, gy)
+
+
+@wp.kernel(enable_backward=False)
+def _poisson_iota_kernel(out: wp.array(dtype=wp.int32)):
+    tid = wp.tid()
+    out[tid] = tid
+
+
+@wp.kernel(enable_backward=False)
+def _poisson_gather_kernel(
+    order: wp.array(dtype=wp.int32),
+    in_points: wp.array(dtype=wp.vec3),
+    in_faces: wp.array(dtype=wp.int32),
+    in_uv: wp.array(dtype=wp.vec2),
+    in_priority: wp.array(dtype=wp.float32),
+    out_points: wp.array(dtype=wp.vec3),
+    out_faces: wp.array(dtype=wp.int32),
+    out_uv: wp.array(dtype=wp.vec2),
+    out_priority: wp.array(dtype=wp.float32),
+):
+    tid = wp.tid()
+    j = order[tid]
+    out_points[tid] = in_points[j]
+    out_faces[tid] = in_faces[j]
+    out_uv[tid] = in_uv[j]
+    out_priority[tid] = in_priority[j]
+
+
 class PoissonDiskSampler:
     """Draw a Poisson-disk (blue-noise) point set over a triangle mesh surface.
 
@@ -740,11 +781,59 @@ class PoissonDiskSampler:
             device=self.device,
         )
         lo, hi = _bounding_box(self._sampler.points, self.device)
+
+        # Sort the candidates by grid cell so that spatially adjacent candidates
+        # are processed together. The phase passes are memory-bound on random hash
+        # lookups; ordering candidates by cell makes neighboring threads read
+        # overlapping 5x5x5 blocks, which turns those lookups into cache hits and
+        # roughly halves the solve time. This mirrors the paper's step of sorting
+        # the point cloud by cell id.
+        cand_points, cand_faces, cand_uv, priority = self._sort_by_cell(
+            cand_points, cand_faces, cand_uv, priority, lo, hi
+        )
+
         status = self._solve_hash(cand_points, priority, lo, hi, seed)
 
         # Stage 3: compact accepted candidates into tight output arrays.
         self.points, self.faces, self.uv = self._compact(status, cand_points, cand_faces, cand_uv)
         self.num_samples = int(self.points.shape[0])
+
+    def _sort_by_cell(
+        self,
+        cand_points: wp.array,
+        cand_faces: wp.array,
+        cand_uv: wp.array,
+        priority: wp.array,
+        lo: np.ndarray,
+        hi: np.ndarray,
+    ) -> tuple[wp.array, wp.array, wp.array, wp.array]:
+        n = self.num_candidates
+        mu = self.radius / 1.7320508075688772  # radius / sqrt(3)
+        inv_mu = float(1.0 / mu)
+        gx, gy, gz = (int(v) for v in np.maximum(np.ceil((hi - lo) / mu).astype(np.int64) + 1, 1))
+        lo_vec = wp.vec3(float(lo[0]), float(lo[1]), float(lo[2]))
+
+        # radix_sort_pairs needs 2*n storage for both keys and values.
+        cellid = wp.empty(2 * n, dtype=wp.int64, device=self.device)
+        order = wp.empty(2 * n, dtype=wp.int32, device=self.device)
+        wp.launch(
+            _poisson_cellid_kernel, dim=n, inputs=[cand_points, lo_vec, inv_mu, gx, gy, gz, cellid], device=self.device
+        )
+        wp.launch(_poisson_iota_kernel, dim=n, outputs=[order], device=self.device)
+        radix_sort_pairs(cellid, order, count=n)
+
+        out_points = wp.empty(n, dtype=wp.vec3, device=self.device)
+        out_faces = wp.empty(n, dtype=wp.int32, device=self.device)
+        out_uv = wp.empty(n, dtype=wp.vec2, device=self.device)
+        out_priority = wp.empty(n, dtype=wp.float32, device=self.device)
+        wp.launch(
+            _poisson_gather_kernel,
+            dim=n,
+            inputs=[order, cand_points, cand_faces, cand_uv, priority],
+            outputs=[out_points, out_faces, out_uv, out_priority],
+            device=self.device,
+        )
+        return out_points, out_faces, out_uv, out_priority
 
     def _solve_hash(
         self, cand_points: wp.array, priority: wp.array, lo: np.ndarray, hi: np.ndarray, seed: int
