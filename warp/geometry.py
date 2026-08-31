@@ -35,6 +35,7 @@ from warp._src.geometry import RegistrationResult as RegistrationResult
 from warp._src.geometry import UniformSampler as UniformSampler
 from warp._src.geometry import UniformSamplerState as UniformSamplerState
 from warp._src.geometry import closest_on_mesh as closest_on_mesh
+from warp._src.geometry import closest_on_points as closest_on_points
 from warp._src.geometry import draw as draw
 from warp._src.geometry import geodesic_distance as geodesic_distance
 from warp._src.geometry import pair_correlation as pair_correlation

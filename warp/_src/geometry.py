@@ -1491,6 +1491,118 @@ def _icp_accumulate_mesh_kernel(
     wp.atomic_add(stats, 1, 1.0)
 
 
+@wp.func
+def closest_on_points(
+    grid: wp.uint64,
+    points: wp.array(dtype=wp.vec3),
+    normals: wp.array(dtype=wp.vec3),
+    p: wp.vec3,
+    max_dist: wp.float32,
+) -> ClosestPoint:
+    """Nearest target point (and its normal) to ``p`` within ``max_dist``.
+
+    Searches a fixed :class:`warp.HashGrid` built over the target points, so it
+    can be called every ICP iteration on transformed source points without any
+    rebuild -- the point-cloud analogue of :func:`closest_on_mesh`. Callable from
+    your own :func:`warp.kernel` definitions.
+
+    Args:
+        grid: Identifier of the :class:`warp.HashGrid` over ``points``.
+        points: Target points.
+        normals: Per-point unit normals, one per entry of ``points``.
+        p: Query point (a transformed source point).
+        max_dist: Reject matches farther than this (also the search radius).
+
+    Returns:
+        A :class:`ClosestPoint`; check ``valid``.
+    """
+    out = ClosestPoint()
+    out.valid = wp.int32(0)
+    best = max_dist
+    best_idx = wp.int32(-1)
+    neighbors = wp.hash_grid_query(grid, p, max_dist)
+    for j in neighbors:
+        d = wp.length(points[j] - p)
+        if d < best:
+            best = d
+            best_idx = j
+    if best_idx >= 0:
+        out.point = points[best_idx]
+        out.normal = normals[best_idx]
+        out.distance = best
+        out.valid = wp.int32(1)
+    return out
+
+
+@wp.kernel(enable_backward=False)
+def _icp_accumulate_points_kernel(
+    source: wp.array(dtype=wp.vec3),
+    rot: wp.mat33,
+    trans: wp.vec3,
+    grid: wp.uint64,
+    points: wp.array(dtype=wp.vec3),
+    normals: wp.array(dtype=wp.vec3),
+    max_dist: wp.float32,
+    a_upper: wp.array(dtype=wp.float32),
+    g: wp.array(dtype=wp.float32),
+    stats: wp.array(dtype=wp.float32),
+):
+    tid = wp.tid()
+    p = rot * source[tid] + trans
+    cp = closest_on_points(grid, points, normals, p, max_dist)
+    if cp.valid == 0:
+        return
+    term = point_plane_term(p, cp.point, cp.normal)
+    _accumulate_normal_equations(term, 1.0, a_upper, g)
+    r = wp.dot(p - cp.point, cp.normal)
+    wp.atomic_add(stats, 0, r * r)
+    wp.atomic_add(stats, 1, 1.0)
+
+
+@wp.kernel(enable_backward=False)
+def _estimate_normals_kernel(
+    grid: wp.uint64,
+    points: wp.array(dtype=wp.vec3),
+    radius: wp.float32,
+    min_neighbors: wp.int32,
+    normals: wp.array(dtype=wp.vec3),
+):
+    # Per-point normal from a local PCA: the eigenvector of the neighborhood
+    # covariance with the smallest eigenvalue is the surface normal. Its sign is
+    # arbitrary, which is fine for point-to-plane (the normal equations are
+    # invariant to flipping ``n``).
+    tid = wp.tid()
+    pi = points[tid]
+
+    centroid = wp.vec3(0.0, 0.0, 0.0)
+    count = wp.int32(0)
+    q1 = wp.hash_grid_query(grid, pi, radius)
+    for j in q1:
+        if wp.length(points[j] - pi) <= radius:
+            centroid += points[j]
+            count += 1
+    if count < min_neighbors:
+        normals[tid] = wp.vec3(0.0, 0.0, 0.0)
+        return
+    centroid = centroid / float(count)
+
+    cov = wp.mat33(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    q2 = wp.hash_grid_query(grid, pi, radius)
+    for j in q2:
+        if wp.length(points[j] - pi) <= radius:
+            e = points[j] - centroid
+            cov += wp.outer(e, e)
+
+    vectors, values = wp.eig3(cov)
+    smallest = wp.int32(0)
+    if values[1] < values[smallest]:
+        smallest = wp.int32(1)
+    if values[2] < values[smallest]:
+        smallest = wp.int32(2)
+    normal = wp.vec3(vectors[0, smallest], vectors[1, smallest], vectors[2, smallest])
+    normals[tid] = wp.normalize(normal)
+
+
 ##########################################################################
 ## Host-side driver
 ##########################################################################
@@ -1542,6 +1654,67 @@ def _build_target_mesh(target, device) -> wp.Mesh:
     )
 
 
+def _is_mesh_target(target) -> bool:
+    """A target is a mesh if it is a :class:`warp.Mesh` or a ``(points, faces)``
+    pair whose second element has an integer dtype; otherwise it is a point cloud
+    (bare points, or a ``(points, normals)`` pair with a floating-point second
+    element)."""
+    if isinstance(target, wp.Mesh):
+        return True
+    if isinstance(target, (tuple, list)) and len(target) == 2 and not isinstance(target[0], wp.array):
+        second = np.asarray(target[1])
+        return np.issubdtype(second.dtype, np.integer)
+    return False
+
+
+class _PointTarget:
+    """A point-cloud target: a hash grid, points, per-point normals, and the
+    correspondence search radius. Holds references so the grid outlives the ICP
+    loop."""
+
+    def __init__(self, grid, points, normals, search_radius):
+        self.grid = grid
+        self.points = points
+        self.normals = normals
+        self.search_radius = search_radius
+
+
+def _build_target_points(target, device, max_corr_dist) -> _PointTarget:
+    if isinstance(target, (tuple, list)) and not isinstance(target[0], wp.array) and len(target) == 2:
+        points, normals = target
+        points = _as_vec3_array(points, device)
+        normals = _as_vec3_array(normals, device)
+    else:
+        points = _as_vec3_array(target, device)
+        normals = None
+
+    num_points = points.shape[0]
+    lo, hi = _bounding_box(points, device)
+    diagonal = float(np.linalg.norm(hi - lo))
+    spacing = diagonal / max(num_points ** (1.0 / 3.0), 1.0) if diagonal > 0.0 else 1.0
+
+    search_radius = float(max_corr_dist) if max_corr_dist is not None else 5.0 * spacing
+    normal_radius = 3.0 * spacing
+    grid_radius = max(search_radius, normal_radius)
+
+    extent = np.maximum(hi - lo, grid_radius)
+    dims = np.clip(np.ceil(extent / grid_radius).astype(np.int64), 1, 512)
+    grid = wp.HashGrid(int(dims[0]), int(dims[1]), int(dims[2]), device=device)
+    grid.build(points, grid_radius)
+
+    if normals is None:
+        normals = wp.zeros(num_points, dtype=wp.vec3, device=device)
+        wp.launch(
+            _estimate_normals_kernel,
+            dim=num_points,
+            inputs=[grid.id, points, float(normal_radius), 4],
+            outputs=[normals],
+            device=device,
+        )
+
+    return _PointTarget(grid, points, normals, search_radius)
+
+
 def register_rigid(
     source,
     target,
@@ -1563,13 +1736,17 @@ def register_rigid(
     Args:
         source: Source points, a :class:`warp.array` of :class:`warp.vec3` or an
             array-like of shape ``(num_points, 3)``.
-        target: Target mesh, given as a :class:`warp.Mesh` or a ``(points, faces)``
+        target: Target surface. Either a mesh -- a :class:`warp.Mesh` or a
+            ``(points, faces)`` pair -- or a point cloud -- a ``(num_points, 3)``
+            array (normals are estimated by local PCA) or a ``(points, normals)``
             pair.
         init: Optional ``(4, 4)`` initial transform (defaults to identity).
         max_iters: Maximum number of iterations.
         tol: Convergence tolerance on the 6-DOF update norm.
-        max_corr_dist: Reject correspondences farther than this. Defaults to no
-            bound.
+        max_corr_dist: Reject correspondences farther than this. For mesh targets
+            it defaults to no bound; for point-cloud targets it also sets the
+            nearest-neighbor search radius and defaults to a few times the point
+            spacing.
         damping: Levenberg-style diagonal damping added to the 6x6 system.
         device: Device on which to run. Defaults to the device of ``source``.
 
@@ -1585,8 +1762,14 @@ def register_rigid(
 
     src = _as_vec3_array(source, device)
     n = src.shape[0]
-    mesh = _build_target_mesh(target, device)
-    max_dist = float(max_corr_dist) if max_corr_dist is not None else 1.0e30
+
+    is_mesh = _is_mesh_target(target)
+    if is_mesh:
+        mesh = _build_target_mesh(target, device)
+        max_dist = float(max_corr_dist) if max_corr_dist is not None else 1.0e30
+    else:
+        point_target = _build_target_points(target, device, max_corr_dist)
+        max_dist = point_target.search_radius
 
     init = np.eye(4) if init is None else np.asarray(init, dtype=np.float64).reshape(4, 4)
     rot = init[:3, :3].copy()
@@ -1604,13 +1787,32 @@ def register_rigid(
         a_upper.zero_()
         g.zero_()
         stats.zero_()
-        wp.launch(
-            _icp_accumulate_mesh_kernel,
-            dim=n,
-            inputs=[src, wp.mat33(rot.astype(np.float32)), wp.vec3(*trans.astype(np.float32)), mesh.id, max_dist],
-            outputs=[a_upper, g, stats],
-            device=device,
-        )
+        rot_wp = wp.mat33(rot.astype(np.float32))
+        trans_wp = wp.vec3(*trans.astype(np.float32))
+        if is_mesh:
+            wp.launch(
+                _icp_accumulate_mesh_kernel,
+                dim=n,
+                inputs=[src, rot_wp, trans_wp, mesh.id, max_dist],
+                outputs=[a_upper, g, stats],
+                device=device,
+            )
+        else:
+            wp.launch(
+                _icp_accumulate_points_kernel,
+                dim=n,
+                inputs=[
+                    src,
+                    rot_wp,
+                    trans_wp,
+                    point_target.grid.id,
+                    point_target.points,
+                    point_target.normals,
+                    max_dist,
+                ],
+                outputs=[a_upper, g, stats],
+                device=device,
+            )
         a_np = a_upper.numpy().astype(np.float64)
         g_np = g.numpy().astype(np.float64)
         st = stats.numpy()

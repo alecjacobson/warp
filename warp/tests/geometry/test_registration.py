@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Rigid registration (ICP): warp.registration.register_rigid."""
+"""Rigid registration (ICP): warp.geometry.register_rigid."""
 
 import unittest
 
@@ -107,6 +107,46 @@ def test_recovers_known_transform(test, device):
         test.assertLess(result.rmse, 1e-3)
 
 
+def _ellipsoid_normals(verts, scale):
+    # Outward unit normal of the ellipsoid (x/sx)^2+(y/sy)^2+(z/sz)^2=1 at each
+    # surface point is proportional to (x/sx^2, y/sy^2, z/sz^2).
+    n = verts / (np.asarray(scale, dtype=np.float64) ** 2)
+    n /= np.linalg.norm(n, axis=1, keepdims=True)
+    return n.astype(np.float32)
+
+
+def test_recovers_known_transform_point_cloud(test, device):
+    # Point-cloud target given as bare points: normals are estimated by local PCA
+    # and ICP recovers the known transform from the discrete nearest neighbors.
+    scale = (1.5, 1.0, 0.7)
+    verts, _ = _icosphere(subdiv=3, scale=scale)
+    for rot_deg in (5.0, 10.0):
+        T = _rigid_transform(rot_deg, np.array([0.05, -0.03, 0.04]), seed=int(rot_deg))
+        source = (verts @ T[:3, :3].T + T[:3, 3]).astype(np.float32)
+        result = reg.register_rigid(source, verts, max_iters=80, tol=1e-6, device=device)
+        wp.synchronize_device()
+
+        test.assertTrue(result.converged)
+        test.assertLess(_rotation_error_deg(result.transform, np.linalg.inv(T)), 0.1)
+        np.testing.assert_allclose(result.transform[:3, 3], np.linalg.inv(T)[:3, 3], atol=1e-3)
+
+
+def test_point_cloud_with_normals(test, device):
+    # Point-cloud target given as (points, normals): supplied normals are used
+    # directly instead of estimating them.
+    scale = (1.5, 1.0, 0.7)
+    verts, _ = _icosphere(subdiv=3, scale=scale)
+    normals = _ellipsoid_normals(verts, scale)
+    T = _rigid_transform(10.0, np.array([0.05, 0.04, -0.03]), seed=7)
+    source = (verts @ T[:3, :3].T + T[:3, 3]).astype(np.float32)
+    result = reg.register_rigid(source, (verts, normals), max_iters=80, tol=1e-6, device=device)
+    wp.synchronize_device()
+
+    test.assertTrue(result.converged)
+    test.assertLess(_rotation_error_deg(result.transform, np.linalg.inv(T)), 0.1)
+    np.testing.assert_allclose(result.transform[:3, 3], np.linalg.inv(T)[:3, 3], atol=1e-3)
+
+
 def test_identity_when_aligned(test, device):
     # Already-aligned source: ICP returns ~identity in one step.
     verts, faces = _icosphere(subdiv=3, scale=(1.4, 1.0, 0.8))
@@ -150,6 +190,13 @@ class TestRegistration(unittest.TestCase):
 
 
 add_function_test(TestRegistration, "test_recovers_known_transform", test_recovers_known_transform, devices=devices)
+add_function_test(
+    TestRegistration,
+    "test_recovers_known_transform_point_cloud",
+    test_recovers_known_transform_point_cloud,
+    devices=devices,
+)
+add_function_test(TestRegistration, "test_point_cloud_with_normals", test_point_cloud_with_normals, devices=devices)
 add_function_test(TestRegistration, "test_identity_when_aligned", test_identity_when_aligned, devices=devices)
 add_function_test(TestRegistration, "test_deterministic", test_deterministic, devices=devices)
 add_function_test(TestRegistration, "test_reuses_target_mesh", test_reuses_target_mesh, devices=devices)
