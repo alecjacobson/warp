@@ -5,18 +5,22 @@
 # Example Rigid Registration (Iterative Closest Point)
 #
 # Fits a real range scan onto a clean template with
-# warp.geometry.register_rigid, the point-to-plane Gauss-Newton ICP. The data is
-# the Stanford Bunny: the template is the zippered reconstruction (a triangle
-# mesh) and the source is the raw "bun045" range scan (a partial, noisy point
-# cloud from a single 45-degree view), downloaded on first run. The scan starts
-# from a displaced pose and ICP slides it onto the template surface.
+# warp.geometry.register_rigid_batched, the batched point-to-plane Gauss-Newton
+# ICP. The data is the Stanford Bunny: the template is the zippered
+# reconstruction (a triangle mesh) and the source is the raw "bun045" range scan
+# (a partial, noisy point cloud from a single 45-degree view), downloaded on
+# first run.
 #
-# Because the scan only partially overlaps the template, correspondences beyond
-# ``max_corr_dist`` are rejected and a robust weight discounts the rest -- the
-# stochastic/robust insight of Bouaziz et al. 2013. Because the motion is rigid,
-# the template BVH is built once and queried each iteration, never rebuilt.
+# To show multi-initialization, the scan is placed at many different starting
+# poses at once (a swarm scattered around the bunny, each a different color) and
+# ALL of them are registered simultaneously in one batched solve -- the whole
+# swarm converges onto the template together. Because the scan only partially
+# overlaps the template, correspondences beyond ``max_corr_dist`` are rejected
+# and a robust weight discounts the rest (Bouaziz et al. 2013), and because the
+# motion is rigid the template BVH is built once and shared by every problem in
+# the batch, never rebuilt.
 #
-# Each frame runs one ICP iteration and renders the current scan points (orange)
+# Each frame runs one batched ICP iteration and renders every current scan pose
 # against the fixed template mesh (blue) with polyscope, writing an animated GIF
 # headless (offscreen via EGL), so no display is needed.
 #
@@ -112,8 +116,29 @@ def _rigid(rot_deg, axis, trans):
     return T
 
 
+def _fibonacci_sphere(n):
+    """``n`` roughly-uniform directions on the unit sphere."""
+    i = np.arange(n) + 0.5
+    phi = np.arccos(1.0 - 2.0 * i / n)
+    theta = np.pi * (1.0 + 5.0**0.5) * i
+    return np.stack([np.cos(theta) * np.sin(phi), np.sin(theta) * np.sin(phi), np.cos(phi)], axis=1)
+
+
+def _hue_colors(n):
+    """``n`` evenly spaced, saturated RGB colors around the hue wheel."""
+    h = (np.arange(n) / n) * 6.0
+    x = 1.0 - np.abs(h % 2.0 - 1.0)
+    z = np.zeros(n)
+    o = np.ones(n)
+    table = np.array([[o, x, z], [x, o, z], [z, o, x], [z, x, o], [x, z, o], [o, z, x]])
+    rgb = table[np.clip(h.astype(int), 0, 5), :, np.arange(n)]
+    return 0.25 + 0.72 * rgb  # lift off pure black/white so every cloud reads
+
+
 class Example:
-    def __init__(self, output="example_icp_registration.gif", num_iters=32, num_points=8000, cache_dir=None):
+    def __init__(
+        self, output="example_icp_registration.gif", num_iters=34, num_points=4000, num_inits=24, cache_dir=None
+    ):
         import polyscope as ps  # noqa: PLC0415
 
         self.ps = ps
@@ -125,27 +150,35 @@ class Example:
         self.points, self.faces = read_ply(template_path)
         scan, _ = read_ply(scan_path)
 
+        # Build the template mesh once and share it across the whole batch.
         self.target = wp.Mesh(
             points=wp.array(self.points, dtype=wp.vec3),
             indices=wp.array(self.faces.reshape(-1), dtype=wp.int32),
         )
 
-        # Subsample the raw scan, then displace it from the template pose. The
-        # rotation is about the template center so the offset reads as a pose, not
-        # a drift.
         rng = np.random.default_rng(0)
         scan = scan[rng.choice(len(scan), min(num_points, len(scan)), replace=False)]
+        self.source = scan.astype(np.float32)
         self.center = 0.5 * (self.points.min(0) + self.points.max(0))
-        self.misalign = _rigid(12.0, (0.2, 1.0, 0.1), (0.07, 0.01, -0.04))
-        self.source = ((scan - self.center) @ self.misalign[:3, :3].T + self.center + self.misalign[:3, 3]).astype(
-            np.float32
-        )
+        diag = float(np.linalg.norm(self.points.max(0) - self.points.min(0)))
+
+        # Scatter the scan into a swarm of starting poses: each is displaced along
+        # a different direction and given a different moderate rotation. ICP will
+        # pull every one of them onto the template.
+        directions = _fibonacci_sphere(num_inits)
+        self.inits = np.tile(np.eye(4), (num_inits, 1, 1))
+        for b in range(num_inits):
+            axis = rng.standard_normal(3)
+            self.inits[b, :3, :3] = _rigid(rng.uniform(6.0, 16.0), axis, (0.0, 0.0, 0.0))[:3, :3]
+            # Rotate about the template center, then push outward along direction b.
+            offset = self.center - self.inits[b, :3, :3] @ self.center + directions[b] * 0.055 * diag
+            self.inits[b, :3, 3] = offset
 
         # Partial overlap: reject far correspondences and robustly weight the rest.
-        self.max_corr_dist = 0.05
-
-        self.estimate = np.eye(4)  # current source-to-template transform
-        self.rmse = float("inf")
+        self.max_corr_dist = 0.12
+        self.transforms = self.inits.copy()
+        self.colors = _hue_colors(num_inits)
+        self.rmse = np.full(num_inits, np.inf)
 
         ps.set_allow_headless_backends(True)
         ps.init()
@@ -160,33 +193,34 @@ class Example:
         self.frames = []
 
     def step(self):
-        # One ICP iteration, continuing from the current estimate. The template
-        # wp.Mesh is reused (no BVH rebuild).
-        result = warp.geometry.register_rigid(
+        # One batched ICP iteration for the whole swarm, continuing from the
+        # current per-pose estimates. The shared template mesh is never rebuilt.
+        result = warp.geometry.register_rigid_batched(
             self.source,
             self.target,
-            init=self.estimate,
+            self.transforms,
             max_iters=1,
             tol=0.0,
             max_corr_dist=self.max_corr_dist,
             robust="welsch",
         )
-        self.estimate = result.transform
+        self.transforms = result.transforms
         self.rmse = result.rmse
 
     def render(self):
         ps = self.ps
-        moved = self.source @ self.estimate[:3, :3].T + self.estimate[:3, 3]
-        cloud = ps.register_point_cloud("scan", moved)
-        cloud.set_color((1.0, 0.55, 0.15))  # gptoolbox orange
-        cloud.set_radius(0.0016, relative=False)
+        for b in range(len(self.transforms)):
+            moved = self.source @ self.transforms[b, :3, :3].T + self.transforms[b, :3, 3]
+            cloud = ps.register_point_cloud(f"scan_{b}", moved)
+            cloud.set_color(tuple(float(c) for c in self.colors[b]))
+            cloud.set_radius(0.0011, relative=False)
 
         lo, hi = self.points.min(0), self.points.max(0)
         center = 0.5 * (lo + hi)
         diag = float(np.linalg.norm(hi - lo))
         direction = np.array([0.4, 0.25, 1.0])
         direction /= np.linalg.norm(direction)
-        ps.look_at(tuple(float(x) for x in center + direction * 1.6 * diag), tuple(float(x) for x in center))
+        ps.look_at(tuple(float(x) for x in center + direction * 1.9 * diag), tuple(float(x) for x in center))
 
         buf = np.asarray(ps.screenshot_to_buffer(transparent_bg=False))
         if buf.dtype != np.uint8:
@@ -201,7 +235,11 @@ class Example:
         # Hold the first and last frames a moment so the loop reads clearly.
         frames = [self.frames[0]] * 4 + self.frames + [self.frames[-1]] * 6
         imageio.mimsave(self.output, frames, fps=8, loop=0)
-        print(f"wrote {self.output} ({len(frames)} frames), final rmse={self.rmse:.2e}")
+        converged = int((self.rmse < 5e-4).sum())
+        print(
+            f"wrote {self.output} ({len(frames)} frames); "
+            f"{converged}/{len(self.rmse)} poses converged, best rmse={self.rmse.min():.2e}"
+        )
 
 
 if __name__ == "__main__":
@@ -215,14 +253,17 @@ if __name__ == "__main__":
         default="example_icp_registration.gif",
         help="Path to the output animated GIF.",
     )
-    parser.add_argument("--num-iters", type=int, default=32, help="Number of ICP iterations (frames).")
+    parser.add_argument("--num-iters", type=int, default=34, help="Number of ICP iterations (frames).")
+    parser.add_argument("--num-inits", type=int, default=24, help="Number of initial poses in the swarm.")
     parser.add_argument("--data-dir", type=str, default=None, help="Directory to cache the downloaded scans.")
 
     args = parser.parse_known_args()[0]
 
     with wp.ScopedDevice(args.device):
-        example = Example(output=args.output, num_iters=args.num_iters, cache_dir=args.data_dir)
-        example.render()  # initial displaced pose
+        example = Example(
+            output=args.output, num_iters=args.num_iters, num_inits=args.num_inits, cache_dir=args.data_dir
+        )
+        example.render()  # initial scattered swarm
         for _ in range(args.num_iters):
             example.step()
             example.render()
