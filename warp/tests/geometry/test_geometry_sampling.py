@@ -252,6 +252,51 @@ def test_empty_faces_raises(test, device):
         geo.UniformSampler(points, np.array([], dtype=np.int32), device=device)
 
 
+def test_face_areas_match_computed(test, device):
+    # Supplying the correct per-triangle areas must reproduce the sampler built
+    # without them, bit for bit, for the same seed.
+    points, faces = _two_triangles()
+    areas = np.array([1.0, 3.0], dtype=np.float32)  # the true areas of _two_triangles
+
+    default = geo.UniformSampler(points, faces, device=device)
+    provided = geo.UniformSampler(points, faces, face_areas=areas, device=device)
+    # Also accept a warp.array of areas.
+    as_wp = geo.UniformSampler(
+        points, faces, face_areas=wp.array(areas, dtype=wp.float32, device=device), device=device
+    )
+    wp.synchronize_device()
+
+    np.testing.assert_allclose(default.total_area, 4.0)
+    np.testing.assert_allclose(provided.total_area, 4.0)
+    np.testing.assert_array_equal(default.cdf.numpy(), provided.cdf.numpy())
+    np.testing.assert_array_equal(default.cdf.numpy(), as_wp.cdf.numpy())
+
+    df, du = default.sample(4096, seed=5)
+    pf, pu = provided.sample(4096, seed=5)
+    wp.synchronize_device()
+    np.testing.assert_array_equal(df.numpy(), pf.numpy())
+    np.testing.assert_array_equal(du.numpy(), pu.numpy())
+
+
+def test_face_areas_override_weighting(test, device):
+    # The provided areas drive the weighting: passing equal areas for a mesh whose
+    # triangles have geometric areas 1 and 3 must sample the two faces equally.
+    points, faces = _two_triangles()
+    tri, _ = geo.uniformly_sample(points, faces, 200000, seed=1, device=device)  # geometric weighting -> ~3/4 face 1
+    sampler = geo.UniformSampler(points, faces, face_areas=np.array([1.0, 1.0], dtype=np.float32), device=device)
+    eq_tri, _ = sampler.sample(200000, seed=1)
+    wp.synchronize_device()
+
+    np.testing.assert_allclose(float(np.mean(tri.numpy() == 1)), 0.75, atol=0.01)
+    np.testing.assert_allclose(float(np.mean(eq_tri.numpy() == 1)), 0.5, atol=0.01)
+
+
+def test_face_areas_wrong_length_raises(test, device):
+    points, faces = _two_triangles()  # 2 triangles
+    with test.assertRaises(ValueError):
+        geo.UniformSampler(points, faces, face_areas=np.array([1.0, 2.0, 3.0], dtype=np.float32), device=device)
+
+
 devices = get_test_devices()
 
 
@@ -276,6 +321,15 @@ add_function_test(
     TestGeometrySampling, "test_draw_member_function_in_kernel", test_draw_member_function_in_kernel, devices=devices
 )
 add_function_test(TestGeometrySampling, "test_empty_faces_raises", test_empty_faces_raises, devices=devices)
+add_function_test(
+    TestGeometrySampling, "test_face_areas_match_computed", test_face_areas_match_computed, devices=devices
+)
+add_function_test(
+    TestGeometrySampling, "test_face_areas_override_weighting", test_face_areas_override_weighting, devices=devices
+)
+add_function_test(
+    TestGeometrySampling, "test_face_areas_wrong_length_raises", test_face_areas_wrong_length_raises, devices=devices
+)
 
 
 if __name__ == "__main__":

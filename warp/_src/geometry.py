@@ -194,6 +194,13 @@ def _as_index_array(faces, device) -> wp.array:
     return wp.array(np.asarray(faces, dtype=np.int32).reshape(-1), dtype=wp.int32, device=device)
 
 
+def _as_float_array(values, device) -> wp.array:
+    if isinstance(values, wp.array):
+        arr = values if values.dtype == wp.float32 else wp.array(values.numpy(), dtype=wp.float32, device=values.device)
+        return arr.to(device) if arr.device != device else arr
+    return wp.array(np.asarray(values, dtype=np.float32).reshape(-1), dtype=wp.float32, device=device)
+
+
 class UniformSampler:
     """Draw points uniformly over the surface of a triangle mesh.
 
@@ -217,6 +224,10 @@ class UniformSampler:
         faces: Triangle vertex indices, either a flat :class:`warp.array` of
             :class:`warp.int32` (length ``3 * num_triangles``) or an array-like
             reshapeable to ``(num_triangles, 3)``.
+        face_areas: Optional per-triangle areas of length ``num_triangles``,
+            either a :class:`warp.array` of :class:`warp.float32` or an array-like.
+            Supply them to reuse areas the caller already has; when ``None`` they
+            are computed from ``points`` and ``faces``.
         device: Device on which to build the sampler. Defaults to the device of
             ``points`` when it is a :class:`warp.array`, otherwise the current
             device.
@@ -232,7 +243,7 @@ class UniformSampler:
     # returns it unbound rather than turning it into a Python method.
     draw = draw
 
-    def __init__(self, points, faces, *, device: DeviceLike | None = None):
+    def __init__(self, points, faces, *, face_areas=None, device: DeviceLike | None = None):
         if device is None:
             device = points.device if isinstance(points, wp.array) else wp.get_device()
         self.device = wp.get_device(device)
@@ -245,15 +256,23 @@ class UniformSampler:
 
         self.mesh = wp.Mesh(points=self.points, indices=self.indices)
 
-        # Build the normalized cumulative area distribution once.
-        areas = wp.empty(self.num_triangles, dtype=wp.float32, device=self.device)
-        wp.launch(
-            _triangle_areas_kernel,
-            dim=self.num_triangles,
-            inputs=[self.points, self.indices],
-            outputs=[areas],
-            device=self.device,
-        )
+        # Build the normalized cumulative area distribution once. Reuse the
+        # caller's per-triangle areas when given, otherwise compute them.
+        if face_areas is None:
+            areas = wp.empty(self.num_triangles, dtype=wp.float32, device=self.device)
+            wp.launch(
+                _triangle_areas_kernel,
+                dim=self.num_triangles,
+                inputs=[self.points, self.indices],
+                outputs=[areas],
+                device=self.device,
+            )
+        else:
+            areas = _as_float_array(face_areas, self.device)
+            if areas.shape[0] != self.num_triangles:
+                raise ValueError(
+                    f"`face_areas` must have length num_triangles ({self.num_triangles}), got {areas.shape[0]}."
+                )
         cumulative = wp.empty(self.num_triangles, dtype=wp.float32, device=self.device)
         array_scan(areas, cumulative, inclusive=True)
 
