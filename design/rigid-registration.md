@@ -1,6 +1,6 @@
 # Rigid Registration (Iterative Closest Point)
 
-**Status**: In Progress
+**Status**: Implemented
 
 **Issue**: N/A (feature request)
 
@@ -188,12 +188,26 @@ separate module.
 
 ## Milestones (commit/push each)
 
-1. Design doc (this) + `warp.geometry` ICP skeleton and SE(3)/Jacobian `wp.func`s
-   with unit tests.
-2. Point-to-plane GN ICP for a **mesh** target, single problem; recovery tests.
-3. **Point-cloud** target (hash-grid NN + normals); recovery tests.
-4. Stochastic subsampling + robust weighting; outlier tests.
-5. Batching (multi-init first, then multi-source/target); batching tests.
-6. Symmetric variant; basin test.
-7. Comparison harness vs available baselines.
-8. Example + polyscope headless GIF; docs + changelog.
+1. [x] Design doc (this) + `warp.geometry` ICP skeleton and SE(3)/Jacobian
+   `wp.func`s with unit tests.
+2. [x] Point-to-plane GN ICP for a **mesh** target, single problem; recovery tests.
+3. [x] **Point-cloud** target (hash-grid NN + local-PCA normals); recovery tests.
+4. [x] Stochastic subsampling + robust (Welsch) weighting; outlier tests.
+5. [x] Batching via `register_rigid_batched` (multi-initialization and
+   multi-source, one shared target); batching tests. Multi-*target* batching (a
+   distinct target per problem) is left as future work — it needs several
+   acceleration structures queried in one launch.
+6. [x] Symmetric variant (`variant="symmetric"`); recovery tests. (The non-batched
+   path only; batched symmetric is future work.)
+7. [x] Comparison harness vs available baselines (`tools/benchmarks/icp_vs_baselines.py`;
+   Open3D real, PyTorch3D/fast_gicp/PCL import-guarded).
+8. [x] Example (real Stanford Bunny scan-to-template) + polyscope headless GIF;
+   docs + changelog.
+
+### Follow-up ideas (not yet done)
+
+- Move the per-iteration 6x6 solves on-device for very large batches (currently
+  host-side, which is negligible for the intended multi-start batch sizes).
+- Multi-target batching and batched symmetric variant.
+- Generalized ICP (Segal 2009) plane-to-plane residual, reusing the per-point
+  normals already estimated for point-cloud targets.
