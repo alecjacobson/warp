@@ -12,28 +12,26 @@ harness writes the problem once and each library registers the identical data in
 its own env; see `icp_baselines/README.md` for setup and the full table with
 caveats.
 
-Headline (10,242-point ellipsoid, 15° + noise, 50-iter budget; Warp on an NVIDIA
-L40, the rest on CPU). Throughput is registrations/second — the CPU libraries
-have no batch API (`1000/latency`), Warp's is the per-problem time at batch
-saturation:
+Headline (10,242-point ellipsoid, 15° + noise, 50-iter budget). **Every method
+runs on the GPU (NVIDIA L40) if it can** — Warp, Open3D tensor ICP, and PyTorch3D
+are CUDA; PCL and fast_gicp are CPU-only here. Throughput is registrations/second:
+batched methods (Warp, PyTorch3D) report per-problem time at batch saturation, the
+rest `1000/latency`. Warp figures are mesh / point-cloud target; `speedup` is
+Warp's batched point-cloud throughput (364 reg/s) ÷ that method's.
 
-| method                       | objective      | rot err (deg) | latency (ms) | throughput (reg/s) | speedup |
-| ---------------------------- | -------------- | ------------- | ------------ | ------------------ | ------- |
-| **warp point-to-plane (batched)** | point-to-plane | 0.000    | 4.0 / 2.7 /prob | **252 / 364**   | **1× (ref)** |
-| warp point-to-plane (single) | point-to-plane | 0.000         | 21 / 31      | 47 / 32            | 8–11×   |
-| fast_gicp (FastGICP)         | plane-to-plane | 0.015         | 25           | 40                 | 9×      |
-| pcl_gicp                     | plane-to-plane | 0.008         | 121          | 8                  | 44×     |
-| open3d point-to-plane        | point-to-plane | 0.007         | 202          | 5                  | 74×     |
-| *_point_to_point (all)       | point-to-point | ~2.02         | 306–14828    | 3 – 0.07           | 111–5400× |
+| method                       | objective      | device | batched | rot err (deg) | throughput (reg/s) | speedup |
+| ---------------------------- | -------------- | ------ | ------- | ------------- | ------------------ | ------- |
+| **warp point-to-plane**      | point-to-plane | GPU    | yes     | 0.000         | **252 / 364**      | **1× (ref)** |
+| pytorch3d point-to-point     | point-to-point | GPU    | yes     | 2.025         | 165                | 2.2×    |
+| fast_gicp (FastGICP)         | plane-to-plane | CPU    | no      | 0.015         | 40                 | 9×      |
+| pcl_gicp                     | plane-to-plane | CPU    | no      | 0.008         | 8                  | 44×     |
+| open3d point-to-plane        | point-to-plane | GPU    | no      | 0.007         | 5                  | 74×     |
 
-Warp figures are mesh / point-cloud target; `speedup` is Warp's batched
-point-cloud throughput (364 reg/s) ÷ that method's. Single-problem, Warp is
-competitive with the strong CPU baselines; **batched, it registers 250–360
-clouds/s vs. fast_gicp's ~40/s — a ~9× throughput win** over the best CPU
-baseline, because one 10k-point problem underfills the L40 while a batch
-saturates it. Compare like-for-like (point-to-plane vs. point-to-plane; GICP as a
-strong plane-to-plane reference); the point-to-point methods land ~2° off on this
-noisy data. Full table and caveats in `icp_baselines/README.md`.
+The only other batched GPU method is PyTorch3D: Warp is **2.2× its throughput and
+far more accurate** (0.000° vs. 2.025° — PyTorch3D is point-to-point). Against
+non-batched methods it is 9× a strong CPU baseline (fast_gicp) and 74× Open3D's
+GPU point-to-plane; single-problem it is merely competitive (47/32 vs. 40 reg/s).
+Full table, per-row device labels, and caveats in `icp_baselines/README.md`.
 
 ## Rigid registration ablation — do the options help?
 
