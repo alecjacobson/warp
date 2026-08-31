@@ -220,20 +220,35 @@ class Example:
         diag = float(np.linalg.norm(hi - lo))
         direction = np.array([0.4, 0.25, 1.0])
         direction /= np.linalg.norm(direction)
-        ps.look_at(tuple(float(x) for x in center + direction * 1.7 * diag), tuple(float(x) for x in center))
+        ps.look_at(tuple(float(x) for x in center + direction * 1.35 * diag), tuple(float(x) for x in center))
 
         buf = np.asarray(ps.screenshot_to_buffer(transparent_bg=False))
         if buf.dtype != np.uint8:
             buf = (np.clip(buf, 0.0, 1.0) * 255.0).astype(np.uint8)
         self.frames.append(buf[:, :, :3])
 
+    def _crop_box(self, pad=24):
+        # Union bounding box of the non-white content across all frames, so the
+        # GIF is cropped tight to the scene (with a little padding).
+        lo_y, lo_x, hi_y, hi_x = 1 << 30, 1 << 30, 0, 0
+        for frame in self.frames:
+            ys, xs = np.where((frame < 250).any(axis=2))
+            if len(ys) == 0:
+                continue
+            lo_y, hi_y = min(lo_y, ys.min()), max(hi_y, ys.max())
+            lo_x, hi_x = min(lo_x, xs.min()), max(hi_x, xs.max())
+        h, w = self.frames[0].shape[:2]
+        return (max(lo_y - pad, 0), min(hi_y + pad + 1, h), max(lo_x - pad, 0), min(hi_x + pad + 1, w))
+
     def save(self):
         if not self.output or not self.frames:
             return
         import imageio.v2 as imageio  # noqa: PLC0415
 
+        y0, y1, x0, x1 = self._crop_box()
+        cropped = [f[y0:y1, x0:x1] for f in self.frames]
         # Hold the first and last frames a moment so the loop reads clearly.
-        frames = [self.frames[0]] * 4 + self.frames + [self.frames[-1]] * 6
+        frames = [cropped[0]] * 4 + cropped + [cropped[-1]] * 6
         imageio.mimsave(self.output, frames, fps=8, loop=0)
         converged = int((self.rmse < 5e-4).sum())
         print(
