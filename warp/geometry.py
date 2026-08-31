@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Geometry processing operations for triangle meshes.
+"""Geometry processing operations for triangle meshes and point clouds.
 
 This module provides GPU-accelerated surface sampling on triangle meshes:
 
@@ -15,9 +15,22 @@ This module provides GPU-accelerated surface sampling on triangle meshes:
   (:func:`geodesic_distance`). :func:`pair_correlation` measures the resulting
   blue-noise spectrum on the surface.
 
+and rigid registration:
+
+* **Iterative closest point** (:func:`register_rigid`,
+  :func:`register_rigid_batched`) rigidly aligns a source point set to a target
+  mesh or point cloud with point-to-plane (or symmetric) Gauss-Newton ICP,
+  reusing the target's acceleration structure across iterations. The
+  closest-point device functions (:func:`closest_on_mesh`,
+  :func:`closest_on_points`) and Gauss-Newton term builders
+  (:func:`point_plane_term`, :func:`symmetric_plane_term`) are callable from your
+  own kernels.
+
 The Poisson-disk sampler and its spectrum analysis implement Bowers, Wang, Wei
 and Maletz, "Parallel Poisson Disk Sampling with Spectrum Analysis on Surfaces"
 (ACM Transactions on Graphics 29(6), SIGGRAPH Asia 2010; doi:10.1145/1882261.1866188).
+The ICP variants follow Chen and Medioni 1991 (point-to-plane), Bouaziz et al.
+2013 (robust/stochastic) and Rusinkiewicz 2019 (symmetric).
 
 Usage:
     This module must be explicitly imported::

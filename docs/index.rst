@@ -95,11 +95,12 @@ warp/examples/geometry
 
     * - .. image:: ./img/examples/geometry_poisson_disk_sampling.png
            :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_poisson_disk_sampling.py
-      -
+      - .. image:: ./img/examples/geometry_icp_registration.gif
+           :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_icp_registration.py
       -
       -
     * - parallel Poisson-disk sampling
-      -
+      - rigid registration (ICP)
       -
       -
 
