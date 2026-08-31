@@ -197,6 +197,27 @@ def test_rejects_unknown_robust(test, device):
         reg.register_rigid(verts, (verts, faces), robust="huber", device=device)
 
 
+def test_plane_normal_closest_point(test, device):
+    # For a mesh, the closest-point direction equals the face normal for
+    # face-interior queries, so plane_normal="closest_point" recovers the
+    # transform just like the surface normal (no precomputed normals needed).
+    verts, faces = _icosphere(subdiv=3, scale=(1.5, 1.0, 0.7))
+    T = _rigid_transform(15.0, np.array([0.05, -0.03, 0.04]), seed=4)
+    source = (verts @ T[:3, :3].T + T[:3, 3]).astype(np.float32)
+    result = reg.register_rigid(
+        source, (verts, faces), max_iters=100, tol=1e-8, max_corr_dist=1.0,
+        plane_normal="closest_point", device=device,
+    )  # fmt: skip
+    wp.synchronize_device()
+    test.assertLess(_rotation_error_deg(result.transform, np.linalg.inv(T)), 0.1)
+
+
+def test_rejects_unknown_plane_normal(test, device):
+    verts, faces = _icosphere(subdiv=2, scale=(1.2, 1.0, 0.9))
+    with test.assertRaises(ValueError):
+        reg.register_rigid(verts, (verts, faces), plane_normal="tangent", device=device)
+
+
 def _rot_about(rot_deg, axis):
     axis = np.asarray(axis, dtype=np.float64)
     axis /= np.linalg.norm(axis)
@@ -347,6 +368,10 @@ add_function_test(
     TestRegistration, "test_stochastic_subsampling_recovers", test_stochastic_subsampling_recovers, devices=devices
 )
 add_function_test(TestRegistration, "test_rejects_unknown_robust", test_rejects_unknown_robust, devices=devices)
+add_function_test(TestRegistration, "test_plane_normal_closest_point", test_plane_normal_closest_point, devices=devices)
+add_function_test(
+    TestRegistration, "test_rejects_unknown_plane_normal", test_rejects_unknown_plane_normal, devices=devices
+)
 add_function_test(TestRegistration, "test_batched_multi_init", test_batched_multi_init, devices=devices)
 add_function_test(TestRegistration, "test_batched_multi_source", test_batched_multi_source, devices=devices)
 add_function_test(TestRegistration, "test_batched_validates_inits", test_batched_validates_inits, devices=devices)

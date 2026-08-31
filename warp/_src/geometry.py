@@ -1531,6 +1531,22 @@ def _robust_weight(r: wp.float32, inv_scale_sq: wp.float32) -> wp.float32:
 
 
 @wp.func
+def _plane_normal(p: wp.vec3, q: wp.vec3, geometric: wp.vec3, normal_mode: wp.int32) -> wp.vec3:
+    # ``normal_mode == 0`` uses the geometric (surface/PCA) normal; ``1`` uses the
+    # closest-point direction ``normalize(p - q)`` instead. The latter is exactly
+    # the surface normal for a point interior to a triangle, but degrades near
+    # convergence (where ``p - q -> 0``), so it falls back to the geometric normal
+    # when the offset is tiny.
+    if normal_mode == 0:
+        return geometric
+    d = p - q
+    dl = wp.length(d)
+    if dl > 1.0e-7:
+        return d / dl
+    return geometric
+
+
+@wp.func
 def _source_index(tid: wp.int32, num_source: wp.int32, stochastic: wp.int32, seed: wp.int32) -> wp.int32:
     # With stochastic subsampling, thread ``tid`` draws a random source index
     # (sampling with replacement, reseeded each iteration); otherwise it maps to
@@ -1554,6 +1570,7 @@ def _icp_accumulate_mesh_kernel(
     inv_scale_sq: wp.float32,
     source_normals: wp.array(dtype=wp.vec3),
     symmetric: wp.int32,
+    normal_mode: wp.int32,
     a_upper: wp.array(dtype=wp.float32),
     g: wp.array(dtype=wp.float32),
     stats: wp.array(dtype=wp.float32),
@@ -1564,10 +1581,11 @@ def _icp_accumulate_mesh_kernel(
     cp = closest_on_mesh(mesh, p, max_dist)
     if cp.valid == 0:
         return
+    n_q = _plane_normal(p, cp.point, cp.normal, normal_mode)
     n_p = wp.vec3(0.0, 0.0, 0.0)
     if symmetric != 0:
         n_p = rot * source_normals[idx]
-    term = _correspondence_term(p, cp.point, cp.normal, n_p, symmetric)
+    term = _correspondence_term(p, cp.point, n_q, n_p, symmetric)
     r = -term.b
     w = _robust_weight(r, inv_scale_sq)
     _accumulate_normal_equations(term, w, a_upper, g)
@@ -1633,6 +1651,7 @@ def _icp_accumulate_points_kernel(
     inv_scale_sq: wp.float32,
     source_normals: wp.array(dtype=wp.vec3),
     symmetric: wp.int32,
+    normal_mode: wp.int32,
     a_upper: wp.array(dtype=wp.float32),
     g: wp.array(dtype=wp.float32),
     stats: wp.array(dtype=wp.float32),
@@ -1643,10 +1662,11 @@ def _icp_accumulate_points_kernel(
     cp = closest_on_points(grid, points, normals, p, max_dist)
     if cp.valid == 0:
         return
+    n_q = _plane_normal(p, cp.point, cp.normal, normal_mode)
     n_p = wp.vec3(0.0, 0.0, 0.0)
     if symmetric != 0:
         n_p = rot * source_normals[idx]
-    term = _correspondence_term(p, cp.point, cp.normal, n_p, symmetric)
+    term = _correspondence_term(p, cp.point, n_q, n_p, symmetric)
     r = -term.b
     w = _robust_weight(r, inv_scale_sq)
     _accumulate_normal_equations(term, w, a_upper, g)
@@ -1863,7 +1883,7 @@ class _PointTarget:
         self.search_radius = search_radius
 
 
-def _build_target_points(target, device, max_corr_dist) -> _PointTarget:
+def _build_target_points(target, device, max_corr_dist, estimate_normals=True) -> _PointTarget:
     if isinstance(target, (tuple, list)) and not isinstance(target[0], wp.array) and len(target) == 2:
         points, normals = target
         points = _as_vec3_array(points, device)
@@ -1887,14 +1907,17 @@ def _build_target_points(target, device, max_corr_dist) -> _PointTarget:
     grid.build(points, grid_radius)
 
     if normals is None:
+        # Kept length ``num_points`` so ``closest_on_points`` can index it even
+        # when the residual uses the closest-point direction (no PCA needed).
         normals = wp.zeros(num_points, dtype=wp.vec3, device=device)
-        wp.launch(
-            _estimate_normals_kernel,
-            dim=num_points,
-            inputs=[grid.id, points, float(normal_radius), 4],
-            outputs=[normals],
-            device=device,
-        )
+        if estimate_normals:
+            wp.launch(
+                _estimate_normals_kernel,
+                dim=num_points,
+                inputs=[grid.id, points, float(normal_radius), 4],
+                outputs=[normals],
+                device=device,
+            )
 
     return _PointTarget(grid, points, normals, search_radius)
 
@@ -1926,6 +1949,7 @@ def _estimate_normals(points, device):
 
 _ROBUST_KERNELS = {"welsch", "tukey"}
 _VARIANTS = {"point_to_plane", "symmetric"}
+_PLANE_NORMALS = {"surface", "closest_point"}
 
 
 def register_rigid(
@@ -1937,6 +1961,7 @@ def register_rigid(
     tol: float = 1e-6,
     max_corr_dist: float | None = None,
     variant: str = "point_to_plane",
+    plane_normal: str = "surface",
     source_normals=None,
     sample_count: int | None = None,
     robust: str | None = None,
@@ -1977,6 +2002,12 @@ def register_rigid(
             normals for a wider convergence basin. ``"symmetric"`` needs source
             normals: supply them via ``source_normals`` or they are estimated
             once by local PCA.
+        plane_normal: Which normal defines the point-to-plane residual:
+            ``"surface"`` (default) uses the target's geometric normal (the mesh
+            face normal or the point cloud's PCA normal); ``"closest_point"`` uses
+            the closest-point direction ``normalize(p - q)`` from the query
+            instead, needing no precomputed normals. Only used by the
+            ``"point_to_plane"`` variant.
         source_normals: Optional per-source-point unit normals (only used by the
             ``"symmetric"`` variant).
         sample_count: If set, use this many randomly drawn source points per
@@ -2000,6 +2031,8 @@ def register_rigid(
         raise ValueError(f"`robust` must be one of {sorted(_ROBUST_KERNELS)} or None, got {robust!r}.")
     if variant not in _VARIANTS:
         raise ValueError(f"`variant` must be one of {sorted(_VARIANTS)}, got {variant!r}.")
+    if plane_normal not in _PLANE_NORMALS:
+        raise ValueError(f"`plane_normal` must be one of {sorted(_PLANE_NORMALS)}, got {plane_normal!r}.")
     device = (
         wp.get_device(device)
         if device is not None
@@ -2015,10 +2048,14 @@ def register_rigid(
         mesh = _build_target_mesh(target, device)
         max_dist = float(max_corr_dist) if max_corr_dist is not None else 1.0e30
     else:
-        point_target = _build_target_points(target, device, max_corr_dist)
+        # The closest-point residual needs no target normals; skip PCA unless the
+        # surface-normal residual or the symmetric variant will use them.
+        need_normals = plane_normal == "surface" or variant == "symmetric"
+        point_target = _build_target_points(target, device, max_corr_dist, estimate_normals=need_normals)
         max_dist = point_target.search_radius
 
     symmetric = 1 if variant == "symmetric" else 0
+    normal_mode = 1 if plane_normal == "closest_point" else 0
     if symmetric:
         src_normals = (
             _as_vec3_array(source_normals, device) if source_normals is not None else _estimate_normals(src, device)
@@ -2071,6 +2108,7 @@ def register_rigid(
                     float(inv_scale_sq),
                     src_normals,
                     symmetric,
+                    normal_mode,
                 ],
                 outputs=[a_upper, g, stats],
                 device=device,
@@ -2093,6 +2131,7 @@ def register_rigid(
                     float(inv_scale_sq),
                     src_normals,
                     symmetric,
+                    normal_mode,
                 ],
                 outputs=[a_upper, g, stats],
                 device=device,
