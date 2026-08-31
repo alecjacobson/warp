@@ -1468,6 +1468,27 @@ def _accumulate_normal_equations(
             wp.atomic_add(a_upper, base + (k - i), weight * j[i] * j[k])
 
 
+@wp.func
+def _robust_weight(r: wp.float32, inv_scale_sq: wp.float32) -> wp.float32:
+    # Welsch (Leclerc) robust weight exp(-(r/s)^2), with ``inv_scale_sq = 1/s^2``.
+    # A non-positive ``inv_scale_sq`` disables robust weighting (weight 1), which
+    # recovers the plain least-squares point-to-plane step.
+    if inv_scale_sq <= 0.0:
+        return 1.0
+    return wp.exp(-r * r * inv_scale_sq)
+
+
+@wp.func
+def _source_index(tid: wp.int32, num_source: wp.int32, stochastic: wp.int32, seed: wp.int32) -> wp.int32:
+    # With stochastic subsampling, thread ``tid`` draws a random source index
+    # (sampling with replacement, reseeded each iteration); otherwise it maps to
+    # its own source point.
+    if stochastic == 0:
+        return tid
+    state = wp.rand_init(seed, tid)
+    return wp.randi(state, 0, num_source)
+
+
 @wp.kernel(enable_backward=False)
 def _icp_accumulate_mesh_kernel(
     source: wp.array(dtype=wp.vec3),
@@ -1475,18 +1496,24 @@ def _icp_accumulate_mesh_kernel(
     trans: wp.vec3,
     mesh: wp.uint64,
     max_dist: wp.float32,
+    num_source: wp.int32,
+    stochastic: wp.int32,
+    seed: wp.int32,
+    inv_scale_sq: wp.float32,
     a_upper: wp.array(dtype=wp.float32),
     g: wp.array(dtype=wp.float32),
     stats: wp.array(dtype=wp.float32),
 ):
     tid = wp.tid()
-    p = rot * source[tid] + trans
+    idx = _source_index(tid, num_source, stochastic, seed)
+    p = rot * source[idx] + trans
     cp = closest_on_mesh(mesh, p, max_dist)
     if cp.valid == 0:
         return
     term = point_plane_term(p, cp.point, cp.normal)
-    _accumulate_normal_equations(term, 1.0, a_upper, g)
     r = wp.dot(p - cp.point, cp.normal)
+    w = _robust_weight(r, inv_scale_sq)
+    _accumulate_normal_equations(term, w, a_upper, g)
     wp.atomic_add(stats, 0, r * r)
     wp.atomic_add(stats, 1, 1.0)
 
@@ -1543,18 +1570,24 @@ def _icp_accumulate_points_kernel(
     points: wp.array(dtype=wp.vec3),
     normals: wp.array(dtype=wp.vec3),
     max_dist: wp.float32,
+    num_source: wp.int32,
+    stochastic: wp.int32,
+    seed: wp.int32,
+    inv_scale_sq: wp.float32,
     a_upper: wp.array(dtype=wp.float32),
     g: wp.array(dtype=wp.float32),
     stats: wp.array(dtype=wp.float32),
 ):
     tid = wp.tid()
-    p = rot * source[tid] + trans
+    idx = _source_index(tid, num_source, stochastic, seed)
+    p = rot * source[idx] + trans
     cp = closest_on_points(grid, points, normals, p, max_dist)
     if cp.valid == 0:
         return
     term = point_plane_term(p, cp.point, cp.normal)
-    _accumulate_normal_equations(term, 1.0, a_upper, g)
     r = wp.dot(p - cp.point, cp.normal)
+    w = _robust_weight(r, inv_scale_sq)
+    _accumulate_normal_equations(term, w, a_upper, g)
     wp.atomic_add(stats, 0, r * r)
     wp.atomic_add(stats, 1, 1.0)
 
@@ -1715,6 +1748,9 @@ def _build_target_points(target, device, max_corr_dist) -> _PointTarget:
     return _PointTarget(grid, points, normals, search_radius)
 
 
+_ROBUST_KERNELS = {"welsch", "tukey"}
+
+
 def register_rigid(
     source,
     target,
@@ -1723,7 +1759,11 @@ def register_rigid(
     max_iters: int = 50,
     tol: float = 1e-6,
     max_corr_dist: float | None = None,
+    sample_count: int | None = None,
+    robust: str | None = None,
+    robust_k: float = 3.0,
     damping: float = 1e-9,
+    seed: int = 0,
     device: DeviceLike | None = None,
 ) -> RegistrationResult:
     """Rigidly align a source point set to a target surface with point-to-plane ICP.
@@ -1732,6 +1772,12 @@ def register_rigid(
     closest point (and normal) on the *fixed* target, and takes a Gauss-Newton
     step of the linearized point-to-plane objective. Because the motion is rigid,
     the target's BVH is built once and never rebuilt.
+
+    Optionally, following the practical insight of Bouaziz et al., "Sparse
+    Iterative Closest Point" (2013), each iteration can use only a random subset
+    of the source points (``sample_count``) and down-weight outlier
+    correspondences with a robust kernel (``robust``), keeping the cheap 6x6
+    solve while gaining speed and outlier tolerance.
 
     Args:
         source: Source points, a :class:`warp.array` of :class:`warp.vec3` or an
@@ -1747,12 +1793,25 @@ def register_rigid(
             it defaults to no bound; for point-cloud targets it also sets the
             nearest-neighbor search radius and defaults to a few times the point
             spacing.
+        sample_count: If set, use this many randomly drawn source points per
+            iteration (sampling with replacement, reseeded each iteration)
+            instead of all of them. Defaults to using every source point.
+        robust: Robust weighting kernel for correspondences: ``"welsch"`` (or its
+            alias ``"tukey"``) down-weights residuals by ``exp(-(r/s)^2)``, with
+            the scale ``s`` adapted from the running residual RMS. ``None``
+            (default) uses plain least squares.
+        robust_k: Multiplier setting the robust scale ``s = robust_k * rmse``;
+            larger keeps more correspondences at full weight. Only used when
+            ``robust`` is set.
         damping: Levenberg-style diagonal damping added to the 6x6 system.
+        seed: Base random seed for stochastic subsampling.
         device: Device on which to run. Defaults to the device of ``source``.
 
     Returns:
         A :class:`RegistrationResult`.
     """
+    if robust is not None and robust not in _ROBUST_KERNELS:
+        raise ValueError(f"`robust` must be one of {sorted(_ROBUST_KERNELS)} or None, got {robust!r}.")
     device = (
         wp.get_device(device)
         if device is not None
@@ -1775,6 +1834,9 @@ def register_rigid(
     rot = init[:3, :3].copy()
     trans = init[:3, 3].copy()
 
+    stochastic = 1 if (sample_count is not None and sample_count > 0) else 0
+    num_threads = int(sample_count) if stochastic else n
+
     a_upper = wp.zeros(21, dtype=wp.float32, device=device)
     g = wp.zeros(6, dtype=wp.float32, device=device)
     stats = wp.zeros(2, dtype=wp.float32, device=device)
@@ -1789,18 +1851,26 @@ def register_rigid(
         stats.zero_()
         rot_wp = wp.mat33(rot.astype(np.float32))
         trans_wp = wp.vec3(*trans.astype(np.float32))
+        # Adapt the robust scale from the previous iterate's residual RMS; the
+        # first iteration (rmse == inf) runs unweighted. inv_scale_sq <= 0
+        # disables robust weighting in-kernel.
+        if robust is not None and np.isfinite(rmse) and rmse > 0.0:
+            inv_scale_sq = 1.0 / (robust_k * rmse) ** 2
+        else:
+            inv_scale_sq = 0.0
+        iter_seed = int(seed) + step
         if is_mesh:
             wp.launch(
                 _icp_accumulate_mesh_kernel,
-                dim=n,
-                inputs=[src, rot_wp, trans_wp, mesh.id, max_dist],
+                dim=num_threads,
+                inputs=[src, rot_wp, trans_wp, mesh.id, max_dist, n, stochastic, iter_seed, float(inv_scale_sq)],
                 outputs=[a_upper, g, stats],
                 device=device,
             )
         else:
             wp.launch(
                 _icp_accumulate_points_kernel,
-                dim=n,
+                dim=num_threads,
                 inputs=[
                     src,
                     rot_wp,
@@ -1809,6 +1879,10 @@ def register_rigid(
                     point_target.points,
                     point_target.normals,
                     max_dist,
+                    n,
+                    stochastic,
+                    iter_seed,
+                    float(inv_scale_sq),
                 ],
                 outputs=[a_upper, g, stats],
                 device=device,

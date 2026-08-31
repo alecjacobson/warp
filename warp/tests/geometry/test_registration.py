@@ -147,6 +147,56 @@ def test_point_cloud_with_normals(test, device):
     np.testing.assert_allclose(result.transform[:3, 3], np.linalg.inv(T)[:3, 3], atol=1e-3)
 
 
+def test_robust_rejects_outliers(test, device):
+    # Replace a fraction of source points with gross outliers. Plain least
+    # squares is dragged off; the Welsch robust weight recovers a much better fit.
+    verts, faces = _icosphere(subdiv=3, scale=(1.5, 1.0, 0.7))
+    T = _rigid_transform(10.0, np.array([0.05, -0.03, 0.04]), seed=3)
+    Tinv = np.linalg.inv(T)
+    source = (verts @ T[:3, :3].T + T[:3, 3]).astype(np.float32)
+
+    rng = np.random.default_rng(0)
+    num_outliers = int(0.2 * len(source))
+    outlier_idx = rng.choice(len(source), num_outliers, replace=False)
+    source[outlier_idx] = (rng.standard_normal((num_outliers, 3)) * 0.8).astype(np.float32)
+
+    plain = reg.register_rigid(source, (verts, faces), max_iters=80, tol=1e-7, device=device)
+    robust = reg.register_rigid(
+        source, (verts, faces), max_iters=80, tol=1e-7, robust="welsch", robust_k=3.0, device=device
+    )
+    wp.synchronize_device()
+
+    plain_rot = _rotation_error_deg(plain.transform, Tinv)
+    robust_rot = _rotation_error_deg(robust.transform, Tinv)
+    plain_trans = np.linalg.norm(plain.transform[:3, 3] - Tinv[:3, 3])
+    robust_trans = np.linalg.norm(robust.transform[:3, 3] - Tinv[:3, 3])
+
+    test.assertLess(robust_rot, plain_rot)
+    test.assertLess(robust_trans, plain_trans)
+    test.assertLess(robust_rot, 2.0)
+
+
+def test_stochastic_subsampling_recovers(test, device):
+    # Using a random subset of source points per iteration still recovers the
+    # known transform (the source is a rigid copy, so subsets stay consistent).
+    verts, faces = _icosphere(subdiv=3, scale=(1.5, 1.0, 0.7))
+    T = _rigid_transform(10.0, np.array([0.05, -0.03, 0.04]), seed=3)
+    source = (verts @ T[:3, :3].T + T[:3, 3]).astype(np.float32)
+    result = reg.register_rigid(
+        source, (verts, faces), max_iters=120, tol=1e-6, sample_count=200, seed=1, device=device
+    )
+    wp.synchronize_device()
+
+    test.assertLess(_rotation_error_deg(result.transform, np.linalg.inv(T)), 0.5)
+    np.testing.assert_allclose(result.transform[:3, 3], np.linalg.inv(T)[:3, 3], atol=2e-2)
+
+
+def test_rejects_unknown_robust(test, device):
+    verts, faces = _icosphere(subdiv=2, scale=(1.2, 1.0, 0.9))
+    with test.assertRaises(ValueError):
+        reg.register_rigid(verts, (verts, faces), robust="huber", device=device)
+
+
 def test_identity_when_aligned(test, device):
     # Already-aligned source: ICP returns ~identity in one step.
     verts, faces = _icosphere(subdiv=3, scale=(1.4, 1.0, 0.8))
@@ -197,6 +247,11 @@ add_function_test(
     devices=devices,
 )
 add_function_test(TestRegistration, "test_point_cloud_with_normals", test_point_cloud_with_normals, devices=devices)
+add_function_test(TestRegistration, "test_robust_rejects_outliers", test_robust_rejects_outliers, devices=devices)
+add_function_test(
+    TestRegistration, "test_stochastic_subsampling_recovers", test_stochastic_subsampling_recovers, devices=devices
+)
+add_function_test(TestRegistration, "test_rejects_unknown_robust", test_rejects_unknown_robust, devices=devices)
 add_function_test(TestRegistration, "test_identity_when_aligned", test_identity_when_aligned, devices=devices)
 add_function_test(TestRegistration, "test_deterministic", test_deterministic, devices=devices)
 add_function_test(TestRegistration, "test_reuses_target_mesh", test_reuses_target_mesh, devices=devices)
