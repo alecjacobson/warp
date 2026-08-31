@@ -5,30 +5,29 @@ Standalone scripts (not part of the test suite) for measuring
 
 ## Rigid registration (ICP) vs. external baselines
 
-`icp_vs_baselines.py` registers a point cloud onto a known-transformed copy of
-itself and compares `warp.geometry.register_rigid` (point-to-plane and
-symmetric) against optional, import-guarded baselines — Open3D's tensor ICP,
-PyTorch3D, and fast_gicp — on accuracy (rotation/translation error vs. ground
-truth) and wall-clock (full solve, including each library's internal spatial
-structure). The harness records which baselines are installed and skips the rest.
+`icp_baselines/` compares `warp.geometry.register_rigid` against **Open3D, PCL,
+fast_gicp, and PyTorch3D** on one fixed problem, scoring each against the known
+transform. Because the baselines live in mutually-incompatible environments, the
+harness writes the problem once and each library registers the identical data in
+its own env; see `icp_baselines/README.md` for setup and the full table with
+caveats.
 
-```sh
-uv run --with open3d --with scipy tools/benchmarks/icp_vs_baselines.py
-```
+Headline (10,242-point ellipsoid, 15° + noise; Warp on an NVIDIA L40, the rest on
+CPU — so timing reflects Warp's GPU advantage as much as the algorithm):
 
-Example (10,242-point ellipsoid, 15° + translation, 2e-3 noise, NVIDIA L40;
-Open3D from the CPU-only PyPI wheel, best of 3):
+| method                    | objective      | rot err (deg) | time (ms) |
+| ------------------------- | -------------- | ------------- | --------- |
+| warp_point_to_plane       | point-to-plane | 0.00–0.02     | 30–41     |
+| warp_symmetric            | symmetric      | 0.000         | 43        |
+| open3d_point_to_plane     | point-to-plane | 0.007         | 202       |
+| pcl_gicp                  | plane-to-plane | 0.008         | 121       |
+| fast_gicp (FastGICP)      | plane-to-plane | 0.015         | 25        |
+| *_point_to_point (all)    | point-to-point | ~2.02         | 306–14828 |
 
-| method                | rot err (deg) | trans err | time (ms) |
-| --------------------- | ------------- | --------- | --------- |
-| warp_point_to_plane   | 0.008         | 7e-5      | 48        |
-| warp_symmetric        | 0.003         | 1e-4      | 48        |
-| open3d_point_to_plane | 0.007         | 7e-5      | 201       |
-| open3d_point_to_point | 2.024         | 1.8e-3    | 1901      |
-
-Warp matches Open3D's point-to-plane accuracy at ~4x the throughput here, and the
-symmetric variant is the most accurate. (A CUDA Open3D build would narrow the gap;
-the numbers above use the CPU wheel, which the script reports.)
+Compare like-for-like (point-to-plane vs. point-to-plane; GICP as a strong
+plane-to-plane reference). Warp's point-to-plane and symmetric variants are the
+most accurate and the fastest of that group here, and fast_gicp's `FastGICP` is a
+strong CPU baseline; the point-to-point methods land ~2° off on this noisy data.
 
 ## Rigid registration ablation — do the options help?
 
