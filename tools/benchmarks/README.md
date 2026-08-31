@@ -53,14 +53,17 @@ questions for the two target types:
 | cloud  | surface (PCA)   | 0.003°        | 70°               |
 | cloud  | closest_point   | **2.13° ✗**   | **0° ✗**          |
 
-For a **mesh**, the closest-point direction `normalize(p − q)` *is* the face
-normal for any query interior to a triangle, so the two are identical — computed
-normals buy nothing, and `"closest_point"` is a fine no-normal shortcut. For a
-**point cloud**, the closest-point direction points at a discrete sample rather
-than along the surface, so it has essentially no convergence basin and stalls;
-the PCA normals are what make point-to-plane work at all. **Conclusion: keep
-`plane_normal="surface"` (the default). Computed normals are essential for
-point-cloud targets and redundant (but harmless) for meshes.**
+For a **mesh**, the two track closely on this smooth, finely-tessellated
+ellipsoid: `normalize(p − q)` coincides with the face normal for a query
+interior to a triangle, and differs only at edges and vertices, which are rare
+here — so the numbers match to four digits. On a coarse or sharp-edged mesh,
+where more closest points land on edges and vertices, expect them to diverge, so
+this equivalence should not be assumed in general. For a **point cloud** the two
+differ sharply: the closest-point direction points at a discrete sample rather
+than along the surface, and in the table above it has essentially no convergence
+basin, while the PCA normals recover the transform. **On this data, keep
+`plane_normal="surface"` (the default): it is never worse, and for point-cloud
+targets the computed normals are what make point-to-plane converge.**
 
 **2. Variants.** The symmetric objective (Rusinkiewicz 2019) widens the basin
 modestly on this smooth shape — 75° vs 70° for point-to-plane — at ~2× the
@@ -82,6 +85,17 @@ misses (0.02 → 1.1° ✗); past the point where all real overlap is captured,
 accuracy plateaus and only runtime grows (0.05 → 39 ms, 0.8 → 211 ms). Set it a
 few times the point spacing / expected overlap gap — large enough to match, no
 larger.
+
+**GPU residency / host syncs.** The whole iteration — correspondence search,
+6x6 accumulation, the solve, and the transform update — runs on the device, so
+nothing is read back between iterations. With `tol=0` (fixed iterations) the
+loop performs no host synchronization at all and is CUDA-graph capturable; with
+`tol>0`, early stopping costs a single scalar readback per iteration. Moving the
+solve on-device (from an earlier host-side `numpy.linalg.solve`) removed a
+per-iteration round-trip: on an L40, small problems dropped from ~3.0 to
+~0.44 ms/iter, and per-iteration time now scales with GPU work instead of being
+dominated by the host round-trip. All ICP kernels are declared
+`enable_backward=False` (no adjoint kernels are generated).
 
 **Best settings by scenario:**
 

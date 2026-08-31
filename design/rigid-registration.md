@@ -91,9 +91,18 @@ so the 1x6 Jacobian row and scalar target are
     J_i = [ (p_i x n_i)^T , n_i^T ] ,   b_i = -(p_i - q_i).n_i
 
 Accumulate the 6x6 normal equations `A = sum w_i J_i^T J_i`, `g = sum w_i J_i b_i`
-(with robust weight `w_i`), solve `A x = g` (6x6 SPD, Cholesky), split
-`x = [a; t]`, form `R_delta = expm([a]x)` (or `(I+[a]x)` re-orthonormalized), and
-compose `T <- (R_delta, t_delta) . T`. Iterate to convergence.
+(with robust weight `w_i`), solve `A x = g`, split `x = [a; t]`, form
+`R_delta = expm([a]x)`, and compose `T <- (R_delta, t_delta) . T`. Iterate to
+convergence.
+
+The whole iteration runs on the device: the accumulation kernel scatters into
+the packed 6x6 system, then a one-thread-per-problem kernel solves it (a 3x3
+Schur complement over the rotation/translation blocks, since Warp inverts up to
+4x4 directly), applies Rodrigues, and composes the update into the transform
+state array in place. Because nothing is read back between iterations, the loop
+has no per-iteration host synchronization; with `tol=0` (fixed iterations) it is
+CUDA-graph capturable. The robust scale for the next iteration is likewise
+computed on-device from the current residual RMS.
 
 **Symmetric variant (R8):** same 6x6 machinery, but `n_i = n_{p,i} + n_{q,i}`
 (source + target normals), the rotation term uses `(p~_i + q~_i) x n_i` on
@@ -206,8 +215,6 @@ separate module.
 
 ### Follow-up ideas (not yet done)
 
-- Move the per-iteration 6x6 solves on-device for very large batches (currently
-  host-side, which is negligible for the intended multi-start batch sizes).
 - Multi-target batching and batched symmetric variant.
 - Generalized ICP (Segal 2009) plane-to-plane residual, reusing the per-point
   normals already estimated for point-cloud targets.

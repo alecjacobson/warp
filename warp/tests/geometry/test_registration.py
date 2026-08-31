@@ -348,7 +348,71 @@ def test_reuses_target_mesh(test, device):
     test.assertLess(_rotation_error_deg(result.transform, np.linalg.inv(T)), 0.05)
 
 
+def test_graph_capture_loop(test, device):
+    # The ICP iteration (accumulate + on-device solve) touches no host memory, so
+    # a fixed-iteration loop can be captured into a CUDA graph and replayed. This
+    # verifies there is no hidden per-iteration host sync.
+    from warp._src.geometry import _icp_accumulate_mesh_kernel, _icp_solve_kernel  # noqa: PLC0415
+
+    verts, faces = _icosphere(subdiv=3, scale=(1.5, 1.0, 0.7))
+    T = _rigid_transform(12.0, np.array([0.05, -0.03, 0.04]), seed=3)
+    source = (verts @ T[:3, :3].T + T[:3, 3]).astype(np.float32)
+
+    mesh = wp.Mesh(
+        points=wp.array(verts, dtype=wp.vec3, device=device),
+        indices=wp.array(faces, dtype=wp.int32, device=device),
+    )
+    src = wp.array(source, dtype=wp.vec3, device=device)
+    n = src.shape[0]
+    rots = wp.array(np.eye(3)[None].astype(np.float32), dtype=wp.mat33, device=device)
+    transs = wp.zeros(1, dtype=wp.vec3, device=device)
+    inv_scale = wp.zeros(1, dtype=wp.float32, device=device)
+    update_sq = wp.zeros(1, dtype=wp.float32, device=device)
+    src_normals = wp.zeros(1, dtype=wp.vec3, device=device)
+    a_upper = wp.zeros(21, dtype=wp.float32, device=device)
+    g = wp.zeros(6, dtype=wp.float32, device=device)
+    stats = wp.zeros(2, dtype=wp.float32, device=device)
+
+    def one_iter():
+        a_upper.zero_()
+        g.zero_()
+        stats.zero_()
+        wp.launch(
+            _icp_accumulate_mesh_kernel,
+            dim=n,
+            inputs=[src, rots, transs, mesh.id, 1.0e30, n, 0, 0, inv_scale, src_normals, 0, 0],
+            outputs=[a_upper, g, stats],
+            device=device,
+        )
+        wp.launch(
+            _icp_solve_kernel,
+            dim=1,
+            inputs=[a_upper, g, stats, 1.0e-9, 3.0, 0],
+            outputs=[rots, transs, inv_scale, update_sq],
+            device=device,
+        )
+
+    # Warm up (compile/load the kernels) outside the capture, then reset state.
+    one_iter()
+    wp.synchronize_device(device)
+    rots.assign(np.eye(3)[None].astype(np.float32))
+    transs.zero_()
+    inv_scale.zero_()
+
+    with wp.ScopedCapture(device) as capture:
+        for _ in range(40):
+            one_iter()
+    wp.capture_launch(capture.graph)
+    wp.synchronize_device(device)
+
+    transform = np.eye(4)
+    transform[:3, :3] = rots.numpy()[0]
+    transform[:3, 3] = transs.numpy()[0]
+    test.assertLess(_rotation_error_deg(transform, np.linalg.inv(T)), 0.1)
+
+
 devices = get_test_devices()
+cuda_devices = get_cuda_test_devices()
 
 
 class TestRegistration(unittest.TestCase):
@@ -383,6 +447,7 @@ add_function_test(TestRegistration, "test_rejects_unknown_variant", test_rejects
 add_function_test(TestRegistration, "test_identity_when_aligned", test_identity_when_aligned, devices=devices)
 add_function_test(TestRegistration, "test_deterministic", test_deterministic, devices=devices)
 add_function_test(TestRegistration, "test_reuses_target_mesh", test_reuses_target_mesh, devices=devices)
+add_function_test(TestRegistration, "test_graph_capture_loop", test_graph_capture_loop, devices=cuda_devices)
 
 
 if __name__ == "__main__":

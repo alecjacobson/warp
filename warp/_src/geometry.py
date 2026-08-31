@@ -1560,14 +1560,14 @@ def _source_index(tid: wp.int32, num_source: wp.int32, stochastic: wp.int32, see
 @wp.kernel(enable_backward=False)
 def _icp_accumulate_mesh_kernel(
     source: wp.array(dtype=wp.vec3),
-    rot: wp.mat33,
-    trans: wp.vec3,
+    rots: wp.array(dtype=wp.mat33),
+    transs: wp.array(dtype=wp.vec3),
     mesh: wp.uint64,
     max_dist: wp.float32,
     num_source: wp.int32,
     stochastic: wp.int32,
     seed: wp.int32,
-    inv_scale_sq: wp.float32,
+    inv_scale: wp.array(dtype=wp.float32),
     source_normals: wp.array(dtype=wp.vec3),
     symmetric: wp.int32,
     normal_mode: wp.int32,
@@ -1575,7 +1575,11 @@ def _icp_accumulate_mesh_kernel(
     g: wp.array(dtype=wp.float32),
     stats: wp.array(dtype=wp.float32),
 ):
+    # Single problem: the transform and robust scale live in length-1 GPU arrays
+    # so the driver never reads them back between iterations.
     tid = wp.tid()
+    rot = rots[0]
+    trans = transs[0]
     idx = _source_index(tid, num_source, stochastic, seed)
     p = rot * source[idx] + trans
     cp = closest_on_mesh(mesh, p, max_dist)
@@ -1587,7 +1591,7 @@ def _icp_accumulate_mesh_kernel(
         n_p = rot * source_normals[idx]
     term = _correspondence_term(p, cp.point, n_q, n_p, symmetric)
     r = -term.b
-    w = _robust_weight(r, inv_scale_sq)
+    w = _robust_weight(r, inv_scale[0])
     _accumulate_normal_equations(term, w, a_upper, g)
     wp.atomic_add(stats, 0, r * r)
     wp.atomic_add(stats, 1, 1.0)
@@ -1639,8 +1643,8 @@ def closest_on_points(
 @wp.kernel(enable_backward=False)
 def _icp_accumulate_points_kernel(
     source: wp.array(dtype=wp.vec3),
-    rot: wp.mat33,
-    trans: wp.vec3,
+    rots: wp.array(dtype=wp.mat33),
+    transs: wp.array(dtype=wp.vec3),
     grid: wp.uint64,
     points: wp.array(dtype=wp.vec3),
     normals: wp.array(dtype=wp.vec3),
@@ -1648,7 +1652,7 @@ def _icp_accumulate_points_kernel(
     num_source: wp.int32,
     stochastic: wp.int32,
     seed: wp.int32,
-    inv_scale_sq: wp.float32,
+    inv_scale: wp.array(dtype=wp.float32),
     source_normals: wp.array(dtype=wp.vec3),
     symmetric: wp.int32,
     normal_mode: wp.int32,
@@ -1657,6 +1661,8 @@ def _icp_accumulate_points_kernel(
     stats: wp.array(dtype=wp.float32),
 ):
     tid = wp.tid()
+    rot = rots[0]
+    trans = transs[0]
     idx = _source_index(tid, num_source, stochastic, seed)
     p = rot * source[idx] + trans
     cp = closest_on_points(grid, points, normals, p, max_dist)
@@ -1668,7 +1674,7 @@ def _icp_accumulate_points_kernel(
         n_p = rot * source_normals[idx]
     term = _correspondence_term(p, cp.point, n_q, n_p, symmetric)
     r = -term.b
-    w = _robust_weight(r, inv_scale_sq)
+    w = _robust_weight(r, inv_scale[0])
     _accumulate_normal_equations(term, w, a_upper, g)
     wp.atomic_add(stats, 0, r * r)
     wp.atomic_add(stats, 1, 1.0)
@@ -1784,27 +1790,106 @@ def _estimate_normals_kernel(
 
 
 ##########################################################################
-## Host-side driver
+## On-device Gauss-Newton solve and transform update
+##
+## Keeping the 6x6 solve and the transform update on the GPU lets the whole ICP
+## iteration run without a per-iteration host readback, so the loop has no host
+## syncs (when early stopping is disabled) and is CUDA-graph capturable.
 ##########################################################################
 
-_UPPER_INDEX = np.array(
-    [[min(i, k) * 6 - (min(i, k) * (min(i, k) - 1)) // 2 + abs(i - k) for k in range(6)] for i in range(6)]
-)
+
+@wp.func
+def _packed_sym_entry(a_upper: wp.array(dtype=wp.float32), off: wp.int32, r: wp.int32, c: wp.int32) -> wp.float32:
+    # Read entry (r, c) of the symmetric 6x6 from its packed upper triangle
+    # (21 entries) starting at ``off`` -- the layout written by
+    # ``_accumulate_normal_equations_at``.
+    i = wp.min(r, c)
+    k = wp.max(r, c)
+    idx = i * 6 - (i * (i - 1)) / 2 + (k - i)
+    return a_upper[off + idx]
 
 
-def _sym6(a_upper: np.ndarray) -> np.ndarray:
-    """Expand 21 packed upper-triangle entries into a symmetric 6x6 matrix."""
-    return a_upper[_UPPER_INDEX]
+@wp.func
+def _solve_normal_equations(
+    a_upper: wp.array(dtype=wp.float32),
+    g: wp.array(dtype=wp.float32),
+    off_a: wp.int32,
+    off_g: wp.int32,
+    damping: wp.float32,
+) -> wp.spatial_vector:
+    # Solve the damped 6x6 system ``(A + damping I) x = g`` for the 6-DOF increment
+    # ``x = [rotation; translation]`` using a 3x3 Schur complement over the
+    # rotation/translation blocks (Warp only inverts up to 4x4 directly).
+    a_rr = wp.mat33()
+    a_rt = wp.mat33()
+    a_tt = wp.mat33()
+    for i in range(3):
+        for j in range(3):
+            a_rr[i, j] = _packed_sym_entry(a_upper, off_a, i, j)
+            a_rt[i, j] = _packed_sym_entry(a_upper, off_a, i, 3 + j)
+            a_tt[i, j] = _packed_sym_entry(a_upper, off_a, 3 + i, 3 + j)
+    damp = wp.mat33(damping, 0.0, 0.0, 0.0, damping, 0.0, 0.0, 0.0, damping)
+    a_rr = a_rr + damp
+    a_tt = a_tt + damp
+    g_r = wp.vec3(g[off_g + 0], g[off_g + 1], g[off_g + 2])
+    g_t = wp.vec3(g[off_g + 3], g[off_g + 4], g[off_g + 5])
+    tt_inv = wp.inverse(a_tt)
+    rt_tt_inv = a_rt * tt_inv
+    schur = a_rr - rt_tt_inv * wp.transpose(a_rt)
+    schur_inv = wp.inverse(schur)
+    x_r = schur_inv * (g_r - rt_tt_inv * g_t)
+    x_t = tt_inv * (g_t - wp.transpose(a_rt) * x_r)
+    return wp.spatial_vector(x_r[0], x_r[1], x_r[2], x_t[0], x_t[1], x_t[2])
 
 
-def _so3_exp(a: np.ndarray) -> np.ndarray:
-    """Rotation matrix from a rotation vector via Rodrigues' formula."""
-    theta = float(np.linalg.norm(a))
-    if theta < 1e-12:
-        return np.eye(3)
+@wp.func
+def _so3_exp_device(a: wp.vec3) -> wp.mat33:
+    # Rotation matrix from a rotation vector via Rodrigues' formula.
+    theta = wp.length(a)
+    identity = wp.mat33(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+    if theta < 1.0e-12:
+        return identity
     k = a / theta
-    kx = np.array([[0.0, -k[2], k[1]], [k[2], 0.0, -k[0]], [-k[1], k[0], 0.0]])
-    return np.eye(3) + np.sin(theta) * kx + (1.0 - np.cos(theta)) * (kx @ kx)
+    kx = wp.mat33(0.0, -k[2], k[1], k[2], 0.0, -k[0], -k[1], k[0], 0.0)
+    return identity + wp.sin(theta) * kx + (1.0 - wp.cos(theta)) * (kx * kx)
+
+
+@wp.kernel(enable_backward=False)
+def _icp_solve_kernel(
+    a_upper: wp.array(dtype=wp.float32),
+    g: wp.array(dtype=wp.float32),
+    stats: wp.array(dtype=wp.float32),
+    damping: wp.float32,
+    robust_k: wp.float32,
+    robust_enabled: wp.int32,
+    rots: wp.array(dtype=wp.mat33),
+    transs: wp.array(dtype=wp.vec3),
+    inv_scale: wp.array(dtype=wp.float32),
+    update_sq: wp.array(dtype=wp.float32),
+):
+    # One thread per problem: solve its 6x6 system, compose the increment onto its
+    # transform in place, record its squared update norm, and set the robust scale
+    # for the next iteration from this iterate's residual RMS -- all on the GPU.
+    b = wp.tid()
+    x = _solve_normal_equations(a_upper, g, b * 21, b * 6, damping)
+    d_rot = _so3_exp_device(wp.vec3(x[0], x[1], x[2]))
+    rots[b] = d_rot * rots[b]
+    transs[b] = d_rot * transs[b] + wp.vec3(x[3], x[4], x[5])
+    update_sq[b] = wp.dot(x, x)
+
+    inv_scale[b] = 0.0
+    if robust_enabled != 0:
+        count = stats[b * 2 + 1]
+        if count > 0.0:
+            rmse = wp.sqrt(stats[b * 2 + 0] / count)
+            if rmse > 0.0:
+                s = robust_k * rmse
+                inv_scale[b] = 1.0 / (s * s)
+
+
+##########################################################################
+## Host-side driver
+##########################################################################
 
 
 class RegistrationResult:
@@ -1992,7 +2077,12 @@ def register_rigid(
             pair.
         init: Optional ``(4, 4)`` initial transform (defaults to identity).
         max_iters: Maximum number of iterations.
-        tol: Convergence tolerance on the 6-DOF update norm.
+        tol: Convergence tolerance on the 6-DOF update norm; iteration stops early
+            once the update is smaller than this. The 6x6 solve and transform
+            update run on the device, so early stopping costs only a single scalar
+            readback per iteration. Set ``tol=0`` (or negative) to disable early
+            stopping and run exactly ``max_iters`` iterations, in which case the
+            loop performs no host synchronization and is CUDA-graph capturable.
         max_corr_dist: Reject correspondences farther than this. For mesh targets
             it defaults to no bound; for point-cloud targets it also sets the
             nearest-neighbor search radius and defaults to a few times the point
@@ -2064,93 +2154,66 @@ def register_rigid(
         src_normals = wp.zeros(1, dtype=wp.vec3, device=device)
 
     init = np.eye(4) if init is None else np.asarray(init, dtype=np.float64).reshape(4, 4)
-    rot = init[:3, :3].copy()
-    trans = init[:3, 3].copy()
 
     stochastic = 1 if (sample_count is not None and sample_count > 0) else 0
     num_threads = int(sample_count) if stochastic else n
+    robust_enabled = 1 if robust is not None else 0
 
+    # Transform state and accumulators all live on the device; the iteration reads
+    # nothing back, so with ``tol <= 0`` (fixed iterations) the loop has no host
+    # syncs and is CUDA-graph capturable.
+    rots = wp.array(init[:3, :3][None].astype(np.float32), dtype=wp.mat33, device=device)
+    transs = wp.array(init[:3, 3][None].astype(np.float32), dtype=wp.vec3, device=device)
+    inv_scale = wp.zeros(1, dtype=wp.float32, device=device)
+    update_sq = wp.zeros(1, dtype=wp.float32, device=device)
     a_upper = wp.zeros(21, dtype=wp.float32, device=device)
     g = wp.zeros(6, dtype=wp.float32, device=device)
     stats = wp.zeros(2, dtype=wp.float32, device=device)
 
-    rmse = float("inf")
+    early_stop = tol > 0.0
     converged = False
-    iterations = 0
+    iterations = max_iters
     for step in range(max_iters):
-        iterations = step + 1
         a_upper.zero_()
         g.zero_()
         stats.zero_()
-        rot_wp = wp.mat33(rot.astype(np.float32))
-        trans_wp = wp.vec3(*trans.astype(np.float32))
-        # Adapt the robust scale from the previous iterate's residual RMS; the
-        # first iteration (rmse == inf) runs unweighted. inv_scale_sq <= 0
-        # disables robust weighting in-kernel.
-        if robust is not None and np.isfinite(rmse) and rmse > 0.0:
-            inv_scale_sq = 1.0 / (robust_k * rmse) ** 2
-        else:
-            inv_scale_sq = 0.0
         iter_seed = int(seed) + step
         if is_mesh:
-            wp.launch(
-                _icp_accumulate_mesh_kernel,
-                dim=num_threads,
-                inputs=[
-                    src,
-                    rot_wp,
-                    trans_wp,
-                    mesh.id,
-                    max_dist,
-                    n,
-                    stochastic,
-                    iter_seed,
-                    float(inv_scale_sq),
-                    src_normals,
-                    symmetric,
-                    normal_mode,
-                ],
-                outputs=[a_upper, g, stats],
-                device=device,
-            )
+            accum_inputs = [src, rots, transs, mesh.id, max_dist]
         else:
-            wp.launch(
-                _icp_accumulate_points_kernel,
-                dim=num_threads,
-                inputs=[
-                    src,
-                    rot_wp,
-                    trans_wp,
-                    point_target.grid.id,
-                    point_target.points,
-                    point_target.normals,
-                    max_dist,
-                    n,
-                    stochastic,
-                    iter_seed,
-                    float(inv_scale_sq),
-                    src_normals,
-                    symmetric,
-                    normal_mode,
-                ],
-                outputs=[a_upper, g, stats],
-                device=device,
-            )
-        a_np = a_upper.numpy().astype(np.float64)
-        g_np = g.numpy().astype(np.float64)
-        st = stats.numpy()
-        count = float(st[1])
-        rmse = float(np.sqrt(st[0] / count)) if count > 0 else float("inf")
-
-        system = _sym6(a_np) + damping * np.eye(6)
-        x = np.linalg.solve(system, g_np)
-        d_rot = _so3_exp(x[:3])
-        rot = d_rot @ rot
-        trans = d_rot @ trans + x[3:]
-
-        if float(np.linalg.norm(x)) < tol:
+            accum_inputs = [
+                src,
+                rots,
+                transs,
+                point_target.grid.id,
+                point_target.points,
+                point_target.normals,
+                max_dist,
+            ]
+        wp.launch(
+            _icp_accumulate_mesh_kernel if is_mesh else _icp_accumulate_points_kernel,
+            dim=num_threads,
+            inputs=[*accum_inputs, n, stochastic, iter_seed, inv_scale, src_normals, symmetric, normal_mode],
+            outputs=[a_upper, g, stats],
+            device=device,
+        )
+        wp.launch(
+            _icp_solve_kernel,
+            dim=1,
+            inputs=[a_upper, g, stats, float(damping), float(robust_k), robust_enabled],
+            outputs=[rots, transs, inv_scale, update_sq],
+            device=device,
+        )
+        if early_stop and float(np.sqrt(update_sq.numpy()[0])) < tol:
             converged = True
+            iterations = step + 1
             break
+
+    rot = rots.numpy()[0].astype(np.float64)
+    trans = transs.numpy()[0].astype(np.float64)
+    st = stats.numpy()
+    count = float(st[1])
+    rmse = float(np.sqrt(st[0] / count)) if count > 0 else float("inf")
 
     transform = np.eye(4)
     transform[:3, :3] = rot
@@ -2193,7 +2256,9 @@ def register_rigid_batched(
         inits: ``(B, 4, 4)`` initial transforms, one per problem.
         max_iters: Maximum number of iterations (shared across the batch).
         tol: Convergence tolerance on each problem's 6-DOF update norm; iteration
-            stops once every problem is within ``tol``.
+            stops once every problem is within ``tol``. Each problem's 6x6 solve
+            runs on the device; set ``tol=0`` to run exactly ``max_iters``
+            iterations with no host synchronization (CUDA-graph capturable).
         max_corr_dist: Reject correspondences farther than this (see
             :func:`register_rigid`).
         sample_count: Optional per-iteration stochastic subsample size.
@@ -2242,86 +2307,63 @@ def register_rigid_batched(
         point_target = _build_target_points(target, device, max_corr_dist)
         max_dist = point_target.search_radius
 
-    rots = inits[:, :3, :3].copy()
-    transs = inits[:, :3, 3].copy()
-
     stochastic = 1 if (sample_count is not None and sample_count > 0) else 0
     num_threads = int(sample_count) if stochastic else n
+    robust_enabled = 1 if robust is not None else 0
 
+    # Per-problem transforms and robust scales stay on the device; each iteration
+    # accumulates every problem's system and solves them all in one solve launch,
+    # with no host readback (so ``tol <= 0`` is graph capturable).
+    rots = wp.array(inits[:, :3, :3].astype(np.float32), dtype=wp.mat33, device=device)
+    transs = wp.array(inits[:, :3, 3].astype(np.float32), dtype=wp.vec3, device=device)
+    inv_scale = wp.zeros(batch_size, dtype=wp.float32, device=device)
+    update_sq = wp.zeros(batch_size, dtype=wp.float32, device=device)
     a_upper = wp.zeros(batch_size * 21, dtype=wp.float32, device=device)
     g = wp.zeros(batch_size * 6, dtype=wp.float32, device=device)
     stats = wp.zeros(batch_size * 2, dtype=wp.float32, device=device)
-    inv_scale = wp.zeros(batch_size, dtype=wp.float32, device=device)
 
-    rmse = np.full(batch_size, np.inf)
-    converged = np.zeros(batch_size, dtype=bool)
-    iterations = 0
+    early_stop = tol > 0.0
+    iterations = max_iters
     for step in range(max_iters):
-        iterations = step + 1
         a_upper.zero_()
         g.zero_()
         stats.zero_()
-
-        rots_wp = wp.array(rots.astype(np.float32), dtype=wp.mat33, device=device)
-        transs_wp = wp.array(transs.astype(np.float32), dtype=wp.vec3, device=device)
-        if robust is not None:
-            finite = np.isfinite(rmse) & (rmse > 0.0)
-            inv_np = np.where(finite, 1.0 / (robust_k * np.where(finite, rmse, 1.0)) ** 2, 0.0)
-        else:
-            inv_np = np.zeros(batch_size)
-        inv_scale.assign(inv_np.astype(np.float32))
         iter_seed = int(seed) + step * batch_size
-
         if is_mesh:
-            wp.launch(
-                _icp_accumulate_mesh_batched_kernel,
-                dim=(batch_size, num_threads),
-                inputs=[src, source_stride, rots_wp, transs_wp, mesh.id, max_dist, n, stochastic, iter_seed, inv_scale],
-                outputs=[a_upper, g, stats],
-                device=device,
-            )
+            accum = _icp_accumulate_mesh_batched_kernel
+            accum_inputs = [src, source_stride, rots, transs, mesh.id, max_dist]
         else:
-            wp.launch(
-                _icp_accumulate_points_batched_kernel,
-                dim=(batch_size, num_threads),
-                inputs=[
-                    src,
-                    source_stride,
-                    rots_wp,
-                    transs_wp,
-                    point_target.grid.id,
-                    point_target.points,
-                    point_target.normals,
-                    max_dist,
-                    n,
-                    stochastic,
-                    iter_seed,
-                    inv_scale,
-                ],
-                outputs=[a_upper, g, stats],
-                device=device,
-            )
-
-        a_np = a_upper.numpy().astype(np.float64).reshape(batch_size, 21)
-        g_np = g.numpy().astype(np.float64).reshape(batch_size, 6)
-        st = stats.numpy().reshape(batch_size, 2)
-        counts = st[:, 1]
-        rmse = np.where(counts > 0, np.sqrt(np.where(counts > 0, st[:, 0], 0.0) / np.maximum(counts, 1.0)), np.inf)
-
-        systems = a_np[:, _UPPER_INDEX] + damping * np.eye(6)[None, :, :]
-        x = np.linalg.solve(systems, g_np[:, :, None])[:, :, 0]  # (B, 6)
-        for b in range(batch_size):
-            if converged[b]:
-                continue
-            d_rot = _so3_exp(x[b, :3])
-            rots[b] = d_rot @ rots[b]
-            transs[b] = d_rot @ transs[b] + x[b, 3:]
-            if float(np.linalg.norm(x[b])) < tol:
-                converged[b] = True
-        if converged.all():
+            accum = _icp_accumulate_points_batched_kernel
+            accum_inputs = [
+                src, source_stride, rots, transs,
+                point_target.grid.id, point_target.points, point_target.normals, max_dist,
+            ]  # fmt: skip
+        wp.launch(
+            accum,
+            dim=(batch_size, num_threads),
+            inputs=[*accum_inputs, n, stochastic, iter_seed, inv_scale],
+            outputs=[a_upper, g, stats],
+            device=device,
+        )
+        wp.launch(
+            _icp_solve_kernel,
+            dim=batch_size,
+            inputs=[a_upper, g, stats, float(damping), float(robust_k), robust_enabled],
+            outputs=[rots, transs, inv_scale, update_sq],
+            device=device,
+        )
+        if early_stop and float(np.sqrt(update_sq.numpy().max())) < tol:
+            iterations = step + 1
             break
 
+    rots_np = rots.numpy().astype(np.float64)
+    transs_np = transs.numpy().astype(np.float64)
+    st = stats.numpy().reshape(batch_size, 2)
+    counts = st[:, 1]
+    rmse = np.where(counts > 0, np.sqrt(np.where(counts > 0, st[:, 0], 0.0) / np.maximum(counts, 1.0)), np.inf)
+    converged = np.sqrt(update_sq.numpy()) < max(tol, 1.0e-9)
+
     transforms = np.tile(np.eye(4), (batch_size, 1, 1))
-    transforms[:, :3, :3] = rots
-    transforms[:, :3, 3] = transs
+    transforms[:, :3, :3] = rots_np
+    transforms[:, :3, 3] = transs_np
     return BatchedRegistrationResult(transforms=transforms, rmse=rmse, iterations=iterations, converged=converged)
