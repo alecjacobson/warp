@@ -1,7 +1,36 @@
-# warp.geometry sampling benchmarks
+# warp.geometry benchmarks
 
 Standalone scripts (not part of the test suite) for measuring
-`warp.geometry.PoissonDiskSampler`.
+`warp.geometry.PoissonDiskSampler` and `warp.geometry.register_rigid`.
+
+## Rigid registration (ICP) vs. external baselines
+
+`icp_vs_baselines.py` registers a point cloud onto a known-transformed copy of
+itself and compares `warp.geometry.register_rigid` (point-to-plane and
+symmetric) against optional, import-guarded baselines — Open3D's tensor ICP,
+PyTorch3D, and fast_gicp — on accuracy (rotation/translation error vs. ground
+truth) and wall-clock (full solve, including each library's internal spatial
+structure). The harness records which baselines are installed and skips the rest.
+
+```sh
+uv run --with open3d --with scipy tools/benchmarks/icp_vs_baselines.py
+```
+
+Example (10,242-point ellipsoid, 15° + translation, 2e-3 noise, NVIDIA L40;
+Open3D from the CPU-only PyPI wheel, best of 3):
+
+| method                | rot err (deg) | trans err | time (ms) |
+| --------------------- | ------------- | --------- | --------- |
+| warp_point_to_plane   | 0.008         | 7e-5      | 48        |
+| warp_symmetric        | 0.003         | 1e-4      | 48        |
+| open3d_point_to_plane | 0.007         | 7e-5      | 201       |
+| open3d_point_to_point | 2.024         | 1.8e-3    | 1901      |
+
+Warp matches Open3D's point-to-plane accuracy at ~4x the throughput here, and the
+symmetric variant is the most accurate. (A CUDA Open3D build would narrow the gap;
+the numbers above use the CPU wheel, which the script reports.)
+
+## Poisson-disk vs. farthest-point sampling
 
 ## Poisson-disk vs. farthest-point sampling
 
