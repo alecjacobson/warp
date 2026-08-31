@@ -11,9 +11,13 @@ This module provides GPU-accelerated surface sampling on triangle meshes:
   own :func:`warp.kernel` definitions.
 * **Poisson-disk sampling** (:func:`poisson_disk_sample`,
   :class:`PoissonDiskSampler`) draws blue-noise point sets in which no two
-  samples are closer than a given radius, using the parallel algorithm of
-  Bowers et al. (SIGGRAPH Asia 2010). :func:`pair_correlation` measures the
-  resulting spectrum on the surface.
+  samples are closer than a given radius, with an optional geodesic metric
+  (:func:`geodesic_distance`). :func:`pair_correlation` measures the resulting
+  blue-noise spectrum on the surface.
+
+The Poisson-disk sampler and its spectrum analysis implement Bowers, Wang, Wei
+and Maletz, "Parallel Poisson Disk Sampling with Spectrum Analysis on Surfaces"
+(ACM Transactions on Graphics 29(6), SIGGRAPH Asia 2010; doi:10.1145/1882261.1866188).
 
 Usage:
     This module must be explicitly imported::

@@ -865,10 +865,12 @@ class PoissonDiskSampler:
             higher cost.
         seed: Seed for candidate generation and priorities. Fixing it makes the
             result deterministic.
-        geodesic: If set, use the approximate geodesic metric for the minimum
-            distance instead of the Euclidean one. Uses a single sample per grid
-            cell (the paper's multiple-samples-per-cell extension for very thin
-            features is not implemented).
+        geodesic: If set, use Bowers et al.'s approximate geodesic metric
+            (:func:`geodesic_distance`) for the minimum distance instead of the
+            Euclidean one. Keeps a single sample per grid cell: the paper's
+            multiple-samples-per-cell extension is intentionally omitted -- it was
+            implemented and measured to add nothing under this approximation (see
+            ``design/parallel-poisson-disk-sampling.md``).
         device: Device on which to run. Defaults to the device of ``points``.
 
     Attributes:

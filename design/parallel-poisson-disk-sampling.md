@@ -12,13 +12,15 @@ surfaces they are the standard input for stippling, remeshing seeds, object
 scattering, and Monte-Carlo integration, because their spectrum suppresses
 low-frequency noise and aliasing far better than uniform random sampling.
 
-This feature implements the GPU-parallel surface sampler of Bowers, Wang, Wei
-and Maletz, *"Parallel Poisson Disk Sampling with Spectrum Analysis on
-Surfaces"* (ACM SIGGRAPH Asia 2010), on top of the area-weighted
-`warp.geometry.UniformSampler` already in this module. It also provides the
-paper's companion measurement tool -- a differential-domain radial statistic
-(pair-correlation function) -- so users can verify the blue-noise quality of a
-point set directly on the surface.
+This feature implements the GPU-parallel surface sampler of the reference below,
+on top of the area-weighted `warp.geometry.UniformSampler` already in this
+module. It also provides the paper's companion measurement tool -- a
+differential-domain radial statistic (pair-correlation function) -- so users can
+verify the blue-noise quality of a point set directly on the surface.
+
+**Reference.** John Bowers, Rui Wang, Li-Yi Wei, David Maletz. *"Parallel
+Poisson Disk Sampling with Spectrum Analysis on Surfaces."* ACM Transactions on
+Graphics 29(6) (SIGGRAPH Asia 2010). doi:10.1145/1882261.1866188.
 
 ## Requirements
 
@@ -33,12 +35,15 @@ point set directly on the surface.
 | R7  | `pair_correlation` measures blue-noise quality on the surface               | Should   | The paper's spectrum analysis |
 | R8  | Performance scales to millions of candidates                                | Should   | Regression + perf tests |
 
-**Non-goals**: Geodesic distances (we use the Euclidean approximation, valid
-when `r` is small relative to surface curvature -- the paper's Euclidean
-variant); exact maximal Poisson-disk sampling in the continuous limit (we
+Euclidean distance is the default; the paper's geodesic variant is available as
+an option (`geodesic=True`) -- see [Geodesic distance](#geodesic-distance-optional).
+
+**Non-goals**: exact maximal Poisson-disk sampling in the continuous limit (we
 produce a maximal *subset of a finite candidate pool*, which converges to the
 continuous result as the pool density grows); the full 2-D power-spectrum
-periodogram (the pair-correlation function is the surface-appropriate analog).
+periodogram (the pair-correlation function is the surface-appropriate analog);
+the paper's *multiple-samples-per-cell* geodesic extension (evaluated and
+dropped -- see below).
 
 ## Design
 
@@ -112,7 +117,7 @@ cleanly onto Warp atomics and needs no per-cell trial loop.
   next two, so the `5x5x5` neighborhood scan runs once per candidate per phase.
 - **Distance test** uses squared distance against `r^2` to avoid a `sqrt`.
 - **Termination is fixed** at 27 phase passes -- no convergence loop or host
-  readback, unlike an MIS formulation.
+  readback, unlike an iterative maximal-independent-set formulation.
 - **`pair_correlation(points, area, ...)`** builds a `wp.HashGrid` over the
   sample positions and atomically histograms every ordered neighbor pair's
   distance into radial bins up to `r_max`. Each bin is normalized by the count
@@ -120,10 +125,48 @@ cleanly onto Warp atomics and needs no per-cell trial loop.
   `N * (N/area) * 2*pi*r*dr`, so `g(r) -> 1` at large `r`, `g(r) ~ 0` below the
   Poisson radius, with the characteristic blue-noise peak just past it.
 
+### Geodesic distance (optional)
+
+The paper also gives a geodesic variant, so that samples on opposite sides of a
+thin feature -- close in 3-D but far along the surface -- do not over-separate.
+It has two independent parts, and **we evaluated both and kept only the first**:
+
+1. **A geodesic distance in the conflict test.** The metric is Bowers et al.'s
+   fast normal-based approximation `warp.geometry.geodesic_distance(p1, n1, p2,
+   n2)`: integrate the arc length of a curve whose normal turns linearly from
+   `n1` to `n2` along the connecting direction, giving
+   `dg = de * (asin c1 - asin c2) / (c1 - c2)` with `ci = ni . (p2-p1)/de`. It
+   needs only points and normals (no connectivity), satisfies `dg >= de`, equals
+   `de` on a flat region, and is *exact* on a sphere. `geodesic=True` swaps this
+   metric into `_cell_free` and nothing else -- so the Euclidean path stays
+   byte-identical and same-speed, and where `dg ~ de` (smooth, low curvature) the
+   result matches Euclidean exactly. On detailed meshes it packs ~10% more
+   samples near thin features. This is the one part we ship. It keeps a single
+   sample per cell and adds one face normal per candidate.
+
+2. **Multiple samples per cell (dropped).** Under a geodesic metric two points
+   in one cell can be geodesically far, so the paper lets a cell hold several
+   samples (multi-bucket hash + more trials). We implemented this faithfully --
+   including a lock-free per-cell greedy formulation and, to remove every
+   confound, a paper-exact trial-major reference in
+   `tools/benchmarks/geodesic_faithful_experiment.py` -- and it added **nothing**
+   (`geo-multi == geo-single` on thin slabs at every gap and on sharp folds at
+   every dihedral angle). The reason is structural to *this* approximation, not
+   the implementation: its distance inflation is capped at `pi/2`, so two
+   surfaces are geodesically separable (`dg >= r`) only when `de > r/(pi/2) ~
+   0.637 r`, whereas sharing a cell requires `de < r/sqrt(3) ~ 0.577 r`. Those
+   ranges do not overlap, so two nearby surfaces in one cell can never both be
+   accepted -- multiple-samples-per-cell has no case to serve. A genuinely
+   thinner-feature win would require a *true* geodesic oracle (e.g. a BVH or
+   heat-method query for Euclidean-close pairs), not multiple cells.
+
 ### Public API
 
 ```python
 import warp.geometry as geo
+
+# Geodesic (on-surface) minimum distance instead of Euclidean.
+faces, uv, points = geo.poisson_disk_sample(points, faces, radius=0.05, geodesic=True)
 
 # One-shot: returns faces, barycentric uv, and world positions of the samples.
 faces, uv, points = geo.poisson_disk_sample(points, faces, radius=0.05)
