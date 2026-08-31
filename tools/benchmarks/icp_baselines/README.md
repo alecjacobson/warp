@@ -81,28 +81,49 @@ Baseline versions used below: Open3D 0.19 (PyPI wheel), PCL 1.12, fast_gicp
 
 ## Why isn't the GPU further ahead? (10k points is the CPU's best case)
 
-A single 10k-point registration barely exercises a GPU, and profiling the Warp
-path (L40) shows exactly where its time goes:
+Profiling the Warp path (L40, mesh target, 10k points) locates the cost
+precisely:
 
-- **It is latency-bound, not throughput-bound.** Building the target BVH is
-  0.4 ms (negligible); a mesh solve is ~0.7 ms/iter and converges in ~6–23
-  iterations, so the whole thing is ~18–30 ms — dominated by per-iteration kernel
-  launches and the Python-driven loop, not arithmetic. The GPU sits far below
-  saturation. **Batching amortizes that fixed cost: per-problem time drops from
-  ~21 ms at B=1 to ~4 ms at B=64** (5× cheaper), which is where the GPU pulls
-  clearly ahead. A mature multithreaded C++ library like fast_gicp is genuinely
-  hard to beat on one small problem, and Warp's *mesh* path (~18–30 ms) already
-  matches or beats it — it is mainly the point-cloud variants that trail.
-- **The point-cloud path is charged for `max_corr_dist`.** For a point-cloud
-  target that distance sizes the hash-grid used for nearest-neighbor search, so
+- **It is compute-bound in the correspondence/accumulation kernel, not launch- or
+  sync-bound.** Per iteration the BVH build is amortized (0.4 ms once), the 6×6
+  solve kernel is 0.02 ms, but the accumulate kernel — 10k `mesh_query_point`
+  calls plus 27 atomic-adds each into one shared system — is ~1.0 ms and
+  dominates. A whole mesh solve is ~18–30 ms (≈6–23 iterations).
+- **Graph capture confirms this.** Capturing the fixed-iteration loop and
+  replaying it is only ~1% faster than the eager (sync-free, `tol=0`) loop —
+  there is essentially no per-launch overhead left to remove at this kernel size.
+  Graph capture's value here is eliminating the per-iteration host sync and
+  letting ICP be embedded in a larger captured pipeline, **not** a speedup for
+  this workload. So the gap to fast_gicp isn't overhead Warp is failing to hide;
+  it is that one 10k-point problem simply does not fill the L40 (low occupancy —
+  the SMs are mostly idle), and a mature multithreaded C++ library is hard to
+  beat there. Warp's *mesh* path (~18–30 ms) already matches or beats fast_gicp
+  (25 ms); it is mainly the point-cloud variants that trail.
+- **Batching fills the GPU and flips the result** (mesh, 10k pts each, 30 iters):
+
+  | batch B | ms/problem | registrations/s |
+  | ------- | ---------- | --------------- |
+  | 1       | 20.3       | 49              |
+  | 4       | 7.1        | 140             |
+  | 16      | 5.1        | 195             |
+  | 64      | 4.3        | 235             |
+  | 256     | 4.3        | 233             |
+
+  Per-problem cost falls ~5× and plateaus once the machine saturates (~B=64):
+  ~233 registrations/s vs. fast_gicp's ~40/s of sequential single-problem solves
+  — a ~6× throughput win. This is the regime the multi-start / multi-view example
+  actually uses.
+- **The point-cloud path is also charged for `max_corr_dist`.** For a point-cloud
+  target that distance sizes the hash grid used for nearest-neighbor search, so
   the query cost grows like `(max_corr_dist / point_spacing)³`. The benchmark's
   generous `max_corr_dist=0.3` costs ~2.6 ms/iter; a sensible bound (~0.05, a few
-  × the spacing) drops it to ~1.0 ms/iter, matching the mesh path. The KD-tree in
-  the CPU baselines finds the nearest neighbor in `O(log N)` regardless of the
-  bound, so a large bound penalizes only the grid — a real asymmetry to keep in
-  mind (and the mechanism behind the ablation's "`max_corr_dist` past the overlap
-  only costs time"). For a mesh target the BVH is insensitive to the bound.
+  × the spacing) drops it to ~1.0 ms/iter, matching the mesh path. A KD-tree (the
+  CPU baselines) finds the nearest neighbor in `O(log N)` regardless of the bound,
+  so a large bound penalizes only the grid — a real asymmetry (and the mechanism
+  behind the ablation's "`max_corr_dist` past the overlap only costs time"). A
+  mesh target's BVH is insensitive to the bound.
 - **Where the GPU wins:** point count (throughput scales up while a CPU falls
-  behind) and batch (many simultaneous registrations, e.g. the multi-start
-  example). Neither is exercised by one small single-problem benchmark, so read
-  these numbers as "competitive out of the box at small scale," not the ceiling.
+  behind) and batch (many simultaneous registrations). Read the single-problem
+  table as "competitive out of the box at small scale," not the ceiling; a
+  possible single-problem speedup is a block-level reduction to relieve the
+  atomic contention in the accumulation kernel.
