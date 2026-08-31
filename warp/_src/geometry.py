@@ -1451,6 +1451,43 @@ def point_plane_term(p: wp.vec3, q: wp.vec3, n: wp.vec3) -> GaussNewtonTerm:
 
 
 @wp.func
+def symmetric_plane_term(p: wp.vec3, q: wp.vec3, n_p: wp.vec3, n_q: wp.vec3) -> GaussNewtonTerm:
+    """Linearized symmetric Gauss-Newton term for one correspondence.
+
+    Implements the symmetric objective of Rusinkiewicz, "A Symmetric Objective
+    Function for ICP" (2019), which uses *both* surfaces' normals and splits the
+    rotation between them. With ``n = n_p + n_q``, the linearized residual is
+    ``r = (p - q).n + a.(0.5 (p + q) x n) + t.n``, so the Jacobian row is
+    ``J = [0.5 (p + q) x n, n]`` and ``b = -(p - q).n``. It shares the point-to-plane
+    6x6 structure but converges over a wider basin. Callable from your own kernels.
+
+    Args:
+        p: Source point in the current frame.
+        q: Closest target point.
+        n_p: Unit source normal at ``p`` (in the current frame).
+        n_q: Unit target normal at ``q``.
+
+    Returns:
+        A :class:`GaussNewtonTerm` with the Jacobian row and right-hand side.
+    """
+    n = n_p + n_q
+    jr = 0.5 * wp.cross(p + q, n)
+    term = GaussNewtonTerm()
+    term.jacobian = wp.spatial_vector(jr[0], jr[1], jr[2], n[0], n[1], n[2])
+    term.b = -wp.dot(p - q, n)
+    return term
+
+
+@wp.func
+def _correspondence_term(p: wp.vec3, q: wp.vec3, n_q: wp.vec3, n_p: wp.vec3, symmetric: wp.int32) -> GaussNewtonTerm:
+    # Pick the point-to-plane or symmetric term. In both, the signed residual is
+    # recovered as ``-term.b``.
+    if symmetric != 0:
+        return symmetric_plane_term(p, q, n_p, n_q)
+    return point_plane_term(p, q, n_q)
+
+
+@wp.func
 def _accumulate_normal_equations_at(
     term: GaussNewtonTerm,
     weight: wp.float32,
@@ -1515,6 +1552,8 @@ def _icp_accumulate_mesh_kernel(
     stochastic: wp.int32,
     seed: wp.int32,
     inv_scale_sq: wp.float32,
+    source_normals: wp.array(dtype=wp.vec3),
+    symmetric: wp.int32,
     a_upper: wp.array(dtype=wp.float32),
     g: wp.array(dtype=wp.float32),
     stats: wp.array(dtype=wp.float32),
@@ -1525,8 +1564,11 @@ def _icp_accumulate_mesh_kernel(
     cp = closest_on_mesh(mesh, p, max_dist)
     if cp.valid == 0:
         return
-    term = point_plane_term(p, cp.point, cp.normal)
-    r = wp.dot(p - cp.point, cp.normal)
+    n_p = wp.vec3(0.0, 0.0, 0.0)
+    if symmetric != 0:
+        n_p = rot * source_normals[idx]
+    term = _correspondence_term(p, cp.point, cp.normal, n_p, symmetric)
+    r = -term.b
     w = _robust_weight(r, inv_scale_sq)
     _accumulate_normal_equations(term, w, a_upper, g)
     wp.atomic_add(stats, 0, r * r)
@@ -1589,6 +1631,8 @@ def _icp_accumulate_points_kernel(
     stochastic: wp.int32,
     seed: wp.int32,
     inv_scale_sq: wp.float32,
+    source_normals: wp.array(dtype=wp.vec3),
+    symmetric: wp.int32,
     a_upper: wp.array(dtype=wp.float32),
     g: wp.array(dtype=wp.float32),
     stats: wp.array(dtype=wp.float32),
@@ -1599,8 +1643,11 @@ def _icp_accumulate_points_kernel(
     cp = closest_on_points(grid, points, normals, p, max_dist)
     if cp.valid == 0:
         return
-    term = point_plane_term(p, cp.point, cp.normal)
-    r = wp.dot(p - cp.point, cp.normal)
+    n_p = wp.vec3(0.0, 0.0, 0.0)
+    if symmetric != 0:
+        n_p = rot * source_normals[idx]
+    term = _correspondence_term(p, cp.point, cp.normal, n_p, symmetric)
+    r = -term.b
     w = _robust_weight(r, inv_scale_sq)
     _accumulate_normal_equations(term, w, a_upper, g)
     wp.atomic_add(stats, 0, r * r)
@@ -1852,7 +1899,33 @@ def _build_target_points(target, device, max_corr_dist) -> _PointTarget:
     return _PointTarget(grid, points, normals, search_radius)
 
 
+def _estimate_normals(points, device):
+    """Estimate per-point unit normals by local PCA over a hash grid (used for the
+    source normals of the symmetric variant)."""
+    num_points = points.shape[0]
+    lo, hi = _bounding_box(points, device)
+    diagonal = float(np.linalg.norm(hi - lo))
+    spacing = diagonal / max(num_points ** (1.0 / 3.0), 1.0) if diagonal > 0.0 else 1.0
+    radius = 3.0 * spacing
+
+    extent = np.maximum(hi - lo, radius)
+    dims = np.clip(np.ceil(extent / radius).astype(np.int64), 1, 512)
+    grid = wp.HashGrid(int(dims[0]), int(dims[1]), int(dims[2]), device=device)
+    grid.build(points, radius)
+
+    normals = wp.zeros(num_points, dtype=wp.vec3, device=device)
+    wp.launch(
+        _estimate_normals_kernel,
+        dim=num_points,
+        inputs=[grid.id, points, float(radius), 4],
+        outputs=[normals],
+        device=device,
+    )
+    return normals
+
+
 _ROBUST_KERNELS = {"welsch", "tukey"}
+_VARIANTS = {"point_to_plane", "symmetric"}
 
 
 def register_rigid(
@@ -1863,6 +1936,8 @@ def register_rigid(
     max_iters: int = 50,
     tol: float = 1e-6,
     max_corr_dist: float | None = None,
+    variant: str = "point_to_plane",
+    source_normals=None,
     sample_count: int | None = None,
     robust: str | None = None,
     robust_k: float = 3.0,
@@ -1897,6 +1972,13 @@ def register_rigid(
             it defaults to no bound; for point-cloud targets it also sets the
             nearest-neighbor search radius and defaults to a few times the point
             spacing.
+        variant: ``"point_to_plane"`` (default) or ``"symmetric"`` -- the
+            symmetric objective of Rusinkiewicz 2019, which uses both surfaces'
+            normals for a wider convergence basin. ``"symmetric"`` needs source
+            normals: supply them via ``source_normals`` or they are estimated
+            once by local PCA.
+        source_normals: Optional per-source-point unit normals (only used by the
+            ``"symmetric"`` variant).
         sample_count: If set, use this many randomly drawn source points per
             iteration (sampling with replacement, reseeded each iteration)
             instead of all of them. Defaults to using every source point.
@@ -1916,6 +1998,8 @@ def register_rigid(
     """
     if robust is not None and robust not in _ROBUST_KERNELS:
         raise ValueError(f"`robust` must be one of {sorted(_ROBUST_KERNELS)} or None, got {robust!r}.")
+    if variant not in _VARIANTS:
+        raise ValueError(f"`variant` must be one of {sorted(_VARIANTS)}, got {variant!r}.")
     device = (
         wp.get_device(device)
         if device is not None
@@ -1933,6 +2017,14 @@ def register_rigid(
     else:
         point_target = _build_target_points(target, device, max_corr_dist)
         max_dist = point_target.search_radius
+
+    symmetric = 1 if variant == "symmetric" else 0
+    if symmetric:
+        src_normals = (
+            _as_vec3_array(source_normals, device) if source_normals is not None else _estimate_normals(src, device)
+        )
+    else:
+        src_normals = wp.zeros(1, dtype=wp.vec3, device=device)
 
     init = np.eye(4) if init is None else np.asarray(init, dtype=np.float64).reshape(4, 4)
     rot = init[:3, :3].copy()
@@ -1967,7 +2059,19 @@ def register_rigid(
             wp.launch(
                 _icp_accumulate_mesh_kernel,
                 dim=num_threads,
-                inputs=[src, rot_wp, trans_wp, mesh.id, max_dist, n, stochastic, iter_seed, float(inv_scale_sq)],
+                inputs=[
+                    src,
+                    rot_wp,
+                    trans_wp,
+                    mesh.id,
+                    max_dist,
+                    n,
+                    stochastic,
+                    iter_seed,
+                    float(inv_scale_sq),
+                    src_normals,
+                    symmetric,
+                ],
                 outputs=[a_upper, g, stats],
                 device=device,
             )
@@ -1987,6 +2091,8 @@ def register_rigid(
                     stochastic,
                     iter_seed,
                     float(inv_scale_sq),
+                    src_normals,
+                    symmetric,
                 ],
                 outputs=[a_upper, g, stats],
                 device=device,

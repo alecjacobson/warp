@@ -8,7 +8,9 @@ closest-point device functions `warp.geometry.closest_on_mesh` and
 `warp.geometry.closest_on_points`, and the Gauss-Newton term builder
 `warp.geometry.point_plane_term`, are exposed for use in your own kernels.
 Optional stochastic subsampling and robust (Welsch) weighting follow Bouaziz et
-al., "Sparse Iterative Closest Point" (2013). `warp.geometry.register_rigid_batched`
+al., "Sparse Iterative Closest Point" (2013), and a `variant="symmetric"` option
+implements the wider-basin symmetric objective of Rusinkiewicz, "A Symmetric
+Objective Function for ICP" (2019). `warp.geometry.register_rigid_batched`
 runs many problems in parallel against a shared target for multi-initialization
 (keep the best via `best_index`) and multi-source batching. See
 `warp/examples/geometry/example_icp_registration.py`.

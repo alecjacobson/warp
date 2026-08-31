@@ -249,6 +249,49 @@ def test_batched_validates_inits(test, device):
         reg.register_rigid_batched(verts, (verts, faces), np.eye(4), device=device)  # not (B, 4, 4)
 
 
+def test_symmetric_recovers(test, device):
+    # The symmetric variant (Rusinkiewicz 2019) recovers a known transform; source
+    # normals are estimated by local PCA when not supplied.
+    verts, faces = _icosphere(subdiv=3, scale=(1.5, 1.0, 0.7))
+    for rot_deg in (10.0, 25.0, 40.0):
+        T = _rigid_transform(rot_deg, np.array([0.06, -0.04, 0.05]), seed=int(rot_deg))
+        source = (verts @ T[:3, :3].T + T[:3, 3]).astype(np.float32)
+        result = reg.register_rigid(source, (verts, faces), max_iters=100, tol=1e-6, variant="symmetric", device=device)
+        wp.synchronize_device()
+
+        test.assertTrue(result.converged)
+        test.assertLess(_rotation_error_deg(result.transform, np.linalg.inv(T)), 0.1)
+
+
+def test_symmetric_with_source_normals(test, device):
+    # Supplied source normals are used directly by the symmetric variant.
+    scale = (1.5, 1.0, 0.7)
+    verts, faces = _icosphere(subdiv=3, scale=scale)
+    normals = _ellipsoid_normals(verts, scale)
+    T = _rigid_transform(20.0, np.array([0.05, 0.04, -0.03]), seed=11)
+    source = (verts @ T[:3, :3].T + T[:3, 3]).astype(np.float32)
+    rotated_normals = (normals @ T[:3, :3].T).astype(np.float32)  # normals in the source frame
+    result = reg.register_rigid(
+        source,
+        (verts, faces),
+        max_iters=100,
+        tol=1e-6,
+        variant="symmetric",
+        source_normals=rotated_normals,
+        device=device,
+    )
+    wp.synchronize_device()
+
+    test.assertTrue(result.converged)
+    test.assertLess(_rotation_error_deg(result.transform, np.linalg.inv(T)), 0.1)
+
+
+def test_rejects_unknown_variant(test, device):
+    verts, faces = _icosphere(subdiv=2, scale=(1.2, 1.0, 0.9))
+    with test.assertRaises(ValueError):
+        reg.register_rigid(verts, (verts, faces), variant="two_plane", device=device)
+
+
 def test_identity_when_aligned(test, device):
     # Already-aligned source: ICP returns ~identity in one step.
     verts, faces = _icosphere(subdiv=3, scale=(1.4, 1.0, 0.8))
@@ -307,6 +350,11 @@ add_function_test(TestRegistration, "test_rejects_unknown_robust", test_rejects_
 add_function_test(TestRegistration, "test_batched_multi_init", test_batched_multi_init, devices=devices)
 add_function_test(TestRegistration, "test_batched_multi_source", test_batched_multi_source, devices=devices)
 add_function_test(TestRegistration, "test_batched_validates_inits", test_batched_validates_inits, devices=devices)
+add_function_test(TestRegistration, "test_symmetric_recovers", test_symmetric_recovers, devices=devices)
+add_function_test(
+    TestRegistration, "test_symmetric_with_source_normals", test_symmetric_with_source_normals, devices=devices
+)
+add_function_test(TestRegistration, "test_rejects_unknown_variant", test_rejects_unknown_variant, devices=devices)
 add_function_test(TestRegistration, "test_identity_when_aligned", test_identity_when_aligned, devices=devices)
 add_function_test(TestRegistration, "test_deterministic", test_deterministic, devices=devices)
 add_function_test(TestRegistration, "test_reuses_target_mesh", test_reuses_target_mesh, devices=devices)
