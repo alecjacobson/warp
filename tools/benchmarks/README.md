@@ -12,22 +12,27 @@ harness writes the problem once and each library registers the identical data in
 its own env; see `icp_baselines/README.md` for setup and the full table with
 caveats.
 
-Headline (10,242-point ellipsoid, 15° + noise; Warp on an NVIDIA L40, the rest on
-CPU — so timing reflects Warp's GPU advantage as much as the algorithm):
+Headline (10,242-point ellipsoid, 15° + noise, 50-iter budget; Warp on an NVIDIA
+L40, the rest on CPU). Throughput is registrations/second — the CPU libraries
+have no batch API (`1000/latency`), Warp's is the per-problem time at batch
+saturation:
 
-| method                    | objective      | rot err (deg) | time (ms) |
-| ------------------------- | -------------- | ------------- | --------- |
-| warp_point_to_plane       | point-to-plane | 0.00–0.02     | 30–41     |
-| warp_symmetric            | symmetric      | 0.000         | 43        |
-| open3d_point_to_plane     | point-to-plane | 0.007         | 202       |
-| pcl_gicp                  | plane-to-plane | 0.008         | 121       |
-| fast_gicp (FastGICP)      | plane-to-plane | 0.015         | 25        |
-| *_point_to_point (all)    | point-to-point | ~2.02         | 306–14828 |
+| method                       | objective      | rot err (deg) | latency (ms) | throughput (reg/s) |
+| ---------------------------- | -------------- | ------------- | ------------ | ------------------ |
+| **warp point-to-plane (batched)** | point-to-plane | 0.000    | 4.0 / 2.7 /prob | **252 / 364**   |
+| warp point-to-plane (single) | point-to-plane | 0.000         | 21 / 31      | 47 / 32            |
+| fast_gicp (FastGICP)         | plane-to-plane | 0.015         | 25           | 40                 |
+| pcl_gicp                     | plane-to-plane | 0.008         | 121          | 8                  |
+| open3d point-to-plane        | point-to-plane | 0.007         | 202          | 5                  |
+| *_point_to_point (all)       | point-to-point | ~2.02         | 306–14828    | 3 – 0.07           |
 
-Compare like-for-like (point-to-plane vs. point-to-plane; GICP as a strong
-plane-to-plane reference). Warp's point-to-plane and symmetric variants are the
-most accurate and the fastest of that group here, and fast_gicp's `FastGICP` is a
-strong CPU baseline; the point-to-point methods land ~2° off on this noisy data.
+(Warp figures are mesh / point-cloud target.) Single-problem, Warp is
+competitive with the strong CPU baselines; **batched, it registers 250–360
+clouds/s vs. fast_gicp's ~40/s — a ~6–9× throughput win**, because one 10k-point
+problem underfills the L40 while a batch saturates it. Compare like-for-like
+(point-to-plane vs. point-to-plane; GICP as a strong plane-to-plane reference);
+the point-to-point methods land ~2° off on this noisy data. Full table and
+caveats in `icp_baselines/README.md`.
 
 ## Rigid registration ablation — do the options help?
 

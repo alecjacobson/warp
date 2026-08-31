@@ -44,20 +44,36 @@ uv run tools/benchmarks/icp_baselines/report.py
 Baseline versions used below: Open3D 0.19 (PyPI wheel), PCL 1.12, fast_gicp
 (built from source), PyTorch3D 0.7.8 (built from source against torch 2.1 CPU).
 
-## Results (NVIDIA L40 for Warp; CPU for the rest)
+## Results — accuracy and throughput
 
-| method                     | objective       | rot err (deg) | trans err | time (ms) | device |
-| -------------------------- | --------------- | ------------- | --------- | --------- | ------ |
-| warp_symmetric_cloud       | symmetric       | 0.000         | 1e-4      | 43        | L40 GPU |
-| warp_point_to_plane_mesh   | point-to-plane  | 0.000         | 7e-5      | 30        | L40 GPU |
-| open3d_point_to_plane      | point-to-plane  | 0.007         | 7e-5      | 202       | CPU    |
-| pcl_gicp                   | plane-to-plane  | 0.008         | 6e-5      | 121       | CPU    |
-| fast_gicp_FastGICP         | plane-to-plane  | 0.015         | 7e-5      | 25        | CPU 8-thread |
-| warp_point_to_plane_cloud  | point-to-plane  | 0.020         | 7e-5      | 41        | L40 GPU |
-| fast_gicp_FastVGICP        | voxel GICP      | 0.491         | 1e-3      | 34        | CPU 8-thread |
-| pcl_point_to_point         | point-to-point  | 2.022         | 2e-3      | 306       | CPU    |
-| open3d_point_to_point      | point-to-point  | 2.024         | 2e-3      | 2299      | CPU    |
-| pytorch3d_point_to_point   | point-to-point  | 2.025         | 2e-3      | 14828     | CPU    |
+10,242-point problem, 50-iteration budget; Warp on an NVIDIA L40, every baseline
+on CPU. "throughput" is registrations/second: the single-problem CPU libraries
+have no batch API, so N registrations cost N× the latency (their `reg/s` is
+`1000 / latency`), whereas Warp registers a whole batch in one call, so its
+throughput is the per-problem time at batch saturation (B ≥ 64). Warp figures are
+given as mesh / point-cloud target.
+
+| method                              | objective      | rot err (deg) | latency (ms)      | throughput (reg/s) |
+| ----------------------------------- | -------------- | ------------- | ----------------- | ------------------ |
+| **warp point-to-plane — batched**   | point-to-plane | 0.000         | 4.0 / 2.7 per prob| **252 / 364**      |
+| warp symmetric — batched\*          | symmetric      | 0.000         | —                 | —                  |
+| warp point-to-plane — single        | point-to-plane | 0.000         | 21 / 31           | 47 / 32            |
+| fast_gicp `FastGICP`                | plane-to-plane | 0.015         | 25                | 40                 |
+| fast_gicp `FastVGICP`               | voxel GICP     | 0.491         | 34                | 29                 |
+| pcl_gicp                            | plane-to-plane | 0.008         | 121               | 8                  |
+| open3d point-to-plane               | point-to-plane | 0.007         | 202               | 5                  |
+| pcl point-to-point                  | point-to-point | 2.022         | 306               | 3                  |
+| open3d point-to-point               | point-to-point | 2.024         | 2299              | 0.4                |
+| pytorch3d point-to-point            | point-to-point | 2.025         | 14828             | 0.07               |
+
+\* Batched registration is point-to-plane only; the symmetric variant is a
+single-problem option (same ~0.000° accuracy, ~22 ms).
+
+**The batched win:** Warp registers **250–360 clouds/s vs. the best CPU
+baseline's 40/s** — a ~6× (mesh) to ~9× (point-cloud) throughput advantage —
+because one 10k-point problem underfills the L40 while a batch saturates it (see
+below). Single-problem, Warp is competitive but not dominant (47/s mesh, 32/s
+cloud vs. fast_gicp's 40/s); the GPU pulls away with scale and batch.
 
 ## Reading the table honestly
 
@@ -102,20 +118,19 @@ precisely:
   the SMs are mostly idle), and a mature multithreaded C++ library is hard to
   beat there. Warp's *mesh* path (~18–30 ms) already matches or beats fast_gicp
   (25 ms); it is mainly the point-cloud variants that trail.
-- **Batching fills the GPU and flips the result** (mesh, 10k pts each, 30 iters):
+- **Batching fills the GPU and flips the result** (10k pts each, 50 iters):
 
-  | batch B | ms/problem | registrations/s |
-  | ------- | ---------- | --------------- |
-  | 1       | 17.1       | 58              |
-  | 4       | 6.1        | 163             |
-  | 16      | 3.5        | 287             |
-  | 64      | 3.0        | 336             |
-  | 256     | 2.9        | 341             |
+  | batch B | mesh ms/problem (reg/s) | cloud ms/problem (reg/s) |
+  | ------- | ----------------------- | ------------------------ |
+  | 1       | 21.7 (46)               | 29.7 (34)                |
+  | 16      | 4.25 (235)              | 4.33 (231)               |
+  | 64      | 3.97 (252)              | 2.74 (364)               |
+  | 256     | 3.77 (265)              | 2.48 (402)               |
 
-  Per-problem cost falls ~6× and plateaus once the machine saturates (~B=64):
-  ~340 registrations/s vs. fast_gicp's ~40/s of sequential single-problem solves
-  — an ~8× throughput win. This is the regime the multi-start / multi-view example
-  actually uses.
+  Per-problem cost falls ~6–12× and plateaus once the machine saturates (~B=64):
+  ~250 (mesh) to ~360 (cloud) registrations/s vs. fast_gicp's ~40/s of sequential
+  single-problem solves — a ~6–9× throughput win. This is the regime the
+  multi-start / multi-view example actually uses.
 - **Source points are Morton-reordered once so the queries stay coherent.** The
   closest-point traversal is cache-/warp-coherent when neighboring threads query
   neighboring points, so `register_rigid` Z-orders the source up front (inert to
