@@ -1451,21 +1451,36 @@ def point_plane_term(p: wp.vec3, q: wp.vec3, n: wp.vec3) -> GaussNewtonTerm:
 
 
 @wp.func
+def _accumulate_normal_equations_at(
+    term: GaussNewtonTerm,
+    weight: wp.float32,
+    a_base: wp.int32,
+    g_base: wp.int32,
+    a_upper: wp.array(dtype=wp.float32),
+    g: wp.array(dtype=wp.float32),
+):
+    # Scatter ``weight * J J^T`` (upper triangle, 21 entries) and ``weight * b * J``
+    # (6 entries) into the normal-equation accumulators, starting at the given
+    # offsets (``a_base``, ``g_base``) so several batched problems can share one
+    # pair of arrays.
+    j = term.jacobian
+    wb = weight * term.b
+    for i in range(6):
+        wp.atomic_add(g, g_base + i, wb * j[i])
+        base = i * 6 - (i * (i - 1)) / 2
+        for k in range(i, 6):
+            wp.atomic_add(a_upper, a_base + base + (k - i), weight * j[i] * j[k])
+
+
+@wp.func
 def _accumulate_normal_equations(
     term: GaussNewtonTerm,
     weight: wp.float32,
     a_upper: wp.array(dtype=wp.float32),
     g: wp.array(dtype=wp.float32),
 ):
-    # Scatter ``weight * J J^T`` (upper triangle, 21 entries) and ``weight * b * J``
-    # (6 entries) into the shared normal-equation accumulators.
-    j = term.jacobian
-    wb = weight * term.b
-    for i in range(6):
-        wp.atomic_add(g, i, wb * j[i])
-        base = i * 6 - (i * (i - 1)) / 2
-        for k in range(i, 6):
-            wp.atomic_add(a_upper, base + (k - i), weight * j[i] * j[k])
+    # Scatter into a single (unbatched) 21+6 accumulator.
+    _accumulate_normal_equations_at(term, weight, 0, 0, a_upper, g)
 
 
 @wp.func
@@ -1593,6 +1608,71 @@ def _icp_accumulate_points_kernel(
 
 
 @wp.kernel(enable_backward=False)
+def _icp_accumulate_mesh_batched_kernel(
+    source: wp.array(dtype=wp.vec3),
+    source_stride: wp.int32,
+    rots: wp.array(dtype=wp.mat33),
+    transs: wp.array(dtype=wp.vec3),
+    mesh: wp.uint64,
+    max_dist: wp.float32,
+    num_source: wp.int32,
+    stochastic: wp.int32,
+    seed: wp.int32,
+    inv_scale_sq: wp.array(dtype=wp.float32),
+    a_upper: wp.array(dtype=wp.float32),
+    g: wp.array(dtype=wp.float32),
+    stats: wp.array(dtype=wp.float32),
+):
+    # 2D launch (batch b, thread t): each batch b carries its own transform, its
+    # own robust scale, and its own 21/6/2 accumulator slice, all against the one
+    # shared target mesh (the rigid-motion payoff extends to the whole batch).
+    b, t = wp.tid()
+    idx = _source_index(t, num_source, stochastic, seed + b)
+    p = rots[b] * source[source_stride * b + idx] + transs[b]
+    cp = closest_on_mesh(mesh, p, max_dist)
+    if cp.valid == 0:
+        return
+    term = point_plane_term(p, cp.point, cp.normal)
+    r = wp.dot(p - cp.point, cp.normal)
+    w = _robust_weight(r, inv_scale_sq[b])
+    _accumulate_normal_equations_at(term, w, b * 21, b * 6, a_upper, g)
+    wp.atomic_add(stats, b * 2 + 0, r * r)
+    wp.atomic_add(stats, b * 2 + 1, 1.0)
+
+
+@wp.kernel(enable_backward=False)
+def _icp_accumulate_points_batched_kernel(
+    source: wp.array(dtype=wp.vec3),
+    source_stride: wp.int32,
+    rots: wp.array(dtype=wp.mat33),
+    transs: wp.array(dtype=wp.vec3),
+    grid: wp.uint64,
+    points: wp.array(dtype=wp.vec3),
+    normals: wp.array(dtype=wp.vec3),
+    max_dist: wp.float32,
+    num_source: wp.int32,
+    stochastic: wp.int32,
+    seed: wp.int32,
+    inv_scale_sq: wp.array(dtype=wp.float32),
+    a_upper: wp.array(dtype=wp.float32),
+    g: wp.array(dtype=wp.float32),
+    stats: wp.array(dtype=wp.float32),
+):
+    b, t = wp.tid()
+    idx = _source_index(t, num_source, stochastic, seed + b)
+    p = rots[b] * source[source_stride * b + idx] + transs[b]
+    cp = closest_on_points(grid, points, normals, p, max_dist)
+    if cp.valid == 0:
+        return
+    term = point_plane_term(p, cp.point, cp.normal)
+    r = wp.dot(p - cp.point, cp.normal)
+    w = _robust_weight(r, inv_scale_sq[b])
+    _accumulate_normal_equations_at(term, w, b * 21, b * 6, a_upper, g)
+    wp.atomic_add(stats, b * 2 + 0, r * r)
+    wp.atomic_add(stats, b * 2 + 1, 1.0)
+
+
+@wp.kernel(enable_backward=False)
 def _estimate_normals_kernel(
     grid: wp.uint64,
     points: wp.array(dtype=wp.vec3),
@@ -1675,6 +1755,30 @@ class RegistrationResult:
         self.rmse = float(rmse)
         self.iterations = int(iterations)
         self.converged = bool(converged)
+
+
+class BatchedRegistrationResult:
+    """Outcome of :func:`register_rigid_batched` over ``B`` problems.
+
+    Attributes:
+        transforms: The ``(B, 4, 4)`` rigid transforms, one per problem.
+        rmse: The ``(B,)`` final point-to-plane RMSE of each problem.
+        iterations: Number of iterations run (shared across the batch).
+        converged: The ``(B,)`` boolean convergence flags.
+        best_index: Index of the lowest-RMSE problem (e.g. the winning
+            initialization in a multi-start sweep).
+        transform: The single ``(4, 4)`` transform of the best problem, for
+            convenience.
+    """
+
+    def __init__(self, transforms, rmse, iterations, converged):
+        self.transforms = np.asarray(transforms, dtype=np.float64)
+        self.rmse = np.asarray(rmse, dtype=np.float64)
+        self.iterations = int(iterations)
+        self.converged = np.asarray(converged, dtype=bool)
+        finite = np.where(np.isfinite(self.rmse), self.rmse, np.inf)
+        self.best_index = int(np.argmin(finite))
+        self.transform = self.transforms[self.best_index]
 
 
 def _build_target_mesh(target, device) -> wp.Mesh:
@@ -1907,3 +2011,172 @@ def register_rigid(
     transform[:3, :3] = rot
     transform[:3, 3] = trans
     return RegistrationResult(transform=transform, rmse=rmse, iterations=iterations, converged=converged)
+
+
+def register_rigid_batched(
+    source,
+    target,
+    inits,
+    *,
+    max_iters: int = 50,
+    tol: float = 1e-6,
+    max_corr_dist: float | None = None,
+    sample_count: int | None = None,
+    robust: str | None = None,
+    robust_k: float = 3.0,
+    damping: float = 1e-9,
+    seed: int = 0,
+    device: DeviceLike | None = None,
+) -> BatchedRegistrationResult:
+    """Run ``B`` independent point-to-plane ICP problems in parallel.
+
+    All ``B`` problems share a single target, so its acceleration structure is
+    built once and queried by the whole batch. The correspondences of every
+    problem accumulate into their own ``6x6`` system in one GPU launch; the small
+    per-problem solves are done on the host.
+
+    This exposes multi-initialization (pass several ``inits`` with one shared
+    ``source`` to escape the narrow basin of a single start and keep the best
+    result via :attr:`BatchedRegistrationResult.best_index`) and multi-source
+    batching (pass a ``(B, num_points, 3)`` ``source``). The target is shared
+    across the batch.
+
+    Args:
+        source: Either a single ``(num_points, 3)`` source shared by all problems,
+            or a ``(B, num_points, 3)`` stack of per-problem sources.
+        target: Target surface, as in :func:`register_rigid`.
+        inits: ``(B, 4, 4)`` initial transforms, one per problem.
+        max_iters: Maximum number of iterations (shared across the batch).
+        tol: Convergence tolerance on each problem's 6-DOF update norm; iteration
+            stops once every problem is within ``tol``.
+        max_corr_dist: Reject correspondences farther than this (see
+            :func:`register_rigid`).
+        sample_count: Optional per-iteration stochastic subsample size.
+        robust: Optional robust weighting kernel (see :func:`register_rigid`).
+        robust_k: Robust-scale multiplier.
+        damping: Levenberg-style diagonal damping added to each 6x6 system.
+        seed: Base random seed for stochastic subsampling.
+        device: Device on which to run.
+
+    Returns:
+        A :class:`BatchedRegistrationResult`.
+    """
+    if robust is not None and robust not in _ROBUST_KERNELS:
+        raise ValueError(f"`robust` must be one of {sorted(_ROBUST_KERNELS)} or None, got {robust!r}.")
+
+    device = (
+        wp.get_device(device)
+        if device is not None
+        else (source.device if isinstance(source, wp.array) else wp.get_device())
+    )
+    device = wp.get_device(device)
+
+    inits = np.asarray(inits, dtype=np.float64)
+    if inits.ndim != 3 or inits.shape[1:] != (4, 4):
+        raise ValueError(f"`inits` must have shape (B, 4, 4), got {inits.shape}.")
+    batch_size = inits.shape[0]
+
+    source_np = np.asarray(source.numpy() if isinstance(source, wp.array) else source, dtype=np.float32)
+    if source_np.ndim == 3:
+        # Per-problem sources: (B, N, 3).
+        if source_np.shape[0] != batch_size:
+            raise ValueError(f"multi-source batch {source_np.shape[0]} != inits batch {batch_size}.")
+        n = source_np.shape[1]
+        source_stride = n
+        src = wp.array(source_np.reshape(-1, 3), dtype=wp.vec3, device=device)
+    else:
+        n = source_np.shape[0]
+        source_stride = 0
+        src = wp.array(source_np, dtype=wp.vec3, device=device)
+
+    is_mesh = _is_mesh_target(target)
+    if is_mesh:
+        mesh = _build_target_mesh(target, device)
+        max_dist = float(max_corr_dist) if max_corr_dist is not None else 1.0e30
+    else:
+        point_target = _build_target_points(target, device, max_corr_dist)
+        max_dist = point_target.search_radius
+
+    rots = inits[:, :3, :3].copy()
+    transs = inits[:, :3, 3].copy()
+
+    stochastic = 1 if (sample_count is not None and sample_count > 0) else 0
+    num_threads = int(sample_count) if stochastic else n
+
+    a_upper = wp.zeros(batch_size * 21, dtype=wp.float32, device=device)
+    g = wp.zeros(batch_size * 6, dtype=wp.float32, device=device)
+    stats = wp.zeros(batch_size * 2, dtype=wp.float32, device=device)
+    inv_scale = wp.zeros(batch_size, dtype=wp.float32, device=device)
+
+    rmse = np.full(batch_size, np.inf)
+    converged = np.zeros(batch_size, dtype=bool)
+    iterations = 0
+    for step in range(max_iters):
+        iterations = step + 1
+        a_upper.zero_()
+        g.zero_()
+        stats.zero_()
+
+        rots_wp = wp.array(rots.astype(np.float32), dtype=wp.mat33, device=device)
+        transs_wp = wp.array(transs.astype(np.float32), dtype=wp.vec3, device=device)
+        if robust is not None:
+            finite = np.isfinite(rmse) & (rmse > 0.0)
+            inv_np = np.where(finite, 1.0 / (robust_k * np.where(finite, rmse, 1.0)) ** 2, 0.0)
+        else:
+            inv_np = np.zeros(batch_size)
+        inv_scale.assign(inv_np.astype(np.float32))
+        iter_seed = int(seed) + step * batch_size
+
+        if is_mesh:
+            wp.launch(
+                _icp_accumulate_mesh_batched_kernel,
+                dim=(batch_size, num_threads),
+                inputs=[src, source_stride, rots_wp, transs_wp, mesh.id, max_dist, n, stochastic, iter_seed, inv_scale],
+                outputs=[a_upper, g, stats],
+                device=device,
+            )
+        else:
+            wp.launch(
+                _icp_accumulate_points_batched_kernel,
+                dim=(batch_size, num_threads),
+                inputs=[
+                    src,
+                    source_stride,
+                    rots_wp,
+                    transs_wp,
+                    point_target.grid.id,
+                    point_target.points,
+                    point_target.normals,
+                    max_dist,
+                    n,
+                    stochastic,
+                    iter_seed,
+                    inv_scale,
+                ],
+                outputs=[a_upper, g, stats],
+                device=device,
+            )
+
+        a_np = a_upper.numpy().astype(np.float64).reshape(batch_size, 21)
+        g_np = g.numpy().astype(np.float64).reshape(batch_size, 6)
+        st = stats.numpy().reshape(batch_size, 2)
+        counts = st[:, 1]
+        rmse = np.where(counts > 0, np.sqrt(np.where(counts > 0, st[:, 0], 0.0) / np.maximum(counts, 1.0)), np.inf)
+
+        systems = a_np[:, _UPPER_INDEX] + damping * np.eye(6)[None, :, :]
+        x = np.linalg.solve(systems, g_np[:, :, None])[:, :, 0]  # (B, 6)
+        for b in range(batch_size):
+            if converged[b]:
+                continue
+            d_rot = _so3_exp(x[b, :3])
+            rots[b] = d_rot @ rots[b]
+            transs[b] = d_rot @ transs[b] + x[b, 3:]
+            if float(np.linalg.norm(x[b])) < tol:
+                converged[b] = True
+        if converged.all():
+            break
+
+    transforms = np.tile(np.eye(4), (batch_size, 1, 1))
+    transforms[:, :3, :3] = rots
+    transforms[:, :3, 3] = transs
+    return BatchedRegistrationResult(transforms=transforms, rmse=rmse, iterations=iterations, converged=converged)

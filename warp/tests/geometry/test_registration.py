@@ -197,6 +197,58 @@ def test_rejects_unknown_robust(test, device):
         reg.register_rigid(verts, (verts, faces), robust="huber", device=device)
 
 
+def _rot_about(rot_deg, axis):
+    axis = np.asarray(axis, dtype=np.float64)
+    axis /= np.linalg.norm(axis)
+    th = np.radians(rot_deg)
+    k = np.array([[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]])
+    T = np.eye(4)
+    T[:3, :3] = np.eye(3) + np.sin(th) * k + (1.0 - np.cos(th)) * (k @ k)
+    return T
+
+
+def test_batched_multi_init(test, device):
+    # Several initializations against a shared target; the best one matches the
+    # single-problem solve from that same init and recovers the transform.
+    verts, faces = _icosphere(subdiv=3, scale=(1.5, 1.0, 0.7))
+    T = _rigid_transform(20.0, np.array([0.06, -0.04, 0.05]), seed=5)
+    Tinv = np.linalg.inv(T)
+    source = (verts @ T[:3, :3].T + T[:3, 3]).astype(np.float32)
+
+    inits = np.stack([np.eye(4), _rot_about(30, (1, 0, 0)), _rot_about(-25, (0, 1, 0)), _rot_about(40, (0, 0, 1))])
+    batched = reg.register_rigid_batched(source, (verts, faces), inits, max_iters=80, tol=1e-6, device=device)
+    wp.synchronize_device()
+
+    test.assertEqual(batched.transforms.shape, (4, 4, 4))
+    test.assertLess(_rotation_error_deg(batched.transform, Tinv), 0.1)
+
+    single = reg.register_rigid(
+        source, (verts, faces), init=inits[batched.best_index], max_iters=80, tol=1e-6, device=device
+    )
+    wp.synchronize_device()
+    np.testing.assert_allclose(batched.transform, single.transform, atol=1e-4)
+
+
+def test_batched_multi_source(test, device):
+    # A distinct source per batch entry, all aligned to the shared target.
+    verts, faces = _icosphere(subdiv=3, scale=(1.5, 1.0, 0.7))
+    transforms = [_rigid_transform(d, np.array([0.05, 0.0, -0.03]), seed=d) for d in (8, 12, 16)]
+    sources = np.stack([(verts @ Ti[:3, :3].T + Ti[:3, 3]).astype(np.float32) for Ti in transforms])
+    inits = np.tile(np.eye(4), (3, 1, 1))
+
+    batched = reg.register_rigid_batched(sources, (verts, faces), inits, max_iters=80, tol=1e-6, device=device)
+    wp.synchronize_device()
+
+    for b, Ti in enumerate(transforms):
+        test.assertLess(_rotation_error_deg(batched.transforms[b], np.linalg.inv(Ti)), 0.1)
+
+
+def test_batched_validates_inits(test, device):
+    verts, faces = _icosphere(subdiv=2, scale=(1.2, 1.0, 0.9))
+    with test.assertRaises(ValueError):
+        reg.register_rigid_batched(verts, (verts, faces), np.eye(4), device=device)  # not (B, 4, 4)
+
+
 def test_identity_when_aligned(test, device):
     # Already-aligned source: ICP returns ~identity in one step.
     verts, faces = _icosphere(subdiv=3, scale=(1.4, 1.0, 0.8))
@@ -252,6 +304,9 @@ add_function_test(
     TestRegistration, "test_stochastic_subsampling_recovers", test_stochastic_subsampling_recovers, devices=devices
 )
 add_function_test(TestRegistration, "test_rejects_unknown_robust", test_rejects_unknown_robust, devices=devices)
+add_function_test(TestRegistration, "test_batched_multi_init", test_batched_multi_init, devices=devices)
+add_function_test(TestRegistration, "test_batched_multi_source", test_batched_multi_source, devices=devices)
+add_function_test(TestRegistration, "test_batched_validates_inits", test_batched_validates_inits, devices=devices)
 add_function_test(TestRegistration, "test_identity_when_aligned", test_identity_when_aligned, devices=devices)
 add_function_test(TestRegistration, "test_deterministic", test_deterministic, devices=devices)
 add_function_test(TestRegistration, "test_reuses_target_mesh", test_reuses_target_mesh, devices=devices)

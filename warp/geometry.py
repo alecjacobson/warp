@@ -27,6 +27,7 @@ Usage:
 
 # isort: skip_file
 
+from warp._src.geometry import BatchedRegistrationResult as BatchedRegistrationResult
 from warp._src.geometry import ClosestPoint as ClosestPoint
 from warp._src.geometry import GaussNewtonTerm as GaussNewtonTerm
 from warp._src.geometry import MeshSample as MeshSample
@@ -42,5 +43,6 @@ from warp._src.geometry import pair_correlation as pair_correlation
 from warp._src.geometry import point_plane_term as point_plane_term
 from warp._src.geometry import poisson_disk_sample as poisson_disk_sample
 from warp._src.geometry import register_rigid as register_rigid
+from warp._src.geometry import register_rigid_batched as register_rigid_batched
 from warp._src.geometry import sample_barycentrics as sample_barycentrics
 from warp._src.geometry import uniformly_sample as uniformly_sample
