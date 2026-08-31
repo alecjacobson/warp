@@ -51,23 +51,25 @@ on CPU. "throughput" is registrations/second: the single-problem CPU libraries
 have no batch API, so N registrations cost N× the latency (their `reg/s` is
 `1000 / latency`), whereas Warp registers a whole batch in one call, so its
 throughput is the per-problem time at batch saturation (B ≥ 64). Warp figures are
-given as mesh / point-cloud target.
+given as mesh / point-cloud target. The **speedup** column is Warp's batched
+point-cloud throughput (364 reg/s) ÷ that method's — the apples-to-apples
+point-cloud comparison.
 
-| method                              | objective      | rot err (deg) | latency (ms)      | throughput (reg/s) |
-| ----------------------------------- | -------------- | ------------- | ----------------- | ------------------ |
-| **warp point-to-plane — batched**   | point-to-plane | 0.000         | 4.0 / 2.7 per prob| **252 / 364**      |
-| warp symmetric — batched\*          | symmetric      | 0.000         | —                 | —                  |
-| warp point-to-plane — single        | point-to-plane | 0.000         | 21 / 31           | 47 / 32            |
-| fast_gicp `FastGICP`                | plane-to-plane | 0.015         | 25                | 40                 |
-| fast_gicp `FastVGICP`               | voxel GICP     | 0.491         | 34                | 29                 |
-| pcl_gicp                            | plane-to-plane | 0.008         | 121               | 8                  |
-| open3d point-to-plane               | point-to-plane | 0.007         | 202               | 5                  |
-| pcl point-to-point                  | point-to-point | 2.022         | 306               | 3                  |
-| open3d point-to-point               | point-to-point | 2.024         | 2299              | 0.4                |
-| pytorch3d point-to-point            | point-to-point | 2.025         | 14828             | 0.07               |
+| method                              | objective      | rot err (deg) | latency (ms)      | throughput (reg/s) | speedup |
+| ----------------------------------- | -------------- | ------------- | ----------------- | ------------------ | ------- |
+| **warp point-to-plane — batched**   | point-to-plane | 0.000         | 4.0 / 2.7 per prob| **252 / 364**      | **1× (ref)** |
+| warp point-to-plane — single        | point-to-plane | 0.000         | 21 / 31           | 47 / 32            | 8–11×   |
+| fast_gicp `FastGICP`                | plane-to-plane | 0.015         | 25                | 40                 | 9×      |
+| fast_gicp `FastVGICP`               | voxel GICP     | 0.491         | 34                | 29                 | 12×     |
+| pcl_gicp                            | plane-to-plane | 0.008         | 121               | 8                  | 44×     |
+| open3d point-to-plane               | point-to-plane | 0.007         | 202               | 5                  | 74×     |
+| pcl point-to-point                  | point-to-point | 2.022         | 306               | 3                  | 111×    |
+| open3d point-to-point               | point-to-point | 2.024         | 2299              | 0.4                | 837×    |
+| pytorch3d point-to-point            | point-to-point | 2.025         | 14828             | 0.07               | 5400×   |
 
-\* Batched registration is point-to-plane only; the symmetric variant is a
-single-problem option (same ~0.000° accuracy, ~22 ms).
+The `speedup` for the two Warp rows is Warp-batched over Warp-single (i.e. what
+batching itself buys). Batched registration is point-to-plane only; the symmetric
+variant is a single-problem option (same ~0.000° accuracy, ~22 ms).
 
 **The batched win:** Warp registers **250–360 clouds/s vs. the best CPU
 baseline's 40/s** — a ~6× (mesh) to ~9× (point-cloud) throughput advantage —

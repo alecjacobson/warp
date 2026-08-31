@@ -17,22 +17,23 @@ L40, the rest on CPU). Throughput is registrations/second — the CPU libraries
 have no batch API (`1000/latency`), Warp's is the per-problem time at batch
 saturation:
 
-| method                       | objective      | rot err (deg) | latency (ms) | throughput (reg/s) |
-| ---------------------------- | -------------- | ------------- | ------------ | ------------------ |
-| **warp point-to-plane (batched)** | point-to-plane | 0.000    | 4.0 / 2.7 /prob | **252 / 364**   |
-| warp point-to-plane (single) | point-to-plane | 0.000         | 21 / 31      | 47 / 32            |
-| fast_gicp (FastGICP)         | plane-to-plane | 0.015         | 25           | 40                 |
-| pcl_gicp                     | plane-to-plane | 0.008         | 121          | 8                  |
-| open3d point-to-plane        | point-to-plane | 0.007         | 202          | 5                  |
-| *_point_to_point (all)       | point-to-point | ~2.02         | 306–14828    | 3 – 0.07           |
+| method                       | objective      | rot err (deg) | latency (ms) | throughput (reg/s) | speedup |
+| ---------------------------- | -------------- | ------------- | ------------ | ------------------ | ------- |
+| **warp point-to-plane (batched)** | point-to-plane | 0.000    | 4.0 / 2.7 /prob | **252 / 364**   | **1× (ref)** |
+| warp point-to-plane (single) | point-to-plane | 0.000         | 21 / 31      | 47 / 32            | 8–11×   |
+| fast_gicp (FastGICP)         | plane-to-plane | 0.015         | 25           | 40                 | 9×      |
+| pcl_gicp                     | plane-to-plane | 0.008         | 121          | 8                  | 44×     |
+| open3d point-to-plane        | point-to-plane | 0.007         | 202          | 5                  | 74×     |
+| *_point_to_point (all)       | point-to-point | ~2.02         | 306–14828    | 3 – 0.07           | 111–5400× |
 
-(Warp figures are mesh / point-cloud target.) Single-problem, Warp is
+Warp figures are mesh / point-cloud target; `speedup` is Warp's batched
+point-cloud throughput (364 reg/s) ÷ that method's. Single-problem, Warp is
 competitive with the strong CPU baselines; **batched, it registers 250–360
-clouds/s vs. fast_gicp's ~40/s — a ~6–9× throughput win**, because one 10k-point
-problem underfills the L40 while a batch saturates it. Compare like-for-like
-(point-to-plane vs. point-to-plane; GICP as a strong plane-to-plane reference);
-the point-to-point methods land ~2° off on this noisy data. Full table and
-caveats in `icp_baselines/README.md`.
+clouds/s vs. fast_gicp's ~40/s — a ~9× throughput win** over the best CPU
+baseline, because one 10k-point problem underfills the L40 while a batch
+saturates it. Compare like-for-like (point-to-plane vs. point-to-plane; GICP as a
+strong plane-to-plane reference); the point-to-point methods land ~2° off on this
+noisy data. Full table and caveats in `icp_baselines/README.md`.
 
 ## Rigid registration ablation — do the options help?
 
