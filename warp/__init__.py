@@ -38,7 +38,6 @@ _register_module_source("warp.autograd", "warp._src.autograd")
 _register_module_source("warp.geometry", "warp._src.geometry")
 _register_module_source("warp.marching_cubes", "warp._src.marching_cubes")
 _register_module_source("warp.math", "warp._src.math")
-_register_module_source("warp.registration", "warp._src.registration")
 _register_module_source("warp.sparse", "warp._src.sparse")
 _register_module_source("warp.utils", "warp._src.utils")
 

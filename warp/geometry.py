@@ -27,13 +27,19 @@ Usage:
 
 # isort: skip_file
 
+from warp._src.geometry import ClosestPoint as ClosestPoint
+from warp._src.geometry import GaussNewtonTerm as GaussNewtonTerm
 from warp._src.geometry import MeshSample as MeshSample
 from warp._src.geometry import PoissonDiskSampler as PoissonDiskSampler
+from warp._src.geometry import RegistrationResult as RegistrationResult
 from warp._src.geometry import UniformSampler as UniformSampler
 from warp._src.geometry import UniformSamplerState as UniformSamplerState
+from warp._src.geometry import closest_on_mesh as closest_on_mesh
 from warp._src.geometry import draw as draw
 from warp._src.geometry import geodesic_distance as geodesic_distance
 from warp._src.geometry import pair_correlation as pair_correlation
+from warp._src.geometry import point_plane_term as point_plane_term
 from warp._src.geometry import poisson_disk_sample as poisson_disk_sample
+from warp._src.geometry import register_rigid as register_rigid
 from warp._src.geometry import sample_barycentrics as sample_barycentrics
 from warp._src.geometry import uniformly_sample as uniformly_sample

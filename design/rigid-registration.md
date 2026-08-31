@@ -139,10 +139,10 @@ still holds) and returns the best (lowest final residual) per source.
 ### Public API
 
 ```python
-import warp.registration as reg
+import warp.geometry as geo  # ICP lives in warp.geometry
 
 # One-shot: align source points to a target (mesh or point cloud).
-result = reg.register_rigid(
+result = geo.register_rigid(
     source,                      # (N,3) points, or a (points, faces) mesh
     target,                      # (M,3) points [+ normals], or a mesh
     init=None,                   # (4,4) or (B,4,4) initial transforms
@@ -156,10 +156,12 @@ result.transform      # (4,4) or (B,4,4)
 result.rmse, result.iterations, result.converged
 
 # Exposed device functions for use in user kernels.
-reg.point_plane_jacobian(p, q, n)   # -> (wp.vec3 rot, wp.vec3 trans, float b)
-reg.closest_on_mesh(mesh, p)        # -> (q, n, dist, valid)
-reg.se3_exp(a, t)                   # -> wp.transform
+geo.point_plane_term(p, q, n)       # -> GaussNewtonTerm (Jacobian row + rhs)
+geo.closest_on_mesh(mesh, p, dmax)  # -> ClosestPoint (point, normal, dist, valid)
 ```
+
+The implementation lives in `warp.geometry` (alongside surface sampling), not a
+separate module.
 
 ## Testing Strategy
 
@@ -186,7 +188,7 @@ reg.se3_exp(a, t)                   # -> wp.transform
 
 ## Milestones (commit/push each)
 
-1. Design doc (this) + `warp.registration` skeleton and SE(3)/Jacobian `wp.func`s
+1. Design doc (this) + `warp.geometry` ICP skeleton and SE(3)/Jacobian `wp.func`s
    with unit tests.
 2. Point-to-plane GN ICP for a **mesh** target, single problem; recovery tests.
 3. **Point-cloud** target (hash-grid NN + normals); recovery tests.

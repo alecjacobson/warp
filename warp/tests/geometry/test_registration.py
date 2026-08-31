@@ -8,7 +8,7 @@ import unittest
 import numpy as np
 
 import warp as wp
-import warp.registration as reg
+import warp.geometry as reg
 from warp.tests.unittest_utils import *
 
 
