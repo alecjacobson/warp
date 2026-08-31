@@ -1888,6 +1888,85 @@ def _icp_solve_kernel(
 
 
 ##########################################################################
+## Morton (Z-order) reordering of source points
+##
+## The per-iteration cost is dominated by the closest-point query, whose BVH /
+## hash-grid traversal is latency-bound. Reordering the source points along a
+## Morton curve once (rigid motion preserves their relative layout) makes
+## neighboring threads query neighboring regions, so the traversals stay cache-
+## and warp-coherent. This is inert to the result -- the normal equations are a
+## sum over correspondences, independent of order -- but speeds up the query at
+## high occupancy (large point counts or batched solves).
+##########################################################################
+
+
+@wp.func
+def _morton_spread(v: wp.uint32) -> wp.uint32:
+    # Spread the low 10 bits of ``v`` to every third bit (Morton "Part1By2").
+    x = v & wp.uint32(0x000003FF)
+    x = (x ^ (x << wp.uint32(16))) & wp.uint32(0xFF0000FF)
+    x = (x ^ (x << wp.uint32(8))) & wp.uint32(0x0300F00F)
+    x = (x ^ (x << wp.uint32(4))) & wp.uint32(0x030C30C3)
+    x = (x ^ (x << wp.uint32(2))) & wp.uint32(0x09249249)
+    return x
+
+
+@wp.kernel(enable_backward=False)
+def _morton_key_kernel(
+    points: wp.array(dtype=wp.vec3),
+    lo: wp.vec3,
+    inv_extent: wp.vec3,
+    block_size: wp.int32,
+    keys: wp.array(dtype=wp.int64),
+):
+    # A 30-bit Morton code of the point's cell, prefixed with its batch-block index
+    # so a single sort keeps blocks contiguous and Z-orders within each.
+    tid = wp.tid()
+    p = points[tid]
+    fx = wp.clamp((p[0] - lo[0]) * inv_extent[0], 0.0, 1.0) * 1023.0
+    fy = wp.clamp((p[1] - lo[1]) * inv_extent[1], 0.0, 1.0) * 1023.0
+    fz = wp.clamp((p[2] - lo[2]) * inv_extent[2], 0.0, 1.0) * 1023.0
+    code = (
+        _morton_spread(wp.uint32(fx))
+        | (_morton_spread(wp.uint32(fy)) << wp.uint32(1))
+        | (_morton_spread(wp.uint32(fz)) << wp.uint32(2))
+    )
+    block = wp.int64(tid / block_size)
+    keys[tid] = (block << wp.int64(32)) | wp.int64(code)
+
+
+@wp.kernel(enable_backward=False)
+def _gather_vec3_kernel(order: wp.array(dtype=wp.int32), src: wp.array(dtype=wp.vec3), out: wp.array(dtype=wp.vec3)):
+    tid = wp.tid()
+    out[tid] = src[order[tid]]
+
+
+def _morton_order(points, count, block_size, device):
+    """Return a length-``count`` permutation that Z-orders ``points`` within each
+    contiguous block of ``block_size`` (radix sort needs 2x storage)."""
+    lo, hi = _bounding_box(points, device)
+    inv_extent = 1.0 / np.maximum(hi - lo, 1.0e-9)
+    keys = wp.empty(2 * count, dtype=wp.int64, device=device)
+    order = wp.empty(2 * count, dtype=wp.int32, device=device)
+    wp.launch(
+        _morton_key_kernel,
+        dim=count,
+        inputs=[points, wp.vec3(*lo.astype(np.float32)), wp.vec3(*inv_extent.astype(np.float32)), int(block_size)],
+        outputs=[keys],
+        device=device,
+    )
+    wp.launch(_poisson_iota_kernel, dim=count, outputs=[order], device=device)
+    radix_sort_pairs(keys, order, count=count)
+    return order
+
+
+def _reorder_points(points, order, count, device):
+    out = wp.empty(count, dtype=wp.vec3, device=device)
+    wp.launch(_gather_vec3_kernel, dim=count, inputs=[order, points], outputs=[out], device=device)
+    return out
+
+
+##########################################################################
 ## Host-side driver
 ##########################################################################
 
@@ -2153,6 +2232,13 @@ def register_rigid(
     else:
         src_normals = wp.zeros(1, dtype=wp.vec3, device=device)
 
+    # Z-order the source once so the per-iteration closest-point queries stay cache
+    # coherent (inert to the result; see _morton_order).
+    order = _morton_order(src, n, n, device)
+    src = _reorder_points(src, order, n, device)
+    if symmetric:
+        src_normals = _reorder_points(src_normals, order, n, device)
+
     init = np.eye(4) if init is None else np.asarray(init, dtype=np.float64).reshape(4, 4)
 
     stochastic = 1 if (sample_count is not None and sample_count > 0) else 0
@@ -2298,6 +2384,11 @@ def register_rigid_batched(
         n = source_np.shape[0]
         source_stride = 0
         src = wp.array(source_np, dtype=wp.vec3, device=device)
+
+    # Z-order the source(s) once so the per-iteration closest-point queries stay
+    # cache coherent at batch occupancy (inert to the result; see _morton_order).
+    total = src.shape[0]
+    src = _reorder_points(src, _morton_order(src, total, n, device), total, device)
 
     is_mesh = _is_mesh_target(target)
     if is_mesh:

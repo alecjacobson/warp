@@ -17,6 +17,9 @@ residual can use the target's surface/PCA normal (`plane_normal="surface"`, the
 default) or the query-closest direction (`plane_normal="closest_point"`, needing
 no normals). The 6x6 Gauss-Newton solve and transform update run on the device,
 so the iteration performs no per-iteration host synchronization; with `tol=0`
-(fixed iterations) the loop is CUDA-graph capturable. See
+(fixed iterations) the loop is CUDA-graph capturable. Source points are
+Morton-reordered once (inert to the result) so the per-iteration closest-point
+queries stay cache-coherent, which speeds up the query at high occupancy
+(~4x on a 1M-point cloud, ~1.4x for a batch of 10k-point problems). See
 `warp/examples/geometry/example_icp_registration.py` and the options ablation in
 `tools/benchmarks/`.

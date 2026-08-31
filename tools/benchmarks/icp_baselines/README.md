@@ -85,10 +85,13 @@ Profiling the Warp path (L40, mesh target, 10k points) locates the cost
 precisely:
 
 - **It is compute-bound in the correspondence/accumulation kernel, not launch- or
-  sync-bound.** Per iteration the BVH build is amortized (0.4 ms once), the 6×6
-  solve kernel is 0.02 ms, but the accumulate kernel — 10k `mesh_query_point`
-  calls plus 27 atomic-adds each into one shared system — is ~1.0 ms and
-  dominates. A whole mesh solve is ~18–30 ms (≈6–23 iterations).
+  sync-bound.** Per iteration the BVH build is amortized (0.4 ms once) and the
+  6×6 solve kernel is 0.02 ms, but the accumulate kernel is ~1.0 ms and
+  dominates. That ~1.0 ms is essentially all the closest-point query, not the
+  accumulation: dropping 26 of its 27 atomic-adds changes it by only ~1.4 %
+  (1.043 → 1.028 ms), so atomic contention is not the bottleneck — the BVH
+  traversal in `mesh_query_point` is. A whole mesh solve is ~18–30 ms
+  (≈6–23 iterations).
 - **Graph capture confirms this.** Capturing the fixed-iteration loop and
   replaying it is only ~1% faster than the eager (sync-free, `tol=0`) loop —
   there is essentially no per-launch overhead left to remove at this kernel size.
@@ -103,16 +106,24 @@ precisely:
 
   | batch B | ms/problem | registrations/s |
   | ------- | ---------- | --------------- |
-  | 1       | 20.3       | 49              |
-  | 4       | 7.1        | 140             |
-  | 16      | 5.1        | 195             |
-  | 64      | 4.3        | 235             |
-  | 256     | 4.3        | 233             |
+  | 1       | 17.1       | 58              |
+  | 4       | 6.1        | 163             |
+  | 16      | 3.5        | 287             |
+  | 64      | 3.0        | 336             |
+  | 256     | 2.9        | 341             |
 
-  Per-problem cost falls ~5× and plateaus once the machine saturates (~B=64):
-  ~233 registrations/s vs. fast_gicp's ~40/s of sequential single-problem solves
-  — a ~6× throughput win. This is the regime the multi-start / multi-view example
+  Per-problem cost falls ~6× and plateaus once the machine saturates (~B=64):
+  ~340 registrations/s vs. fast_gicp's ~40/s of sequential single-problem solves
+  — an ~8× throughput win. This is the regime the multi-start / multi-view example
   actually uses.
+- **Source points are Morton-reordered once so the queries stay coherent.** The
+  closest-point traversal is cache-/warp-coherent when neighboring threads query
+  neighboring points, so `register_rigid` Z-orders the source up front (inert to
+  the result — the normal equations are an order-independent sum). This pays off
+  once there is enough parallel work to expose the coherence: ~1.4× at 10k in a
+  batch, and **~4.3× on a single 1M-point cloud** (88.8 → 20.6 ms/iter); it is
+  roughly neutral on tiny single problems. The batched numbers above already
+  include it.
 - **The point-cloud path is also charged for `max_corr_dist`.** For a point-cloud
   target that distance sizes the hash grid used for nearest-neighbor search, so
   the query cost grows like `(max_corr_dist / point_spacing)³`. The benchmark's
@@ -124,6 +135,4 @@ precisely:
   mesh target's BVH is insensitive to the bound.
 - **Where the GPU wins:** point count (throughput scales up while a CPU falls
   behind) and batch (many simultaneous registrations). Read the single-problem
-  table as "competitive out of the box at small scale," not the ceiling; a
-  possible single-problem speedup is a block-level reduction to relieve the
-  atomic contention in the accumulation kernel.
+  table as "competitive out of the box at small scale," not the ceiling.
