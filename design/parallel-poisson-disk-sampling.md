@@ -138,11 +138,12 @@ It has two independent parts, and **we evaluated both and kept only the first**:
    `dg = de * (asin c1 - asin c2) / (c1 - c2)` with `ci = ni . (p2-p1)/de`. It
    needs only points and normals (no connectivity), satisfies `dg >= de`, equals
    `de` on a flat region, and is *exact* on a sphere. `geodesic=True` swaps this
-   metric into `_cell_free` and nothing else -- so the Euclidean path stays
-   byte-identical and same-speed, and where `dg ~ de` (smooth, low curvature) the
-   result matches Euclidean exactly. On detailed meshes it packs ~10% more
-   samples near thin features. This is the one part we ship. It keeps a single
-   sample per cell and adds one face normal per candidate.
+   metric into the conflict test via a separate kernel, so the Euclidean kernels
+   are untouched and the Euclidean sample output and throughput are unchanged;
+   where `dg ~ de` (smooth, low curvature) the geodesic result matches Euclidean
+   exactly. On detailed meshes it packs ~10% more samples near thin features.
+   This is the one part we ship. It keeps a single sample per cell and adds one
+   face normal per candidate.
 
 2. **Multiple samples per cell (dropped).** Under a geodesic metric two points
    in one cell can be geodesically far, so the paper lets a cell hold several
