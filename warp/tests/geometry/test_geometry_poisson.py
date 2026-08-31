@@ -359,6 +359,21 @@ def test_geodesic_helps_thin_feature(test, device):
     test.assertGreaterEqual(n_geo, n_eucl)
 
 
+def test_face_areas_forwarded(test, device):
+    # face_areas passes through to the internal UniformSampler; supplying the true
+    # areas must reproduce the default result for the same seed.
+    points, faces, _ = _plane(48, 2.0)
+    tri = faces.reshape(-1, 3)
+    v0, v1, v2 = points[tri[:, 0]], points[tri[:, 1]], points[tri[:, 2]]
+    areas = (0.5 * np.linalg.norm(np.cross(v1 - v0, v2 - v0), axis=1)).astype(np.float32)
+
+    default = geo.PoissonDiskSampler(points, faces, radius=0.12, seed=0, device=device)
+    provided = geo.PoissonDiskSampler(points, faces, radius=0.12, seed=0, face_areas=areas, device=device)
+    wp.synchronize_device()
+    test.assertEqual(default.num_samples, provided.num_samples)
+    np.testing.assert_array_equal(default.points.numpy(), provided.points.numpy())
+
+
 def test_scale_regression(test, device):
     # Regression at scale: a fine radius drives a large candidate pool (~10^6 on
     # CUDA), verifying the sampler still returns a valid, maximal set at size.
@@ -399,6 +414,7 @@ add_function_test(
     TestGeometryPoisson, "test_invalid_num_candidates_raises", test_invalid_num_candidates_raises, devices=devices
 )
 add_function_test(TestGeometryPoisson, "test_function_matches_class", test_function_matches_class, devices=devices)
+add_function_test(TestGeometryPoisson, "test_face_areas_forwarded", test_face_areas_forwarded, devices=devices)
 add_function_test(
     TestGeometryPoisson,
     "test_geodesic_distance_exact_on_sphere",

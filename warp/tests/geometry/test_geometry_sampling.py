@@ -297,6 +297,13 @@ def test_face_areas_wrong_length_raises(test, device):
         geo.UniformSampler(points, faces, face_areas=np.array([1.0, 2.0, 3.0], dtype=np.float32), device=device)
 
 
+def test_face_areas_negative_or_nonfinite_raises(test, device):
+    points, faces = _two_triangles()
+    for bad in ([-1.0, 3.0], [1.0, np.inf], [np.nan, 3.0]):
+        with test.assertRaises(ValueError):
+            geo.UniformSampler(points, faces, face_areas=np.array(bad, dtype=np.float32), device=device)
+
+
 devices = get_test_devices()
 
 
@@ -329,6 +336,12 @@ add_function_test(
 )
 add_function_test(
     TestGeometrySampling, "test_face_areas_wrong_length_raises", test_face_areas_wrong_length_raises, devices=devices
+)
+add_function_test(
+    TestGeometrySampling,
+    "test_face_areas_negative_or_nonfinite_raises",
+    test_face_areas_negative_or_nonfinite_raises,
+    devices=devices,
 )
 
 

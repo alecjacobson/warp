@@ -153,6 +153,14 @@ def _triangle_areas_kernel(
 
 
 @wp.kernel(enable_backward=False)
+def _areas_invalid_kernel(areas: wp.array(dtype=wp.float32), out_flag: wp.array(dtype=wp.int32)):
+    tid = wp.tid()
+    a = areas[tid]
+    if a < 0.0 or not wp.isfinite(a):
+        out_flag[0] = 1
+
+
+@wp.kernel(enable_backward=False)
 def _normalize_cdf_kernel(
     cumulative: wp.array(dtype=wp.float32),
     out_cdf: wp.array(dtype=wp.float32),
@@ -197,6 +205,7 @@ def _as_index_array(faces, device) -> wp.array:
 def _as_float_array(values, device) -> wp.array:
     if isinstance(values, wp.array):
         arr = values if values.dtype == wp.float32 else wp.array(values.numpy(), dtype=wp.float32, device=values.device)
+        arr = arr if arr.ndim == 1 else arr.flatten()
         return arr.to(device) if arr.device != device else arr
     return wp.array(np.asarray(values, dtype=np.float32).reshape(-1), dtype=wp.float32, device=device)
 
@@ -273,6 +282,14 @@ class UniformSampler:
                 raise ValueError(
                     f"`face_areas` must have length num_triangles ({self.num_triangles}), got {areas.shape[0]}."
                 )
+            # Negative or non-finite areas would produce a non-monotonic CDF and
+            # silently corrupt the area weighting, so reject them up front.
+            invalid = wp.zeros(1, dtype=wp.int32, device=self.device)
+            wp.launch(
+                _areas_invalid_kernel, dim=self.num_triangles, inputs=[areas], outputs=[invalid], device=self.device
+            )
+            if int(invalid.numpy()[0]) != 0:
+                raise ValueError("`face_areas` must be non-negative and finite.")
         cumulative = wp.empty(self.num_triangles, dtype=wp.float32, device=self.device)
         array_scan(areas, cumulative, inclusive=True)
 
@@ -683,8 +700,9 @@ def _poisson_phase_accept_kernel(
 ## Geodesic variant (optional): identical single-entry hash + phase groups,
 ## but the conflict test uses the approximate geodesic distance instead of the
 ## Euclidean one. Only the "free" (conflict-check) kernel differs; the pick and
-## accept passes are shared. Kept as a separate kernel so the Euclidean path
-## above is untouched (no extra arguments, no branch).
+## accept passes are shared. It is a separate kernel with its own arguments, so
+## the Euclidean kernels above take no extra arguments and gain no branch (the
+## solver picks which kernel to launch).
 ##########################################################################
 
 
@@ -770,16 +788,6 @@ def _eval_normals_kernel(
 ):
     tid = wp.tid()
     out_normals[tid] = wp.mesh_eval_face_normal(mesh, faces[tid])
-
-
-@wp.kernel(enable_backward=False)
-def _gather_vec3_kernel(
-    order: wp.array(dtype=wp.int32),
-    in_v: wp.array(dtype=wp.vec3),
-    out_v: wp.array(dtype=wp.vec3),
-):
-    tid = wp.tid()
-    out_v[tid] = in_v[order[tid]]
 
 
 @wp.kernel(enable_backward=False)
@@ -890,6 +898,8 @@ class PoissonDiskSampler:
             multiple-samples-per-cell extension is intentionally omitted -- it was
             implemented and measured to add nothing under this approximation (see
             ``design/parallel-poisson-disk-sampling.md``).
+        face_areas: Optional precomputed per-triangle areas forwarded to the
+            internal :class:`UniformSampler`; computed from the mesh when ``None``.
         device: Device on which to run. Defaults to the device of ``points``.
 
     Attributes:
@@ -911,6 +921,7 @@ class PoissonDiskSampler:
         candidate_multiplier: float = 12.0,
         seed: int = 0,
         geodesic: bool = False,
+        face_areas=None,
         device: DeviceLike | None = None,
     ):
         if radius <= 0.0:
@@ -918,7 +929,7 @@ class PoissonDiskSampler:
         if num_candidates is not None and num_candidates < 1:
             raise ValueError(f"`num_candidates` must be at least 1, got {num_candidates}.")
 
-        self._sampler = UniformSampler(points, faces, device=device)
+        self._sampler = UniformSampler(points, faces, face_areas=face_areas, device=device)
         self.device = self._sampler.device
         self.radius = float(radius)
         self.geodesic = bool(geodesic)
@@ -947,18 +958,6 @@ class PoissonDiskSampler:
             device=self.device,
         )
 
-        # Geodesic mode also needs a surface normal per candidate (face normal).
-        cand_normals = None
-        if self.geodesic:
-            cand_normals = wp.empty(self.num_candidates, dtype=wp.vec3, device=self.device)
-            wp.launch(
-                _eval_normals_kernel,
-                dim=self.num_candidates,
-                inputs=[self._sampler.mesh.id, cand_faces],
-                outputs=[cand_normals],
-                device=self.device,
-            )
-
         # Stage 2: parallel conflict resolution.
         priority = wp.empty(self.num_candidates, dtype=wp.float32, device=self.device)
         wp.launch(
@@ -976,19 +975,23 @@ class PoissonDiskSampler:
         # overlapping 5x5x5 blocks, which turns those lookups into cache hits and
         # roughly halves the solve time. This mirrors the paper's step of sorting
         # the point cloud by cell id.
-        cand_points, cand_faces, cand_uv, priority, order = self._sort_by_cell(
+        cand_points, cand_faces, cand_uv, priority = self._sort_by_cell(
             cand_points, cand_faces, cand_uv, priority, lo, hi
         )
+
+        # Geodesic mode also needs a surface (face) normal per candidate. Evaluate
+        # it here, after the sort, directly from the sorted faces -- so it lines up
+        # with the sorted candidates without a separate gather.
+        cand_normals = None
         if self.geodesic:
-            sorted_normals = wp.empty(self.num_candidates, dtype=wp.vec3, device=self.device)
+            cand_normals = wp.empty(self.num_candidates, dtype=wp.vec3, device=self.device)
             wp.launch(
-                _gather_vec3_kernel,
+                _eval_normals_kernel,
                 dim=self.num_candidates,
-                inputs=[order, cand_normals],
-                outputs=[sorted_normals],
+                inputs=[self._sampler.mesh.id, cand_faces],
+                outputs=[cand_normals],
                 device=self.device,
             )
-            cand_normals = sorted_normals
 
         status = self._solve_hash(cand_points, priority, lo, hi, seed, cand_normals)
 
@@ -1015,7 +1018,7 @@ class PoissonDiskSampler:
         priority: wp.array,
         lo: np.ndarray,
         hi: np.ndarray,
-    ) -> tuple[wp.array, wp.array, wp.array, wp.array, wp.array]:
+    ) -> tuple[wp.array, wp.array, wp.array, wp.array]:
         n = self.num_candidates
         inv_mu, gx, gy, gz, lo_vec = self._grid_params(lo, hi)
 
@@ -1039,9 +1042,7 @@ class PoissonDiskSampler:
             outputs=[out_points, out_faces, out_uv, out_priority],
             device=self.device,
         )
-        # ``order`` holds the sort permutation in its first n entries, so callers
-        # can gather auxiliary per-candidate arrays (e.g. normals) the same way.
-        return out_points, out_faces, out_uv, out_priority, order
+        return out_points, out_faces, out_uv, out_priority
 
     def _solve_hash(
         self,
@@ -1052,7 +1053,9 @@ class PoissonDiskSampler:
         seed: int,
         cand_normals: wp.array | None = None,
     ) -> wp.array:
-        """The paper's Euclidean path: single-entry spatial hash + 27 phase groups.
+        """Single-entry spatial hash + 27 phase groups. Uses the Euclidean
+        conflict kernel by default, or the geodesic one when ``cand_normals`` is
+        given.
 
         Memory scales with the sampled surface (only non-empty cells are stored),
         and every conflict check reads a constant 5x5x5 block of the hash.
@@ -1203,6 +1206,7 @@ def poisson_disk_sample(
     candidate_multiplier: float = 12.0,
     seed: int = 0,
     geodesic: bool = False,
+    face_areas=None,
     device: DeviceLike | None = None,
 ) -> tuple[wp.array, wp.array, wp.array]:
     """Sample a Poisson-disk (blue-noise) point set over a triangle mesh surface.
@@ -1229,6 +1233,8 @@ def poisson_disk_sample(
             geodesic (on-surface) metric of :func:`geodesic_distance` instead of
             the Euclidean one, which avoids over-separating samples across thin
             features. See :class:`PoissonDiskSampler`.
+        face_areas: Optional precomputed per-triangle areas, forwarded to
+            :class:`UniformSampler`. See :class:`PoissonDiskSampler`.
         device: Device on which to run. Defaults to the device of ``points``.
 
     Returns:
@@ -1240,6 +1246,7 @@ def poisson_disk_sample(
         faces,
         radius,
         geodesic=geodesic,
+        face_areas=face_areas,
         num_candidates=num_candidates,
         candidate_multiplier=candidate_multiplier,
         seed=seed,
