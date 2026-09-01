@@ -120,7 +120,7 @@ def _match_vertex_buckets(
     counts: wp.array[wp.int32],
     bucket_hi: wp.array[wp.int32],
     bucket_he: wp.array[wp.int32],
-    adjacency: wp.array2d[wp.int32],
+    tri_tri: wp.array2d[wp.int32],
 ):
     # Each thread owns one vertex's bucket (a disjoint range), so it can pair
     # half-edges that share the same upper endpoint without synchronization. The
@@ -137,8 +137,8 @@ def _match_vertex_buckets(
         for b in range(a + 1, end):
             if bucket_he[b] >= 0 and bucket_hi[b] == hi_a:
                 he_b = bucket_he[b]
-                adjacency[he_a // 3, he_a % 3] = he_b // 3
-                adjacency[he_b // 3, he_b % 3] = he_a // 3
+                tri_tri[he_a // 3, he_a % 3] = he_b // 3
+                tri_tri[he_b // 3, he_b % 3] = he_a // 3
                 bucket_he[a] = -1
                 bucket_he[b] = -1
                 break
@@ -150,8 +150,8 @@ def _match_vertex_buckets_full(
     counts: wp.array[wp.int32],
     bucket_hi: wp.array[wp.int32],
     bucket_he: wp.array[wp.int32],
-    adjacency: wp.array2d[wp.int32],
-    adjacency_edge: wp.array2d[wp.int32],
+    tri_tri: wp.array2d[wp.int32],
+    tri_tri_reciprocal: wp.array2d[wp.int32],
 ):
     # As _match_vertex_buckets, but also records the reciprocal local edge index.
     v = wp.tid()
@@ -169,10 +169,10 @@ def _match_vertex_buckets_full(
                 ja = he_a % 3
                 tb = he_b // 3
                 jb = he_b % 3
-                adjacency[ta, ja] = tb
-                adjacency_edge[ta, ja] = jb
-                adjacency[tb, jb] = ta
-                adjacency_edge[tb, jb] = ja
+                tri_tri[ta, ja] = tb
+                tri_tri_reciprocal[ta, ja] = jb
+                tri_tri[tb, jb] = ta
+                tri_tri_reciprocal[tb, jb] = ja
                 bucket_he[a] = -1
                 bucket_he[b] = -1
                 break
@@ -215,18 +215,18 @@ def tri_tri_adjacency(indices: wp.array2d[wp.int32], num_verts: int | None = Non
         num_verts: Number of vertices in the mesh. If ``None``, inferred as one
             plus the maximum vertex index, which requires a host synchronization.
         return_reciprocal: If ``True`` (default), also compute and return the
-            reciprocal local edge indices ``adjacency_edge``. Pass ``False`` to build only
-            the neighbor array ``adjacency``, which is faster and uses less memory when
+            reciprocal local edge indices ``tri_tri_reciprocal``. Pass ``False`` to build only
+            the neighbor array ``tri_tri``, which is faster and uses less memory when
             the reciprocal indices are not needed (they can be recovered on
             demand by searching a neighbor's three entries).
 
     Returns:
-        If ``return_reciprocal`` is ``True``, a tuple ``(adjacency, adjacency_edge)`` of
-        ``(num_tris, 3)`` ``int32`` arrays; otherwise the single array ``adjacency``.
-        ``adjacency[t, j]`` is the triangle adjacent to triangle ``t`` across the edge
+        If ``return_reciprocal`` is ``True``, a tuple ``(tri_tri, tri_tri_reciprocal)`` of
+        ``(num_tris, 3)`` ``int32`` arrays; otherwise the single array ``tri_tri``.
+        ``tri_tri[t, j]`` is the triangle adjacent to triangle ``t`` across the edge
         opposite local vertex ``j`` (the edge joining local vertices
         ``(j + 1) % 3`` and ``(j + 2) % 3``), or ``-1`` on a boundary edge.
-        ``adjacency_edge[t, j]`` is the local edge index of that shared edge within the
+        ``tri_tri_reciprocal[t, j]`` is the local edge index of that shared edge within the
         neighboring triangle.
 
     Note:
@@ -245,13 +245,13 @@ def tri_tri_adjacency(indices: wp.array2d[wp.int32], num_verts: int | None = Non
     device = indices.device
     num_tris = indices.shape[0]
 
-    adjacency = wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device)
-    adjacency_edge = (
+    tri_tri = wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device)
+    tri_tri_reciprocal = (
         wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device) if return_reciprocal else None
     )
 
     if num_tris == 0:
-        return (adjacency, adjacency_edge) if return_reciprocal else adjacency
+        return (tri_tri, tri_tri_reciprocal) if return_reciprocal else tri_tri
 
     if num_verts is None:
         num_verts = int(indices.numpy().max()) + 1
@@ -261,18 +261,18 @@ def tri_tri_adjacency(indices: wp.array2d[wp.int32], num_verts: int | None = Non
         wp.launch(
             _match_vertex_buckets_full,
             dim=num_verts,
-            inputs=[offsets, counts, bucket_hi, bucket_he, adjacency, adjacency_edge],
+            inputs=[offsets, counts, bucket_hi, bucket_he, tri_tri, tri_tri_reciprocal],
             device=device,
         )
-        return adjacency, adjacency_edge
+        return tri_tri, tri_tri_reciprocal
 
     wp.launch(
         _match_vertex_buckets,
         dim=num_verts,
-        inputs=[offsets, counts, bucket_hi, bucket_he, adjacency],
+        inputs=[offsets, counts, bucket_hi, bucket_he, tri_tri],
         device=device,
     )
-    return adjacency
+    return tri_tri
 
 
 # ---------------------------------------------------------------------------
@@ -281,21 +281,21 @@ def tri_tri_adjacency(indices: wp.array2d[wp.int32], num_verts: int | None = Non
 
 
 @wp.func
-def find_adjacent_triangle(adjacency: wp.array2d[wp.int32], t: wp.int32, n: wp.int32) -> wp.int32:
+def find_adjacent_triangle(tri_tri: wp.array2d[wp.int32], t: wp.int32, n: wp.int32) -> wp.int32:
     """Find ``n`` among the triangles adjacent to ``t`` and return its local edge index.
 
-    Searches ``adjacency[t, :]`` for ``n`` and returns the local edge ``j`` such that
-    ``adjacency[t, j] == n``, or -1 if ``t`` and ``n`` are not adjacent. This recovers,
+    Searches ``tri_tri[t, :]`` for ``n`` and returns the local edge ``j`` such that
+    ``tri_tri[t, j] == n``, or -1 if ``t`` and ``n`` are not adjacent. This recovers,
     for a single pair of triangles, the value that :func:`tri_tri_adjacency`
-    would have stored in ``adjacency_edge[t, j]`` had it been called with
-    ``return_reciprocal=True``. Useful after building adjacency with
+    would have stored in ``tri_tri_reciprocal[t, j]`` had it been called with
+    ``return_reciprocal=True``. Useful after building ``tri_tri`` with
     ``return_reciprocal=False``, where the reciprocal index was not kept.
     """
-    if adjacency[t, 0] == n:
+    if tri_tri[t, 0] == n:
         return 0
-    if adjacency[t, 1] == n:
+    if tri_tri[t, 1] == n:
         return 1
-    if adjacency[t, 2] == n:
+    if tri_tri[t, 2] == n:
         return 2
     return -1
 
@@ -336,7 +336,7 @@ class _EdgeFlipper:
     @wp.kernel
     def _apply_won_flips(
         tri: wp.array2d[wp.int32],
-        adjacency: wp.array2d[wp.int32],
+        tri_tri: wp.array2d[wp.int32],
         claim: wp.array[wp.int32],
         num_flips: wp.array[wp.int32],
     ):
@@ -351,13 +351,13 @@ class _EdgeFlipper:
             # need to re-run the predicate here.
             if claim[t] != prio:
                 continue
-            n = adjacency[t, j]
+            n = tri_tri[t, j]
             if n < 0 or t >= n:
                 continue
             if claim[n] != prio:
                 continue
 
-            jn = find_adjacent_triangle(adjacency, n, t)
+            jn = find_adjacent_triangle(tri_tri, n, t)
             if jn < 0:
                 continue
 
@@ -366,8 +366,8 @@ class _EdgeFlipper:
             jn1 = (jn + 1) % 3
             jn2 = (jn + 2) % 3
 
-            n_bc = adjacency[t, j1]
-            n_ad = adjacency[n, jn1]
+            n_bc = tri_tri[t, j1]
+            n_ad = tri_tri[n, jn1]
             if n_bc >= 0 and claim[n_bc] != prio:
                 continue
             if n_ad >= 0 and claim[n_ad] != prio:
@@ -383,18 +383,18 @@ class _EdgeFlipper:
 
             # t keeps slot j2 (edge c-a); slot j (edge a-d) inherits n's a-d
             # neighbor; slot j1 (edge d-c) is the new diagonal to n.
-            adjacency[t, j] = n_ad
-            adjacency[t, j1] = n
+            tri_tri[t, j] = n_ad
+            tri_tri[t, j1] = n
             # n keeps slot jn2 (edge d-b); slot jn (edge b-c) inherits t's b-c
             # neighbor; slot jn1 (edge c-d) is the new diagonal to t.
-            adjacency[n, jn] = n_bc
-            adjacency[n, jn1] = t
+            tri_tri[n, jn] = n_bc
+            tri_tri[n, jn1] = t
 
             # Only these two outer neighbors change ownership; re-point them.
             if n_ad >= 0:
-                adjacency[n_ad, find_adjacent_triangle(adjacency, n_ad, n)] = t
+                tri_tri[n_ad, find_adjacent_triangle(tri_tri, n_ad, n)] = t
             if n_bc >= 0:
-                adjacency[n_bc, find_adjacent_triangle(adjacency, n_bc, t)] = n
+                tri_tri[n_bc, find_adjacent_triangle(tri_tri, n_bc, t)] = n
 
             wp.atomic_add(num_flips, 0, 1)
 
@@ -474,7 +474,7 @@ class _DelaunayFlipper(_EdgeFlipper):
     @wp.kernel
     def _stake_flip_claims(
         tri: wp.array2d[wp.int32],
-        adjacency: wp.array2d[wp.int32],
+        tri_tri: wp.array2d[wp.int32],
         pos: wp.array[wp.vec2],
         ref: wp.array[wp.vec2],
         has_ref: wp.int32,
@@ -484,11 +484,11 @@ class _DelaunayFlipper(_EdgeFlipper):
     ):
         t = wp.tid()
         for j in range(3):
-            n = adjacency[t, j]
+            n = tri_tri[t, j]
             # Process each undirected edge once, from its lower-indexed triangle.
             if n < 0 or t >= n:
                 continue
-            jn = find_adjacent_triangle(adjacency, n, t)
+            jn = find_adjacent_triangle(tri_tri, n, t)
             if jn < 0:
                 continue
             if not _DelaunayFlipper._edge_should_flip(tri, pos, ref, has_ref, area_eps, ref_eps, t, j, n, jn):
@@ -496,8 +496,8 @@ class _DelaunayFlipper(_EdgeFlipper):
 
             # Preserving each triangle's cyclic slot layout, a flip only reads and
             # writes the rows of {t, n, n_bc, n_ad}, so it claims exactly those four.
-            n_bc = adjacency[t, (j + 1) % 3]
-            n_ad = adjacency[n, (jn + 1) % 3]
+            n_bc = tri_tri[t, (j + 1) % 3]
+            n_ad = tri_tri[n, (jn + 1) % 3]
             prio = t * 3 + j
             _EdgeFlipper._stake_claim(claim, t, prio)
             _EdgeFlipper._stake_claim(claim, n, prio)
@@ -576,7 +576,7 @@ def delaunay_edge_flip(
         return wp.zeros(shape=1, dtype=wp.int32, device=device)
 
     num_verts = positions.shape[0]
-    adjacency = tri_tri_adjacency(indices, num_verts=num_verts, return_reciprocal=False)
+    tri_tri = tri_tri_adjacency(indices, num_verts=num_verts, return_reciprocal=False)
 
     has_ref = wp.int32(1 if ref_positions is not None else 0)
     ref = ref_positions if ref_positions is not None else positions
@@ -596,13 +596,13 @@ def delaunay_edge_flip(
         wp.launch(
             _DelaunayFlipper._stake_flip_claims,
             dim=num_tris,
-            inputs=[indices, adjacency, positions, ref, has_ref, area_epsilon, ref_epsilon, claim],
+            inputs=[indices, tri_tri, positions, ref, has_ref, area_epsilon, ref_epsilon, claim],
             device=device,
         )
         wp.launch(
             _EdgeFlipper._apply_won_flips,
             dim=num_tris,
-            inputs=[indices, adjacency, claim, num_flips],
+            inputs=[indices, tri_tri, claim, num_flips],
             device=device,
         )
         wp.launch(

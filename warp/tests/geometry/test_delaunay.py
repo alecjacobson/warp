@@ -168,49 +168,49 @@ def test_adjacency_single_pair(test, device):
     Two triangles sharing edge (0, 2): tri 0 = (0,1,2), tri 1 = (0,2,3).
     """
     indices = wp.array(np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32), dtype=wp.int32, device=device)
-    adjacency, adjacency_edge = warp.geometry.tri_tri_adjacency(indices, num_verts=4)
-    adjacency_np = adjacency.numpy()
-    adjacency_edge_np = adjacency_edge.numpy()
+    tri_tri, tri_tri_reciprocal = warp.geometry.tri_tri_adjacency(indices, num_verts=4)
+    tri_tri_np = tri_tri.numpy()
+    tri_tri_reciprocal_np = tri_tri_reciprocal.numpy()
 
     # Shared edge (0,2) is opposite vertex 1 in tri 0 (local edge 1) and opposite
     # vertex 3 in tri 1 (local edge 2).
-    test.assertEqual(adjacency_np[0, 1], 1)
-    test.assertEqual(adjacency_edge_np[0, 1], 2)
-    test.assertEqual(adjacency_np[1, 2], 0)
-    test.assertEqual(adjacency_edge_np[1, 2], 1)
+    test.assertEqual(tri_tri_np[0, 1], 1)
+    test.assertEqual(tri_tri_reciprocal_np[0, 1], 2)
+    test.assertEqual(tri_tri_np[1, 2], 0)
+    test.assertEqual(tri_tri_reciprocal_np[1, 2], 1)
 
     # All other edges are on the boundary.
-    test.assertEqual(adjacency_np[0, 0], -1)
-    test.assertEqual(adjacency_np[0, 2], -1)
-    test.assertEqual(adjacency_np[1, 0], -1)
-    test.assertEqual(adjacency_np[1, 1], -1)
+    test.assertEqual(tri_tri_np[0, 0], -1)
+    test.assertEqual(tri_tri_np[0, 2], -1)
+    test.assertEqual(tri_tri_np[1, 0], -1)
+    test.assertEqual(tri_tri_np[1, 1], -1)
 
-    # return_reciprocal=False yields the same adjacency as a single array (no adjacency_edge).
-    adjacency_only = warp.geometry.tri_tri_adjacency(indices, num_verts=4, return_reciprocal=False)
-    test.assertFalse(isinstance(adjacency_only, tuple))
-    assert_np_equal(adjacency_only.numpy(), adjacency_np)
+    # return_reciprocal=False yields the same tri_tri as a single array (no tri_tri_reciprocal).
+    tri_tri_only = warp.geometry.tri_tri_adjacency(indices, num_verts=4, return_reciprocal=False)
+    test.assertFalse(isinstance(tri_tri_only, tuple))
+    assert_np_equal(tri_tri_only.numpy(), tri_tri_np)
 
 
 def test_adjacency_matches_grid(test, device):
     """Verify that adjacency pointers round-trip on a larger grid mesh."""
     points, tris = _grid_mesh(5, 4, jitter=0.2, seed=11)
     indices = wp.array(tris, dtype=wp.int32, device=device)
-    adjacency, adjacency_edge = warp.geometry.tri_tri_adjacency(indices, num_verts=points.shape[0])
-    adjacency_only = warp.geometry.tri_tri_adjacency(indices, num_verts=points.shape[0], return_reciprocal=False)
-    adjacency_np = adjacency.numpy()
-    adjacency_edge_np = adjacency_edge.numpy()
+    tri_tri, tri_tri_reciprocal = warp.geometry.tri_tri_adjacency(indices, num_verts=points.shape[0])
+    tri_tri_only = warp.geometry.tri_tri_adjacency(indices, num_verts=points.shape[0], return_reciprocal=False)
+    tri_tri_np = tri_tri.numpy()
+    tri_tri_reciprocal_np = tri_tri_reciprocal.numpy()
     # return_reciprocal=False must agree with the full build.
-    assert_np_equal(adjacency_only.numpy(), adjacency_np)
+    assert_np_equal(tri_tri_only.numpy(), tri_tri_np)
 
     # For every interior edge, the reciprocal pointer round-trips.
     for t in range(tris.shape[0]):
         for j in range(3):
-            n = adjacency_np[t, j]
+            n = tri_tri_np[t, j]
             if n < 0:
                 continue
-            jn = adjacency_edge_np[t, j]
-            test.assertEqual(adjacency_np[n, jn], t)
-            test.assertEqual(adjacency_edge_np[n, jn], j)
+            jn = tri_tri_reciprocal_np[t, j]
+            test.assertEqual(tri_tri_np[n, jn], t)
+            test.assertEqual(tri_tri_reciprocal_np[n, jn], j)
 
 
 def test_flip_single_edge(test, device):
