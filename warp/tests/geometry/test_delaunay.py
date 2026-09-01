@@ -123,6 +123,15 @@ def _star_mesh(num_points=6):
     return points, tris
 
 
+def _flip(*args, **kwargs):
+    """Call ``delaunay_edge_flip`` and convert its device accumulator to a Python int.
+
+    ``delaunay_edge_flip`` always returns a single-element ``warp.array`` (see its
+    docstring), so eager-mode tests read it back here rather than at every call site.
+    """
+    return int(warp.geometry.delaunay_edge_flip(*args, **kwargs).numpy()[0])
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -224,7 +233,7 @@ def test_flip_single_edge(test, device):
     positions = wp.array(points, dtype=wp.vec2, device=device)
     indices = wp.array(tris, dtype=wp.int32, device=device)
 
-    num_flips = warp.geometry.delaunay_edge_flip(positions, indices)
+    num_flips = _flip(positions, indices)
     test.assertEqual(num_flips, 1)
 
     out = indices.numpy()
@@ -266,7 +275,7 @@ def test_flip_grid(test, device):
     total_area_before = sum(_signed_area(points[t[0]], points[t[1]], points[t[2]]) for t in tris)
     verts_before = set(np.unique(tris).tolist())
 
-    num_flips = warp.geometry.delaunay_edge_flip(positions, indices)
+    num_flips = _flip(positions, indices)
     test.assertGreater(num_flips, 0)
 
     out = indices.numpy()
@@ -280,7 +289,7 @@ def test_flip_grid(test, device):
     np.testing.assert_allclose(total_area_after, total_area_before, rtol=1e-5)
 
     # A Delaunay triangulation is a fixed point: flipping again changes nothing.
-    test.assertEqual(warp.geometry.delaunay_edge_flip(positions, indices), 0)
+    test.assertEqual(_flip(positions, indices), 0)
 
 
 def test_flip_grid_large(test, device):
@@ -298,7 +307,7 @@ def test_flip_grid_large(test, device):
     indices = wp.array(tris, dtype=wp.int32, device=device)
     area_before = sum(_signed_area(points[t[0]], points[t[1]], points[t[2]]) for t in tris)
 
-    num_flips = warp.geometry.delaunay_edge_flip(positions, indices)
+    num_flips = _flip(positions, indices)
     test.assertGreater(num_flips, 0)
 
     out = indices.numpy()
@@ -307,7 +316,7 @@ def test_flip_grid_large(test, device):
     test.assertEqual(set(np.unique(out).tolist()), set(np.unique(tris).tolist()))
     area_after = sum(_signed_area(points[t[0]], points[t[1]], points[t[2]]) for t in out)
     np.testing.assert_allclose(area_after, area_before, rtol=1e-4)
-    test.assertEqual(warp.geometry.delaunay_edge_flip(positions, indices), 0)
+    test.assertEqual(_flip(positions, indices), 0)
 
 
 def test_flip_already_delaunay(test, device):
@@ -320,7 +329,7 @@ def test_flip_already_delaunay(test, device):
     positions = wp.array(points, dtype=wp.vec2, device=device)
     indices = wp.array(tris, dtype=wp.int32, device=device)
 
-    num_flips = warp.geometry.delaunay_edge_flip(positions, indices)
+    num_flips = _flip(positions, indices)
     test.assertEqual(num_flips, 0)
     assert_np_equal(indices.numpy(), tris)
 
@@ -340,7 +349,7 @@ def test_flip_reference_rejection(test, device):
     ref_positions = wp.array(ref, dtype=wp.vec2, device=device)
     indices = wp.array(tris, dtype=wp.int32, device=device)
 
-    num_flips = warp.geometry.delaunay_edge_flip(positions, indices, ref_positions=ref_positions)
+    num_flips = _flip(positions, indices, ref_positions=ref_positions)
     test.assertEqual(num_flips, 0)
     assert_np_equal(indices.numpy(), tris)
 
@@ -349,7 +358,7 @@ def test_flip_empty(test, device):
     """Report zero flips for a mesh with no triangles."""
     positions = wp.zeros(0, dtype=wp.vec2, device=device)
     indices = wp.zeros((0, 3), dtype=wp.int32, device=device)
-    num_flips = warp.geometry.delaunay_edge_flip(positions, indices)
+    num_flips = _flip(positions, indices)
     test.assertEqual(num_flips, 0)
 
 
@@ -393,7 +402,7 @@ def test_flip_convex_fan(test, device):
     indices = wp.array(tris, dtype=wp.int32, device=device)
     area_before = sum(_signed_area(points[t[0]], points[t[1]], points[t[2]]) for t in tris)
 
-    num_flips = warp.geometry.delaunay_edge_flip(positions, indices)
+    num_flips = _flip(positions, indices)
     test.assertGreater(num_flips, 0)
 
     out = indices.numpy()
@@ -402,7 +411,7 @@ def test_flip_convex_fan(test, device):
     test.assertEqual(set(np.unique(out).tolist()), set(np.unique(tris).tolist()))
     area_after = sum(_signed_area(points[t[0]], points[t[1]], points[t[2]]) for t in out)
     np.testing.assert_allclose(area_after, area_before, rtol=1e-4)
-    test.assertEqual(warp.geometry.delaunay_edge_flip(positions, indices), 0)
+    test.assertEqual(_flip(positions, indices), 0)
 
 
 def test_flip_star_polygon(test, device):
@@ -419,7 +428,7 @@ def test_flip_star_polygon(test, device):
     indices = wp.array(tris, dtype=wp.int32, device=device)
     area_before = sum(_signed_area(points[t[0]], points[t[1]], points[t[2]]) for t in tris)
 
-    num_flips = warp.geometry.delaunay_edge_flip(positions, indices)
+    num_flips = _flip(positions, indices)
     test.assertGreater(num_flips, 0)
 
     out = indices.numpy()
@@ -433,7 +442,7 @@ def test_flip_star_polygon(test, device):
     after_boundary = {e for e, inc in _edge_map(out).items() if len(inc) == 1}
     test.assertEqual(before_boundary, after_boundary)
     # Converged to a fixed point.
-    test.assertEqual(warp.geometry.delaunay_edge_flip(positions, indices), 0)
+    test.assertEqual(_flip(positions, indices), 0)
 
 
 def test_flip_graph_capture(test, device):
@@ -450,7 +459,7 @@ def test_flip_graph_capture(test, device):
     # Eager reference result on a separate copy of the input.
     ref_positions = wp.array(points, dtype=wp.vec2, device=device)
     ref_indices = wp.array(tris, dtype=wp.int32, device=device)
-    ref_flips = warp.geometry.delaunay_edge_flip(ref_positions, ref_indices)
+    ref_flips = _flip(ref_positions, ref_indices)
     test.assertGreater(ref_flips, 0)
     expected = ref_indices.numpy()
 
@@ -475,9 +484,10 @@ def test_flip_graph_capture(test, device):
             total = warp.geometry.delaunay_edge_flip(positions, indices)
             empty_total = warp.geometry.delaunay_edge_flip(empty_positions, empty_indices)
 
-    # An empty mesh under capture returns a device accumulator like the non-empty
-    # path does, rather than a Python int. Its contents are only valid at replay
-    # time, so it is read below with the rest of the results.
+    # delaunay_edge_flip always returns a device accumulator, empty mesh or not,
+    # capturing or not; under capture its contents are only valid at replay time,
+    # so both are read below with the rest of the results.
+    test.assertIsInstance(total, wp.array)
     test.assertIsInstance(empty_total, wp.array)
 
     # Capture records operations without executing them: the mesh is untouched.

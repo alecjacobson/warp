@@ -3,16 +3,20 @@
 
 """Geometry processing utilities for triangle meshes.
 
-The public entry points are the topology builder :func:`triangle_triangle_adjacency`
-and the :func:`delaunay_edge_flip` operation; the predicates :func:`in_circle` and
+The public entry points are the topology builder :func:`triangle_triangle_adjacency`,
+its single-pair counterpart :func:`find_adjacent_triangle`, and the
+:func:`delaunay_edge_flip` operation; the predicates :func:`in_circle` and
 :func:`signed_area` are reusable but stay internal until their naming settles.
 Everything runs on the Warp device (CPU or CUDA); the Delaunay convergence loop is
 driven on-device with :func:`warp.capture_while`, so the routines are CUDA-graph
 capturable.
 
 Algorithm-specific kernels that are not meant for reuse are grouped in private
-classes (for example :class:`_DelaunayFlipper`) so their names stay tied to the
-algorithm and do not clutter the module namespace.
+classes: :class:`_EdgeFlipper` holds the parts of the parallel flip loop that are
+independent of the flip criterion (claim staking, topology mutation, pass
+bookkeeping), and :class:`_DelaunayFlipper` subclasses it to add the Delaunay
+criterion itself. This keeps their names tied to the algorithm and out of the
+module namespace.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ from warp._src.utils import array_scan
 
 __all__ = [
     "delaunay_edge_flip",
+    "find_adjacent_triangle",
     "in_circle",
     "signed_area",
     "triangle_triangle_adjacency",
@@ -272,8 +277,16 @@ def triangle_triangle_adjacency(indices: wp.array, num_verts: int | None = None,
 
 
 @wp.func
-def _find_neighbor_edge(TT: wp.array2d[wp.int32], t: wp.int32, n: wp.int32) -> wp.int32:
-    """Return the local edge of triangle ``t`` whose neighbor is ``n`` (or -1)."""
+def find_adjacent_triangle(TT: wp.array2d[wp.int32], t: wp.int32, n: wp.int32) -> wp.int32:
+    """Find ``n`` among the triangles adjacent to ``t`` and return its local edge index.
+
+    Searches ``TT[t, :]`` for ``n`` and returns the local edge ``j`` such that
+    ``TT[t, j] == n``, or -1 if ``t`` and ``n`` are not adjacent. This recovers,
+    for a single pair of triangles, the value that :func:`triangle_triangle_adjacency`
+    would have stored in ``TTi[t, j]`` had it been called with
+    ``return_reciprocal=True``. Useful after building adjacency with
+    ``return_reciprocal=False``, where the reciprocal index was not kept.
+    """
     if TT[t, 0] == n:
         return 0
     if TT[t, 1] == n:
@@ -283,69 +296,30 @@ def _find_neighbor_edge(TT: wp.array2d[wp.int32], t: wp.int32, n: wp.int32) -> w
     return -1
 
 
-class _DelaunayFlipper:
-    """Kernels and predicates specific to parallel Delaunay edge flipping.
+class _EdgeFlipper:
+    """Criterion-independent machinery for a parallel, priority-based edge-flip loop.
 
-    These are grouped in a private class -- not part of the public API -- so
-    their names stay tied to the flip algorithm and do not clutter the module
-    namespace. The reusable primitives (:func:`in_circle`, :func:`signed_area`,
-    :func:`triangle_triangle_adjacency`, :func:`_find_neighbor_edge`) live at
-    module scope. :func:`delaunay_edge_flip` is the driver that orchestrates
-    these kernels.
+    Subclasses (for example :class:`_DelaunayFlipper`) supply the flip criterion
+    -- typically built on top of :meth:`_link_condition_ok` -- and drive these
+    kernels from a :func:`warp.capture_while` convergence loop. Grouped in a
+    private class -- not part of the public API -- so these names stay tied to
+    the flip algorithm and do not clutter the module namespace.
     """
 
     @wp.func
-    def _edge_should_flip(
-        tri: wp.array2d[wp.int32],
-        pos: wp.array[wp.vec2],
-        ref: wp.array[wp.vec2],
-        has_ref: wp.int32,
-        area_eps: float,
-        ref_eps: float,
-        t: wp.int32,
-        j: wp.int32,
-        n: wp.int32,
-        jn: wp.int32,
-    ) -> bool:
-        """Return whether the interior edge between triangles ``t`` and ``n`` should flip.
+    def _link_condition_ok(pc: wp.vec2, pa: wp.vec2, pb: wp.vec2, pd: wp.vec2, area_eps: float) -> bool:
+        """Return whether flipping edge ``ab`` to ``cd`` yields two valid triangles.
 
-        ``j`` is the local edge of ``t`` opposite apex ``c`` and ``jn`` the local
-        edge of ``n`` opposite apex ``d``. The shared edge joins vertices ``a`` and
-        ``b``. A flip replaces edge ``ab`` with edge ``cd``, producing triangles
-        ``(c, a, d)`` and ``(c, d, b)``.
+        ``a``, ``b``, ``c``, ``d`` are as in :meth:`_DelaunayFlipper._edge_should_flip`:
+        flipping replaces edge ``ab`` with ``cd``, producing triangles ``(c, a, d)``
+        and ``(c, d, b)``. This holds only when quad ``a, d, b, c`` is convex, i.e.
+        both resulting triangles are counterclockwise -- the link condition that
+        any flip criterion must satisfy before its own test is meaningful.
         """
-        c = tri[t, j]
-        a = tri[t, (j + 1) % 3]
-        b = tri[t, (j + 2) % 3]
-        d = tri[n, jn]
-
-        pa = pos[a]
-        pb = pos[b]
-        pc = pos[c]
-        pd = pos[d]
-
-        # Reject non-convex quads: both resulting triangles must be counterclockwise.
         if signed_area(pc, pa, pd) <= area_eps:
             return False
         if signed_area(pc, pd, pb) <= area_eps:
             return False
-
-        # Delaunay test: flip only if the opposite apex is inside the circumcircle.
-        # Triangle (c, a, b) is counterclockwise, matching the input winding.
-        if _in_circle_det(pc, pa, pb, pd) <= 0.0:
-            return False
-
-        # Reject flips that would create degenerate triangles in a reference config.
-        if has_ref != 0:
-            ra = ref[a]
-            rb = ref[b]
-            rc = ref[c]
-            rd = ref[d]
-            if wp.abs(signed_area(rc, ra, rd)) <= ref_eps:
-                return False
-            if wp.abs(signed_area(rc, rd, rb)) <= ref_eps:
-                return False
-
         return True
 
     @wp.func
@@ -356,47 +330,9 @@ class _DelaunayFlipper:
             wp.atomic_max(claim, t, prio)
 
     @wp.kernel
-    def _stake_flip_claims(
-        tri: wp.array2d[wp.int32],
-        TT: wp.array2d[wp.int32],
-        pos: wp.array[wp.vec2],
-        ref: wp.array[wp.vec2],
-        has_ref: wp.int32,
-        area_eps: float,
-        ref_eps: float,
-        claim: wp.array[wp.int32],
-    ):
-        t = wp.tid()
-        for j in range(3):
-            n = TT[t, j]
-            # Process each undirected edge once, from its lower-indexed triangle.
-            if n < 0 or t >= n:
-                continue
-            jn = _find_neighbor_edge(TT, n, t)
-            if jn < 0:
-                continue
-            if not _DelaunayFlipper._edge_should_flip(tri, pos, ref, has_ref, area_eps, ref_eps, t, j, n, jn):
-                continue
-
-            # Preserving each triangle's cyclic slot layout, a flip only reads and
-            # writes the rows of {t, n, n_bc, n_ad}, so it claims exactly those four.
-            n_bc = TT[t, (j + 1) % 3]
-            n_ad = TT[n, (jn + 1) % 3]
-            prio = t * 3 + j
-            _DelaunayFlipper._stake_claim(claim, t, prio)
-            _DelaunayFlipper._stake_claim(claim, n, prio)
-            _DelaunayFlipper._stake_claim(claim, n_bc, prio)
-            _DelaunayFlipper._stake_claim(claim, n_ad, prio)
-
-    @wp.kernel
     def _apply_won_flips(
         tri: wp.array2d[wp.int32],
         TT: wp.array2d[wp.int32],
-        pos: wp.array[wp.vec2],
-        ref: wp.array[wp.vec2],
-        has_ref: wp.int32,
-        area_eps: float,
-        ref_eps: float,
         claim: wp.array[wp.int32],
         num_flips: wp.array[wp.int32],
     ):
@@ -417,7 +353,7 @@ class _DelaunayFlipper:
             if claim[n] != prio:
                 continue
 
-            jn = _find_neighbor_edge(TT, n, t)
+            jn = find_adjacent_triangle(TT, n, t)
             if jn < 0:
                 continue
 
@@ -452,9 +388,9 @@ class _DelaunayFlipper:
 
             # Only these two outer neighbors change ownership; re-point them.
             if n_ad >= 0:
-                TT[n_ad, _find_neighbor_edge(TT, n_ad, n)] = t
+                TT[n_ad, find_adjacent_triangle(TT, n_ad, n)] = t
             if n_bc >= 0:
-                TT[n_bc, _find_neighbor_edge(TT, n_bc, t)] = n
+                TT[n_bc, find_adjacent_triangle(TT, n_bc, t)] = n
 
             wp.atomic_add(num_flips, 0, 1)
 
@@ -475,6 +411,94 @@ class _DelaunayFlipper:
             condition[0] = 1
         else:
             condition[0] = 0
+
+
+class _DelaunayFlipper(_EdgeFlipper):
+    """Adds the Delaunay in-circle criterion to the :class:`_EdgeFlipper` loop."""
+
+    @wp.func
+    def _edge_should_flip(
+        tri: wp.array2d[wp.int32],
+        pos: wp.array[wp.vec2],
+        ref: wp.array[wp.vec2],
+        has_ref: wp.int32,
+        area_eps: float,
+        ref_eps: float,
+        t: wp.int32,
+        j: wp.int32,
+        n: wp.int32,
+        jn: wp.int32,
+    ) -> bool:
+        """Return whether the interior edge between triangles ``t`` and ``n`` should flip.
+
+        ``j`` is the local edge of ``t`` opposite apex ``c`` and ``jn`` the local
+        edge of ``n`` opposite apex ``d``. The shared edge joins vertices ``a`` and
+        ``b``. A flip replaces edge ``ab`` with edge ``cd``, producing triangles
+        ``(c, a, d)`` and ``(c, d, b)``.
+        """
+        c = tri[t, j]
+        a = tri[t, (j + 1) % 3]
+        b = tri[t, (j + 2) % 3]
+        d = tri[n, jn]
+
+        pa = pos[a]
+        pb = pos[b]
+        pc = pos[c]
+        pd = pos[d]
+
+        if not _EdgeFlipper._link_condition_ok(pc, pa, pb, pd, area_eps):
+            return False
+
+        # Delaunay test: flip only if the opposite apex is inside the circumcircle.
+        # Triangle (c, a, b) is counterclockwise, matching the input winding.
+        if _in_circle_det(pc, pa, pb, pd) <= 0.0:
+            return False
+
+        # Reject flips that would create degenerate triangles in a reference config.
+        if has_ref != 0:
+            ra = ref[a]
+            rb = ref[b]
+            rc = ref[c]
+            rd = ref[d]
+            if wp.abs(signed_area(rc, ra, rd)) <= ref_eps:
+                return False
+            if wp.abs(signed_area(rc, rd, rb)) <= ref_eps:
+                return False
+
+        return True
+
+    @wp.kernel
+    def _stake_flip_claims(
+        tri: wp.array2d[wp.int32],
+        TT: wp.array2d[wp.int32],
+        pos: wp.array[wp.vec2],
+        ref: wp.array[wp.vec2],
+        has_ref: wp.int32,
+        area_eps: float,
+        ref_eps: float,
+        claim: wp.array[wp.int32],
+    ):
+        t = wp.tid()
+        for j in range(3):
+            n = TT[t, j]
+            # Process each undirected edge once, from its lower-indexed triangle.
+            if n < 0 or t >= n:
+                continue
+            jn = find_adjacent_triangle(TT, n, t)
+            if jn < 0:
+                continue
+            if not _DelaunayFlipper._edge_should_flip(tri, pos, ref, has_ref, area_eps, ref_eps, t, j, n, jn):
+                continue
+
+            # Preserving each triangle's cyclic slot layout, a flip only reads and
+            # writes the rows of {t, n, n_bc, n_ad}, so it claims exactly those four.
+            n_bc = TT[t, (j + 1) % 3]
+            n_ad = TT[n, (jn + 1) % 3]
+            prio = t * 3 + j
+            _EdgeFlipper._stake_claim(claim, t, prio)
+            _EdgeFlipper._stake_claim(claim, n, prio)
+            _EdgeFlipper._stake_claim(claim, n_bc, prio)
+            _EdgeFlipper._stake_claim(claim, n_ad, prio)
 
 
 def delaunay_edge_flip(
@@ -512,10 +536,12 @@ def delaunay_edge_flip(
         ref_epsilon: Degeneracy threshold applied to ``ref_positions``.
 
     Returns:
-        In eager mode, the total number of edges flipped as a Python ``int``.
-        During CUDA graph capture the count is only known at replay time, so a
-        single-element ``int32`` :class:`warp.array` accumulator is returned
-        instead; read it after :func:`warp.capture_launch`.
+        A single-element ``int32`` :class:`warp.array` accumulator holding the
+        total number of edges flipped. It is always a device array, even in
+        eager mode, so the return type does not depend on whether the call is
+        captured; convert it to a Python ``int`` with ``int(result.numpy()[0])``.
+        Under CUDA graph capture the count is only known at replay time, so read
+        it only after :func:`warp.capture_launch`.
 
     Note:
         Assumes an orientable manifold mesh with consistent counterclockwise
@@ -535,10 +561,8 @@ def delaunay_edge_flip(
 
     num_tris = indices.shape[0]
     if num_tris == 0:
-        # Match the documented return type: an accumulator under capture, an int otherwise.
-        if device.is_capturing:
-            return wp.zeros(shape=1, dtype=wp.int32, device=device)
-        return 0
+        # Match the documented return type: always a device accumulator.
+        return wp.zeros(shape=1, dtype=wp.int32, device=device)
 
     num_verts = positions.shape[0]
     TT = triangle_triangle_adjacency(indices, num_verts=num_verts, return_reciprocal=False)
@@ -565,13 +589,13 @@ def delaunay_edge_flip(
             device=device,
         )
         wp.launch(
-            _DelaunayFlipper._apply_won_flips,
+            _EdgeFlipper._apply_won_flips,
             dim=num_tris,
-            inputs=[indices, TT, positions, ref, has_ref, area_epsilon, ref_epsilon, claim, num_flips],
+            inputs=[indices, TT, claim, num_flips],
             device=device,
         )
         wp.launch(
-            _DelaunayFlipper._record_pass,
+            _EdgeFlipper._record_pass,
             dim=1,
             inputs=[num_flips, max_passes_i, total_flips, pass_count, condition],
             device=device,
@@ -582,7 +606,4 @@ def delaunay_edge_flip(
     # back to the host to decide when to stop.
     wp.capture_while(condition, _flip_pass)
 
-    if device.is_capturing:
-        return total_flips
-
-    return int(total_flips.numpy()[0])
+    return total_flips

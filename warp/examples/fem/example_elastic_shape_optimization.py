@@ -332,10 +332,12 @@ class Example:
         # Flip non-Delaunay interior edges directly on the device, updating the
         # triangle connectivity in place. Reference positions guard against flips
         # that would degenerate the reference configuration.
-        num_flips = warp.geometry.delaunay_edge_flip(
-            self._vertex_positions,
-            self._tri_vertex_indices,
-            ref_positions=self._initial_positions,
+        num_flips = int(
+            warp.geometry.delaunay_edge_flip(
+                self._vertex_positions,
+                self._tri_vertex_indices,
+                ref_positions=self._initial_positions,
+            ).numpy()[0]
         )
         if num_flips == 0:
             return
