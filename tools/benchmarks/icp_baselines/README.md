@@ -234,3 +234,32 @@ and, batched over frames, is the fastest converged method at 126 ms/frame — bu
 did **not** find a clean, converged case where fast_gicp's GPU beats its own CPU
 `FastGICP` here. GPU ICP is not a free win at this scale; a well-tuned
 multithreaded CPU GICP is a genuinely strong baseline.
+
+### Why Warp's rotation error is higher here, and the optimal settings
+
+Warp's 0.29° on KITTI (vs. fast_gicp `FastGICP`'s 0.02°) has two causes, one a
+tuning issue and one fundamental:
+
+1. **Defaults are tuned for compact meshes, not sprawling LiDAR.** Warp sizes the
+   PCA normal-estimation neighborhood (and the hash-grid cell) from
+   `diag / cbrt(N)`. On the bunny that is the point spacing; on a 95 m KITTI scan
+   it gives 6.9 m, while the *actual* median nearest-neighbor spacing is 0.012 m —
+   a **195× overestimate**. The remedy is preprocessing the way every LiDAR
+   pipeline does: **voxel-downsample first** (0.3 m) to regularize velodyne's
+   ring structure, and use the **symmetric** variant. That takes Warp to
+   **0.225° / 0.034 m** — and is far faster (5k vs. 69k points). So no, the
+   defaults are not optimal for KITTI; downsampling + symmetric is.
+
+2. **Point-to-plane vs. GICP is the real gap.** Even with good normals and
+   downsampling, Warp trails fast_gicp because it minimizes a *point-to-plane*
+   objective (one target normal per correspondence), whereas fast_gicp minimizes
+   *generalized ICP* — a plane-to-plane / distribution-to-distribution cost using
+   a local covariance on **both** clouds. On anisotropic, noisy velodyne data
+   (near-collinear points within a scan ring make single-point normals fragile)
+   GICP's two-sided covariance model is markedly more accurate. Closing this gap
+   is a feature, not a parameter: a GICP variant for `register_rigid` (reusing
+   the per-point covariances it would need anyway) is the natural follow-up.
+
+Net: Warp's point-to-plane is a good general-purpose registrant, but for
+production LiDAR odometry a GICP objective (and LiDAR-aware neighborhood sizing)
+is what would match the specialized CPU baselines on accuracy.
