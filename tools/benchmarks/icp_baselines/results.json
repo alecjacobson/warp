@@ -1,0 +1,164 @@
+{
+  "ellipsoid:warp_point_to_plane_mesh": {
+    "rot": 0.0277,
+    "trans": 7e-05,
+    "ms": 21.13,
+    "note": "GPU single"
+  },
+  "ellipsoid:warp_point_to_plane": {
+    "rot": 0.0,
+    "trans": 7e-05,
+    "ms": 31.1,
+    "note": "GPU single"
+  },
+  "ellipsoid:warp_symmetric": {
+    "rot": 0.0072,
+    "trans": 0.0001,
+    "ms": 33.92,
+    "note": "GPU single"
+  },
+  "ellipsoid:warp_point_to_plane_batched": {
+    "rot": 0.0,
+    "trans": 7e-05,
+    "ms": 2.74,
+    "note": "GPU per-problem B=64"
+  },
+  "kitti:warp_point_to_plane": {
+    "rot": 0.1692,
+    "trans": 0.02813,
+    "ms": 26.48,
+    "note": "GPU single"
+  },
+  "kitti:warp_symmetric": {
+    "rot": 0.2363,
+    "trans": 0.01477,
+    "ms": 27.91,
+    "note": "GPU single"
+  },
+  "kitti:warp_point_to_plane_batched": {
+    "rot": 0.1692,
+    "trans": 0.02813,
+    "ms": 0.98,
+    "note": "GPU per-problem B=64"
+  },
+  "ellipsoid:open3d_point_to_plane": {
+    "rot": 0.0072,
+    "trans": 7e-05,
+    "ms": 201.11,
+    "note": "CUDA:0"
+  },
+  "ellipsoid:open3d_point_to_point": {
+    "rot": 2.0241,
+    "trans": 0.00178,
+    "ms": 1899.38,
+    "note": "CUDA:0"
+  },
+  "kitti:open3d_point_to_plane": {
+    "rot": 0.1686,
+    "trans": 0.02813,
+    "ms": 199.0,
+    "note": "CUDA:0"
+  },
+  "kitti:open3d_point_to_point": {
+    "rot": 0.3542,
+    "trans": 0.05388,
+    "ms": 699.72,
+    "note": "CUDA:0"
+  },
+  "ellipsoid:fast_gicp_FastGICP": {
+    "rot": 0.0148,
+    "trans": 7e-05,
+    "ms": 23.84,
+    "note": "CPU 8the"
+  },
+  "ellipsoid:fast_gicp_FastVGICP": {
+    "rot": 0.4911,
+    "trans": 0.00114,
+    "ms": 35.92,
+    "note": "CPU 8the"
+  },
+  "ellipsoid:fast_gicp_FastVGICPCuda": {
+    "rot": 0.0067,
+    "trans": 9e-05,
+    "ms": 399.96,
+    "note": "GPU"
+  },
+  "kitti:fast_gicp_FastGICP": {
+    "rot": 0.5118,
+    "trans": 0.02501,
+    "ms": 14.54,
+    "note": "CPU 8the"
+  },
+  "kitti:fast_gicp_FastVGICP": {
+    "rot": 0.2137,
+    "trans": 0.03372,
+    "ms": 10.21,
+    "note": "CPU 8the"
+  },
+  "kitti:fast_gicp_FastVGICPCuda": {
+    "rot": 0.194,
+    "trans": 0.03505,
+    "ms": 401.81,
+    "note": "GPU"
+  },
+  "ellipsoid:pytorch3d_point_to_point": {
+    "rot": 2.0262,
+    "trans": 0.00177,
+    "ms": 67.89,
+    "note": "cuda"
+  },
+  "ellipsoid:pytorch3d_point_to_point_batched": {
+    "rot": 2.0233,
+    "trans": 0.00177,
+    "ms": 6.05,
+    "note": "cuda per-problem B=64"
+  },
+  "kitti:pytorch3d_point_to_point": {
+    "rot": 0.597,
+    "trans": 0.9394,
+    "ms": 20.16,
+    "note": "cuda"
+  },
+  "kitti:pytorch3d_point_to_point_batched": {
+    "rot": 0.5946,
+    "trans": 0.9393,
+    "ms": 0.68,
+    "note": "cuda per-problem B=64"
+  },
+  "ellipsoid:pcl_point_to_point": {
+    "rot": 2.0223,
+    "trans": 0.00184,
+    "ms": 303.64,
+    "note": "CPU"
+  },
+  "ellipsoid:pcl_gicp": {
+    "rot": 0.0075,
+    "trans": 6e-05,
+    "ms": 116.71,
+    "note": "CPU"
+  },
+  "ellipsoid:cupcl_cuICP": {
+    "rot": 2.0102,
+    "trans": 0.00192,
+    "ms": 78.48,
+    "note": "GPU"
+  },
+  "kitti:pcl_point_to_point": {
+    "rot": 0.3838,
+    "trans": 0.05388,
+    "ms": 93.42,
+    "note": "CPU"
+  },
+  "kitti:pcl_gicp": {
+    "rot": 0.5101,
+    "trans": 0.02561,
+    "ms": 68.25,
+    "note": "CPU"
+  },
+  "kitti:cupcl_cuICP": {
+    "rot": 0.4046,
+    "trans": 0.0543,
+    "ms": 7.01,
+    "note": "GPU"
+  }
+}

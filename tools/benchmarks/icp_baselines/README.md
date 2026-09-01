@@ -74,18 +74,28 @@ latency). Warp figures are mesh / point-cloud target. **speedup** = Warp's batch
 point-cloud throughput (364 reg/s) ÷ that method's — the apples-to-apples
 point-cloud comparison.
 
+These tables are generated from a single consolidated run (all methods, one
+session, identical fixed problems and settings); the raw numbers are in
+[`results.json`](results.json). Warp figures are point-cloud target (batched =
+per-problem at B=64; single in parentheses). `speedup` = Warp's batched
+throughput (365 reg/s) ÷ that method's.
+
 | method                              | objective      | device | batched? | rot err (deg) | throughput (reg/s) | speedup |
 | ----------------------------------- | -------------- | ------ | -------- | ------------- | ------------------ | ------- |
-| **warp point-to-plane**             | point-to-plane | GPU    | yes      | 0.000         | **252 / 364**      | **1× (ref)** |
+| **warp point-to-plane**             | point-to-plane | GPU    | yes      | 0.000         | **365** (32 single)| **1× (ref)** |
 | pytorch3d point-to-point            | point-to-point | GPU    | yes      | 2.025         | 165                | 2.2×    |
-| fast_gicp `FastGICP`                | plane-to-plane | CPU    | no       | 0.015         | 40                 | 9×      |
-| fast_gicp `FastVGICP`               | voxel GICP     | CPU    | no       | 0.491         | 29                 | 12×     |
-| pcl_gicp                            | plane-to-plane | CPU    | no       | 0.008         | 8                  | 44×     |
-| open3d point-to-plane               | point-to-plane | GPU    | no       | 0.007         | 5                  | 74×     |
-| fast_gicp `FastVGICPCuda`           | voxel GICP     | GPU    | no       | 0.000         | 3                  | 110×    |
+| fast_gicp `FastGICP`                | plane-to-plane | CPU    | no       | 0.015         | 42                 | 9×      |
+| fast_gicp `FastVGICP`               | voxel GICP     | CPU    | no       | 0.491         | 28                 | 13×     |
+| cupcl cuICP                         | point-to-point | GPU    | no       | 2.010         | 13                 | 29×     |
+| pcl_gicp                            | plane-to-plane | CPU    | no       | 0.008         | 9                  | 42×     |
+| open3d point-to-plane               | point-to-plane | GPU    | no       | 0.007         | 5                  | 73×     |
 | pcl point-to-point                  | point-to-point | CPU    | no       | 2.022         | 3                  | 111×    |
-| cupcl cuICP                         | point-to-point | GPU    | no       | 2.010         | 13                 | 28×     |
-| open3d point-to-point               | point-to-point | GPU    | no       | 2.024         | 0.4                | 837×    |
+| fast_gicp `FastVGICPCuda`           | voxel GICP     | GPU    | no       | 0.007         | 2.5                | 146×    |
+| open3d point-to-point               | point-to-point | GPU    | no       | 2.024         | 0.5                | 730×    |
+
+(`warp point-to-plane` on a *mesh* target is 47 reg/s single; the point-cloud
+figure is shown above as the apples-to-apples comparison with the point-cloud
+baselines.)
 
 **fast_gicp on the GPU is *slower* than on the CPU here** — `FastVGICPCuda` is
 accurate (0.000°) but ~300 ms (≈200 ms if the target voxelmap is prebuilt and
@@ -276,20 +286,23 @@ method using ~KNN-30 normals/covariances (Warp is given normals; the others
 estimate their own internally). This is the apples-to-apples LiDAR comparison —
 and with proper normals Warp is competitive-to-best:
 
-| method                      | device | time (ms)        | rot err (°) | trans err |
-| --------------------------- | ------ | ---------------- | ----------- | --------- |
-| **warp point-to-plane**     | GPU    | 42 / **3.9 batch** | **0.156** | 0.027     |
-| open3d point-to-plane       | GPU    | 103              | 0.157       | 0.027     |
-| fast_gicp `FastVGICPCuda`   | GPU    | 200              | 0.184       | 0.034     |
-| warp symmetric              | GPU    | 43               | 0.231       | 0.014     |
-| cupcl cuICP                 | GPU    | 7                | 0.300       | 0.055     |
-| fast_gicp `FastGICP`        | CPU    | 10               | 0.508       | 0.023     |
+| method                      | device | time (ms)          | rot err (°) | trans err |
+| --------------------------- | ------ | ------------------ | ----------- | --------- |
+| open3d point-to-plane       | GPU    | 199                | 0.169       | 0.028     |
+| **warp point-to-plane**     | GPU    | 26 / **0.98 batch**| **0.169**   | 0.028     |
+| fast_gicp `FastVGICPCuda`   | GPU    | 402                | 0.194       | 0.035     |
+| fast_gicp `FastVGICP`       | CPU    | 10                 | 0.214       | 0.034     |
+| warp symmetric              | GPU    | 28                 | 0.236       | 0.015     |
+| cupcl cuICP                 | GPU    | 7                  | 0.405       | 0.054     |
+| pcl_gicp                    | CPU    | 68                 | 0.510       | 0.026     |
+| fast_gicp `FastGICP`        | CPU    | 15                 | 0.512       | 0.025     |
 
 Two things flip versus the full-resolution table. First, **Warp's default normal
 estimator is the culprit for its earlier poor accuracy** — its auto-radius on a
 5k LiDAR cloud is ~16 m; *supplying* KNN-30 normals takes Warp point-to-plane
-from 3.8° to **0.156°**, the best rotation accuracy here (tied with Open3D) and
-the fastest when batched (3.9 ms/frame). Second, **downsampling reverses the GICP
+from 3.8° to **0.169°**, tied with Open3D for the best rotation accuracy here and
+by far the fastest when batched (0.98 ms/frame at B=64). Second, **downsampling
+reverses the GICP
 advantage**: `FastGICP` needs the dense cloud for its covariances, so at 5k it
 drops to 0.51°, while point-to-plane with good normals holds up. So on the fair
 downsampled data the GPU methods lead, Warp among the best on both accuracy and
