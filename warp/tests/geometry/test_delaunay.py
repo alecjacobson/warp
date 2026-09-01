@@ -20,7 +20,7 @@ def _signed_area(a, b, c):
 
 
 def _in_circle_det(a, b, c, d):
-    """In-circle determinant for counterclockwise triangle ``abc`` and point ``d``."""
+    """Return the in-circle determinant for counterclockwise triangle ``abc`` and point ``d``."""
     ad = a - d
     bd = b - d
     cd = c - d
@@ -138,7 +138,7 @@ def _flip(*args, **kwargs):
 
 
 @wp.kernel
-def _eval_predicates(out_area: wp.array(dtype=float), out_in: wp.array(dtype=wp.int32)):
+def _eval_predicates(out_area: wp.array[float], out_in: wp.array[wp.int32]):
     a = wp.vec2(0.0, 0.0)
     b = wp.vec2(1.0, 0.0)
     c = wp.vec2(0.0, 1.0)
@@ -165,64 +165,56 @@ def test_predicates(test, device):
 def test_adjacency_single_pair(test, device):
     """Verify triangle-triangle adjacency on the smallest interior-edge mesh.
 
-    Two triangles sharing edge (0, 2): tri 0 = (0,1,2), tri 1 = (0,2,3). Checks the
-    shared-edge slots, the reciprocal indices, the boundary entries, and that
-    ``return_reciprocal=False`` yields the same ``TT`` as a single array.
+    Two triangles sharing edge (0, 2): tri 0 = (0,1,2), tri 1 = (0,2,3).
     """
     indices = wp.array(np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32), dtype=wp.int32, device=device)
-    TT, TTi = warp.geometry.triangle_triangle_adjacency(indices, num_verts=4)
-    TT_np = TT.numpy()
-    TTi_np = TTi.numpy()
+    adjacency, adjacency_edge = warp.geometry.tri_tri_adjacency(indices, num_verts=4)
+    adjacency_np = adjacency.numpy()
+    adjacency_edge_np = adjacency_edge.numpy()
 
     # Shared edge (0,2) is opposite vertex 1 in tri 0 (local edge 1) and opposite
     # vertex 3 in tri 1 (local edge 2).
-    test.assertEqual(TT_np[0, 1], 1)
-    test.assertEqual(TTi_np[0, 1], 2)
-    test.assertEqual(TT_np[1, 2], 0)
-    test.assertEqual(TTi_np[1, 2], 1)
+    test.assertEqual(adjacency_np[0, 1], 1)
+    test.assertEqual(adjacency_edge_np[0, 1], 2)
+    test.assertEqual(adjacency_np[1, 2], 0)
+    test.assertEqual(adjacency_edge_np[1, 2], 1)
 
     # All other edges are on the boundary.
-    test.assertEqual(TT_np[0, 0], -1)
-    test.assertEqual(TT_np[0, 2], -1)
-    test.assertEqual(TT_np[1, 0], -1)
-    test.assertEqual(TT_np[1, 1], -1)
+    test.assertEqual(adjacency_np[0, 0], -1)
+    test.assertEqual(adjacency_np[0, 2], -1)
+    test.assertEqual(adjacency_np[1, 0], -1)
+    test.assertEqual(adjacency_np[1, 1], -1)
 
-    # return_reciprocal=False yields the same TT as a single array (no TTi).
-    TT_only = warp.geometry.triangle_triangle_adjacency(indices, num_verts=4, return_reciprocal=False)
-    test.assertFalse(isinstance(TT_only, tuple))
-    assert_np_equal(TT_only.numpy(), TT_np)
+    # return_reciprocal=False yields the same adjacency as a single array (no adjacency_edge).
+    adjacency_only = warp.geometry.tri_tri_adjacency(indices, num_verts=4, return_reciprocal=False)
+    test.assertFalse(isinstance(adjacency_only, tuple))
+    assert_np_equal(adjacency_only.numpy(), adjacency_np)
 
 
 def test_adjacency_matches_grid(test, device):
-    """Verify that adjacency pointers round-trip on a larger grid mesh.
-
-    On every interior edge ``TT``/``TTi`` must be mutually consistent, and the
-    ``return_reciprocal=False`` build must agree with the full one.
-    """
+    """Verify that adjacency pointers round-trip on a larger grid mesh."""
     points, tris = _grid_mesh(5, 4, jitter=0.2, seed=11)
     indices = wp.array(tris, dtype=wp.int32, device=device)
-    TT, TTi = warp.geometry.triangle_triangle_adjacency(indices, num_verts=points.shape[0])
-    TT_only = warp.geometry.triangle_triangle_adjacency(indices, num_verts=points.shape[0], return_reciprocal=False)
-    TT_np = TT.numpy()
-    TTi_np = TTi.numpy()
-    assert_np_equal(TT_only.numpy(), TT_np)
+    adjacency, adjacency_edge = warp.geometry.tri_tri_adjacency(indices, num_verts=points.shape[0])
+    adjacency_only = warp.geometry.tri_tri_adjacency(indices, num_verts=points.shape[0], return_reciprocal=False)
+    adjacency_np = adjacency.numpy()
+    adjacency_edge_np = adjacency_edge.numpy()
+    # return_reciprocal=False must agree with the full build.
+    assert_np_equal(adjacency_only.numpy(), adjacency_np)
 
     # For every interior edge, the reciprocal pointer round-trips.
     for t in range(tris.shape[0]):
         for j in range(3):
-            n = TT_np[t, j]
+            n = adjacency_np[t, j]
             if n < 0:
                 continue
-            jn = TTi_np[t, j]
-            test.assertEqual(TT_np[n, jn], t)
-            test.assertEqual(TTi_np[n, jn], j)
+            jn = adjacency_edge_np[t, j]
+            test.assertEqual(adjacency_np[n, jn], t)
+            test.assertEqual(adjacency_edge_np[n, jn], j)
 
 
 def test_flip_single_edge(test, device):
-    """Flip the one non-Delaunay edge of a thin quad.
-
-    The shared horizontal edge (0-1) must become the vertical diagonal (2-3).
-    """
+    """Flip the one non-Delaunay edge of a thin quad."""
     points = np.array([[-3.0, 0.0], [3.0, 0.0], [0.0, 1.0], [0.0, -1.0]], dtype=np.float32)
     # tri 0 = (0,1,2) above edge, tri 1 = (1,0,3) below edge; both counterclockwise.
     tris = np.array([[0, 1, 2], [1, 0, 3]], dtype=np.int32)
@@ -260,11 +252,7 @@ def _is_delaunay(points, tris, tol=1e-9):
 
 
 def test_flip_grid(test, device):
-    """Flip a jittered grid to a Delaunay triangulation and confirm it is a fixed point.
-
-    Also checks that the flipped mesh keeps the same vertex set, triangle count,
-    and total area, so connectivity stays a valid triangulation of the domain.
-    """
+    """Flip a jittered grid to a Delaunay triangulation and confirm it is a fixed point."""
     points, tris = _grid_mesh(6, 5, jitter=0.3, seed=1234)
     _assert_valid_mesh(test, points, tris)
     test.assertFalse(_is_delaunay(points, tris), "input grid should not already be Delaunay")
@@ -320,11 +308,7 @@ def test_flip_grid_large(test, device):
 
 
 def test_flip_already_delaunay(test, device):
-    """Leave an already-Delaunay mesh untouched.
-
-    A right-triangulated axis-aligned grid is already (weakly) Delaunay, so the
-    flipper must report zero flips and not modify the connectivity.
-    """
+    """Leave an already-Delaunay (right-triangulated axis-aligned grid) mesh untouched."""
     points, tris = _grid_mesh(4, 4, jitter=0.0)
     positions = wp.array(points, dtype=wp.vec2, device=device)
     indices = wp.array(tris, dtype=wp.int32, device=device)
@@ -378,6 +362,14 @@ def test_flip_invalid_arguments(test, device):
     with test.assertRaises(ValueError):
         warp.geometry.delaunay_edge_flip(positions, indices, max_passes=-1)
 
+    # Negative or non-finite epsilons would silently loosen (or NaN-disable) the
+    # guards they are meant to enforce, so they are rejected rather than accepted.
+    for bad_eps in (-1.0, float("nan"), float("inf")):
+        with test.assertRaises(ValueError):
+            warp.geometry.delaunay_edge_flip(positions, indices, area_epsilon=bad_eps)
+        with test.assertRaises(ValueError):
+            warp.geometry.delaunay_edge_flip(positions, indices, ref_epsilon=bad_eps)
+
     # A rejected call must leave the connectivity untouched.
     assert_np_equal(indices.numpy(), tris)
 
@@ -385,7 +377,7 @@ def test_flip_invalid_arguments(test, device):
     with test.assertRaises(ValueError):
         warp.geometry.delaunay_edge_flip(positions, flat)
     with test.assertRaises(ValueError):
-        warp.geometry.triangle_triangle_adjacency(flat)
+        warp.geometry.tri_tri_adjacency(flat)
 
 
 def test_flip_convex_fan(test, device):
@@ -494,7 +486,6 @@ def test_flip_graph_capture(test, device):
     assert_np_equal(indices.numpy(), tris)
 
     wp.capture_launch(capture.graph)
-    wp.synchronize_device(device)
 
     out = indices.numpy()
     _assert_delaunay(test, points, out)
@@ -505,7 +496,6 @@ def test_flip_graph_capture(test, device):
     # The captured graph rebuilds adjacency from the current connectivity each
     # replay, so replaying on the now-Delaunay mesh is a stable no-op.
     wp.capture_launch(capture.graph)
-    wp.synchronize_device(device)
     assert_np_equal(indices.numpy(), expected)
     test.assertEqual(int(total.numpy()[0]), 0)
 
