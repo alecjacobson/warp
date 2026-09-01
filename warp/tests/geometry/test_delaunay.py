@@ -307,6 +307,43 @@ def test_flip_grid_large(test, device):
     test.assertEqual(_flip(positions, indices), 0)
 
 
+def test_flip_grid_sheared_converges_in_few_passes(test, device):
+    """Converge in O(1) passes on a sheared grid, not O(num_rows).
+
+    A regularly-numbered grid (triangle index increasing row by row) sheared
+    so that every internal diagonal is non-Delaunay is the textbook adversarial
+    case for a maximal-independent-set edge flipper: a naive priority that is
+    monotonic in triangle index (e.g. plain ``t * 3 + j``) makes claims cascade
+    along each column and collapses the whole independent set to one row
+    resolved per pass, taking ``num_rows - 1`` passes to converge instead of
+    the expected ``O(log num_rows)``. This asserts a small constant bound
+    instead of pinning an exact pass count, so it stays robust to unrelated
+    convergence-order changes while still catching a regression back to
+    linear-in-mesh-size behavior.
+    """
+    nx = ny = 40
+    points, tris = _grid_mesh(nx, ny, jitter=0.0)
+    # The sign of the shear that breaks Delaunay-ness depends on which way
+    # _grid_mesh's fixed (bottom-left, top-right) diagonal runs; +0.1 does it here.
+    points = points @ np.array([[1.0, 0.1], [0.0, 1.0]], dtype=np.float32)
+    test.assertFalse(_is_delaunay(points, tris))
+
+    positions = wp.array(points, dtype=wp.vec2, device=device)
+    indices = wp.array(tris, dtype=wp.int32, device=device)
+
+    max_passes = 5
+    num_flips = warp.geometry.delaunay_edge_flip(positions, indices, max_passes=max_passes)
+    num_flips = int(num_flips.numpy()[0])
+    test.assertGreater(num_flips, 0)
+
+    out = indices.numpy()
+    _assert_valid_mesh(test, points, out)
+    # If this starts failing, check whether the claim priority computed in
+    # _EdgeFlipper._edge_priority() regressed back to being monotonic in
+    # triangle index (e.g. plain t * 3 + j).
+    _assert_delaunay(test, points, out)
+
+
 def test_flip_already_delaunay(test, device):
     """Leave an already-Delaunay (right-triangulated axis-aligned grid) mesh untouched."""
     points, tris = _grid_mesh(4, 4, jitter=0.0)
@@ -513,6 +550,12 @@ add_function_test(TestDelaunay, "test_adjacency_matches_grid", test_adjacency_ma
 add_function_test(TestDelaunay, "test_flip_single_edge", test_flip_single_edge, devices=devices)
 add_function_test(TestDelaunay, "test_flip_grid", test_flip_grid, devices=devices)
 add_function_test(TestDelaunay, "test_flip_grid_large", test_flip_grid_large, devices=devices)
+add_function_test(
+    TestDelaunay,
+    "test_flip_grid_sheared_converges_in_few_passes",
+    test_flip_grid_sheared_converges_in_few_passes,
+    devices=devices,
+)
 add_function_test(TestDelaunay, "test_flip_already_delaunay", test_flip_already_delaunay, devices=devices)
 add_function_test(TestDelaunay, "test_flip_reference_rejection", test_flip_reference_rejection, devices=devices)
 add_function_test(TestDelaunay, "test_flip_convex_fan", test_flip_convex_fan, devices=devices)
