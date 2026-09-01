@@ -39,8 +39,8 @@ callable on an explicit cell set, independent of how the cells were chosen.
 | ID  | Requirement | Priority | Notes |
 | --- | ----------- | -------- | ----- |
 | R1  | Extract an isosurface from an implicit function without materializing a dense grid | Must | The core ask |
-| R2  | Run the whole pipeline (cell selection, field evaluation, extraction) on the GPU | Must | Field eval must not round-trip to host |
-| R3  | Accept the implicit function as a `@wp.func` or a batched Python callable | Must | Callable form covers mesh queries, neural implicits |
+| R2  | Run cell selection, corner de-duplication, and extraction on the GPU | Must | These stages never round-trip to host |
+| R3  | Accept the implicit function as a batched Python callable `evaluate(points) -> values` | Must | Batches evaluate meshes, neural implicits, and NumPy/PyTorch fields uniformly; see "Batched-callable-only contract" below |
 | R4  | Produce a watertight, manifold mesh matching dense marching cubes at equal resolution | Must | Correctness / fair comparison |
 | R5  | Expose the extraction stage on an explicit `(cells, corner_values)` list | Should | Vision/genAI "marked voxels" workflow |
 | R6  | Expose the cell-selection stage (`lipschitz_octree`) on its own | Should | Custom extractors, visualization |
@@ -80,15 +80,39 @@ anywhere in the cell, so the whole subtree can be discarded. For a true SDF,
 cheap: an entire coarse subtree far from the surface is culled in one test. This
 is exactly the bound used by `igl::lipschitz_octree_prune`.
 
-### Alternatives Considered
+### Batched-callable-only contract
 
-- **Passing a `wp.Function` as a kernel launch argument.** Warp resolves function
-  targets at codegen/hash time, not as runtime values, so a top-level launched
-  kernel cannot receive a `@wp.func` through its `inputs` list. Instead, when the
-  caller passes a `@wp.func`, we generate (and cache, keyed by the function
-  object) one tiny `eval_sdf_kernel` that closes over it. Everything else is
-  generic and operates on plain arrays. The public contract is the more general
-  *batched callable* `points -> values`; the `@wp.func` path is sugar over it.
+The public API accepts `sdf` only as a batched callable,
+`evaluate(points: wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32)` --
+not a bare single-point `@wp.func`. An earlier revision auto-wrapped a
+`@wp.func` in a generated, cached `eval_sdf_kernel` (closing over the function
+object) so a per-point signature could be passed directly. Review feedback
+was that this convenience hid a kernel launch behind what looked like a
+single-point call, and made it easy to reach for the (materially slower,
+though still correct) fallback semantics without noticing. It also collapsed
+two different implementer intents -- "evaluate on the GPU" vs. "evaluate
+however you like, host round trip included" -- into one call shape that
+looked identical either way.
+
+Removing that path makes the two supported styles explicit at the call site:
+
+- **All on-device.** Write a small `@wp.kernel` that evaluates the field over
+  the batch (see `warp/examples/core/example_sparse_marching_cubes.py` and
+  the `test_sparse_mc_mesh_minus_sphere_on_device` test, which composes a mesh
+  query with an analytic sphere via CSG subtraction, `max(d_mesh, -d_sphere)`,
+  in one kernel). Field evaluation then never leaves the GPU.
+- **Host round trip, caller's choice.** A callable that wraps NumPy, PyTorch,
+  or any other host library is equally valid -- `_make_evaluator` only
+  requires the *returned* array to be a `wp.array(dtype=wp.float32)` back on
+  the query points' device. This costs a device/host sync on every call (once
+  per octree level, plus once for the corners), which is the caller's to pay
+  knowingly rather than something the library defaults into. Exercised by
+  `test_sparse_mc_numpy_evaluator`.
+
+Passing a `wp.Function` (a bare `@wp.func`) now raises `TypeError` with a
+worked example of how to batch it.
+
+### Alternatives Considered
 
 - **A dense hash grid / `wp.HashGrid` for corner de-duplication.** `wp.HashGrid`
   is built for spatial neighbor queries on float positions, not exact integer
@@ -154,7 +178,7 @@ is deterministic. Confirmed on both CPU (multithreaded) and CUDA.
 # Full pipeline: implicit function -> mesh. Parameterized exactly like
 # warp.geometry.IsoSurfaceMarchingCubes.extract, so the two are interchangeable.
 verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-    sdf,                 # @wp.func (p: wp.vec3) -> float, or callable(points)->values
+    sdf,                 # evaluate(points: wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32)
     nx, ny, nz,
     domain_bounds_lower_corner=None, domain_bounds_upper_corner=None,
     threshold=0.0, lipschitz_bound=1.0, device=None, return_stats=False,
@@ -227,10 +251,10 @@ Tests live in `warp/tests/geometry/test_sparse_marching_cubes.py` and run across
 - **Equivalence to dense** -- for sphere and torus SDFs at several depths, the
   sparse mesh matches `wp.geometry.IsoSurfaceMarchingCubes` on the equivalent dense grid: identical
   vertex/triangle counts and a tolerance-based two-sided Hausdorff match. (Exact
-  position equality is intentionally *not* asserted, because the `@wp.func` and
-  the dense field kernel compile the same arithmetic with slightly different
-  floating-point contraction.) This equivalence is the fairness anchor for the
-  benchmark's speedup claims.
+  position equality is intentionally *not* asserted, because the batched-evaluator
+  kernel and the dense field kernel compile the same arithmetic with slightly
+  different floating-point contraction.) This equivalence is the fairness
+  anchor for the benchmark's speedup claims.
 - **Watertightness / manifoldness** -- for closed SDFs strictly inside the
   domain, the mesh has zero boundary edges (a boundary edge is a hole) and zero
   edges shared by more than two faces, and the Euler characteristic recovers the
@@ -243,9 +267,13 @@ Tests live in `warp/tests/geometry/test_sparse_marching_cubes.py` and run across
   own cells plus independently sampled corner values reproduces the octree-driven
   result, and is invariant to a large negative subscript shift with a
   compensating origin (exercises the offset-relative corner packing).
-- **Interfaces and edge cases** -- `@wp.func` vs. batched-callable equivalence, a
-  mesh-based SDF via `wp.mesh_query_point_sign_normal`, non-zero isovalue, empty
-  output, and argument validation.
+- **Interfaces and edge cases** -- an all-on-device Warp evaluator vs. a NumPy
+  round-tripping one (`test_sparse_mc_numpy_evaluator`), a mesh SDF composed
+  with an analytic sphere via CSG subtraction entirely on-device
+  (`test_sparse_mc_mesh_minus_sphere_on_device`), a mesh-based SDF via
+  `wp.mesh_query_point_sign_normal`, non-zero isovalue, empty output, and
+  argument validation -- including that a bare `@wp.func` is rejected with a
+  `TypeError`.
 - **Anisotropic grid matches dense** -- for unequal, non-power-of-two `nx, ny,
   nz` and anisotropic corner bounds, the sparse mesh matches
   `IsoSurfaceMarchingCubes` on the same grid, exercising the padding + cull

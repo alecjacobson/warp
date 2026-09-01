@@ -75,6 +75,12 @@ def _analytic_field_kernel(field: wp.array3d(dtype=float), origin: wp.vec3, h: f
     field[i, j, k] = _scene_sdf(origin + h * wp.vec3(float(i), float(j), float(k)))
 
 
+@wp.kernel(enable_backward=False)
+def _analytic_batch_kernel(points: wp.array(dtype=wp.vec3), values: wp.array(dtype=wp.float32)):
+    i = wp.tid()
+    values[i] = wp.float32(_scene_sdf(points[i]))
+
+
 def analytic_backend(device):
     origin = wp.vec3(-1.0, -1.0, -1.0)
     root_width = 2.0
@@ -86,9 +92,16 @@ def analytic_backend(device):
         wp.launch(_analytic_field_kernel, dim=field.shape, inputs=[field, origin, float(h)], device=device)
         return field
 
-    # Passing the @wp.func lets wp.geometry.sparse_marching_cubes_via_lipschitz_pruning build its own evaluation
-    # kernel; it computes the same values as the dense field kernel.
-    return _scene_sdf, dense_field, origin, root_width
+    # sparse_marching_cubes_via_lipschitz_pruning only accepts a batched
+    # callable, not a bare @wp.func -- wrap it in a kernel so evaluation stays
+    # entirely on the GPU. It computes the same values as the dense field
+    # kernel above.
+    def evaluate(points):
+        values = wp.empty(points.shape[0], dtype=wp.float32, device=points.device)
+        wp.launch(_analytic_batch_kernel, dim=points.shape[0], inputs=[points], outputs=[values], device=points.device)
+        return values
+
+    return evaluate, dense_field, origin, root_width
 
 
 # =============================================================================

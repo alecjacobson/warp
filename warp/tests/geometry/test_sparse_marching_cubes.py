@@ -28,6 +28,38 @@ def torus_sdf(p: wp.vec3):
 
 
 @wp.kernel(enable_backward=False)
+def _sphere_batch_kernel(points: wp.array(dtype=wp.vec3), values: wp.array(dtype=wp.float32)):
+    i = wp.tid()
+    values[i] = wp.float32(sphere_sdf(points[i]))
+
+
+@wp.kernel(enable_backward=False)
+def _torus_batch_kernel(points: wp.array(dtype=wp.vec3), values: wp.array(dtype=wp.float32)):
+    i = wp.tid()
+    values[i] = wp.float32(torus_sdf(points[i]))
+
+
+def sphere_evaluate(points):
+    """Batched, all-on-device evaluator for ``sphere_sdf``.
+
+    ``sparse_marching_cubes_via_lipschitz_pruning``/``lipschitz_octree`` only
+    accept a batched callable, not a bare single-point ``@wp.func`` -- this is
+    the pattern callers use to batch one, matching
+    ``warp/examples/core/example_sparse_marching_cubes.py``.
+    """
+    values = wp.empty(points.shape[0], dtype=wp.float32, device=points.device)
+    wp.launch(_sphere_batch_kernel, dim=points.shape[0], inputs=[points], outputs=[values], device=points.device)
+    return values
+
+
+def torus_evaluate(points):
+    """Batched, all-on-device evaluator for ``torus_sdf`` (see ``sphere_evaluate``)."""
+    values = wp.empty(points.shape[0], dtype=wp.float32, device=points.device)
+    wp.launch(_torus_batch_kernel, dim=points.shape[0], inputs=[points], outputs=[values], device=points.device)
+    return values
+
+
+@wp.kernel(enable_backward=False)
 def sphere_field_kernel(field: wp.array3d(dtype=float), origin: wp.vec3, h: float):
     i, j, k = wp.tid()
     p = origin + h * wp.vec3(float(i), float(j), float(k))
@@ -192,7 +224,7 @@ def _sparse_mc(sdf, origin, root_width, max_depth, **kwargs):
 def test_sparse_mc_sphere(test, device):
     """Check that vertices lie on the sphere and that the mesh is structurally valid."""
     origin = (-1.0, -1.0, -1.0)
-    verts, indices = _sparse_mc(sphere_sdf, origin, 2.0, 6, device=device)
+    verts, indices = _sparse_mc(sphere_evaluate, origin, 2.0, 6, device=device)
     v = verts.numpy()
     f = indices.numpy().reshape(-1, 3)
     _validate_mesh(test, v, f)
@@ -214,13 +246,13 @@ def test_sparse_mc_matches_dense(test, device):
     surface, far fewer evaluations.
     """
     cases = [
-        (sphere_sdf, sphere_field_kernel, (-1.0, -1.0, -1.0), 2.0, 5),
-        (sphere_sdf, sphere_field_kernel, (-1.0, -1.0, -1.0), 2.0, 6),
-        (torus_sdf, torus_field_kernel, (-1.0, -1.0, -1.0), 2.0, 6),
+        ("sphere", sphere_evaluate, sphere_field_kernel, (-1.0, -1.0, -1.0), 2.0, 5),
+        ("sphere", sphere_evaluate, sphere_field_kernel, (-1.0, -1.0, -1.0), 2.0, 6),
+        ("torus", torus_evaluate, torus_field_kernel, (-1.0, -1.0, -1.0), 2.0, 6),
     ]
-    for sdf, field_kernel, origin, width, depth in cases:
-        with test.subTest(sdf=sdf.key, depth=depth):
-            verts, indices = _sparse_mc(sdf, origin, width, depth, device=device)
+    for name, evaluate, field_kernel, origin, width, depth in cases:
+        with test.subTest(sdf=name, depth=depth):
+            verts, indices = _sparse_mc(evaluate, origin, width, depth, device=device)
             sv = verts.numpy()
             sf = indices.numpy().reshape(-1, 3)
             dv, df = _dense_surface(field_kernel, origin, width, depth, 0.0, device)
@@ -243,7 +275,7 @@ def test_sparse_mc_anisotropic_matches_dense(test, device):
     for nx, ny, nz in ((11, 15, 21), (17, 17, 17), (9, 33, 13)):
         with test.subTest(nx=nx, ny=ny, nz=nz):
             verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-                sphere_sdf,
+                sphere_evaluate,
                 nx,
                 ny,
                 nz,
@@ -263,7 +295,7 @@ def test_sparse_mc_threshold(test, device):
     """Check that a non-zero isovalue extracts a concentric, larger sphere."""
     origin = (-1.5, -1.5, -1.5)
     threshold = 0.25  # sphere_sdf == 0.25 -> radius 0.75
-    verts, indices = _sparse_mc(sphere_sdf, origin, 3.0, 6, threshold=threshold, device=device)
+    verts, indices = _sparse_mc(sphere_evaluate, origin, 3.0, 6, threshold=threshold, device=device)
     v = verts.numpy()
     f = indices.numpy().reshape(-1, 3)
     _validate_mesh(test, v, f)
@@ -275,7 +307,7 @@ def test_sparse_mc_empty(test, device):
     """Check that a level set outside the domain yields an empty but valid mesh."""
     origin = (-1.0, -1.0, -1.0)
     # Isovalue -10 is never attained by the sphere SDF in this box.
-    verts, indices = _sparse_mc(sphere_sdf, origin, 2.0, 5, threshold=-10.0, device=device)
+    verts, indices = _sparse_mc(sphere_evaluate, origin, 2.0, 5, threshold=-10.0, device=device)
     v = verts.numpy()
     f = indices.numpy().reshape(-1, 3)
     test.assertEqual(v.shape[0], 0)
@@ -286,7 +318,7 @@ def test_sparse_mc_stats_fewer_evaluations(test, device):
     """Check that the Lipschitz octree evaluates far fewer points than a dense grid."""
     origin = (-1.0, -1.0, -1.0)
     max_depth = 7
-    _, _, stats = _sparse_mc(sphere_sdf, origin, 2.0, max_depth, return_stats=True, device=device)
+    _, _, stats = _sparse_mc(sphere_evaluate, origin, 2.0, max_depth, return_stats=True, device=device)
     resolution = 1 << max_depth
     dense_evals = (resolution + 1) ** 3
     test.assertEqual(stats["resolution"], resolution)
@@ -315,36 +347,39 @@ def test_sparse_mc_no_padding_when_power_of_two_plus_one(test, device):
         (7, 22088, 98443),
     ):
         with test.subTest(max_depth=max_depth):
-            _, _, stats = _sparse_mc(sphere_sdf, origin, 2.0, max_depth, return_stats=True, device=device)
+            _, _, stats = _sparse_mc(sphere_evaluate, origin, 2.0, max_depth, return_stats=True, device=device)
             test.assertEqual(stats["culled_cells"], 0)
             test.assertEqual(stats["leaf_cells"], expected_leaf_cells)
             test.assertEqual(stats["sdf_evaluations"], expected_sdf_evaluations)
 
 
-def test_sparse_mc_python_callable(test, device):
-    """Check that the batched Python-callable interface matches the @wp.func interface."""
+def test_sparse_mc_numpy_evaluator(test, device):
+    """Check that an off-device (NumPy) batched evaluator is still correct.
 
-    @wp.kernel(enable_backward=False)
-    def batched_sphere(points: wp.array(dtype=wp.vec3), out: wp.array(dtype=wp.float32)):
-        i = wp.tid()
-        out[i] = wp.length(points[i]) - 0.5
+    The batched-callable contract only requires the *returned* array to be a
+    ``wp.array(dtype=wp.float32)`` on the query points' device -- a callable is
+    free to round-trip through host memory (NumPy, PyTorch, ...) internally.
+    This is slower (every call pays a device/host sync), but must produce the
+    exact same surface as an all-device Warp evaluator.
+    """
 
-    def evaluate(points):
-        out = wp.empty(points.shape[0], dtype=wp.float32, device=points.device)
-        wp.launch(batched_sphere, dim=points.shape[0], inputs=[points], outputs=[out], device=points.device)
-        return out
+    def evaluate_numpy(points):
+        p = points.numpy()  # device -> host sync
+        values = np.linalg.norm(p, axis=1) - 0.5
+        return wp.array(values.astype(np.float32), device=points.device)
 
     origin = (-1.0, -1.0, -1.0)
-    v_func, f_func = _sparse_mc(sphere_sdf, origin, 2.0, 6, device=device)
-    v_call, f_call = _sparse_mc(evaluate, origin, 2.0, 6, device=device)
+    v_np, f_np = _sparse_mc(evaluate_numpy, origin, 2.0, 6, device=device)
+    v_ref, f_ref = _sparse_mc(sphere_evaluate, origin, 2.0, 6, device=device)
 
+    _validate_mesh(test, v_np.numpy(), f_np.numpy().reshape(-1, 3))
     # Both paths evaluate the identical expression, so the meshes must coincide.
     _assert_surfaces_equivalent(
         test,
-        v_func.numpy(),
-        f_func.numpy().reshape(-1, 3),
-        v_call.numpy(),
-        f_call.numpy().reshape(-1, 3),
+        v_np.numpy(),
+        f_np.numpy().reshape(-1, 3),
+        v_ref.numpy(),
+        f_ref.numpy().reshape(-1, 3),
     )
 
 
@@ -384,6 +419,82 @@ def test_sparse_mc_mesh_sdf(test, device):
     np.testing.assert_allclose(np.median(radius), 0.5, atol=3.0 / 64.0)
 
 
+@wp.kernel(enable_backward=False)
+def _mesh_minus_sphere_kernel(
+    mesh_id: wp.uint64,
+    points: wp.array(dtype=wp.vec3),
+    sphere_radius: wp.float32,
+    out: wp.array(dtype=wp.float32),
+):
+    """CSG subtraction of an analytic sphere from a mesh SDF, entirely on-device.
+
+    No ``.numpy()``/host round trip anywhere in this kernel or the launch that
+    wraps it below: this is the pattern ``sparse_marching_cubes_via_lipschitz_pruning``
+    expects for an implicit function that should stay on the GPU end to end.
+    """
+    i = wp.tid()
+    p = points[i]
+    query = wp.mesh_query_point_sign_normal(mesh_id, p, 1.0e6)
+    cp = wp.mesh_eval_position(mesh_id, query.face, query.u, query.v)
+    mesh_sdf = query.sign * wp.length(p - cp)
+    sphere_sdf_val = wp.length(p) - sphere_radius
+    # CSG "A minus B" for signed distances: max(d_A, -d_B).
+    out[i] = wp.max(mesh_sdf, -sphere_sdf_val)
+
+
+def test_sparse_mc_mesh_minus_sphere_on_device(test, device):
+    """Extract a mesh SDF with a concentric sphere subtracted, evaluated entirely on the GPU.
+
+    Demonstrates and checks the recommended pattern for composing implicit
+    functions in Warp: a single kernel combines a mesh query
+    (``wp.mesh_query_point_sign_normal``) with an analytic sphere via CSG
+    subtraction, launched from a batched evaluator with no host round trip.
+    Carving a sphere of a quarter the mesh's bounding-box radius out of its
+    center turns the solid sphere into a hollow shell, so the extracted
+    surface should be two disjoint, watertight, genus-0 spheres (outer and
+    inner) rather than one.
+    """
+    # Build a sphere mesh via dense marching cubes to use as the SDF source
+    # (bounding-box radius 0.5, so a quarter of that is 0.125).
+    dv, df = _dense_surface(sphere_field_kernel, (-1.0, -1.0, -1.0), 2.0, 6, 0.0, device)
+    mesh = wp.Mesh(
+        points=wp.array(dv, dtype=wp.vec3, device=device),
+        indices=wp.array(df.flatten(), dtype=wp.int32, device=device),
+    )
+    bbox_radius = 0.5
+    sphere_radius = 0.25 * bbox_radius
+
+    def evaluate(points):
+        out = wp.empty(points.shape[0], dtype=wp.float32, device=points.device)
+        wp.launch(
+            _mesh_minus_sphere_kernel,
+            dim=points.shape[0],
+            inputs=[mesh.id, points, sphere_radius],
+            outputs=[out],
+            device=points.device,
+        )
+        return out
+
+    verts, indices = _sparse_mc(evaluate, (-1.0, -1.0, -1.0), 2.0, 6, device=device)
+    v = verts.numpy()
+    f = indices.numpy().reshape(-1, 3)
+    _validate_mesh(test, v, f)
+
+    n_edges, n_boundary, n_nonmanifold = _edge_manifold_stats(f)
+    test.assertEqual(n_boundary, 0, "watertight shell must have no boundary (hole) edges")
+    test.assertEqual(n_nonmanifold, 0, "manifold shell must have no edges shared by >2 faces")
+    # Two disjoint genus-0 spheres: Euler characteristic sums to 2 + 2 = 4.
+    test.assertEqual(v.shape[0] - n_edges + f.shape[0], 4, "expected two disjoint sphere shells")
+
+    # Every vertex lies on the outer (mesh) or inner (carved-out) sphere.
+    radius = np.linalg.norm(v, axis=1)
+    on_outer = np.abs(radius - bbox_radius) < 3.0 / 64.0
+    on_inner = np.abs(radius - sphere_radius) < 3.0 / 64.0
+    test.assertTrue(np.all(on_outer | on_inner))
+    test.assertTrue(np.any(on_outer))
+    test.assertTrue(np.any(on_inner))
+
+
 def test_sparse_mc_watertight(test, device):
     """Check that a closed SDF strictly inside the domain yields a watertight, manifold mesh.
 
@@ -393,12 +504,12 @@ def test_sparse_mc_watertight(test, device):
     genus is recovered (sphere -> 2, torus -> 0).
     """
     cases = [
-        (sphere_sdf, 2),  # genus 0
-        (torus_sdf, 0),  # genus 1
+        ("sphere", sphere_evaluate, 2),  # genus 0
+        ("torus", torus_evaluate, 0),  # genus 1
     ]
-    for sdf, euler in cases:
-        with test.subTest(sdf=sdf.key):
-            verts, indices = _sparse_mc(sdf, (-1.0, -1.0, -1.0), 2.0, 6, device=device)
+    for name, evaluate, euler in cases:
+        with test.subTest(sdf=name):
+            verts, indices = _sparse_mc(evaluate, (-1.0, -1.0, -1.0), 2.0, 6, device=device)
             v = verts.numpy()
             f = indices.numpy().reshape(-1, 3)
             _validate_mesh(test, v, f)
@@ -423,13 +534,13 @@ def test_sparse_mc_from_cells(test, device):
     corner_offsets = np.array(wp.geometry.IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS, dtype=np.int32)  # (8, 3)
 
     # Reference surface from the full octree-driven path.
-    v_ref, f_ref = _sparse_mc(sphere_sdf, origin, root_width, depth, device=device)
+    v_ref, f_ref = _sparse_mc(sphere_evaluate, origin, root_width, depth, device=device)
     v_ref = v_ref.numpy()
     f_ref = f_ref.numpy().reshape(-1, 3)
 
     # Recover the octree cells, then sample the field at their corners ourselves.
     cell_origins, cell_width = wp.geometry.lipschitz_octree(
-        sphere_sdf, origin, root_width, max_depth=depth, device=device
+        sphere_evaluate, origin, root_width, max_depth=depth, device=device
     )
     co = cell_origins.numpy()
     cells = np.round((co - np.array(origin)) / cell_width).astype(np.int32)
@@ -542,7 +653,9 @@ def test_sparse_mc_noncontiguous_corner_values(test, device):
     depth = 5
     corner_offsets = np.array(wp.geometry.IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS, dtype=np.int32)
 
-    cell_origins, cell_width = wp.geometry.lipschitz_octree(sphere_sdf, origin, 2.0, max_depth=depth, device=device)
+    cell_origins, cell_width = wp.geometry.lipschitz_octree(
+        sphere_evaluate, origin, 2.0, max_depth=depth, device=device
+    )
     cells = np.round((cell_origins.numpy() - np.array(origin)) / cell_width).astype(np.int32)
     corner_pos = np.array(origin) + cell_width * (cells[:, None, :] + corner_offsets[None, :, :])
     corner_vals = (np.linalg.norm(corner_pos, axis=2) - 0.5).astype(np.float32)
@@ -575,7 +688,9 @@ def test_lipschitz_octree_brackets_surface(test, device):
     max_depth = 5
     resolution = 1 << max_depth
 
-    cell_origins, cell_width = wp.geometry.lipschitz_octree(sphere_sdf, origin, root_width, max_depth, device=device)
+    cell_origins, cell_width = wp.geometry.lipschitz_octree(
+        sphere_evaluate, origin, root_width, max_depth, device=device
+    )
     origins = cell_origins.numpy()
     test.assertGreater(origins.shape[0], 0)
     np.testing.assert_allclose(cell_width, root_width / resolution)
@@ -616,17 +731,25 @@ def test_lipschitz_octree_brackets_surface(test, device):
 def test_sparse_mc_invalid_arguments(test, device):
     """Check that argument validation raises informative errors."""
     with test.assertRaises(ValueError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sphere_sdf, 1, 17, 17, device=device)
+        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sphere_evaluate, 1, 17, 17, device=device)
     with test.assertRaises(ValueError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sphere_sdf, 17, 0, 17, device=device)
+        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sphere_evaluate, 17, 0, 17, device=device)
     with test.assertRaises(ValueError):
         wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-            sphere_sdf, 17, 17, 17, lipschitz_bound=-1.0, device=device
+            sphere_evaluate, 17, 17, 17, lipschitz_bound=-1.0, device=device
         )
     with test.assertRaises(ValueError):
-        wp.geometry.lipschitz_octree(sphere_sdf, (0.0, 0.0, 0.0), 2.0, max_depth=4, lipschitz_bound=-1.0, device=device)
+        wp.geometry.lipschitz_octree(
+            sphere_evaluate, (0.0, 0.0, 0.0), 2.0, max_depth=4, lipschitz_bound=-1.0, device=device
+        )
     with test.assertRaises(TypeError):
         wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(42, 17, 17, 17, device=device)
+    # A bare single-point @wp.func is rejected -- only a batched callable is
+    # accepted, so that the on-GPU-or-not choice is explicit to the caller.
+    with test.assertRaises(TypeError):
+        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sphere_sdf, 17, 17, 17, device=device)
+    with test.assertRaises(TypeError):
+        wp.geometry.lipschitz_octree(sphere_sdf, (0.0, 0.0, 0.0), 2.0, max_depth=4, device=device)
 
     # A non-positive cell width collapses every corner onto the origin (or
     # mirrors the cell), so the explicit-cells entry point rejects it.
@@ -669,9 +792,15 @@ add_function_test(
     devices=devices,
 )
 add_function_test(
-    TestSparseMarchingCubes, "test_sparse_mc_python_callable", test_sparse_mc_python_callable, devices=devices
+    TestSparseMarchingCubes, "test_sparse_mc_numpy_evaluator", test_sparse_mc_numpy_evaluator, devices=devices
 )
 add_function_test(TestSparseMarchingCubes, "test_sparse_mc_mesh_sdf", test_sparse_mc_mesh_sdf, devices=devices)
+add_function_test(
+    TestSparseMarchingCubes,
+    "test_sparse_mc_mesh_minus_sphere_on_device",
+    test_sparse_mc_mesh_minus_sphere_on_device,
+    devices=devices,
+)
 add_function_test(TestSparseMarchingCubes, "test_sparse_mc_watertight", test_sparse_mc_watertight, devices=devices)
 add_function_test(TestSparseMarchingCubes, "test_sparse_mc_from_cells", test_sparse_mc_from_cells, devices=devices)
 add_function_test(

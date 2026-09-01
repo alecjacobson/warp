@@ -10,9 +10,10 @@ provably bracket the level set of a 1-Lipschitz function, and then runs
 marching cubes only on those voxels.
 
 The approach mirrors ``igl::lipschitz_octree`` plus the sparse-voxel overload of
-``igl::marching_cubes`` from libigl, but the entire pipeline (octree
-construction, corner de-duplication, field evaluation, and triangle extraction)
-runs on the GPU in pure Warp.
+``igl::marching_cubes`` from libigl. Octree construction, corner
+de-duplication, and triangle extraction run on the GPU in pure Warp; field
+evaluation calls a caller-supplied batched implicit function, which stays on
+the GPU too as long as it is implemented in Warp.
 
 For a dense field already resident in memory, use
 :class:`warp.geometry.IsoSurfaceMarchingCubes` instead.
@@ -101,80 +102,68 @@ def _get_edge_axis_table(device) -> wp.array:
 # Implicit-function evaluation
 # =============================================================================
 
-# Cache of point-batch evaluation kernels specialized to a particular @wp.func.
-# Keyed by the wp.Function object so repeated calls with the same implicit
-# function reuse compiled kernels instead of regenerating them.
-_sdf_eval_kernel_cache: dict[wp.Function, object] = {}
-
-
-def _get_sdf_eval_kernel(sdf_func: wp.Function):
-    """Build (and cache) a kernel that evaluates ``sdf_func`` over a point batch."""
-    if sdf_func in _sdf_eval_kernel_cache:
-        return _sdf_eval_kernel_cache[sdf_func]
-
-    # ``module="unique"`` gives each specialized kernel its own module so that
-    # distinct implicit functions do not collide on the shared kernel key.
-    @wp.kernel(module="unique", enable_backward=False)
-    def eval_sdf_kernel(points: wp.array(dtype=wp.vec3), values: wp.array(dtype=wp.float32)):
-        i = wp.tid()
-        # ``sdf_func`` is captured from the enclosing scope; Warp resolves it as a
-        # closure variable and emits a direct call.
-        values[i] = wp.float32(sdf_func(points[i]))
-
-    _sdf_eval_kernel_cache[sdf_func] = eval_sdf_kernel
-    return eval_sdf_kernel
-
 
 def _make_evaluator(sdf, device) -> Callable[[wp.array], wp.array]:
     """Return a callable mapping a ``wp.array(vec3)`` batch to a ``wp.array(float32)``.
 
-    Accepts either a Warp ``@wp.func`` (wrapped in a cached evaluation kernel) or
-    a Python callable already implementing the batched contract.
+    ``sdf`` must already be a batched callable; a bare ``@wp.func`` taking a
+    single point is rejected with a pointer to how to batch it, since silently
+    wrapping it here would hide a per-point kernel launch inside what looks
+    like a single call.
     """
     if isinstance(sdf, wp.Function):
-        eval_kernel = _get_sdf_eval_kernel(sdf)
+        raise TypeError(
+            "`sdf` must be a batched callable with signature "
+            "evaluate(points: wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32), not a single-point "
+            "@wp.func. Wrap it in a small kernel that evaluates it over the batch, e.g.:\n\n"
+            "    @wp.kernel\n"
+            "    def eval_kernel(points: wp.array(dtype=wp.vec3), values: wp.array(dtype=wp.float32)):\n"
+            "        i = wp.tid()\n"
+            "        values[i] = my_sdf(points[i])\n\n"
+            "    def evaluate(points):\n"
+            "        values = wp.empty(points.shape[0], dtype=wp.float32, device=points.device)\n"
+            "        wp.launch(eval_kernel, dim=points.shape[0], inputs=[points], outputs=[values], "
+            "device=points.device)\n"
+            "        return values\n\n"
+            "This keeps evaluation on the GPU; see warp/examples/core/example_sparse_marching_cubes.py."
+        )
 
-        def evaluate(points: wp.array) -> wp.array:
-            values = wp.empty(points.shape[0], dtype=wp.float32, device=points.device)
-            wp.launch(eval_kernel, dim=points.shape[0], inputs=[points], outputs=[values], device=points.device)
-            return values
+    if not callable(sdf):
+        raise TypeError(
+            "`sdf` must be a callable mapping a warp.array(dtype=wp.vec3) batch of query points to a "
+            f"warp.array(dtype=wp.float32) of distances, but got {type(sdf)}."
+        )
 
-        return evaluate
+    def evaluate(points: wp.array) -> wp.array:
+        values = sdf(points)
+        if not isinstance(values, wp.array):
+            raise TypeError(
+                "The implicit function callable must return a warp.array of float32 distance values, "
+                f"but returned {type(values)}."
+            )
+        if values.shape[0] != points.shape[0]:
+            raise ValueError(
+                f"The implicit function returned {values.shape[0]} values for {points.shape[0]} query points."
+            )
+        # Reject rather than silently copy: the evaluator is called once per
+        # octree level and once for the corners, so a hidden transfer here
+        # would quietly dominate the runtime of an otherwise GPU-only pipeline.
+        # A callable that itself round-trips through the host (e.g. wrapping a
+        # NumPy or PyTorch evaluation) is still valid -- it just pays that sync
+        # cost on every call, since the *returned* array must land back on
+        # ``points.device``.
+        if values.device != points.device:
+            raise ValueError(
+                f"The implicit function returned values on device '{values.device}', but the query points are "
+                f"on device '{points.device}'. Evaluate the field on the device of the points it is given."
+            )
+        if values.dtype != wp.float32:
+            raise TypeError(
+                f"The implicit function must return a warp.array of float32 distance values, got {values.dtype}."
+            )
+        return values
 
-    if callable(sdf):
-
-        def evaluate(points: wp.array) -> wp.array:
-            values = sdf(points)
-            if not isinstance(values, wp.array):
-                raise TypeError(
-                    "The implicit function callable must return a warp.array of float32 distance values, "
-                    f"but returned {type(values)}."
-                )
-            if values.shape[0] != points.shape[0]:
-                raise ValueError(
-                    f"The implicit function returned {values.shape[0]} values for {points.shape[0]} query points."
-                )
-            # Reject rather than silently copy: the evaluator is called once per
-            # octree level and once for the corners, so a hidden transfer here
-            # would quietly dominate the runtime of an otherwise GPU-only pipeline.
-            if values.device != points.device:
-                raise ValueError(
-                    f"The implicit function returned values on device '{values.device}', but the query points are "
-                    f"on device '{points.device}'. Evaluate the field on the device of the points it is given."
-                )
-            if values.dtype != wp.float32:
-                raise TypeError(
-                    f"The implicit function must return a warp.array of float32 distance values, got {values.dtype}."
-                )
-            return values
-
-        return evaluate
-
-    raise TypeError(
-        "`sdf` must be a warp.Function (@wp.func) or a Python callable mapping a "
-        "warp.array(dtype=wp.vec3) batch to a warp.array(dtype=wp.float32) of distances, "
-        f"but got {type(sdf)}."
-    )
+    return evaluate
 
 
 # =============================================================================
@@ -884,7 +873,7 @@ def lipschitz_octree(
     build their own extractors, visualize the adaptive grid, or reuse the cells.
 
     Args:
-        sdf: The implicit function, in either form accepted by
+        sdf: The implicit function, in the batched form accepted by
             :func:`sparse_marching_cubes_via_lipschitz_pruning`.
         origin: The minimum corner of the cubic root cell. Set ``origin`` and
             ``root_width`` so that the box ``[origin, origin + root_width]``
@@ -1079,19 +1068,25 @@ def sparse_marching_cubes_via_lipschitz_pruning(
     the octree's per-axis cell count must share a single power-of-two depth --
     are discarded before extraction.
 
-    The implicit function is evaluated entirely on ``device``. Both the pruning
-    pass (at cell centers) and the extraction pass (at cell corners) query it in
-    batches, so it never leaves the GPU.
+    Both the pruning pass (at cell centers) and the extraction pass (at cell
+    corners) query ``sdf`` in batches, never one point at a time. If ``sdf`` is
+    implemented entirely with Warp (a kernel launch, with no host round trip),
+    the whole pipeline stays on the GPU; see
+    ``warp/examples/core/example_sparse_marching_cubes.py`` for a mesh-query
+    implicit function that does this. A callable that wraps a host library
+    (NumPy, PyTorch, ...) is equally valid -- it just pays a device/host sync
+    on every call, since the values it returns must still land back on the
+    query points' device.
 
     Args:
-        sdf: The implicit function. Either a Warp ``@wp.func`` with signature
-            ``(p: wp.vec3) -> float`` returning the signed distance (or any
-            1-Lipschitz field whose ``threshold`` level set is the surface), or a
-            Python callable implementing the batched contract
-            ``evaluate(points: wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32)``.
-            The batched form is convenient for meshes (``wp.mesh_query_point*``),
-            neural implicits, or any field that is easier to evaluate in bulk. It
-            must return its values on the same device as the points it is given.
+        sdf: The implicit function, as a batched callable with the contract
+            ``evaluate(points: wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32)``,
+            returning the signed distance (or any 1-Lipschitz field whose
+            ``threshold`` level set is the surface) at each query point. A bare
+            single-point ``@wp.func`` is not accepted directly -- wrap it in a
+            kernel that evaluates it over the batch (see above), which keeps
+            evaluation on the GPU instead of hiding a per-point kernel launch
+            behind what looks like a single call.
         nx: Number of grid nodes in the x-direction.
         ny: Number of grid nodes in the y-direction.
         nz: Number of grid nodes in the z-direction.
@@ -1124,7 +1119,9 @@ def sparse_marching_cubes_via_lipschitz_pruning(
     Raises:
         ValueError: If ``nx``, ``ny``, or ``nz`` is less than 2, or
             ``lipschitz_bound`` is negative.
-        TypeError: If ``sdf`` is neither a ``warp.Function`` nor a callable.
+        TypeError: If ``sdf`` is not callable (including a bare
+            single-point ``@wp.func``, which must be wrapped in a batched
+            kernel first).
     """
     if nx < 2 or ny < 2 or nz < 2:
         raise ValueError(f"nx, ny, nz must each be at least 2, got ({nx}, {ny}, {nz}).")
