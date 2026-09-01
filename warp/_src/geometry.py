@@ -327,7 +327,37 @@ class _EdgeFlipper:
         return True
 
     @wp.func
-    def _stake_claim(claim: wp.array[wp.int32], t: wp.int32, prio: wp.int32):
+    def _reverse_bits32(x: wp.uint32) -> wp.uint32:
+        # Standard SWAR bit-reversal, self-inverse and therefore a bijection on
+        # uint32. See _edge_priority for why that matters.
+        x = ((x >> wp.uint32(1)) & wp.uint32(0x55555555)) | ((x & wp.uint32(0x55555555)) << wp.uint32(1))
+        x = ((x >> wp.uint32(2)) & wp.uint32(0x33333333)) | ((x & wp.uint32(0x33333333)) << wp.uint32(2))
+        x = ((x >> wp.uint32(4)) & wp.uint32(0x0F0F0F0F)) | ((x & wp.uint32(0x0F0F0F0F)) << wp.uint32(4))
+        x = ((x >> wp.uint32(8)) & wp.uint32(0x00FF00FF)) | ((x & wp.uint32(0x00FF00FF)) << wp.uint32(8))
+        x = (x >> wp.uint32(16)) | (x << wp.uint32(16))
+        return x
+
+    @wp.func
+    def _edge_priority(t: wp.int32, j: wp.int32) -> wp.uint32:
+        """Return a claim priority for edge ``j`` of triangle ``t``, unique across all edges.
+
+        ``t * 3 + j`` alone is already unique, but it is monotonic in ``t`` --
+        for mesh generators that number triangles with any spatial locality
+        (grids, marching cubes, subdivision, ...), that makes the claim in
+        :meth:`_stake_claim` always favor one geometric direction over another,
+        so a chain of edges that mutually conflict (their claimed rows overlap)
+        collapses to a single winner per pass instead of resolving in
+        parallel: convergence degrades from the expected ``O(log n)`` passes to
+        ``O(n)``. Reversing the bits of the (nonzero) key breaks that
+        correlation while keeping the mapping a bijection -- so uniqueness,
+        and therefore correctness, is unaffected -- and keeps 0 reserved as the
+        claim array's "unclaimed" sentinel.
+        """
+        key = wp.uint32(t * 3 + j) + wp.uint32(1)
+        return _EdgeFlipper._reverse_bits32(key)
+
+    @wp.func
+    def _stake_claim(claim: wp.array[wp.uint32], t: wp.int32, prio: wp.uint32):
         # Contend for exclusive ownership of triangle row ``t`` this pass; the
         # highest-priority edge touching the row wins the atomic_max.
         if t >= 0:
@@ -337,12 +367,12 @@ class _EdgeFlipper:
     def _apply_won_flips(
         tri: wp.array2d[wp.int32],
         tri_tri: wp.array2d[wp.int32],
-        claim: wp.array[wp.int32],
+        claim: wp.array[wp.uint32],
         num_flips: wp.array[wp.int32],
     ):
         t = wp.tid()
         for j in range(3):
-            prio = t * 3 + j
+            prio = _EdgeFlipper._edge_priority(t, j)
 
             # Check ownership before reading any mutable topology: if this edge did
             # not win row t, another concurrent flip may be rewriting it. An edge
@@ -480,7 +510,7 @@ class _DelaunayFlipper(_EdgeFlipper):
         has_ref: wp.int32,
         area_eps: float,
         ref_eps: float,
-        claim: wp.array[wp.int32],
+        claim: wp.array[wp.uint32],
     ):
         t = wp.tid()
         for j in range(3):
@@ -498,7 +528,7 @@ class _DelaunayFlipper(_EdgeFlipper):
             # writes the rows of {t, n, n_bc, n_ad}, so it claims exactly those four.
             n_bc = tri_tri[t, (j + 1) % 3]
             n_ad = tri_tri[n, (jn + 1) % 3]
-            prio = t * 3 + j
+            prio = _EdgeFlipper._edge_priority(t, j)
             _EdgeFlipper._stake_claim(claim, t, prio)
             _EdgeFlipper._stake_claim(claim, n, prio)
             _EdgeFlipper._stake_claim(claim, n_bc, prio)
@@ -582,7 +612,9 @@ def delaunay_edge_flip(
     ref = ref_positions if ref_positions is not None else positions
     max_passes_i = wp.int32(max_passes)
 
-    claim = wp.empty(shape=num_tris, dtype=wp.int32, device=device)
+    # 0 is the "unclaimed" sentinel; _edge_priority() never produces 0 (see its
+    # docstring), so a real claim can never be confused with an empty row.
+    claim = wp.empty(shape=num_tris, dtype=wp.uint32, device=device)
     num_flips = wp.empty(shape=1, dtype=wp.int32, device=device)
     total_flips = wp.zeros(shape=1, dtype=wp.int32, device=device)
     pass_count = wp.zeros(shape=1, dtype=wp.int32, device=device)
@@ -591,7 +623,7 @@ def delaunay_edge_flip(
     condition = wp.ones(shape=1, dtype=wp.int32, device=device)
 
     def _flip_pass():
-        claim.fill_(-1)
+        claim.fill_(0)
         num_flips.zero_()
         wp.launch(
             _DelaunayFlipper._stake_flip_claims,
