@@ -18,13 +18,13 @@ For a dense field already resident in memory, use
 :class:`warp.geometry.IsoSurfaceMarchingCubes` instead.
 """
 
-import math
 from collections.abc import Callable
 
 import numpy as np
 
 import warp as wp
 from warp._src import utils as _wp_utils
+from warp._src.geometry.iso_surface import resolve_domain_bounds
 from warp._src.geometry.marching_cubes import (
     MC_CUBE_CORNER_OFFSETS,
     MC_EDGE_TO_CORNERS,
@@ -32,11 +32,10 @@ from warp._src.geometry.marching_cubes import (
     _get_mc_tri_local_inds_table,
 )
 
-# Half the diagonal of a unit cube: the maximum distance from a cell center to
-# any point in the cell, expressed as a multiple of the cell width. A
-# 1-Lipschitz function whose magnitude at the center exceeds ``_SQRT3_OVER_2 * h``
-# cannot reach its level set anywhere inside the cell.
-_SQRT3_OVER_2: float = math.sqrt(3.0) / 2.0
+# Half the diagonal of a (possibly anisotropic) cell box: the maximum distance
+# from a cell center to any point in the cell is half the box's diagonal
+# length. A 1-Lipschitz function whose magnitude at the center exceeds that
+# distance cannot reach its level set anywhere inside the cell.
 
 
 # =============================================================================
@@ -187,16 +186,15 @@ def _make_evaluator(sdf, device) -> Callable[[wp.array], wp.array]:
 def _compute_cell_centers_kernel(
     cells: wp.array(dtype=wp.vec3i),
     origin: wp.vec3,
-    cell_width: wp.float32,
+    cell_width: wp.vec3,
     centers: wp.array(dtype=wp.vec3),
 ):
     """Compute the geometric center of each octree cell at the current depth."""
     tid = wp.tid()
     c = cells[tid]
-    centers[tid] = origin + cell_width * wp.vec3(
-        wp.float32(c[0]) + 0.5,
-        wp.float32(c[1]) + 0.5,
-        wp.float32(c[2]) + 0.5,
+    centers[tid] = origin + wp.cw_mul(
+        cell_width,
+        wp.vec3(wp.float32(c[0]) + 0.5, wp.float32(c[1]) + 0.5, wp.float32(c[2]) + 0.5),
     )
 
 
@@ -204,13 +202,13 @@ def _compute_cell_centers_kernel(
 def _cell_subscripts_to_origins_kernel(
     cells: wp.array(dtype=wp.vec3i),
     origin: wp.vec3,
-    cell_width: wp.float32,
+    cell_width: wp.vec3,
     origins: wp.array(dtype=wp.vec3),
 ):
     """Compute the minimum corner (world position) of each octree cell."""
     tid = wp.tid()
     c = cells[tid]
-    origins[tid] = origin + cell_width * wp.vec3(wp.float32(c[0]), wp.float32(c[1]), wp.float32(c[2]))
+    origins[tid] = origin + wp.cw_mul(cell_width, wp.vec3(wp.float32(c[0]), wp.float32(c[1]), wp.float32(c[2])))
 
 
 @wp.kernel(enable_backward=False)
@@ -255,6 +253,24 @@ def _compact_cells_kernel(
     tid = wp.tid()
     if keep[tid] == 1:
         out_cells[scan[tid] - 1] = cells[tid]
+
+
+@wp.kernel(enable_backward=False)
+def _cull_out_of_bounds_kernel(
+    cells: wp.array(dtype=wp.vec3i),
+    ncells: wp.vec3i,
+    keep: wp.array(dtype=wp.int32),
+):
+    """Flag leaf cells whose subscript lies outside the requested grid.
+
+    The octree root box is padded up to a power-of-two cell count per axis so
+    every axis can share a single ``max_depth``; this discards the cells that
+    only exist because of that padding.
+    """
+    tid = wp.tid()
+    c = cells[tid]
+    inside = c[0] < ncells[0] and c[1] < ncells[1] and c[2] < ncells[2]
+    keep[tid] = wp.where(inside, 1, 0)
 
 
 @wp.kernel(enable_backward=False)
@@ -345,7 +361,7 @@ def _decode_corner_positions_kernel(
     stride_x: wp.int64,
     stride_y: wp.int64,
     base: wp.vec3,
-    cell_width: wp.float32,
+    cell_width: wp.vec3,
     positions: wp.array(dtype=wp.vec3),
 ):
     """Recover world-space positions of the unique corners from their codes.
@@ -362,10 +378,9 @@ def _decode_corner_positions_kernel(
     rem = code - ci * stride_x
     cj = rem / stride_y
     ck = rem - cj * stride_y
-    positions[tid] = base + cell_width * wp.vec3(
-        wp.float32(wp.int32(ci)),
-        wp.float32(wp.int32(cj)),
-        wp.float32(wp.int32(ck)),
+    positions[tid] = base + wp.cw_mul(
+        cell_width,
+        wp.vec3(wp.float32(wp.int32(ci)), wp.float32(wp.int32(cj)), wp.float32(wp.int32(ck))),
     )
 
 
@@ -573,21 +588,25 @@ def _cell_subscript_bounds(cells: wp.array, device) -> tuple[np.ndarray, np.ndar
 def _build_lipschitz_octree(evaluate, origin, root_width, max_depth, isovalue, lipschitz_bound, device):
     """Build the sparse set of leaf cells that may contain the level set.
 
-    Returns a ``wp.array(dtype=wp.vec3i)`` of leaf-cell minimum-corner subscripts
-    at resolution ``2**max_depth`` (or ``None`` if the level set is not bracketed).
+    ``root_width`` is a ``wp.vec3`` giving the (possibly anisotropic) side
+    lengths of the root box. Returns a ``wp.array(dtype=wp.vec3i)`` of
+    leaf-cell minimum-corner subscripts at resolution ``2**max_depth`` (or
+    ``None`` if the level set is not bracketed).
     """
     cells = wp.array([[0, 0, 0]], dtype=wp.vec3i, device=device)
     n_cells = 1
 
     for depth in range(max_depth + 1):
-        cell_width = root_width / float(1 << depth)
-        band = lipschitz_bound * _SQRT3_OVER_2 * cell_width
+        cell_width = root_width * (1.0 / float(1 << depth))
+        # Half the diagonal of the (possibly anisotropic) cell box: the
+        # farthest any interior point can be from the center.
+        band = lipschitz_bound * 0.5 * wp.length(cell_width)
 
         centers = wp.empty(n_cells, dtype=wp.vec3, device=device)
         wp.launch(
             _compute_cell_centers_kernel,
             dim=n_cells,
-            inputs=[cells, wp.vec3(origin), wp.float32(cell_width)],
+            inputs=[cells, wp.vec3(origin), cell_width],
             outputs=[centers],
             device=device,
         )
@@ -629,13 +648,46 @@ def _build_lipschitz_octree(evaluate, origin, root_width, max_depth, isovalue, l
     raise AssertionError("Lipschitz octree loop exited without reaching max_depth.")
 
 
+def _cull_out_of_bounds(cells, ncells, device):
+    """Drop leaf cells whose subscript falls outside the requested ``(nx-1, ny-1, nz-1)`` grid.
+
+    The octree root box is padded up to a shared power-of-two cell count per
+    axis; this removes the cells that only exist because of that padding.
+    Returns ``(culled_cells, n_removed)``.
+    """
+    n_cells = cells.shape[0]
+    keep = wp.empty(n_cells, dtype=wp.int32, device=device)
+    wp.launch(
+        _cull_out_of_bounds_kernel,
+        dim=n_cells,
+        inputs=[cells, wp.vec3i(ncells)],
+        outputs=[keep],
+        device=device,
+    )
+    scan = wp.empty(n_cells, dtype=wp.int32, device=device)
+    n_keep = _scan_total(keep, scan)
+    if n_keep == n_cells:
+        return cells, 0
+
+    culled = wp.empty(n_keep, dtype=wp.vec3i, device=device)
+    wp.launch(
+        _compact_cells_kernel,
+        dim=n_cells,
+        inputs=[cells, keep, scan],
+        outputs=[culled],
+        device=device,
+    )
+    return culled, n_cells - n_keep
+
+
 def _dedupe_corners(cells, n_cells, offset, axis_stride, origin, cell_width, device):
     """De-duplicate cell corners.
 
     ``offset`` is the minimum corner subscript and ``axis_stride`` the number of
     distinct corner nodes per axis; together they pack corner subscripts into a
-    unique int64 code. Returns ``(cell_corners, corner_positions, n_unique)``
-    where ``cell_corners`` is an ``(n_cells, 8)`` int32 array of indices into the
+    unique int64 code. ``cell_width`` is a ``wp.vec3`` of the per-axis leaf cell
+    size. Returns ``(cell_corners, corner_positions, n_unique)`` where
+    ``cell_corners`` is an ``(n_cells, 8)`` int32 array of indices into the
     ``n_unique`` unique corners, ordered by :data:`MC_CUBE_CORNER_OFFSETS`.
     """
     m = 8 * n_cells
@@ -693,16 +745,16 @@ def _dedupe_corners(cells, n_cells, offset, axis_stride, origin, cell_width, dev
     # Fold the subscript offset into the origin here, in double precision, so the
     # kernel only ever converts small relative subscripts to float32.
     base = wp.vec3(
-        float(origin[0]) + cell_width * offset_subscript[0],
-        float(origin[1]) + cell_width * offset_subscript[1],
-        float(origin[2]) + cell_width * offset_subscript[2],
+        float(origin[0]) + float(cell_width[0]) * offset_subscript[0],
+        float(origin[1]) + float(cell_width[1]) * offset_subscript[1],
+        float(origin[2]) + float(cell_width[2]) * offset_subscript[2],
     )
 
     corner_positions = wp.empty(n_unique, dtype=wp.vec3, device=device)
     wp.launch(
         _decode_corner_positions_kernel,
         dim=n_unique,
-        inputs=[unique_codes, stride_x, stride_y, base, wp.float32(cell_width)],
+        inputs=[unique_codes, stride_x, stride_y, base, wp.vec3(cell_width)],
         outputs=[corner_positions],
         device=device,
     )
@@ -861,9 +913,10 @@ def lipschitz_octree(
     origin = wp.vec3(origin)
     root_width = float(root_width)
     cell_width = root_width / float(1 << max_depth)
+    root_width_vec = wp.vec3(root_width, root_width, root_width)
 
     evaluate = _make_evaluator(sdf, device)
-    cells = _build_lipschitz_octree(evaluate, origin, root_width, max_depth, threshold, lipschitz_bound, device)
+    cells = _build_lipschitz_octree(evaluate, origin, root_width_vec, max_depth, threshold, lipschitz_bound, device)
     if cells is None:
         return wp.empty(0, dtype=wp.vec3, device=device), cell_width
 
@@ -871,7 +924,7 @@ def lipschitz_octree(
     wp.launch(
         _cell_subscripts_to_origins_kernel,
         dim=cells.shape[0],
-        inputs=[cells, origin, wp.float32(cell_width)],
+        inputs=[cells, origin, wp.vec3(cell_width, cell_width, cell_width)],
         outputs=[cell_origins],
         device=device,
     )
@@ -977,8 +1030,9 @@ def sparse_marching_cubes_from_cells(
     offset = (int(lo[0]), int(lo[1]), int(lo[2]))
     axis_stride = int((hi.astype(np.int64) - lo.astype(np.int64)).max()) + 2
 
+    cell_width_vec = wp.vec3(float(cell_width), float(cell_width), float(cell_width))
     cell_corners, corner_positions, n_unique = _dedupe_corners(
-        cells_wp, n_cells, offset, axis_stride, wp.vec3(origin), float(cell_width), device
+        cells_wp, n_cells, offset, axis_stride, wp.vec3(origin), cell_width_vec, device
     )
 
     unique_values = wp.empty(n_unique, dtype=wp.float32, device=device)
@@ -995,9 +1049,12 @@ def sparse_marching_cubes_from_cells(
 
 def sparse_marching_cubes_via_lipschitz_pruning(
     sdf,
-    origin: wp.vec3 | tuple[float, float, float],
-    root_width: float,
-    max_depth: int,
+    nx: int,
+    ny: int,
+    nz: int,
+    *,
+    domain_bounds_lower_corner: wp.vec3 | tuple[float, float, float] | None = None,
+    domain_bounds_upper_corner: wp.vec3 | tuple[float, float, float] | None = None,
     threshold: float = 0.0,
     lipschitz_bound: float = 1.0,
     device: wp.DeviceLike = None,
@@ -1008,8 +1065,19 @@ def sparse_marching_cubes_via_lipschitz_pruning(
     Rather than sampling a dense grid, this routine builds a sparse octree that
     provably brackets the level set of a 1-Lipschitz implicit function (such as a
     signed distance function) and runs marching cubes only on the near-surface
-    cells. The output resolution matches a dense grid of ``2**max_depth`` cells
-    per axis, but the cost scales with the surface area rather than the volume.
+    cells, at a cost that scales with the surface area rather than the volume.
+
+    The grid is specified exactly as for
+    :meth:`warp.geometry.IsoSurfaceMarchingCubes.extract`: ``nx, ny, nz`` grid
+    nodes over the box ``[domain_bounds_lower_corner, domain_bounds_upper_corner]``,
+    which may be anisotropic. Calling this function and
+    :meth:`~warp.geometry.IsoSurfaceMarchingCubes.extract` with the same
+    ``nx, ny, nz`` and bounds produces the same surface. Internally, the octree
+    depth is derived as the smallest ``max_depth`` such that
+    ``2**max_depth >= max(nx - 1, ny - 1, nz - 1)``, and cells that fall outside
+    the requested ``(nx - 1, ny - 1, nz - 1)`` grid -- which exist only because
+    the octree's per-axis cell count must share a single power-of-two depth --
+    are discarded before extraction.
 
     The implicit function is evaluated entirely on ``device``. Both the pruning
     pass (at cell centers) and the extraction pass (at cell corners) query it in
@@ -1024,16 +1092,18 @@ def sparse_marching_cubes_via_lipschitz_pruning(
             The batched form is convenient for meshes (``wp.mesh_query_point*``),
             neural implicits, or any field that is easier to evaluate in bulk. It
             must return its values on the same device as the points it is given.
-        origin: The minimum corner of the cubic root cell. Set ``origin`` and
-            ``root_width`` so that the box ``[origin, origin + root_width]``
-            covers the entire surface to be extracted: anything outside that box
-            is never visited, so parts of the level set that leave it are simply
-            missing from the output, leaving the mesh open where it exits.
-        root_width: The side length of the cubic root cell. The domain covered is
-            ``[origin, origin + root_width]`` on every axis.
-        max_depth: The octree depth. The finest cells have width
-            ``root_width / 2**max_depth``, matching a dense grid of
-            ``2**max_depth`` cells (``2**max_depth + 1`` nodes) per axis.
+        nx: Number of grid nodes in the x-direction.
+        ny: Number of grid nodes in the y-direction.
+        nz: Number of grid nodes in the z-direction.
+        domain_bounds_lower_corner: The 3D coordinate that the grid's corner at
+            index ``(0, 0, 0)`` maps to. Defaults to ``(0.0, 0.0, 0.0)`` if
+            ``None``. Anything outside
+            ``[domain_bounds_lower_corner, domain_bounds_upper_corner]`` is never
+            visited, so parts of the level set that leave it are simply missing
+            from the output, leaving the mesh open where it exits.
+        domain_bounds_upper_corner: The 3D coordinate that the grid's corner at
+            index ``(nx - 1, ny - 1, nz - 1)`` maps to. Defaults to align with the
+            grid's maximal indices if ``None``.
         threshold: The isovalue defining the surface.
         lipschitz_bound: An upper bound on the Lipschitz constant of ``sdf``. Use
             ``1.0`` for a true signed distance function. Larger values widen the
@@ -1042,7 +1112,8 @@ def sparse_marching_cubes_via_lipschitz_pruning(
         device: The Warp device to run on. Defaults to the current device.
         return_stats: If ``True``, also return a dictionary of diagnostics
             (leaf-cell count, unique-corner count, implicit-function evaluation
-            count) useful for benchmarking against a dense grid.
+            count, culled-cell count) useful for benchmarking against a dense
+            grid.
 
     Returns:
         A tuple ``(vertices, indices)`` where ``vertices`` is a
@@ -1051,22 +1122,25 @@ def sparse_marching_cubes_via_lipschitz_pruning(
         If ``return_stats`` is ``True``, returns ``(vertices, indices, stats)``.
 
     Raises:
-        ValueError: If ``max_depth`` or ``lipschitz_bound`` is negative, or
-            ``root_width`` is not positive.
+        ValueError: If ``nx``, ``ny``, or ``nz`` is less than 2, or
+            ``lipschitz_bound`` is negative.
         TypeError: If ``sdf`` is neither a ``warp.Function`` nor a callable.
     """
-    if max_depth < 0:
-        raise ValueError(f"max_depth must be non-negative, got {max_depth}.")
-    if root_width <= 0.0:
-        raise ValueError(f"root_width must be positive, got {root_width}.")
+    if nx < 2 or ny < 2 or nz < 2:
+        raise ValueError(f"nx, ny, nz must each be at least 2, got ({nx}, {ny}, {nz}).")
     if lipschitz_bound < 0.0:
         raise ValueError(f"lipschitz_bound must be non-negative, got {lipschitz_bound}.")
 
     device = wp.get_device(device)
-    origin = wp.vec3(origin)
-    root_width = float(root_width)
+    lower_corner, grid_delta = resolve_domain_bounds(
+        (nx, ny, nz), domain_bounds_lower_corner, domain_bounds_upper_corner
+    )
+
+    ncells_x, ncells_y, ncells_z = nx - 1, ny - 1, nz - 1
+    max_depth = (max(ncells_x, ncells_y, ncells_z) - 1).bit_length()
     resolution = 1 << max_depth
-    cell_width = root_width / float(resolution)
+    root_width = grid_delta * float(resolution)
+    ncells = (ncells_x, ncells_y, ncells_z)
 
     evaluate = _make_evaluator(sdf, device)
 
@@ -1075,6 +1149,8 @@ def sparse_marching_cubes_via_lipschitz_pruning(
         "unique_corners": 0,
         "sdf_evaluations": 0,
         "resolution": resolution,
+        "requested_ncells": ncells,
+        "culled_cells": 0,
     }
 
     def finish(result):
@@ -1092,18 +1168,33 @@ def sparse_marching_cubes_via_lipschitz_pruning(
         return evaluate(points)
 
     cells = _build_lipschitz_octree(
-        counting_evaluate, origin, root_width, max_depth, threshold, lipschitz_bound, device
+        counting_evaluate, lower_corner, root_width, max_depth, threshold, lipschitz_bound, device
     )
     if cells is None:
         stats["sdf_evaluations"] = eval_count[0]
         return finish(_empty_mesh(device))
+
+    # -- Discard cells outside the requested (padded) grid --------------------
+    # Leaf-cell subscripts are guaranteed < resolution on every axis, so
+    # culling can only ever remove cells when some axis needed padding to
+    # reach the shared power-of-two resolution. Skip the extra kernel launch
+    # and host-syncing scan entirely otherwise -- this is the common case.
+    if ncells_x == resolution and ncells_y == resolution and ncells_z == resolution:
+        n_culled = 0
+    else:
+        cells, n_culled = _cull_out_of_bounds(cells, ncells, device)
+    stats["culled_cells"] = n_culled
     n_cells = cells.shape[0]
+    if n_cells == 0:
+        stats["sdf_evaluations"] = eval_count[0]
+        return finish(_empty_mesh(device))
     stats["leaf_cells"] = n_cells
 
     # -- Corner de-duplication and field evaluation --------------------------
     # Octree subscripts live in [0, resolution], so pack from a zero offset.
+    cell_width = root_width * (1.0 / float(resolution))
     cell_corners, corner_positions, n_unique = _dedupe_corners(
-        cells, n_cells, (0, 0, 0), resolution + 1, origin, cell_width, device
+        cells, n_cells, (0, 0, 0), resolution + 1, lower_corner, cell_width, device
     )
     stats["unique_corners"] = n_unique
 

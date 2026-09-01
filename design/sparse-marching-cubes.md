@@ -151,14 +151,17 @@ is deterministic. Confirmed on both CPU (multithreaded) and CUDA.
 ### Public API
 
 ```python
-# Full pipeline: implicit function -> mesh.
+# Full pipeline: implicit function -> mesh. Parameterized exactly like
+# warp.geometry.IsoSurfaceMarchingCubes.extract, so the two are interchangeable.
 verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
     sdf,                 # @wp.func (p: wp.vec3) -> float, or callable(points)->values
-    origin, root_width, max_depth,
+    nx, ny, nz,
+    domain_bounds_lower_corner=None, domain_bounds_upper_corner=None,
     threshold=0.0, lipschitz_bound=1.0, device=None, return_stats=False,
 )
 
-# Stage 1: choose occupied cells.
+# Stage 1: choose occupied cells (cubic root box; lower-level primitive, not
+# required to mirror a dense grid).
 cell_origins, cell_width = wp.geometry.lipschitz_octree(sdf, origin, root_width, max_depth, ...)
 
 # Stage 2: extract on an explicit cell set (e.g. marked voxels from a model).
@@ -172,6 +175,47 @@ verts, indices = wp.geometry.sparse_marching_cubes_from_cells(
 The `lipschitz_bound` parameter widens the retained band for fields that are
 `L`-Lipschitz with `L > 1` (i.e. not unit-speed SDFs), trading work for the
 bracketing guarantee.
+
+### Matching the dense grid parameterization
+
+Review feedback on the initial `(origin, root_width, max_depth)` signature of
+`sparse_marching_cubes_via_lipschitz_pruning` asked that it accept the same
+grid description as `IsoSurfaceMarchingCubes.extract` -- `nx, ny, nz` node
+counts plus `domain_bounds_lower_corner`/`domain_bounds_upper_corner` -- so
+that calling either extractor with the same arguments yields the same
+surface. This is nontrivial because the octree needs a single cubic-ish root
+box subdivided by 2 on every axis, while the requested grid can be
+anisotropic and need not have a power-of-two cell count on any axis.
+
+The reconciliation:
+
+1. Compute `dx, dy, dz` (the per-axis cell size) exactly as
+   `resolve_domain_bounds` does for the dense path, from
+   `(nx, ny, nz)` and the corner bounds.
+2. Let `ncells = (nx - 1, ny - 1, nz - 1)` and
+   `max_depth = (max(ncells) - 1).bit_length()` -- the smallest depth such
+   that `2**max_depth >= max(ncells)`.
+3. Build the octree on an **anisotropic root box** with per-axis width
+   `dx * 2**max_depth, dy * 2**max_depth, dz * 2**max_depth`, so the leaf
+   cell size matches the dense cell size exactly on every axis. Any axis
+   whose `ncells` is not itself a power of two gets a box that extends past
+   `domain_bounds_upper_corner` on that axis (this can happen on every axis,
+   including the longest one, unless its cell count is already a power of
+   two).
+4. The Lipschitz pruning bound generalizes from the cubic
+   `L * (sqrt(3)/2) * h` to the box half-diagonal
+   `L * 0.5 * ||(dx, dy, dz)||` at each depth, which reduces to the cubic
+   formula when isotropic.
+5. After the octree finishes, **cull leaf cells whose subscript is `>=
+   ncells` on any axis** -- the cells that exist only because of the
+   power-of-two padding -- before dedup/extraction, so the output is
+   identical to a dense grid over exactly `[domain_bounds_lower_corner,
+   domain_bounds_upper_corner]` at `nx, ny, nz`.
+
+`max_depth` is fully derived and is not part of the public signature.
+`lipschitz_octree` and `sparse_marching_cubes_from_cells` keep their
+existing cubic/scalar-width signatures: they are documented as general
+low-level primitives (R5/R6), not required to mirror a dense grid.
 
 ## Testing Strategy
 
@@ -202,6 +246,17 @@ Tests live in `warp/tests/geometry/test_sparse_marching_cubes.py` and run across
 - **Interfaces and edge cases** -- `@wp.func` vs. batched-callable equivalence, a
   mesh-based SDF via `wp.mesh_query_point_sign_normal`, non-zero isovalue, empty
   output, and argument validation.
+- **Anisotropic grid matches dense** -- for unequal, non-power-of-two `nx, ny,
+  nz` and anisotropic corner bounds, the sparse mesh matches
+  `IsoSurfaceMarchingCubes` on the same grid, exercising the padding + cull
+  reconciliation described above.
+- **No padding for exact power-of-two grids (regression guard)** -- for
+  `nx = ny = nz = 2**depth + 1`, `culled_cells` is exactly zero and
+  `leaf_cells`/`sdf_evaluations` exactly match fixed values recorded for that
+  depth. This is a deterministic stand-in for a performance-regression test
+  (unit tests must not assert on timing, per `AGENTS.md`): if the generalized,
+  anisotropic-capable code path ever added overhead for the common isotropic
+  case, these exact counts would change.
 
 Beyond unit tests, `warp/examples/benchmarks/benchmark_sparse_marching_cubes.py`
 compares sparse vs. dense on both an analytic SDF and the bunny mesh SDF,

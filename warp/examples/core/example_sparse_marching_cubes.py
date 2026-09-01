@@ -169,8 +169,20 @@ class Example:
         return evaluate
 
     def _extract_sparse(self, angle):
+        resolution = 1 << self.max_depth
+        n_nodes = resolution + 1
+        upper = wp.vec3(
+            self.origin[0] + self.root_width, self.origin[1] + self.root_width, self.origin[2] + self.root_width
+        )
         return wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-            self._make_evaluator(angle), self.origin, self.root_width, self.max_depth, threshold=0.0, return_stats=True
+            self._make_evaluator(angle),
+            n_nodes,
+            n_nodes,
+            n_nodes,
+            domain_bounds_lower_corner=self.origin,
+            domain_bounds_upper_corner=upper,
+            threshold=0.0,
+            return_stats=True,
         )
 
     def _extract_dense(self, angle):

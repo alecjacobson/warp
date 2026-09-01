@@ -42,6 +42,13 @@ def torus_field_kernel(field: wp.array3d(dtype=float), origin: wp.vec3, h: float
     field[i, j, k] = wp.length(q) - 0.2
 
 
+@wp.kernel(enable_backward=False)
+def sphere_field_kernel_aniso(field: wp.array3d(dtype=float), lower: wp.vec3, delta: wp.vec3):
+    i, j, k = wp.tid()
+    p = lower + wp.cw_mul(delta, wp.vec3(float(i), float(j), float(k)))
+    field[i, j, k] = wp.length(p) - 0.5
+
+
 # =============================================================================
 # Helpers
 # =============================================================================
@@ -136,17 +143,56 @@ def _dense_surface(field_kernel, origin, root_width, max_depth, threshold, devic
     return verts.numpy(), indices.numpy().reshape(-1, 3)
 
 
+def _dense_surface_aniso(field_kernel, lower, upper, nx, ny, nz, threshold, device):
+    """Extract the reference surface from an anisotropic dense grid."""
+    lower = wp.vec3(lower)
+    upper = wp.vec3(upper)
+    delta = wp.vec3(
+        (upper[0] - lower[0]) / (nx - 1),
+        (upper[1] - lower[1]) / (ny - 1),
+        (upper[2] - lower[2]) / (nz - 1),
+    )
+    field = wp.empty((nx, ny, nz), dtype=float, device=device)
+    wp.launch(field_kernel, dim=field.shape, inputs=[field, lower, delta], device=device)
+    verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract(
+        field,
+        threshold=threshold,
+        domain_bounds_lower_corner=lower,
+        domain_bounds_upper_corner=upper,
+    )
+    return verts.numpy(), indices.numpy().reshape(-1, 3)
+
+
 # =============================================================================
 # Tests
 # =============================================================================
 
 
+def _bounds_from_origin_width(origin, root_width):
+    """Convert the legacy cubic (origin, root_width) parameterization to corner bounds."""
+    lower = tuple(origin)
+    upper = tuple(o + root_width for o in origin)
+    return lower, upper
+
+
+def _sparse_mc(sdf, origin, root_width, max_depth, **kwargs):
+    """Call the new nx/ny/nz entry point with the cubic (origin, root_width, max_depth) shape.
+
+    A thin adapter so the existing tests, which were written against the cubic
+    octree parameterization, keep exercising the exact same grids after the
+    signature change to match the dense `nx, ny, nz` + bounds convention.
+    """
+    n = (1 << max_depth) + 1
+    lower, upper = _bounds_from_origin_width(origin, root_width)
+    return wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+        sdf, n, n, n, domain_bounds_lower_corner=lower, domain_bounds_upper_corner=upper, **kwargs
+    )
+
+
 def test_sparse_mc_sphere(test, device):
     """Check that vertices lie on the sphere and that the mesh is structurally valid."""
     origin = (-1.0, -1.0, -1.0)
-    verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-        sphere_sdf, origin, 2.0, max_depth=6, device=device
-    )
+    verts, indices = _sparse_mc(sphere_sdf, origin, 2.0, 6, device=device)
     v = verts.numpy()
     f = indices.numpy().reshape(-1, 3)
     _validate_mesh(test, v, f)
@@ -174,12 +220,40 @@ def test_sparse_mc_matches_dense(test, device):
     ]
     for sdf, field_kernel, origin, width, depth in cases:
         with test.subTest(sdf=sdf.key, depth=depth):
-            verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-                sdf, origin, width, max_depth=depth, device=device
-            )
+            verts, indices = _sparse_mc(sdf, origin, width, depth, device=device)
             sv = verts.numpy()
             sf = indices.numpy().reshape(-1, 3)
             dv, df = _dense_surface(field_kernel, origin, width, depth, 0.0, device)
+
+            _validate_mesh(test, sv, sf)
+            _assert_surfaces_equivalent(test, sv, sf, dv, df)
+
+
+def test_sparse_mc_anisotropic_matches_dense(test, device):
+    """Check that unequal, non-power-of-two nx/ny/nz and anisotropic bounds still match dense.
+
+    ``nx, ny, nz`` here don't share a common power-of-two cell count, so the
+    octree must pad each axis independently up to a shared ``max_depth`` and
+    then cull the padding cells before extraction. This is the correctness
+    proof that the padding + culling reconciliation exactly reproduces the
+    dense grid, the whole point of matching the two APIs' parameters.
+    """
+    lower = (-1.0, -1.2, -0.9)
+    upper = (1.0, 1.3, 1.1)
+    for nx, ny, nz in ((11, 15, 21), (17, 17, 17), (9, 33, 13)):
+        with test.subTest(nx=nx, ny=ny, nz=nz):
+            verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+                sphere_sdf,
+                nx,
+                ny,
+                nz,
+                domain_bounds_lower_corner=lower,
+                domain_bounds_upper_corner=upper,
+                device=device,
+            )
+            sv = verts.numpy()
+            sf = indices.numpy().reshape(-1, 3)
+            dv, df = _dense_surface_aniso(sphere_field_kernel_aniso, lower, upper, nx, ny, nz, 0.0, device)
 
             _validate_mesh(test, sv, sf)
             _assert_surfaces_equivalent(test, sv, sf, dv, df)
@@ -189,9 +263,7 @@ def test_sparse_mc_threshold(test, device):
     """Check that a non-zero isovalue extracts a concentric, larger sphere."""
     origin = (-1.5, -1.5, -1.5)
     threshold = 0.25  # sphere_sdf == 0.25 -> radius 0.75
-    verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-        sphere_sdf, origin, 3.0, max_depth=6, threshold=threshold, device=device
-    )
+    verts, indices = _sparse_mc(sphere_sdf, origin, 3.0, 6, threshold=threshold, device=device)
     v = verts.numpy()
     f = indices.numpy().reshape(-1, 3)
     _validate_mesh(test, v, f)
@@ -203,9 +275,7 @@ def test_sparse_mc_empty(test, device):
     """Check that a level set outside the domain yields an empty but valid mesh."""
     origin = (-1.0, -1.0, -1.0)
     # Isovalue -10 is never attained by the sphere SDF in this box.
-    verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-        sphere_sdf, origin, 2.0, max_depth=5, threshold=-10.0, device=device
-    )
+    verts, indices = _sparse_mc(sphere_sdf, origin, 2.0, 5, threshold=-10.0, device=device)
     v = verts.numpy()
     f = indices.numpy().reshape(-1, 3)
     test.assertEqual(v.shape[0], 0)
@@ -216,15 +286,39 @@ def test_sparse_mc_stats_fewer_evaluations(test, device):
     """Check that the Lipschitz octree evaluates far fewer points than a dense grid."""
     origin = (-1.0, -1.0, -1.0)
     max_depth = 7
-    _, _, stats = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-        sphere_sdf, origin, 2.0, max_depth=max_depth, return_stats=True, device=device
-    )
+    _, _, stats = _sparse_mc(sphere_sdf, origin, 2.0, max_depth, return_stats=True, device=device)
     resolution = 1 << max_depth
     dense_evals = (resolution + 1) ** 3
     test.assertEqual(stats["resolution"], resolution)
     test.assertGreater(stats["leaf_cells"], 0)
+    # nx = ny = nz = resolution + 1 is already an exact power-of-two-plus-one
+    # grid, so the octree needs no padding and the cull pass is a no-op.
+    test.assertEqual(stats["culled_cells"], 0)
     # Surface work is ~O(R^2); dense is O(R^3). Require a comfortable margin.
     test.assertLess(stats["sdf_evaluations"], dense_evals // 4)
+
+
+def test_sparse_mc_no_padding_when_power_of_two_plus_one(test, device):
+    """Regression guard: the anisotropic/cull generalization must be a no-op for exact grids.
+
+    ``nx = ny = nz = 2**depth + 1`` requires no power-of-two padding, so the
+    leaf-cell and evaluation counts must exactly match what the pre-refactor
+    cubic-only octree produced for the same depth. This is a deterministic
+    stand-in for a performance-regression test (see AGENTS.md's ban on
+    timing-based assertions): if the generalized, anisotropic-capable code path
+    ever adds overhead for the common isotropic case, these counts would move.
+    """
+    origin = (-1.0, -1.0, -1.0)
+    for max_depth, expected_leaf_cells, expected_sdf_evaluations in (
+        (5, 1304, 6275),
+        (6, 5360, 24387),
+        (7, 22088, 98443),
+    ):
+        with test.subTest(max_depth=max_depth):
+            _, _, stats = _sparse_mc(sphere_sdf, origin, 2.0, max_depth, return_stats=True, device=device)
+            test.assertEqual(stats["culled_cells"], 0)
+            test.assertEqual(stats["leaf_cells"], expected_leaf_cells)
+            test.assertEqual(stats["sdf_evaluations"], expected_sdf_evaluations)
 
 
 def test_sparse_mc_python_callable(test, device):
@@ -241,12 +335,8 @@ def test_sparse_mc_python_callable(test, device):
         return out
 
     origin = (-1.0, -1.0, -1.0)
-    v_func, f_func = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-        sphere_sdf, origin, 2.0, max_depth=6, device=device
-    )
-    v_call, f_call = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-        evaluate, origin, 2.0, max_depth=6, device=device
-    )
+    v_func, f_func = _sparse_mc(sphere_sdf, origin, 2.0, 6, device=device)
+    v_call, f_call = _sparse_mc(evaluate, origin, 2.0, 6, device=device)
 
     # Both paths evaluate the identical expression, so the meshes must coincide.
     _assert_surfaces_equivalent(
@@ -285,9 +375,7 @@ def test_sparse_mc_mesh_sdf(test, device):
         wp.launch(mesh_sdf_kernel, dim=points.shape[0], inputs=[mesh.id, points], outputs=[out], device=points.device)
         return out
 
-    verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-        evaluate, (-1.0, -1.0, -1.0), 2.0, max_depth=6, device=device
-    )
+    verts, indices = _sparse_mc(evaluate, (-1.0, -1.0, -1.0), 2.0, 6, device=device)
     v = verts.numpy()
     f = indices.numpy().reshape(-1, 3)
     _validate_mesh(test, v, f)
@@ -310,9 +398,7 @@ def test_sparse_mc_watertight(test, device):
     ]
     for sdf, euler in cases:
         with test.subTest(sdf=sdf.key):
-            verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-                sdf, (-1.0, -1.0, -1.0), 2.0, max_depth=6, device=device
-            )
+            verts, indices = _sparse_mc(sdf, (-1.0, -1.0, -1.0), 2.0, 6, device=device)
             v = verts.numpy()
             f = indices.numpy().reshape(-1, 3)
             _validate_mesh(test, v, f)
@@ -337,9 +423,7 @@ def test_sparse_mc_from_cells(test, device):
     corner_offsets = np.array(wp.geometry.IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS, dtype=np.int32)  # (8, 3)
 
     # Reference surface from the full octree-driven path.
-    v_ref, f_ref = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-        sphere_sdf, origin, root_width, max_depth=depth, device=device
-    )
+    v_ref, f_ref = _sparse_mc(sphere_sdf, origin, root_width, depth, device=device)
     v_ref = v_ref.numpy()
     f_ref = f_ref.numpy().reshape(-1, 3)
 
@@ -532,21 +616,17 @@ def test_lipschitz_octree_brackets_surface(test, device):
 def test_sparse_mc_invalid_arguments(test, device):
     """Check that argument validation raises informative errors."""
     with test.assertRaises(ValueError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-            sphere_sdf, (0.0, 0.0, 0.0), 2.0, max_depth=-1, device=device
-        )
+        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sphere_sdf, 1, 17, 17, device=device)
+    with test.assertRaises(ValueError):
+        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sphere_sdf, 17, 0, 17, device=device)
     with test.assertRaises(ValueError):
         wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-            sphere_sdf, (0.0, 0.0, 0.0), 0.0, max_depth=4, device=device
-        )
-    with test.assertRaises(ValueError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-            sphere_sdf, (0.0, 0.0, 0.0), 2.0, max_depth=4, lipschitz_bound=-1.0, device=device
+            sphere_sdf, 17, 17, 17, lipschitz_bound=-1.0, device=device
         )
     with test.assertRaises(ValueError):
         wp.geometry.lipschitz_octree(sphere_sdf, (0.0, 0.0, 0.0), 2.0, max_depth=4, lipschitz_bound=-1.0, device=device)
     with test.assertRaises(TypeError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(42, (0.0, 0.0, 0.0), 2.0, max_depth=4, device=device)
+        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(42, 17, 17, 17, device=device)
 
     # A non-positive cell width collapses every corner onto the origin (or
     # mirrors the cell), so the explicit-cells entry point rejects it.
@@ -568,12 +648,24 @@ add_function_test(TestSparseMarchingCubes, "test_sparse_mc_sphere", test_sparse_
 add_function_test(
     TestSparseMarchingCubes, "test_sparse_mc_matches_dense", test_sparse_mc_matches_dense, devices=devices
 )
+add_function_test(
+    TestSparseMarchingCubes,
+    "test_sparse_mc_anisotropic_matches_dense",
+    test_sparse_mc_anisotropic_matches_dense,
+    devices=devices,
+)
 add_function_test(TestSparseMarchingCubes, "test_sparse_mc_threshold", test_sparse_mc_threshold, devices=devices)
 add_function_test(TestSparseMarchingCubes, "test_sparse_mc_empty", test_sparse_mc_empty, devices=devices)
 add_function_test(
     TestSparseMarchingCubes,
     "test_sparse_mc_stats_fewer_evaluations",
     test_sparse_mc_stats_fewer_evaluations,
+    devices=devices,
+)
+add_function_test(
+    TestSparseMarchingCubes,
+    "test_sparse_mc_no_padding_when_power_of_two_plus_one",
+    test_sparse_mc_no_padding_when_power_of_two_plus_one,
     devices=devices,
 )
 add_function_test(

@@ -165,8 +165,39 @@ def dense_extract(dense_field, origin, root_width, depth):
 
 
 def sparse_extract(sdf, origin, root_width, depth, device, return_stats=False):
+    n = (1 << depth) + 1
+    upper = wp.vec3(origin[0] + root_width, origin[1] + root_width, origin[2] + root_width)
     return wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-        sdf, origin, root_width, depth, threshold=0.0, device=device, return_stats=return_stats
+        sdf,
+        n,
+        n,
+        n,
+        domain_bounds_lower_corner=origin,
+        domain_bounds_upper_corner=upper,
+        threshold=0.0,
+        device=device,
+        return_stats=return_stats,
+    )
+
+
+def sparse_extract_grid(sdf, nx, ny, nz, origin, root_width, device, return_stats=False):
+    """Extract with an explicit, possibly non-cubic ``nx, ny, nz`` grid.
+
+    Used to measure the overhead of the anisotropic padding + cull pass that
+    reconciles ``nx, ny, nz`` with the octree's shared power-of-two depth,
+    against the isotropic (unpadded) case.
+    """
+    upper = wp.vec3(origin[0] + root_width, origin[1] + root_width, origin[2] + root_width)
+    return wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+        sdf,
+        nx,
+        ny,
+        nz,
+        domain_bounds_lower_corner=origin,
+        domain_bounds_upper_corner=upper,
+        threshold=0.0,
+        device=device,
+        return_stats=return_stats,
     )
 
 
@@ -273,6 +304,39 @@ def main():
         "  * At small depths the octree's per-level synchronizations can make it slower than the\n"
         "    dense grid; the sparse method wins by a growing margin as resolution increases.\n"
     )
+
+    # Anisotropic-grid overhead check: nx, ny, nz that don't share a common
+    # power-of-two cell count force the octree to pad the shorter axes up to
+    # a common depth and then cull the padding cells before extraction. This
+    # is a regression check against that added complexity: it should cost
+    # little relative to the isotropic (unpadded) baseline at the same depth.
+    check_depth = min(args.max_depth, args.min_depth + 2)
+    resolution = 1 << check_depth
+    n = resolution + 1
+    grids = [
+        (n, n, n),  # isotropic baseline: no padding, no culling
+        (n, n, max(2, n // 2 + 1)),  # one axis shorter: forces padding + cull on that axis
+        (n, max(2, n // 4 + 1), max(2, n // 2 + 1)),  # two axes shorter
+    ]
+    aniso_header = f"{'grid (nx,ny,nz)':>18} {'sparse (ms)':>12} {'leaf cells':>11} {'culled':>8} {'tris':>9}"
+    print(f"Anisotropic-grid overhead check at depth {check_depth}:\n")
+    print(aniso_header)
+    print("-" * len(aniso_header))
+    for nx, ny, nz in grids:
+        verts, indices, stats = sparse_extract_grid(sdf, nx, ny, nz, origin, root_width, device, return_stats=True)
+        wp.synchronize_device(device)
+        tris = len(indices) // 3
+        del verts, indices
+        ms = (
+            time_call(
+                lambda nx=nx, ny=ny, nz=nz: sparse_extract_grid(sdf, nx, ny, nz, origin, root_width, device),
+                device,
+                args.iters,
+            )
+            * 1e3
+        )
+        print(f"{f'{nx}x{ny}x{nz}':>18} {ms:>12.3f} {stats['leaf_cells']:>11,} {stats['culled_cells']:>8,} {tris:>9,}")
+    print()
 
 
 if __name__ == "__main__":
