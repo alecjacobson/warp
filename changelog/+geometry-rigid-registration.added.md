@@ -15,7 +15,10 @@ runs many problems in parallel against a shared target for multi-initialization
 (keep the best via `best_index`) and multi-source batching. The point-to-plane
 residual can use the target's surface/PCA normal (`plane_normal="surface"`, the
 default) or the query-closest direction (`plane_normal="closest_point"`, needing
-no normals). The 6x6 Gauss-Newton solve and transform update run on the device,
+no normals). Passing `estimate_scale=True` fits a 7-DOF similarity (isotropic
+scale + rotation + translation) instead of a rigid transform, recovering the
+scale alongside the pose without regressing the rigid path. The 6x6 Gauss-Newton
+solve and transform update run on the device,
 so the iteration performs no per-iteration host synchronization; with `tol=0`
 (fixed iterations) the loop is CUDA-graph capturable. Source points are
 Morton-reordered once (inert to the result) so the per-iteration closest-point

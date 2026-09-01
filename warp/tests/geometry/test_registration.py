@@ -107,6 +107,32 @@ def test_recovers_known_transform(test, device):
         test.assertLess(result.rmse, 1e-3)
 
 
+def test_recovers_similarity_transform(test, device):
+    # Source = ellipsoid moved by a known similarity (scale + rotation +
+    # translation); with estimate_scale=True, ICP should recover the inverse
+    # similarity, including the isotropic scale.
+    verts, faces = _icosphere(subdiv=3, scale=(1.5, 1.0, 0.7))
+    for rot_deg, s in ((8.0, 1.4), (15.0, 0.6)):
+        T = _rigid_transform(rot_deg, np.array([0.06, -0.04, 0.05]), seed=int(rot_deg))
+        source = (s * (verts @ T[:3, :3].T) + T[:3, 3]).astype(np.float32)
+        result = reg.register_rigid(source, (verts, faces), max_iters=80, tol=1e-6, estimate_scale=True, device=device)
+        wp.synchronize_device()
+
+        test.assertTrue(result.converged)
+        # The recovered map is the inverse similarity: scale 1/s, rotation R^T.
+        test.assertAlmostEqual(result.scale, 1.0 / s, places=3)
+        rot_only = np.eye(4)
+        rot_only[:3, :3] = result.transform[:3, :3] / result.scale
+        test.assertLess(_rotation_error_deg(rot_only, np.linalg.inv(T)), 0.1)
+        test.assertLess(result.rmse, 1e-3)
+
+
+def test_rejects_scale_with_symmetric(test, device):
+    verts, faces = _icosphere(subdiv=2, scale=(1.2, 1.0, 0.9))
+    with test.assertRaises(ValueError):
+        reg.register_rigid(verts, (verts, faces), variant="symmetric", estimate_scale=True, device=device)
+
+
 def _ellipsoid_normals(verts, scale):
     # Outward unit normal of the ellipsoid (x/sx)^2+(y/sy)^2+(z/sz)^2=1 at each
     # surface point is proportional to (x/sx^2, y/sy^2, z/sz^2).
@@ -427,6 +453,12 @@ add_function_test(
     devices=devices,
 )
 add_function_test(TestRegistration, "test_point_cloud_with_normals", test_point_cloud_with_normals, devices=devices)
+add_function_test(
+    TestRegistration, "test_recovers_similarity_transform", test_recovers_similarity_transform, devices=devices
+)
+add_function_test(
+    TestRegistration, "test_rejects_scale_with_symmetric", test_rejects_scale_with_symmetric, devices=devices
+)
 add_function_test(TestRegistration, "test_robust_rejects_outliers", test_robust_rejects_outliers, devices=devices)
 add_function_test(
     TestRegistration, "test_stochastic_subsampling_recovers", test_stochastic_subsampling_recovers, devices=devices

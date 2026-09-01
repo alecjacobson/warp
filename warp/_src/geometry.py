@@ -1680,6 +1680,105 @@ def _icp_accumulate_points_kernel(
     wp.atomic_add(stats, 1, 1.0)
 
 
+@wp.func
+def _accumulate_scale_column(
+    term: GaussNewtonTerm,
+    j_scale: wp.float32,
+    weight: wp.float32,
+    scale_col: wp.array(dtype=wp.float32),
+    scale_dd: wp.array(dtype=wp.float32),
+    g_scale: wp.array(dtype=wp.float32),
+):
+    # Scatter the 7th (scale) row/column of the similarity normal equations: the
+    # cross terms ``w * (p.n) * J_rt``, the diagonal ``w * (p.n)^2`` and the
+    # right-hand side ``w * b * (p.n)``.
+    jr = term.jacobian
+    for k in range(6):
+        wp.atomic_add(scale_col, k, weight * j_scale * jr[k])
+    wp.atomic_add(scale_dd, 0, weight * j_scale * j_scale)
+    wp.atomic_add(g_scale, 0, weight * term.b * j_scale)
+
+
+@wp.kernel(enable_backward=False)
+def _icp_accumulate_mesh_scale_kernel(
+    source: wp.array(dtype=wp.vec3),
+    rots: wp.array(dtype=wp.mat33),
+    transs: wp.array(dtype=wp.vec3),
+    scales: wp.array(dtype=wp.float32),
+    mesh: wp.uint64,
+    max_dist: wp.float32,
+    num_source: wp.int32,
+    stochastic: wp.int32,
+    seed: wp.int32,
+    inv_scale: wp.array(dtype=wp.float32),
+    normal_mode: wp.int32,
+    a_upper: wp.array(dtype=wp.float32),
+    g: wp.array(dtype=wp.float32),
+    scale_col: wp.array(dtype=wp.float32),
+    scale_dd: wp.array(dtype=wp.float32),
+    g_scale: wp.array(dtype=wp.float32),
+    stats: wp.array(dtype=wp.float32),
+):
+    tid = wp.tid()
+    rot = rots[0]
+    trans = transs[0]
+    sc = scales[0]
+    idx = _source_index(tid, num_source, stochastic, seed)
+    p = sc * (rot * source[idx]) + trans
+    cp = closest_on_mesh(mesh, p, max_dist)
+    if cp.valid == 0:
+        return
+    n_q = _plane_normal(p, cp.point, cp.normal, normal_mode)
+    term = point_plane_term(p, cp.point, n_q)
+    r = -term.b
+    w = _robust_weight(r, inv_scale[0])
+    _accumulate_normal_equations(term, w, a_upper, g)
+    _accumulate_scale_column(term, wp.dot(p, n_q), w, scale_col, scale_dd, g_scale)
+    wp.atomic_add(stats, 0, r * r)
+    wp.atomic_add(stats, 1, 1.0)
+
+
+@wp.kernel(enable_backward=False)
+def _icp_accumulate_points_scale_kernel(
+    source: wp.array(dtype=wp.vec3),
+    rots: wp.array(dtype=wp.mat33),
+    transs: wp.array(dtype=wp.vec3),
+    scales: wp.array(dtype=wp.float32),
+    grid: wp.uint64,
+    points: wp.array(dtype=wp.vec3),
+    normals: wp.array(dtype=wp.vec3),
+    max_dist: wp.float32,
+    num_source: wp.int32,
+    stochastic: wp.int32,
+    seed: wp.int32,
+    inv_scale: wp.array(dtype=wp.float32),
+    normal_mode: wp.int32,
+    a_upper: wp.array(dtype=wp.float32),
+    g: wp.array(dtype=wp.float32),
+    scale_col: wp.array(dtype=wp.float32),
+    scale_dd: wp.array(dtype=wp.float32),
+    g_scale: wp.array(dtype=wp.float32),
+    stats: wp.array(dtype=wp.float32),
+):
+    tid = wp.tid()
+    rot = rots[0]
+    trans = transs[0]
+    sc = scales[0]
+    idx = _source_index(tid, num_source, stochastic, seed)
+    p = sc * (rot * source[idx]) + trans
+    cp = closest_on_points(grid, points, normals, p, max_dist)
+    if cp.valid == 0:
+        return
+    n_q = _plane_normal(p, cp.point, cp.normal, normal_mode)
+    term = point_plane_term(p, cp.point, n_q)
+    r = -term.b
+    w = _robust_weight(r, inv_scale[0])
+    _accumulate_normal_equations(term, w, a_upper, g)
+    _accumulate_scale_column(term, wp.dot(p, n_q), w, scale_col, scale_dd, g_scale)
+    wp.atomic_add(stats, 0, r * r)
+    wp.atomic_add(stats, 1, 1.0)
+
+
 @wp.kernel(enable_backward=False)
 def _icp_accumulate_mesh_batched_kernel(
     source: wp.array(dtype=wp.vec3),
@@ -1888,6 +1987,92 @@ def _icp_solve_kernel(
 
 
 ##########################################################################
+## Similarity (rigid + isotropic scale, 7-DOF) accumulation and solve
+##
+## Kept entirely separate from the 6-DOF path so the rigid case is unchanged.
+## The 6x6 rotation/translation block is accumulated exactly as in the rigid
+## kernels (reusing ``point_plane_term`` / ``_accumulate_normal_equations``); the
+## scale DOF adds one column ``p . n`` to the Jacobian, and the 7x7 system is
+## solved by a scalar Schur complement over the shared 6x6 block.
+##########################################################################
+
+
+@wp.func
+def _apply_inv6(a_rt: wp.mat33, tt_inv: wp.mat33, schur_inv: wp.mat33, r_r: wp.vec3, r_t: wp.vec3) -> wp.spatial_vector:
+    # Apply the inverse of the 6x6 rotation/translation block to ``[r_r; r_t]``
+    # given its precomputed Schur factors (see _solve_normal_equations).
+    rt_tt = a_rt * tt_inv
+    x_r = schur_inv * (r_r - rt_tt * r_t)
+    x_t = tt_inv * (r_t - wp.transpose(a_rt) * x_r)
+    return wp.spatial_vector(x_r[0], x_r[1], x_r[2], x_t[0], x_t[1], x_t[2])
+
+
+@wp.kernel(enable_backward=False)
+def _icp_solve_scale_kernel(
+    a_upper: wp.array(dtype=wp.float32),
+    g: wp.array(dtype=wp.float32),
+    scale_col: wp.array(dtype=wp.float32),
+    scale_dd: wp.array(dtype=wp.float32),
+    g_scale: wp.array(dtype=wp.float32),
+    stats: wp.array(dtype=wp.float32),
+    damping: wp.float32,
+    robust_k: wp.float32,
+    robust_enabled: wp.int32,
+    rots: wp.array(dtype=wp.mat33),
+    transs: wp.array(dtype=wp.vec3),
+    scales: wp.array(dtype=wp.float32),
+    inv_scale: wp.array(dtype=wp.float32),
+    update_sq: wp.array(dtype=wp.float32),
+):
+    b = wp.tid()
+    off_a = b * 21
+    off_g = b * 6
+    a_rr = wp.mat33()
+    a_rt = wp.mat33()
+    a_tt = wp.mat33()
+    for i in range(3):
+        for j in range(3):
+            a_rr[i, j] = _packed_sym_entry(a_upper, off_a, i, j)
+            a_rt[i, j] = _packed_sym_entry(a_upper, off_a, i, 3 + j)
+            a_tt[i, j] = _packed_sym_entry(a_upper, off_a, 3 + i, 3 + j)
+    damp = wp.mat33(damping, 0.0, 0.0, 0.0, damping, 0.0, 0.0, 0.0, damping)
+    a_rr = a_rr + damp
+    a_tt = a_tt + damp
+    tt_inv = wp.inverse(a_tt)
+    rt_tt_inv = a_rt * tt_inv
+    schur = a_rr - rt_tt_inv * wp.transpose(a_rt)
+    schur_inv = wp.inverse(schur)
+
+    g_r = wp.vec3(g[off_g + 0], g[off_g + 1], g[off_g + 2])
+    g_t = wp.vec3(g[off_g + 3], g[off_g + 4], g[off_g + 5])
+    u_r = wp.vec3(scale_col[b * 6 + 0], scale_col[b * 6 + 1], scale_col[b * 6 + 2])
+    u_t = wp.vec3(scale_col[b * 6 + 3], scale_col[b * 6 + 4], scale_col[b * 6 + 5])
+    u = wp.spatial_vector(u_r[0], u_r[1], u_r[2], u_t[0], u_t[1], u_t[2])
+
+    # Scalar Schur complement over the scale DOF using the 6x6 block inverse.
+    ainv_g = _apply_inv6(a_rt, tt_inv, schur_inv, g_r, g_t)
+    ainv_u = _apply_inv6(a_rt, tt_inv, schur_inv, u_r, u_t)
+    denom = scale_dd[b] + damping - wp.dot(u, ainv_u)
+    ds = (g_scale[b] - wp.dot(u, ainv_g)) / denom
+    x6 = ainv_g - ds * ainv_u
+
+    d_rot = _so3_exp_device(wp.vec3(x6[0], x6[1], x6[2]))
+    scales[b] = scales[b] * (1.0 + ds)
+    rots[b] = d_rot * rots[b]
+    transs[b] = (1.0 + ds) * (d_rot * transs[b]) + wp.vec3(x6[3], x6[4], x6[5])
+    update_sq[b] = wp.dot(x6, x6) + ds * ds
+
+    inv_scale[b] = 0.0
+    if robust_enabled != 0:
+        count = stats[b * 2 + 1]
+        if count > 0.0:
+            rmse = wp.sqrt(stats[b * 2 + 0] / count)
+            if rmse > 0.0:
+                s = robust_k * rmse
+                inv_scale[b] = 1.0 / (s * s)
+
+
+##########################################################################
 ## Morton (Z-order) reordering of source points
 ##
 ## The per-iteration cost is dominated by the closest-point query, whose BVH /
@@ -1975,14 +2160,18 @@ class RegistrationResult:
     """Outcome of :func:`register_rigid`.
 
     Attributes:
-        transform: The ``(4, 4)`` rigid transform aligning source to target.
+        transform: The ``(4, 4)`` transform aligning source to target. For a
+            similarity fit (``estimate_scale=True``) the ``3x3`` block is
+            ``scale * rotation``.
+        scale: The recovered isotropic scale (``1.0`` for a rigid fit).
         rmse: Root-mean-square point-to-plane residual at the final iterate.
         iterations: Number of iterations run.
         converged: Whether the update-norm tolerance was met before ``max_iters``.
     """
 
-    def __init__(self, transform, rmse, iterations, converged):
+    def __init__(self, transform, rmse, iterations, converged, scale=1.0):
         self.transform = transform
+        self.scale = float(scale)
         self.rmse = float(rmse)
         self.iterations = int(iterations)
         self.converged = bool(converged)
@@ -2127,6 +2316,7 @@ def register_rigid(
     variant: str = "point_to_plane",
     plane_normal: str = "surface",
     source_normals=None,
+    estimate_scale: bool = False,
     sample_count: int | None = None,
     robust: str | None = None,
     robust_k: float = 3.0,
@@ -2179,6 +2369,11 @@ def register_rigid(
             ``"point_to_plane"`` variant.
         source_normals: Optional per-source-point unit normals (only used by the
             ``"symmetric"`` variant).
+        estimate_scale: If ``True``, also recover an isotropic scale, fitting a
+            7-DOF similarity ``p -> scale * R @ p + t`` instead of a rigid
+            transform; the returned :attr:`RegistrationResult.transform` then has
+            ``scale * R`` as its ``3x3`` block and :attr:`RegistrationResult.scale`
+            holds the scale. Only supported by the ``"point_to_plane"`` variant.
         sample_count: If set, use this many randomly drawn source points per
             iteration (sampling with replacement, reseeded each iteration)
             instead of all of them. Defaults to using every source point.
@@ -2202,6 +2397,8 @@ def register_rigid(
         raise ValueError(f"`variant` must be one of {sorted(_VARIANTS)}, got {variant!r}.")
     if plane_normal not in _PLANE_NORMALS:
         raise ValueError(f"`plane_normal` must be one of {sorted(_PLANE_NORMALS)}, got {plane_normal!r}.")
+    if estimate_scale and variant != "point_to_plane":
+        raise ValueError('`estimate_scale=True` is only supported with variant="point_to_plane".')
     device = (
         wp.get_device(device)
         if device is not None
@@ -2255,6 +2452,11 @@ def register_rigid(
     a_upper = wp.zeros(21, dtype=wp.float32, device=device)
     g = wp.zeros(6, dtype=wp.float32, device=device)
     stats = wp.zeros(2, dtype=wp.float32, device=device)
+    if estimate_scale:
+        scales = wp.ones(1, dtype=wp.float32, device=device)
+        scale_col = wp.zeros(6, dtype=wp.float32, device=device)
+        scale_dd = wp.zeros(1, dtype=wp.float32, device=device)
+        g_scale = wp.zeros(1, dtype=wp.float32, device=device)
 
     early_stop = tol > 0.0
     converged = False
@@ -2264,32 +2466,74 @@ def register_rigid(
         g.zero_()
         stats.zero_()
         iter_seed = int(seed) + step
-        if is_mesh:
-            accum_inputs = [src, rots, transs, mesh.id, max_dist]
+        if estimate_scale:
+            scale_col.zero_()
+            scale_dd.zero_()
+            g_scale.zero_()
+            if is_mesh:
+                accum_inputs = [src, rots, transs, scales, mesh.id, max_dist]
+            else:
+                accum_inputs = [
+                    src,
+                    rots,
+                    transs,
+                    scales,
+                    point_target.grid.id,
+                    point_target.points,
+                    point_target.normals,
+                    max_dist,
+                ]
+            wp.launch(
+                _icp_accumulate_mesh_scale_kernel if is_mesh else _icp_accumulate_points_scale_kernel,
+                dim=num_threads,
+                inputs=[*accum_inputs, n, stochastic, iter_seed, inv_scale, normal_mode],
+                outputs=[a_upper, g, scale_col, scale_dd, g_scale, stats],
+                device=device,
+            )
+            wp.launch(
+                _icp_solve_scale_kernel,
+                dim=1,
+                inputs=[
+                    a_upper,
+                    g,
+                    scale_col,
+                    scale_dd,
+                    g_scale,
+                    stats,
+                    float(damping),
+                    float(robust_k),
+                    robust_enabled,
+                ],
+                outputs=[rots, transs, scales, inv_scale, update_sq],
+                device=device,
+            )
         else:
-            accum_inputs = [
-                src,
-                rots,
-                transs,
-                point_target.grid.id,
-                point_target.points,
-                point_target.normals,
-                max_dist,
-            ]
-        wp.launch(
-            _icp_accumulate_mesh_kernel if is_mesh else _icp_accumulate_points_kernel,
-            dim=num_threads,
-            inputs=[*accum_inputs, n, stochastic, iter_seed, inv_scale, src_normals, symmetric, normal_mode],
-            outputs=[a_upper, g, stats],
-            device=device,
-        )
-        wp.launch(
-            _icp_solve_kernel,
-            dim=1,
-            inputs=[a_upper, g, stats, float(damping), float(robust_k), robust_enabled],
-            outputs=[rots, transs, inv_scale, update_sq],
-            device=device,
-        )
+            if is_mesh:
+                accum_inputs = [src, rots, transs, mesh.id, max_dist]
+            else:
+                accum_inputs = [
+                    src,
+                    rots,
+                    transs,
+                    point_target.grid.id,
+                    point_target.points,
+                    point_target.normals,
+                    max_dist,
+                ]
+            wp.launch(
+                _icp_accumulate_mesh_kernel if is_mesh else _icp_accumulate_points_kernel,
+                dim=num_threads,
+                inputs=[*accum_inputs, n, stochastic, iter_seed, inv_scale, src_normals, symmetric, normal_mode],
+                outputs=[a_upper, g, stats],
+                device=device,
+            )
+            wp.launch(
+                _icp_solve_kernel,
+                dim=1,
+                inputs=[a_upper, g, stats, float(damping), float(robust_k), robust_enabled],
+                outputs=[rots, transs, inv_scale, update_sq],
+                device=device,
+            )
         if early_stop and float(np.sqrt(update_sq.numpy()[0])) < tol:
             converged = True
             iterations = step + 1
@@ -2297,14 +2541,15 @@ def register_rigid(
 
     rot = rots.numpy()[0].astype(np.float64)
     trans = transs.numpy()[0].astype(np.float64)
+    scale = float(scales.numpy()[0]) if estimate_scale else 1.0
     st = stats.numpy()
     count = float(st[1])
     rmse = float(np.sqrt(st[0] / count)) if count > 0 else float("inf")
 
     transform = np.eye(4)
-    transform[:3, :3] = rot
+    transform[:3, :3] = scale * rot
     transform[:3, 3] = trans
-    return RegistrationResult(transform=transform, rmse=rmse, iterations=iterations, converged=converged)
+    return RegistrationResult(transform=transform, rmse=rmse, iterations=iterations, converged=converged, scale=scale)
 
 
 def register_rigid_batched(
