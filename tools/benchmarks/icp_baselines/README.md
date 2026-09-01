@@ -267,3 +267,34 @@ tuning issue and one fundamental:
 Net: Warp's point-to-plane is a good general-purpose registrant, but for
 production LiDAR odometry a GICP objective (and LiDAR-aware neighborhood sizing)
 is what would match the specialized CPU baselines on accuracy.
+
+### Fair same-data comparison (downsampled KITTI, 5k points, one-shot)
+
+Downsampling to 0.3 m is what makes every GPU method converge, so it is also the
+fair common ground: the identical ~5k-point clouds, one-shot from identity, each
+method using ~KNN-30 normals/covariances (Warp is given normals; the others
+estimate their own internally). This is the apples-to-apples LiDAR comparison —
+and with proper normals Warp is competitive-to-best:
+
+| method                      | device | time (ms)        | rot err (°) | trans err |
+| --------------------------- | ------ | ---------------- | ----------- | --------- |
+| **warp point-to-plane**     | GPU    | 42 / **3.9 batch** | **0.156** | 0.027     |
+| open3d point-to-plane       | GPU    | 103              | 0.157       | 0.027     |
+| fast_gicp `FastVGICPCuda`   | GPU    | 200              | 0.184       | 0.034     |
+| warp symmetric              | GPU    | 43               | 0.231       | 0.014     |
+| cupcl cuICP                 | GPU    | 7                | 0.300       | 0.055     |
+| fast_gicp `FastGICP`        | CPU    | 10               | 0.508       | 0.023     |
+
+Two things flip versus the full-resolution table. First, **Warp's default normal
+estimator is the culprit for its earlier poor accuracy** — its auto-radius on a
+5k LiDAR cloud is ~16 m; *supplying* KNN-30 normals takes Warp point-to-plane
+from 3.8° to **0.156°**, the best rotation accuracy here (tied with Open3D) and
+the fastest when batched (3.9 ms/frame). Second, **downsampling reverses the GICP
+advantage**: `FastGICP` needs the dense cloud for its covariances, so at 5k it
+drops to 0.51°, while point-to-plane with good normals holds up. So on the fair
+downsampled data the GPU methods lead, Warp among the best on both accuracy and
+(batched) throughput, and the earlier full-resolution GICP win was really "GICP
+with 14× more points." The remaining lesson for Warp stands: **fix the
+normal-estimation neighborhood sizing for LiDAR** (or let the caller pass
+normals, which it already supports) — that alone closes essentially all of the
+gap here.
