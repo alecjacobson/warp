@@ -77,11 +77,12 @@ point-cloud comparison.
 These tables are generated from a single consolidated run (all methods, one
 session, identical fixed problems and settings); the raw numbers are in
 [`results.json`](results.json). Warp figures are point-cloud target (batched =
-per-problem at B=64; single in parentheses). `speedup` = Warp's batched
-throughput (365 reg/s) ÷ that method's.
+per-problem at B=64; single in parentheses). The **Warp faster** column is Warp's batched
+throughput (365 reg/s) ÷ that method's — i.e. how many times faster Warp is than
+that row (bigger = Warp wins by more; it is never that method beating Warp here).
 
-| method                              | objective      | device | batched? | rot err (deg) | throughput (reg/s) | speedup |
-| ----------------------------------- | -------------- | ------ | -------- | ------------- | ------------------ | ------- |
+| method                              | objective      | device | batched? | rot err (deg) | throughput (reg/s) | Warp faster |
+| ----------------------------------- | -------------- | ------ | -------- | ------------- | ------------------ | ----------- |
 | **warp point-to-plane**             | point-to-plane | GPU    | yes      | 0.000         | **365** (32 single)| **1× (ref)** |
 | pytorch3d point-to-point            | point-to-point | GPU    | yes      | 2.025         | 165                | 2.2×    |
 | fast_gicp `FastGICP`                | plane-to-plane | CPU    | no       | 0.015         | 42                 | 9×      |

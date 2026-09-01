@@ -17,17 +17,18 @@ runs on the GPU (NVIDIA L40) if it can** — Warp, Open3D tensor ICP, PyTorch3D,
 fast_gicp's `FastVGICPCuda` are CUDA; the other fast_gicp variants and PCL are
 CPU. Throughput is registrations/second: batched methods (Warp, PyTorch3D) report
 per-problem time at batch saturation, the rest `1000/latency`. Warp figures are
-mesh / point-cloud target; `speedup` is Warp's batched point-cloud throughput
-(364 reg/s) ÷ that method's.
+mesh / point-cloud target. The **Warp faster** column is how many times faster
+Warp (batched, 365 reg/s) is than that row — bigger = Warp wins by more; every
+row is Warp beating that method, not the reverse.
 
-| method                       | objective      | device | batched | rot err (deg) | throughput (reg/s) | speedup |
-| ---------------------------- | -------------- | ------ | ------- | ------------- | ------------------ | ------- |
-| **warp point-to-plane**      | point-to-plane | GPU    | yes     | 0.000         | **252 / 364**      | **1× (ref)** |
+| method                       | objective      | device | batched | rot err (deg) | throughput (reg/s) | Warp faster |
+| ---------------------------- | -------------- | ------ | ------- | ------------- | ------------------ | ----------- |
+| **warp point-to-plane**      | point-to-plane | GPU    | yes     | 0.000         | **365**            | **1× (ref)** |
 | pytorch3d point-to-point     | point-to-point | GPU    | yes     | 2.025         | 165                | 2.2×    |
-| fast_gicp (FastGICP)         | plane-to-plane | CPU    | no      | 0.015         | 40                 | 9×      |
-| pcl_gicp                     | plane-to-plane | CPU    | no      | 0.008         | 8                  | 44×     |
-| open3d point-to-plane        | point-to-plane | GPU    | no      | 0.007         | 5                  | 74×     |
-| fast_gicp (FastVGICPCuda)    | voxel GICP     | GPU    | no      | 0.000         | 3                  | 110×    |
+| fast_gicp (FastGICP)         | plane-to-plane | CPU    | no      | 0.015         | 42                 | 9×      |
+| pcl_gicp                     | plane-to-plane | CPU    | no      | 0.008         | 9                  | 42×     |
+| open3d point-to-plane        | point-to-plane | GPU    | no      | 0.007         | 5                  | 73×     |
+| fast_gicp (FastVGICPCuda)    | voxel GICP     | GPU    | no      | 0.007         | 2.5                | 146×    |
 
 The only other batched GPU method is PyTorch3D: Warp is **2.2× its throughput and
 far more accurate** (0.000° vs. 2.025° — PyTorch3D is point-to-point). Notably
