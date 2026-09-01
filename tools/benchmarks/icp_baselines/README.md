@@ -216,14 +216,18 @@ timed separately below.
 | cupcl cuICP                     | GPU    | 1725              | 0.564       | 0.177     | partial   |
 | pytorch3d point-to-point        | GPU    | 363               | 0.537       | 0.815     | **no** (diverged) |
 
-\* `FastVGICPCuda` is fast in wall-clock (206 ms/frame in reuse mode) but, through
-the `pygicp` binding and from an identity initialization, it did not converge on
-this pair at any voxel resolution I tried (0.3–3.0 m) — it stayed near identity
-(trans err ≈ the 0.49 m ground-truth motion). The CPU `FastGICP` converges on the
-identical data, so this is specific to the CUDA VGICP path as exposed by pygicp,
-not the data. fast_gicp's own C++ `align` benchmark reports the GPU faster, but it
-times the solve without checking convergence and downsamples first; I could not
-run it headless here (it opens a PCL visualizer).
+\* `FastVGICPCuda` does not converge on the **full 69k** cloud from identity
+through `pygicp` at any voxel resolution (0.3–3.0 m) — it stays near identity
+(trans err ≈ the 0.49 m motion) while the CPU `FastGICP` converges on the same
+data. The cause is the dense velodyne ring structure; **voxel-downsampling to
+0.3 m (≈5k points) fixes it** — `FastVGICPCuda` then converges to 0.18° and
+cuICP, which also stalled on the full cloud, converges to 0.30°. So the honest
+statement is "GPU GICP needs the standard LiDAR downsampling to converge here,"
+and on the downsampled cloud the accuracy ordering scrambles (downsampling *also*
+drops CPU `FastGICP` to 0.51°, since GICP has fewer points for its covariances).
+fast_gicp's own C++ `align` benchmark reports the GPU faster, but it times the
+solve without checking convergence; I could not run it headless (it opens a PCL
+visualizer).
 
 **Honest conclusion.** On real 69k-point LiDAR the strong result is CPU: fast_gicp
 `FastGICP` is both fast (505 ms reuse) and the most accurate GICP (0.02°), and
