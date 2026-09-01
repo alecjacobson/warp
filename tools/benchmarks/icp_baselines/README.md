@@ -55,9 +55,11 @@ includes (`#include <thrust/pair.h>`, `<thrust/device_allocator.h>`,
 `<thrust/device_vector.h>`), then configure with `-DBUILD_VGICP_CUDA=ON
 -DCMAKE_CUDA_ARCHITECTURES=89`.
 
-A GPU-native alternative worth adding is NVIDIA's
-[cuPCL](https://github.com/NVIDIA-AI-IOT/cuPCL) (`cuICP`), not yet benchmarked
-here.
+NVIDIA's [cuPCL](https://github.com/NVIDIA-AI-IOT/cuPCL) (`cuICP`) is also
+included (GPU point-to-point ICP). Use its **`x86_64_lib`** branch — the default
+branch ships aarch64/Jetson binaries. The prebuilt `libcudaicp.so` links against
+the CUDA runtime and can be driven from a tiny harness (it takes float4-packed
+clouds and returns a column-major 4×4).
 
 ## Results — accuracy and throughput
 
@@ -82,6 +84,7 @@ point-cloud comparison.
 | open3d point-to-plane               | point-to-plane | GPU    | no       | 0.007         | 5                  | 74×     |
 | fast_gicp `FastVGICPCuda`           | voxel GICP     | GPU    | no       | 0.000         | 3                  | 110×    |
 | pcl point-to-point                  | point-to-point | CPU    | no       | 2.022         | 3                  | 111×    |
+| cupcl cuICP                         | point-to-point | GPU    | no       | 2.010         | 13                 | 28×     |
 | open3d point-to-point               | point-to-point | GPU    | no       | 2.024         | 0.4                | 837×    |
 
 **fast_gicp on the GPU is *slower* than on the CPU here** — `FastVGICPCuda` is
@@ -192,3 +195,42 @@ precisely:
 - **Where the GPU wins:** point count (throughput scales up while a CPU falls
   behind) and batch (many simultaneous registrations). Read the single-problem
   table as "competitive out of the box at small scale," not the ceiling.
+
+## Scenario 2 — real LiDAR (KITTI velodyne), the regime a GPU should favor
+
+A single small synthetic cloud is the GPU's worst case, so this second scenario
+uses the two consecutive Velodyne scans shipped with fast_gicp
+(`data/251370668.pcd` → `251371071.pcd`, ~69k points each, ~0.6° + 0.49 m real
+motion, ground truth in their `relative.txt`). This is exactly what fast_gicp's
+CUDA path and cuPCL target: large scans, and for the streaming methods a target
+structure that is **built once and reused** across frames (odometry), which is
+timed separately below.
+
+| method                          | device | time (ms)         | rot err (°) | trans err | converged |
+| ------------------------------- | ------ | ----------------- | ----------- | --------- | --------- |
+| pcl_gicp                        | CPU    | 1466              | 0.000       | 0.002     | yes       |
+| fast_gicp `FastGICP`            | CPU    | 617 / **505 reuse** | 0.021     | 0.001     | yes       |
+| warp point-to-plane             | GPU    | 552 / **126 batch (B=16)** | 0.291 | 0.062 | yes    |
+| open3d point-to-plane           | GPU    | 1200              | 0.139       | 0.017     | yes       |
+| fast_gicp `FastVGICPCuda`       | GPU    | 704 / 206 reuse   | 1.05        | 0.51      | **no**\*  |
+| cupcl cuICP                     | GPU    | 1725              | 0.564       | 0.177     | partial   |
+| pytorch3d point-to-point        | GPU    | 363               | 0.537       | 0.815     | **no** (diverged) |
+
+\* `FastVGICPCuda` is fast in wall-clock (206 ms/frame in reuse mode) but, through
+the `pygicp` binding and from an identity initialization, it did not converge on
+this pair at any voxel resolution I tried (0.3–3.0 m) — it stayed near identity
+(trans err ≈ the 0.49 m ground-truth motion). The CPU `FastGICP` converges on the
+identical data, so this is specific to the CUDA VGICP path as exposed by pygicp,
+not the data. fast_gicp's own C++ `align` benchmark reports the GPU faster, but it
+times the solve without checking convergence and downsamples first; I could not
+run it headless here (it opens a PCL visualizer).
+
+**Honest conclusion.** On real 69k-point LiDAR the strong result is CPU: fast_gicp
+`FastGICP` is both fast (505 ms reuse) and the most accurate GICP (0.02°), and
+`pcl_gicp` is exact but slow. The GPU point-to-point libraries (cuPCL `cuICP`,
+PyTorch3D) under-converge or diverge from identity on the large real motion, and
+`FastVGICPCuda` did not converge via its Python binding. Warp converges (0.29°)
+and, batched over frames, is the fastest converged method at 126 ms/frame — but I
+did **not** find a clean, converged case where fast_gicp's GPU beats its own CPU
+`FastGICP` here. GPU ICP is not a free win at this scale; a well-tuned
+multithreaded CPU GICP is a genuinely strong baseline.
