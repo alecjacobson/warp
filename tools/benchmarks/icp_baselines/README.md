@@ -327,25 +327,35 @@ remains the faster and simpler choice at these sizes.**
 
 ### FastVGICPCuda's solve vs. Warp's solve (69k KITTI)
 
-The two take opposite architectural bets, so "the solve" means different things:
+The two take opposite architectural bets, so "the solve" means different things.
+To be clear: FastVGICPCuda's **`align` is the whole optimization loop** (voxel
+correspondence + a 6×6 covariance-weighted solve, iterated to convergence) —
+*not* a single linear solve. It is ~1 ms whether or not it converges: ~1.4 ms on
+the full 69k cloud where it **stalls** (~1 iteration, roterr 1.05°), and **0.93 ms
+on the downsampled cloud where it genuinely converges** (roterr 0.18°) doing all
+its iterations. It is that cheap only because the voxel map and per-point
+covariances are precomputed in `set_target`/`set_source`, so each iteration is
+O(1) voxel lookups + accumulate + a 6×6 solve.
 
 | quantity                                   | FastVGICPCuda | Warp |
 | ------------------------------------------ | ------------- | ---- |
-| the 6×6 linear solve (one step)            | — (inside align) | **0.028 ms** (on-device kernel) |
-| the whole optimization ("align")           | **1.7 ms**    | 519 ms (50 iters) |
+| a single 6×6 linear solve                  | — (inside align) | **0.028 ms** (on-device kernel) |
+| whole optimization loop (`align`, converged) | **~0.9 ms**  | 519 ms (50 iters) |
 | per-iteration cost                         | O(1) voxel lookups + solve | **11.7 ms** (hash-grid NN) + 0.028 ms solve |
 | one-time preprocessing                     | voxelmap 255 ms + covariances ~200 ms/frame | none |
-| per-frame, odometry (reuse)                | ~202 ms (200 cov + 1.7 align) | 519 (single) / **125 (batched)** |
+| per-frame, odometry (reuse)                | ~202 ms (200 cov + ~1 align) | 519 (single) / **125 (batched)** |
 
 - **FastVGICPCuda front-loads correspondence.** It builds a voxel map and per-point
   covariances up front, so each `align` iteration is O(1) voxel lookups + a small
-  linear system — the whole optimization is 1.7 ms. The price is ~455 ms of
-  preprocessing (voxelmap once + covariances per frame).
-- **Warp precomputes nothing.** Its on-device 6×6 solve kernel is actually *faster*
-  (0.028 ms — ~60× the whole FastVGICPCuda align, but doing far less), yet Warp
-  re-runs a fresh nearest-neighbour search every iteration, so its per-iteration
-  cost is NN-dominated (11.7 ms here, inflated further by the large-`max_corr_dist`
-  grid). That is why Warp's full 50-iteration solve is 519 ms one-shot.
+  linear system — the whole optimization loop is ~1 ms (converged). The price is
+  ~455 ms of preprocessing (voxelmap once + covariances per frame).
+- **Warp precomputes nothing.** Its on-device 6×6 solve kernel is 0.028 ms — a
+  *single* linear solve, so it is not comparable to FastVGICPCuda's ~1 ms whole
+  align (which folds in correspondence + many iterations). The honest comparison
+  is per-iteration: Warp re-runs a fresh nearest-neighbour search every iteration
+  (11.7 ms here, inflated by the large-`max_corr_dist` grid) whereas FastVGICPCuda
+  reuses its precomputed voxels (~30 µs/iter), so Warp's full 50-iteration solve
+  is 519 ms one-shot.
 - **Net:** for streaming odometry with a fixed map, FastVGICPCuda's amortized align
   is the right design; but per *frame* (covariance must be rebuilt each scan) it is
   ~202 ms, which Warp beats when batched (125 ms/frame). The real lesson for Warp:
