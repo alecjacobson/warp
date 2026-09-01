@@ -14,4 +14,5 @@ API
    :toctree: _generated
 
    delaunay_edge_flip
-   triangle_triangle_adjacency
+   find_adjacent_triangle
+   tri_tri_adjacency

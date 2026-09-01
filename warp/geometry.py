@@ -21,4 +21,4 @@ from warp._src.geometry import find_adjacent_triangle as find_adjacent_triangle
 # Don't expose these quite yet in case we want to change the naming conventions.
 # from warp._src.geometry import in_circle as in_circle
 # from warp._src.geometry import signed_area as signed_area
-from warp._src.geometry import triangle_triangle_adjacency as triangle_triangle_adjacency
+from warp._src.geometry import tri_tri_adjacency as tri_tri_adjacency
