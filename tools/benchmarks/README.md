@@ -13,11 +13,12 @@ its own env; see `icp_baselines/README.md` for setup and the full table with
 caveats.
 
 Headline (10,242-point ellipsoid, 15° + noise, 50-iter budget). **Every method
-runs on the GPU (NVIDIA L40) if it can** — Warp, Open3D tensor ICP, and PyTorch3D
-are CUDA; PCL and fast_gicp are CPU-only here. Throughput is registrations/second:
-batched methods (Warp, PyTorch3D) report per-problem time at batch saturation, the
-rest `1000/latency`. Warp figures are mesh / point-cloud target; `speedup` is
-Warp's batched point-cloud throughput (364 reg/s) ÷ that method's.
+runs on the GPU (NVIDIA L40) if it can** — Warp, Open3D tensor ICP, PyTorch3D, and
+fast_gicp's `FastVGICPCuda` are CUDA; the other fast_gicp variants and PCL are
+CPU. Throughput is registrations/second: batched methods (Warp, PyTorch3D) report
+per-problem time at batch saturation, the rest `1000/latency`. Warp figures are
+mesh / point-cloud target; `speedup` is Warp's batched point-cloud throughput
+(364 reg/s) ÷ that method's.
 
 | method                       | objective      | device | batched | rot err (deg) | throughput (reg/s) | speedup |
 | ---------------------------- | -------------- | ------ | ------- | ------------- | ------------------ | ------- |
@@ -26,12 +27,15 @@ Warp's batched point-cloud throughput (364 reg/s) ÷ that method's.
 | fast_gicp (FastGICP)         | plane-to-plane | CPU    | no      | 0.015         | 40                 | 9×      |
 | pcl_gicp                     | plane-to-plane | CPU    | no      | 0.008         | 8                  | 44×     |
 | open3d point-to-plane        | point-to-plane | GPU    | no      | 0.007         | 5                  | 74×     |
+| fast_gicp (FastVGICPCuda)    | voxel GICP     | GPU    | no      | 0.000         | 3                  | 110×    |
 
 The only other batched GPU method is PyTorch3D: Warp is **2.2× its throughput and
-far more accurate** (0.000° vs. 2.025° — PyTorch3D is point-to-point). Against
-non-batched methods it is 9× a strong CPU baseline (fast_gicp) and 74× Open3D's
-GPU point-to-plane; single-problem it is merely competitive (47/32 vs. 40 reg/s).
-Full table, per-row device labels, and caveats in `icp_baselines/README.md`.
+far more accurate** (0.000° vs. 2.025° — PyTorch3D is point-to-point). Notably
+fast_gicp's GPU `FastVGICPCuda` (~300 ms) is *slower* than its CPU `FastGICP`
+(25 ms) at this size — its CUDA path targets large streaming LiDAR, so a single
+10k cloud is overhead-bound (as it is for every method except Warp's batched
+path). All GPU-vs-GPU comparisons favor Warp. Full table, per-row device labels,
+and caveats in `icp_baselines/README.md`.
 
 ## Rigid registration ablation — do the options help?
 
