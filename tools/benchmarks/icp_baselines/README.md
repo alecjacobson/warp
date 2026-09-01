@@ -298,3 +298,29 @@ with 14× more points." The remaining lesson for Warp stands: **fix the
 normal-estimation neighborhood sizing for LiDAR** (or let the caller pass
 normals, which it already supports) — that alone closes essentially all of the
 gap here.
+
+### Being generous to fast_gicp's GPU (reuse mode, their config): where the time goes
+
+Measured in fast_gicp's own regime — their leaf-0.1 downsampling (~16k points),
+odometry **reuse** (target voxelmap built once, per-frame `set_input_source` +
+`align`), both converged — the GPU is *still* slower end-to-end, but profiling
+shows why and vindicates the GPU kernel:
+
+| stage (FastVGICPCuda)          | time    |
+| ------------------------------ | ------- |
+| `align` (GICP optimization, **GPU**) | **1.7 ms** |
+| `set_input_source` (covariance est.) | ~200 ms |
+| **per-frame total (reuse)**    | ~200 ms |
+
+vs. **FastGICP CPU reuse: 25 ms/frame** (0.17°) — 8× faster end-to-end, matching
+FastVGICPCuda's accuracy (0.13°). The GPU GICP *solve* is blazing (1.7 ms for 16k
+points, converged), but per-frame cost is dominated by **covariance estimation**,
+which fast_gicp runs on a CPU parallel KD-tree by default (its own source notes
+this is usually faster than GPU brute force). Through the `pygicp` binding that
+covariance NN method isn't switchable, so the CPU covariance (200 ms) swamps the
+GPU solve. fast_gicp's C++ `align` benchmark can select a GPU covariance path and
+amortize it, which is where its published "GPU faster" numbers come from; that
+knob is simply not exposed to Python. So the fair, generous summary: **fast_gicp's
+GPU accelerates the ICP solve to ~2 ms, but its end-to-end per-frame speed is
+gated by covariance estimation, and via the Python binding the CPU `FastGICP`
+remains the faster and simpler choice at these sizes.**
