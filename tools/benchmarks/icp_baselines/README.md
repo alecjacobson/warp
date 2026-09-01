@@ -324,3 +324,31 @@ knob is simply not exposed to Python. So the fair, generous summary: **fast_gicp
 GPU accelerates the ICP solve to ~2 ms, but its end-to-end per-frame speed is
 gated by covariance estimation, and via the Python binding the CPU `FastGICP`
 remains the faster and simpler choice at these sizes.**
+
+### FastVGICPCuda's solve vs. Warp's solve (69k KITTI)
+
+The two take opposite architectural bets, so "the solve" means different things:
+
+| quantity                                   | FastVGICPCuda | Warp |
+| ------------------------------------------ | ------------- | ---- |
+| the 6×6 linear solve (one step)            | — (inside align) | **0.028 ms** (on-device kernel) |
+| the whole optimization ("align")           | **1.7 ms**    | 519 ms (50 iters) |
+| per-iteration cost                         | O(1) voxel lookups + solve | **11.7 ms** (hash-grid NN) + 0.028 ms solve |
+| one-time preprocessing                     | voxelmap 255 ms + covariances ~200 ms/frame | none |
+| per-frame, odometry (reuse)                | ~202 ms (200 cov + 1.7 align) | 519 (single) / **125 (batched)** |
+
+- **FastVGICPCuda front-loads correspondence.** It builds a voxel map and per-point
+  covariances up front, so each `align` iteration is O(1) voxel lookups + a small
+  linear system — the whole optimization is 1.7 ms. The price is ~455 ms of
+  preprocessing (voxelmap once + covariances per frame).
+- **Warp precomputes nothing.** Its on-device 6×6 solve kernel is actually *faster*
+  (0.028 ms — ~60× the whole FastVGICPCuda align, but doing far less), yet Warp
+  re-runs a fresh nearest-neighbour search every iteration, so its per-iteration
+  cost is NN-dominated (11.7 ms here, inflated further by the large-`max_corr_dist`
+  grid). That is why Warp's full 50-iteration solve is 519 ms one-shot.
+- **Net:** for streaming odometry with a fixed map, FastVGICPCuda's amortized align
+  is the right design; but per *frame* (covariance must be rebuilt each scan) it is
+  ~202 ms, which Warp beats when batched (125 ms/frame). The real lesson for Warp:
+  its linear solve is not the cost — correspondence is; adopting a precomputed
+  voxel/covariance structure (i.e. a GICP variant) would make its per-frame solve
+  as cheap as FastVGICPCuda's, on top of Warp's batching.
