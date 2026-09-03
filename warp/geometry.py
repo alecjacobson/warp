@@ -16,7 +16,7 @@ Usage:
 # isort: skip_file
 
 from warp._src.geometry import delaunay_edge_flip as delaunay_edge_flip
-from warp._src.geometry import find_adjacent_triangle as find_adjacent_triangle
+from warp._src.geometry import find_triangle_neighbor_edge_index as find_triangle_neighbor_edge_index
 
 # Don't expose these quite yet in case we want to change the naming conventions.
 # from warp._src.geometry import in_circle as in_circle

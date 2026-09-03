@@ -4,7 +4,7 @@
 """Geometry processing utilities for triangle meshes.
 
 The public entry points are the topology builder :func:`tri_tri_adjacency`,
-its single-pair counterpart :func:`find_adjacent_triangle`, and the
+its single-pair counterpart :func:`find_triangle_neighbor_edge_index`, and the
 :func:`delaunay_edge_flip` operation; the predicates :func:`in_circle` and
 :func:`signed_area` are reusable but stay internal until their naming settles.
 Everything runs on the Warp device (CPU or CUDA); the Delaunay convergence loop is
@@ -28,7 +28,7 @@ from warp._src.utils import array_scan
 
 __all__ = [
     "delaunay_edge_flip",
-    "find_adjacent_triangle",
+    "find_triangle_neighbor_edge_index",
     "in_circle",
     "signed_area",
     "tri_tri_adjacency",
@@ -281,21 +281,30 @@ def tri_tri_adjacency(indices: wp.array2d[wp.int32], num_verts: int | None = Non
 
 
 @wp.func
-def find_adjacent_triangle(tri_tri: wp.array2d[wp.int32], t: wp.int32, n: wp.int32) -> wp.int32:
-    """Find ``n`` among the triangles adjacent to ``t`` and return its local edge index.
+def find_triangle_neighbor_edge_index(
+    triangle_neighbors: wp.array2d[wp.int32], triangle: wp.int32, neighbor: wp.int32
+) -> wp.int32:
+    """Return the local edge of ``triangle`` shared with ``neighbor``.
 
-    Searches ``tri_tri[t, :]`` for ``n`` and returns the local edge ``j`` such that
-    ``tri_tri[t, j] == n``, or -1 if ``t`` and ``n`` are not adjacent. This recovers,
-    for a single pair of triangles, the value that :func:`tri_tri_adjacency`
-    would have stored in ``tri_tri_reciprocal[t, j]`` had it been called with
-    ``return_reciprocal=True``. Useful after building ``tri_tri`` with
-    ``return_reciprocal=False``, where the reciprocal index was not kept.
+    Args:
+        triangle_neighbors: The ``(num_tris, 3)`` adjacency array built by
+            :func:`tri_tri_adjacency` (its ``tri_tri`` output).
+        triangle: Index of the triangle to search.
+        neighbor: Index of the triangle to find among ``triangle``'s neighbors.
+
+    Returns:
+        The local edge index ``j`` such that ``triangle_neighbors[triangle, j]
+        == neighbor``, or -1 if ``triangle`` and ``neighbor`` are not adjacent.
+        Calling this with ``triangle`` and ``neighbor`` swapped recovers a
+        single reciprocal local edge index -- the value :func:`tri_tri_adjacency`
+        would have stored in ``tri_tri_reciprocal`` had it been called with
+        ``return_reciprocal=True`` -- without having to keep that array around.
     """
-    if tri_tri[t, 0] == n:
+    if triangle_neighbors[triangle, 0] == neighbor:
         return 0
-    if tri_tri[t, 1] == n:
+    if triangle_neighbors[triangle, 1] == neighbor:
         return 1
-    if tri_tri[t, 2] == n:
+    if triangle_neighbors[triangle, 2] == neighbor:
         return 2
     return -1
 
@@ -387,7 +396,7 @@ class _EdgeFlipper:
             if claim[n] != prio:
                 continue
 
-            jn = find_adjacent_triangle(tri_tri, n, t)
+            jn = find_triangle_neighbor_edge_index(tri_tri, n, t)
             if jn < 0:
                 continue
 
@@ -422,9 +431,9 @@ class _EdgeFlipper:
 
             # Only these two outer neighbors change ownership; re-point them.
             if n_ad >= 0:
-                tri_tri[n_ad, find_adjacent_triangle(tri_tri, n_ad, n)] = t
+                tri_tri[n_ad, find_triangle_neighbor_edge_index(tri_tri, n_ad, n)] = t
             if n_bc >= 0:
-                tri_tri[n_bc, find_adjacent_triangle(tri_tri, n_bc, t)] = n
+                tri_tri[n_bc, find_triangle_neighbor_edge_index(tri_tri, n_bc, t)] = n
 
             wp.atomic_add(num_flips, 0, 1)
 
@@ -518,7 +527,7 @@ class _DelaunayFlipper(_EdgeFlipper):
             # Process each undirected edge once, from its lower-indexed triangle.
             if n < 0 or t >= n:
                 continue
-            jn = find_adjacent_triangle(tri_tri, n, t)
+            jn = find_triangle_neighbor_edge_index(tri_tri, n, t)
             if jn < 0:
                 continue
             if not _DelaunayFlipper._edge_should_flip(tri, pos, ref, has_ref, area_eps, ref_eps, t, j, n, jn):
@@ -542,7 +551,7 @@ def delaunay_edge_flip(
     max_passes: int = 1000,
     area_epsilon: float = 0.0,
     ref_epsilon: float = 1.0e-10,
-):
+) -> wp.array[wp.int32]:
     """Flip interior edges in place until the 2D triangulation is Delaunay.
 
     The triangulation is modified in place: ``indices`` is updated with the
@@ -567,10 +576,9 @@ def delaunay_edge_flip(
             be at least 1.
         area_epsilon: Minimum signed area required for each triangle produced by
             a flip; guards against creating inverted or sliver triangles. Must be
-            finite and non-negative: a negative value would silently loosen this
-            guard instead of tightening it.
+            finite and non-negative.
         ref_epsilon: Degeneracy threshold applied to ``ref_positions``. Must be
-            finite and non-negative, for the same reason as ``area_epsilon``.
+            finite and non-negative.
 
     Returns:
         A single-element ``int32`` :class:`warp.array` accumulator holding the
