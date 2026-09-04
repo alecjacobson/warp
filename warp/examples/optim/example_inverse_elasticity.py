@@ -690,8 +690,9 @@ def render_convergence_gif(frames, F, young, poisson, out_path, fps=4, hold=8):
 
     Each frame stacks the rest shape being optimized (top, blue) over the
     gravity-deformed shape (bottom, colored by per-face von Mises stress). Uses
-    matplotlib because its 2D triangle coloring is fully reliable in a headless
-    environment. Requires ``matplotlib`` and ``imageio``.
+    matplotlib for a labeled 2D figure with a colorbar; the triangles are drawn
+    with equal aspect so the isotropic grid reads correctly. Requires
+    ``matplotlib`` and ``imageio``.
     """
     import matplotlib  # noqa: PLC0415
 
@@ -705,42 +706,42 @@ def render_convergence_gif(frames, F, young, poisson, out_path, fps=4, hold=8):
     all_U = np.concatenate([f[1] for f in frames])
     vmax = max((per_face_von_mises(V, U, F, young, poisson).max() for V, U in frames), default=1.0)
 
-    # Fixed bounds so the animation does not jump between frames.
+    # Stack the rest shape (shifted up) above the deformed shape in one equal-
+    # aspect axes so the isotropic grid renders with square cells (matching the
+    # reference). The figure is sized to the data aspect so equal aspect fills it.
     xlo, xhi = all_V[:, 0].min(), all_V[:, 0].max()
-    padx = 0.02 * (xhi - xlo)
-
-    def _bounds(P):
-        lo, hi = P[:, 1].min(), P[:, 1].max()
-        m = 0.25 * max(hi - lo, 1e-6)
-        return lo - m, hi + m
-
-    r_lo, r_hi = _bounds(all_V)
-    d_lo, d_hi = _bounds(all_U)
+    xspan = xhi - xlo
+    # Shift the rest shape to sit just above the deformed shape's highest point.
+    span = max(float(np.ptp(all_V[:, 1])), float(np.ptp(all_U[:, 1])), 1e-6)
+    gap = (all_U[:, 1].max() - all_V[:, 1].min()) + 0.12 * span
+    ylo = all_U[:, 1].min()
+    yhi = all_V[:, 1].max() + gap
+    yspan = yhi - ylo
+    pad = 0.03 * xspan
+    fig_w = 12.0
+    fig_h = min(max(fig_w * yspan / xspan, 3.0), 9.0) * 1.15  # aspect-matched, clamped + title headroom
 
     images = []
     for i, (V, U) in enumerate(frames):
-        fig, (ax_r, ax_d) = plt.subplots(2, 1, figsize=(12, 4.2), dpi=110)
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=120, layout="constrained")
         vm = per_face_von_mises(V, U, F, young, poisson)
 
-        tri_rest = mtri.Triangulation(V[:, 0], V[:, 1], F)
-        ax_r.tripcolor(tri_rest, facecolors=np.zeros(len(F)), cmap="Blues", vmin=-1, vmax=1)
-        ax_r.triplot(tri_rest, color="#2c6fbb", lw=0.5)
-        ax_r.set_title("rest shape being optimized", fontsize=9)
-        ax_r.set_ylim(r_lo, r_hi)
+        tri_rest = mtri.Triangulation(V[:, 0], V[:, 1] + gap, F)
+        ax.tripcolor(tri_rest, facecolors=np.zeros(len(F)), cmap="Blues", vmin=-1, vmax=1)
+        ax.triplot(tri_rest, color="#2c6fbb", lw=0.5)
 
         tri_def = mtri.Triangulation(U[:, 0], U[:, 1], F)
-        tpc = ax_d.tripcolor(tri_def, facecolors=vm, cmap="viridis", vmin=0.0, vmax=vmax, edgecolors="face")
-        ax_d.triplot(tri_def, color="k", lw=0.12, alpha=0.3)
-        ax_d.set_title("gravity-deformed shape (von Mises stress) -> converges to flat target", fontsize=9)
-        ax_d.set_ylim(d_lo, d_hi)
+        tpc = ax.tripcolor(tri_def, facecolors=vm, cmap="viridis", vmin=0.0, vmax=vmax, edgecolors="face")
+        ax.triplot(tri_def, color="k", lw=0.12, alpha=0.3)
 
-        # No equal aspect: the bridge is 15:1, so we let the vertical scale
-        # exaggerate the (small) arch and sag to make them clearly visible.
-        for ax in (ax_r, ax_d):
-            ax.set_xlim(xlo - padx, xhi + padx)
-            ax.axis("off")
-        fig.colorbar(tpc, ax=(ax_r, ax_d), fraction=0.015, pad=0.01, label="von Mises stress")
-        fig.suptitle(f"Inverse elasticity via Gauss-Newton  -  iteration {i}", fontsize=11)
+        ax.text(xlo, yhi, "rest shape being optimized", fontsize=9, va="bottom")
+        ax.text(xlo, ylo, "gravity-deformed shape (von Mises stress) -> flat target", fontsize=9, va="top")
+        ax.set_xlim(xlo - pad, xhi + pad)
+        ax.set_ylim(ylo - pad, yhi + pad)
+        ax.set_aspect("equal")
+        ax.axis("off")
+        fig.colorbar(tpc, ax=ax, fraction=0.015, pad=0.01, label="von Mises stress")
+        fig.suptitle(f"Inverse elasticity shape optimization  -  iteration {i}", fontsize=11)
 
         fig.canvas.draw()
         rgba = np.asarray(fig.canvas.buffer_rgba())

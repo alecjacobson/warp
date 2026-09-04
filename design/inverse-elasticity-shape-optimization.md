@@ -136,11 +136,13 @@ physics tests stay with the example, not in `warp/tests/**` core.
 
 ### Visualization
 
-Headless frames of the rest shape (arching, with the current step as a vector
-field) and the deformed shape (colored by area-weighted vertex von Mises stress),
-assembled into a convergence gif. Primary: polyscope in headless/offscreen mode
-(EGL); fallback: matplotlib (guaranteed headless for this 2D problem). The gif is
-committed under `docs/`/example assets and referenced from the example docstring.
+Headless frames of the rest shape (arching) stacked over the deformed shape
+(colored by per-face von Mises stress), assembled into a convergence gif. The
+committed renderer uses matplotlib (Agg) for a labeled, equal-aspect 2D figure
+with a colorbar -- a good fit for this planar problem. (Polyscope headless
+rendering via EGL also works on this machine, including colormaps; matplotlib
+was chosen for the built-in 2D labels/colorbar, not because polyscope was
+unavailable.) The gif is committed under `docs/img/examples/` via git-LFS.
 
 ### CPU/GPU story
 
