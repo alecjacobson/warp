@@ -22,12 +22,38 @@ import unittest
 
 import numpy as np
 
+import warp as wp
+
 sys.path.insert(0, os.path.dirname(__file__))
 import _inverse_elasticity_oracle as oracle
+import example_inverse_elasticity as ex
 
 
 def _maxabs(a):
     return float(np.abs(a).max())
+
+
+def _test_devices():
+    wp.init()
+    devices = [wp.get_device("cpu")]
+    if wp.is_cuda_available():
+        devices.append(wp.get_device("cuda:0"))
+    return devices
+
+
+@wp.kernel
+def _eval_local_ops(
+    v0: wp.array(dtype=ex.vec2d),
+    v1: wp.array(dtype=ex.vec2d),
+    v2: wp.array(dtype=ex.vec2d),
+    young: wp.float64,
+    poisson: wp.float64,
+    k_out: wp.array(dtype=ex.mat66d),
+    m_out: wp.array(dtype=ex.mat66d),
+):
+    t = wp.tid()
+    k_out[t] = ex.local_stiffness(v0[t], v1[t], v2[t], young, poisson)
+    m_out[t] = ex.local_mass(v0[t], v1[t], v2[t])
 
 
 class TestHostOracle(unittest.TestCase):
@@ -68,6 +94,40 @@ class TestHostOracle(unittest.TestCase):
         gn = oracle.gauss_newton_step(*self._args())
         kkt = oracle.gauss_newton_step_kkt(*self._args())
         self.assertLess(_maxabs(gn - kkt), 1e-8)
+
+
+class TestWarpElementOperators(unittest.TestCase):
+    """Warp local_stiffness / local_mass match the numpy oracle (per device)."""
+
+    def test_local_ops_match_oracle(self):
+        tris = np.array(
+            [
+                [[0.1, 0.0], [1.3, -0.2], [0.4, 0.9]],
+                [[0.0, 0.0], [2.0, 0.0], [0.0, 1.0]],
+                [[-0.5, 0.3], [0.7, 0.1], [0.2, 1.1]],
+            ],
+            dtype=np.float64,
+        )
+        young, poisson = 2e3, 0.49
+        k_ref = np.stack([oracle.local_stiffness(t, young, poisson) for t in tris])
+        m_ref = np.stack([oracle.local_mass(t) for t in tris])
+
+        for device in _test_devices():
+            v0 = wp.array(tris[:, 0, :], dtype=ex.vec2d, device=device)
+            v1 = wp.array(tris[:, 1, :], dtype=ex.vec2d, device=device)
+            v2 = wp.array(tris[:, 2, :], dtype=ex.vec2d, device=device)
+            k_out = wp.zeros(len(tris), dtype=ex.mat66d, device=device)
+            m_out = wp.zeros(len(tris), dtype=ex.mat66d, device=device)
+            wp.launch(
+                _eval_local_ops,
+                dim=len(tris),
+                inputs=[v0, v1, v2, wp.float64(young), wp.float64(poisson), k_out, m_out],
+                device=device,
+            )
+            err_k = _maxabs(k_out.numpy() - k_ref)
+            err_m = _maxabs(m_out.numpy() - m_ref)
+            self.assertLess(err_k, 1e-8, f"{device}: local_stiffness err {err_k:.3e}")
+            self.assertLess(err_m, 1e-10, f"{device}: local_mass err {err_m:.3e}")
 
 
 if __name__ == "__main__":
