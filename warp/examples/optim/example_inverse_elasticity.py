@@ -407,6 +407,38 @@ def _adam_update(
 
 
 @wp.kernel
+def _incr_counter(t: wp.array(dtype=wp.int32)):
+    t[0] = t[0] + 1
+
+
+@wp.kernel
+def _adam_step_dev(
+    g: wp.array(dtype=vec2d),
+    m: wp.array(dtype=vec2d),
+    v: wp.array(dtype=vec2d),
+    lr: wp.float64,
+    b1: wp.float64,
+    b2: wp.float64,
+    eps: wp.float64,
+    t_counter: wp.array(dtype=wp.int32),  # device iteration counter, for bias correction
+    params: wp.array(dtype=vec2d),
+):
+    """Adam update with device-side bias correction (fully graph-capturable)."""
+    i = wp.tid()
+    t = wp.float64(t_counter[0])
+    gi = g[i]
+    one = wp.float64(1.0)
+    mi = b1 * m[i] + (one - b1) * gi
+    vi = b2 * v[i] + (one - b2) * wp.cw_mul(gi, gi)
+    m[i] = mi
+    v[i] = vi
+    mhat = mi / (one - wp.pow(b1, t))
+    vhat = vi / (one - wp.pow(b2, t))
+    denom = vec2d(wp.sqrt(vhat[0]) + eps, wp.sqrt(vhat[1]) + eps)
+    params[i] = params[i] - lr * wp.cw_div(mhat, denom)
+
+
+@wp.kernel
 def _scatter_G_inplace(
     tris: wp.array(dtype=wp.vec3i),
     verts: wp.array(dtype=vec2d),

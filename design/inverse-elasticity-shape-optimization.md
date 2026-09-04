@@ -284,9 +284,36 @@ ILU/block-ILU or sparse-direct preconditioner, or a correctly-derived LM step vi
 the (damped-primal) KKT. For the shipped example, GN is the fast path at its
 intended scales and Adam is the robust fallback that keeps working at any size.
 
-Remaining productionization: wire the captured in-place step into a
-`BridgeProblem.optimize(..., capture=True)` path with a device-side loss so the
-whole convergence loop (not just one step) is captured.
+### Final fair Adam-vs-GN wall clock (captured per-step x iterations)
+
+Combining the captured per-step times with iterations-to-convergence (GN ~4-5;
+Adam ~507 at count=2, growing with mesh):
+
+| count | GN (iters x step) | Adam (iters x step) | winner |
+|---|---|---|---|
+| 2 | 4 x 0.21 ms = **0.8 ms** | 507 x 0.22 ms = 112 ms | GN ~130x |
+| 4 | 5 x 0.34 ms = **1.7 ms** | ~1500 x 0.33 ms = ~500 ms | GN ~290x |
+| 8 | 5 x 210 ms = **1050 ms** | ~3000 x 0.34 ms = ~1020 ms | ~tie |
+
+Graph capture speeds *both* methods by removing per-step launch/sync overhead
+(Adam's step drops from ~17 ms eager to ~0.3 ms), so the comparison is now fair.
+GN retains a large advantage at the example's target scales (few globally-coupled
+steps beat thousands of local ones), and only loses that edge once the `T`-solve
+becomes the bottleneck (count>=8). Adam is the size-robust fallback.
+
+### Productionization status and remaining obstacle
+
+The per-step capture is solid. Fully capturing the *whole convergence loop* hits
+one real obstacle: the Jacobi preconditioner is built once at capture time, but
+the rest shape changes so much during optimization (flat -> arched by ~5 units)
+that a fixed preconditioner goes stale and the CR solves slow down / stop
+converging. The fix is to recompute the preconditioner's `inv_diag` **in place**
+each step (`bsr_get_diag(out=...)` + invert into preallocated arrays, capturable),
+or to periodically re-capture the graph. Device-side Adam (`_adam_step_dev`, with
+a device iteration counter for bias correction) and a device-side loss
+(`_accumulate_sq`) are already in place; wiring these into a
+`BridgeProblem.optimize(..., capture=True)` with in-place preconditioner refresh
+is the last step.
 
 ### Alternative Gauss-Newton solver routes to try
 
