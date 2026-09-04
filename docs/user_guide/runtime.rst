@@ -2967,29 +2967,36 @@ See :github:`warp/examples/core/example_isosurface.py` for a complete usage exam
 Sparse Marching Cubes
 #####################
 
-When the field comes from an implicit function (a signed distance function, a
-mesh distance query, or a neural implicit),
+If we have access to a scalar field as a samplable function, we can extract its
+isosurface without densely sampling an entire volumetric grid. Let us assume
+that the function has a known Lipschitz bound (e.g., a signed distance
+function has a Lipschitz constant of 1 because
+:math:`|f(x) - f(y)| \le |x - y|`).
+
 :func:`wp.geometry.sparse_marching_cubes_via_lipschitz_pruning
 <warp.geometry.sparse_marching_cubes_via_lipschitz_pruning>` extracts the
-isosurface without ever building a dense grid. It constructs a *Lipschitz
-octree* that provably brackets the level
-set of a 1-Lipschitz field, then runs marching cubes only on the near-surface
-cells. The cost scales with the surface area rather than the volume, and the
-whole pipeline (octree construction, field evaluation, and extraction) runs on
-the GPU.
-
-The implicit function may be a ``@wp.func`` with signature ``(p: wp.vec3) -> float``
-or a batched Python callable
-``evaluate(points: wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32)``. The
-latter is convenient for mesh distance queries (``wp.mesh_query_point_sign_winding_number``),
-neural implicits, or any field that is cheaper to evaluate in bulk.
+isosurface by efficiently identifying cells near the requested level set using
+an octree and then running marching cubes only on those cells.
 
 .. figure:: ../img/examples/core_sparse_marching_cubes.gif
     :align: center
     :width: 60%
 
-    A signed distance field to the Stanford bunny, re-meshed as the octree depth
-    increases. Only the sparse cells near the surface (blue) are instantiated.
+    A signed distance field to the Stanford bunny, re-meshed as the octree
+    depth increases. Only the sparse cells near the surface (blue) are
+    instantiated.
+
+The *implied* grid is specified the same way as
+:meth:`warp.geometry.IsoSurfaceMarchingCubes.extract`: ``nx, ny, nz`` grid
+nodes over a (possibly anisotropic) domain box. Calling this function and
+``extract`` with the same grid and bounds produces the same triangulation and
+vertex positions, to floating-point tolerance -- only the near-surface cells
+are instantiated here.
+
+The provided function ``sdf`` must be batched callable, ``evaluate(points:
+wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32)``. A callable backed by a
+host library (NumPy, PyTorch, ...) also works, at the cost of a device/host sync
+per call.
 
 .. testcode::
     :skipif: wp.get_cuda_device_count() == 0
@@ -3000,12 +3007,22 @@ neural implicits, or any field that is cheaper to evaluate in bulk.
     def sphere_sdf(p: wp.vec3):
         return wp.length(p) - 0.5
 
-    # A depth-8 octree matches a dense 256^3 grid, but only touches cells near the surface.
+    @wp.kernel
+    def eval_sphere_sdf(points: wp.array(dtype=wp.vec3), values: wp.array(dtype=wp.float32)):
+        i = wp.tid()
+        values[i] = sphere_sdf(points[i])
+
+    def sphere_evaluate(points):
+        values = wp.empty(points.shape[0], dtype=wp.float32, device=points.device)
+        wp.launch(eval_sphere_sdf, dim=points.shape[0], inputs=[points], outputs=[values], device=points.device)
+        return values
+
+    # A 257^3 grid (octree depth 8) touches only cells near the surface.
     verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-        sphere_sdf,
-        origin=wp.vec3(-1.0, -1.0, -1.0),
-        root_width=2.0,
-        max_depth=8,
+        sphere_evaluate,
+        257, 257, 257,
+        domain_bounds_lower_corner=wp.vec3(-1.0, -1.0, -1.0),
+        domain_bounds_upper_corner=wp.vec3(1.0, 1.0, 1.0),
         threshold=0.0,
         device="cuda:0",
     )
@@ -3016,23 +3033,16 @@ neural implicits, or any field that is cheaper to evaluate in bulk.
 
     extracted 77094 vertices and 154184 triangles
 
-At a given depth the output is equivalent to
-:class:`wp.geometry.IsoSurfaceMarchingCubes
-<warp.geometry.IsoSurfaceMarchingCubes>` run on the equivalent dense grid: the
-same triangulation and the same vertex and triangle counts, with vertex
-positions agreeing to floating-point tolerance. Only the near-surface cells are
-instantiated. The two stages are also exposed separately: the pruning
-stage is :func:`wp.geometry.lipschitz_octree <warp.geometry.lipschitz_octree>`,
-which returns the leaf cells, and the extraction stage is
-:func:`wp.geometry.sparse_marching_cubes_from_cells
-<warp.geometry.sparse_marching_cubes_from_cells>`, which runs marching cubes on
-an explicit list of occupied cells and their sampled corner values.
-:func:`wp.geometry.sparse_marching_cubes_via_lipschitz_pruning
-<warp.geometry.sparse_marching_cubes_via_lipschitz_pruning>` simply chains the
-two. Calling the extraction stage directly is convenient when the occupied cells
-are already known, such as a marked band of voxels around an object from a
-vision or generative model, or a custom sparse data structure that already tracks
-which voxels are near the surface.
+The pruning and extraction stages are also exposed separately:
+:func:`wp.geometry.lipschitz_octree <warp.geometry.lipschitz_octree>` returns
+the leaf cells, and :func:`wp.geometry.sparse_marching_cubes_from_cells
+<warp.geometry.sparse_marching_cubes_from_cells>` runs marching cubes on an
+explicit list of occupied cells and their sampled corner values --
+``sparse_marching_cubes_via_lipschitz_pruning`` chains the two using shared
+internals. Calling the extraction stage directly is useful when the occupied
+cells are already known, such as a marked band of voxels from a vision or
+generative model, or a custom sparse data structure that already tracks which
+voxels are near the surface.
 
 Extracting from an explicit cell set
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -3054,15 +3064,14 @@ eight values.
     This subscript convention differs from the VDB-style one used by
     :class:`wp.Volume <warp.Volume>`, where a subscript names a voxel whose
     *center* holds the sample. Here a subscript names a cell by its *minimum
-    corner*, and the samples sit at the cell's corners. Both put samples on the
-    integer lattice, so a :class:`wp.Volume <warp.Volume>` voxel subscript lines
-    up with a corner subscript here, not a cell subscript: the corners of cell
-    ``(i, j, k)`` are the voxels ``(i, j, k)`` through ``(i+1, j+1, k+1)``.
+    corner*, and the samples sit at the cell's corners. A :class:`wp.Volume
+    <warp.Volume>` voxel subscript therefore lines up with a *corner*
+    subscript here, not a cell subscript: the corners of cell ``(i, j, k)``
+    are the voxels ``(i, j, k)`` through ``(i+1, j+1, k+1)``.
 
 The cells a closed surface passes through form a face-connected shell, so they
-can be gathered with a breadth-first search from a single seed cell. The search
-only ever touches the shell and its immediate neighbors, never the volume it
-encloses:
+can be gathered with a breadth-first search from a single seed cell, without
+ever visiting the volume the surface encloses:
 
 .. testcode::
 
@@ -3123,32 +3132,17 @@ encloses:
     extracted 2312 triangles
     vertices lie on the sphere: True
 
-Note that the sphere spans 32 cells per axis here, so a dense grid covering it
-would hold 32,768 cells, more than ten times what the search evaluated. The gap
-grows with resolution. The subscripts are also centered on the origin and
+A dense grid covering the same sphere (32 cells per axis) would hold 32,768
+cells -- more than ten times what the search evaluated -- and the gap grows
+with resolution. The subscripts here are also centered on the origin and
 therefore negative on one side, which the extractor handles directly.
 
-.. list-table::
-    :header-rows: 1
-
-    * - Extracted surface
-      - Dense grid (all cells)
-      - Sparse octree (near-surface cells)
-    * - .. image:: ../img/examples/core_sparse_marching_cubes_surface.png
-      - .. image:: ../img/examples/core_sparse_marching_cubes_dense_grid.png
-      - .. image:: ../img/examples/core_sparse_marching_cubes_sparse_octree.png
-
-At this coarse resolution the dense grid holds 32,768 cells while the octree
-keeps only about 2,500, the thin shell hugging the surface. The gap widens with
-depth: on the bunny SDF above, sparse extraction is roughly 8x faster than the
-dense grid at depth 8 and 27x faster at depth 9, and beyond that the dense grid
-no longer fits in memory.
-
-See :github:`warp/examples/core/example_sparse_marching_cubes.py` for a complete
-usage example, with an interactive rendering mode and a ``--show-cells`` option
-that draws the octree leaf cells as a voxel cage around the surface, and
-:github:`warp/examples/benchmarks/benchmark_sparse_marching_cubes.py` for a fair
-sparse-versus-dense comparison.
+See :github:`warp/examples/core/example_sparse_marching_cubes.py` for a
+complete usage example, with an interactive rendering mode and a
+``--show-cells`` option that draws the octree leaf cells as a voxel cage
+around the surface, and
+:github:`warp/examples/benchmarks/benchmark_sparse_marching_cubes.py` for a
+sparse-versus-dense performance comparison.
 
 Custom Marching Cubes Implementations
 #####################################
