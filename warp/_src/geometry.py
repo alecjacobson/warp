@@ -127,7 +127,7 @@ def _match_vertex_buckets(
     counts: wp.array[wp.int32],
     bucket_hi: wp.array[wp.int32],
     bucket_he: wp.array[wp.int32],
-    tri_tri: wp.array2d[wp.int32],
+    triangle_neighbors: wp.array2d[wp.int32],
 ):
     # Each thread owns one vertex's bucket (a disjoint range), so it can pair
     # half-edges that share the same upper endpoint without synchronization. The
@@ -144,8 +144,8 @@ def _match_vertex_buckets(
         for b in range(a + 1, end):
             if bucket_he[b] >= 0 and bucket_hi[b] == hi_a:
                 he_b = bucket_he[b]
-                tri_tri[he_a // 3, he_a % 3] = he_b // 3
-                tri_tri[he_b // 3, he_b % 3] = he_a // 3
+                triangle_neighbors[he_a // 3, he_a % 3] = he_b // 3
+                triangle_neighbors[he_b // 3, he_b % 3] = he_a // 3
                 bucket_he[a] = -1
                 bucket_he[b] = -1
                 break
@@ -157,7 +157,7 @@ def _match_vertex_buckets_with_neighbor_edge_indices(
     counts: wp.array[wp.int32],
     bucket_hi: wp.array[wp.int32],
     bucket_he: wp.array[wp.int32],
-    tri_tri: wp.array2d[wp.int32],
+    triangle_neighbors: wp.array2d[wp.int32],
     neighbor_edge_indices: wp.array2d[wp.int32],
 ):
     # As _match_vertex_buckets, but also records each edge's local index within its neighbor.
@@ -176,9 +176,9 @@ def _match_vertex_buckets_with_neighbor_edge_indices(
                 ja = he_a % 3
                 tb = he_b // 3
                 jb = he_b % 3
-                tri_tri[ta, ja] = tb
+                triangle_neighbors[ta, ja] = tb
                 neighbor_edge_indices[ta, ja] = jb
-                tri_tri[tb, jb] = ta
+                triangle_neighbors[tb, jb] = ta
                 neighbor_edge_indices[tb, jb] = ja
                 bucket_he[a] = -1
                 bucket_he[b] = -1
@@ -226,16 +226,17 @@ def tri_tri_adjacency(
         vertex_count: Number of vertices in the mesh. If ``None``, inferred as one
             plus the maximum vertex index. Must not be ``None`` when used in a
             CUDA graph capture context.
-        return_neighbor_edge_indices: If ``True`` (default), also compute and return the
-            local edge indices ``neighbor_edge_indices``. Pass ``False`` to build only
-            the neighbor array ``tri_tri``, which is faster and less memory (use
-            ``find_triangle_neighbor_edge_index`` to recover a single neighbor
-            edge index on demand).
+        return_neighbor_edge_indices: If ``True`` (default), also compute and return
+            each neighboring triangle's local edge index for the shared edge.
+            Pass ``False`` to skip this and build only the adjacency array,
+            which is faster and uses less memory (use
+            ``find_triangle_neighbor_edge_index`` to recover a single such
+            index on demand).
 
     Returns:
-        If ``return_neighbor_edge_indices`` is ``True``, a tuple ``(tri_tri, neighbor_edge_indices)`` of
-        ``(num_tris, 3)`` ``int32`` arrays; otherwise the single array ``tri_tri``.
-        ``tri_tri[t, j]`` is the triangle adjacent to triangle ``t`` across the edge
+        If ``return_neighbor_edge_indices`` is ``True``, a tuple ``(triangle_neighbors, neighbor_edge_indices)`` of
+        ``(num_tris, 3)`` ``int32`` arrays; otherwise the single array ``triangle_neighbors``.
+        ``triangle_neighbors[t, j]`` is the triangle adjacent to triangle ``t`` across the edge
         opposite local vertex ``j`` (the edge joining local vertices
         ``(j + 1) % 3`` and ``(j + 2) % 3``), or ``-1`` on a boundary edge.
         ``neighbor_edge_indices[t, j]`` is the local edge index of that shared edge within the
@@ -248,13 +249,13 @@ def tri_tri_adjacency(
     device = indices.device
     num_tris = indices.shape[0]
 
-    tri_tri = wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device)
+    triangle_neighbors = wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device)
     neighbor_edge_indices = (
         wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device) if return_neighbor_edge_indices else None
     )
 
     if num_tris == 0:
-        return (tri_tri, neighbor_edge_indices) if return_neighbor_edge_indices else tri_tri
+        return (triangle_neighbors, neighbor_edge_indices) if return_neighbor_edge_indices else triangle_neighbors
 
     if vertex_count is None:
         if device.is_capturing:
@@ -268,18 +269,18 @@ def tri_tri_adjacency(
         wp.launch(
             _match_vertex_buckets_with_neighbor_edge_indices,
             dim=vertex_count,
-            inputs=[offsets, counts, bucket_hi, bucket_he, tri_tri, neighbor_edge_indices],
+            inputs=[offsets, counts, bucket_hi, bucket_he, triangle_neighbors, neighbor_edge_indices],
             device=device,
         )
-        return tri_tri, neighbor_edge_indices
+        return triangle_neighbors, neighbor_edge_indices
 
     wp.launch(
         _match_vertex_buckets,
         dim=vertex_count,
-        inputs=[offsets, counts, bucket_hi, bucket_he, tri_tri],
+        inputs=[offsets, counts, bucket_hi, bucket_he, triangle_neighbors],
         device=device,
     )
-    return tri_tri
+    return triangle_neighbors
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +296,7 @@ def find_triangle_neighbor_edge_index(
 
     Args:
         triangle_neighbors: The ``(num_tris, 3)`` adjacency array built by
-            :func:`tri_tri_adjacency` (its ``tri_tri`` output).
+            :func:`tri_tri_adjacency` (its ``triangle_neighbors`` output).
         triangle: Index of the triangle to search.
         neighbor: Index of the triangle to find among ``triangle``'s neighbors.
 
@@ -382,7 +383,7 @@ class _EdgeFlipper:
     @wp.kernel
     def _apply_won_flips(
         tri: wp.array2d[wp.int32],
-        tri_tri: wp.array2d[wp.int32],
+        triangle_neighbors: wp.array2d[wp.int32],
         claim: wp.array[wp.uint32],
         num_flips: wp.array[wp.int32],
     ):
@@ -397,13 +398,13 @@ class _EdgeFlipper:
             # need to re-run the predicate here.
             if claim[t] != prio:
                 continue
-            n = tri_tri[t, j]
+            n = triangle_neighbors[t, j]
             if n < 0 or t >= n:
                 continue
             if claim[n] != prio:
                 continue
 
-            jn = find_triangle_neighbor_edge_index(tri_tri, n, t)
+            jn = find_triangle_neighbor_edge_index(triangle_neighbors, n, t)
             if jn < 0:
                 continue
 
@@ -412,8 +413,8 @@ class _EdgeFlipper:
             jn1 = (jn + 1) % 3
             jn2 = (jn + 2) % 3
 
-            n_bc = tri_tri[t, j1]
-            n_ad = tri_tri[n, jn1]
+            n_bc = triangle_neighbors[t, j1]
+            n_ad = triangle_neighbors[n, jn1]
             if n_bc >= 0 and claim[n_bc] != prio:
                 continue
             if n_ad >= 0 and claim[n_ad] != prio:
@@ -429,18 +430,18 @@ class _EdgeFlipper:
 
             # t keeps slot j2 (edge c-a); slot j (edge a-d) inherits n's a-d
             # neighbor; slot j1 (edge d-c) is the new diagonal to n.
-            tri_tri[t, j] = n_ad
-            tri_tri[t, j1] = n
+            triangle_neighbors[t, j] = n_ad
+            triangle_neighbors[t, j1] = n
             # n keeps slot jn2 (edge d-b); slot jn (edge b-c) inherits t's b-c
             # neighbor; slot jn1 (edge c-d) is the new diagonal to t.
-            tri_tri[n, jn] = n_bc
-            tri_tri[n, jn1] = t
+            triangle_neighbors[n, jn] = n_bc
+            triangle_neighbors[n, jn1] = t
 
             # Only these two outer neighbors change ownership; re-point them.
             if n_ad >= 0:
-                tri_tri[n_ad, find_triangle_neighbor_edge_index(tri_tri, n_ad, n)] = t
+                triangle_neighbors[n_ad, find_triangle_neighbor_edge_index(triangle_neighbors, n_ad, n)] = t
             if n_bc >= 0:
-                tri_tri[n_bc, find_triangle_neighbor_edge_index(tri_tri, n_bc, t)] = n
+                triangle_neighbors[n_bc, find_triangle_neighbor_edge_index(triangle_neighbors, n_bc, t)] = n
 
             wp.atomic_add(num_flips, 0, 1)
 
@@ -520,7 +521,7 @@ class _DelaunayFlipper(_EdgeFlipper):
     @wp.kernel
     def _stake_flip_claims(
         tri: wp.array2d[wp.int32],
-        tri_tri: wp.array2d[wp.int32],
+        triangle_neighbors: wp.array2d[wp.int32],
         pos: wp.array[wp.vec2],
         ref: wp.array[wp.vec2],
         has_ref: wp.int32,
@@ -530,11 +531,11 @@ class _DelaunayFlipper(_EdgeFlipper):
     ):
         t = wp.tid()
         for j in range(3):
-            n = tri_tri[t, j]
+            n = triangle_neighbors[t, j]
             # Process each undirected edge once, from its lower-indexed triangle.
             if n < 0 or t >= n:
                 continue
-            jn = find_triangle_neighbor_edge_index(tri_tri, n, t)
+            jn = find_triangle_neighbor_edge_index(triangle_neighbors, n, t)
             if jn < 0:
                 continue
             if not _DelaunayFlipper._edge_should_flip(tri, pos, ref, has_ref, area_eps, ref_eps, t, j, n, jn):
@@ -542,8 +543,8 @@ class _DelaunayFlipper(_EdgeFlipper):
 
             # Preserving each triangle's cyclic slot layout, a flip only reads and
             # writes the rows of {t, n, n_bc, n_ad}, so it claims exactly those four.
-            n_bc = tri_tri[t, (j + 1) % 3]
-            n_ad = tri_tri[n, (jn + 1) % 3]
+            n_bc = triangle_neighbors[t, (j + 1) % 3]
+            n_ad = triangle_neighbors[n, (jn + 1) % 3]
             prio = _EdgeFlipper._edge_priority(t, j)
             _EdgeFlipper._stake_claim(claim, t, prio)
             _EdgeFlipper._stake_claim(claim, n, prio)
@@ -616,7 +617,7 @@ def delaunay_edge_flip(
         return wp.zeros(shape=1, dtype=wp.int32, device=device)
 
     vertex_count = positions.shape[0]
-    tri_tri = tri_tri_adjacency(indices, vertex_count=vertex_count, return_neighbor_edge_indices=False)
+    triangle_neighbors = tri_tri_adjacency(indices, vertex_count=vertex_count, return_neighbor_edge_indices=False)
 
     has_ref = wp.int32(1 if ref_positions is not None else 0)
     ref = ref_positions if ref_positions is not None else positions
@@ -638,13 +639,13 @@ def delaunay_edge_flip(
         wp.launch(
             _DelaunayFlipper._stake_flip_claims,
             dim=num_tris,
-            inputs=[indices, tri_tri, positions, ref, has_ref, area_epsilon, ref_area_epsilon, claim],
+            inputs=[indices, triangle_neighbors, positions, ref, has_ref, area_epsilon, ref_area_epsilon, claim],
             device=device,
         )
         wp.launch(
             _EdgeFlipper._apply_won_flips,
             dim=num_tris,
-            inputs=[indices, tri_tri, claim, num_flips],
+            inputs=[indices, triangle_neighbors, claim, num_flips],
             device=device,
         )
         wp.launch(

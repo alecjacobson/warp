@@ -168,50 +168,52 @@ def test_adjacency_single_pair(test, device):
     Two triangles sharing edge (0, 2): tri 0 = (0,1,2), tri 1 = (0,2,3).
     """
     indices = wp.array(np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32), dtype=wp.int32, device=device)
-    tri_tri, neighbor_edge_indices = warp.geometry.tri_tri_adjacency(indices, vertex_count=4)
-    tri_tri_np = tri_tri.numpy()
+    triangle_neighbors, neighbor_edge_indices = warp.geometry.tri_tri_adjacency(indices, vertex_count=4)
+    triangle_neighbors_np = triangle_neighbors.numpy()
     neighbor_edge_indices_np = neighbor_edge_indices.numpy()
 
     # Shared edge (0,2) is opposite vertex 1 in tri 0 (local edge 1) and opposite
     # vertex 3 in tri 1 (local edge 2).
-    test.assertEqual(tri_tri_np[0, 1], 1)
+    test.assertEqual(triangle_neighbors_np[0, 1], 1)
     test.assertEqual(neighbor_edge_indices_np[0, 1], 2)
-    test.assertEqual(tri_tri_np[1, 2], 0)
+    test.assertEqual(triangle_neighbors_np[1, 2], 0)
     test.assertEqual(neighbor_edge_indices_np[1, 2], 1)
 
     # All other edges are on the boundary.
-    test.assertEqual(tri_tri_np[0, 0], -1)
-    test.assertEqual(tri_tri_np[0, 2], -1)
-    test.assertEqual(tri_tri_np[1, 0], -1)
-    test.assertEqual(tri_tri_np[1, 1], -1)
+    test.assertEqual(triangle_neighbors_np[0, 0], -1)
+    test.assertEqual(triangle_neighbors_np[0, 2], -1)
+    test.assertEqual(triangle_neighbors_np[1, 0], -1)
+    test.assertEqual(triangle_neighbors_np[1, 1], -1)
 
-    # return_neighbor_edge_indices=False yields the same tri_tri as a single array (no neighbor_edge_indices).
-    tri_tri_only = warp.geometry.tri_tri_adjacency(indices, vertex_count=4, return_neighbor_edge_indices=False)
-    test.assertFalse(isinstance(tri_tri_only, tuple))
-    assert_np_equal(tri_tri_only.numpy(), tri_tri_np)
+    # return_neighbor_edge_indices=False yields the same triangle_neighbors as a single array (no neighbor_edge_indices).
+    triangle_neighbors_only = warp.geometry.tri_tri_adjacency(
+        indices, vertex_count=4, return_neighbor_edge_indices=False
+    )
+    test.assertFalse(isinstance(triangle_neighbors_only, tuple))
+    assert_np_equal(triangle_neighbors_only.numpy(), triangle_neighbors_np)
 
 
 def test_adjacency_matches_grid(test, device):
     """Verify that adjacency pointers round-trip on a larger grid mesh."""
     points, tris = _grid_mesh(5, 4, jitter=0.2, seed=11)
     indices = wp.array(tris, dtype=wp.int32, device=device)
-    tri_tri, neighbor_edge_indices = warp.geometry.tri_tri_adjacency(indices, vertex_count=points.shape[0])
-    tri_tri_only = warp.geometry.tri_tri_adjacency(
+    triangle_neighbors, neighbor_edge_indices = warp.geometry.tri_tri_adjacency(indices, vertex_count=points.shape[0])
+    triangle_neighbors_only = warp.geometry.tri_tri_adjacency(
         indices, vertex_count=points.shape[0], return_neighbor_edge_indices=False
     )
-    tri_tri_np = tri_tri.numpy()
+    triangle_neighbors_np = triangle_neighbors.numpy()
     neighbor_edge_indices_np = neighbor_edge_indices.numpy()
     # return_neighbor_edge_indices=False must agree with the full build.
-    assert_np_equal(tri_tri_only.numpy(), tri_tri_np)
+    assert_np_equal(triangle_neighbors_only.numpy(), triangle_neighbors_np)
 
     # For every interior edge, the neighbor edge index round-trips.
     for t in range(tris.shape[0]):
         for j in range(3):
-            n = tri_tri_np[t, j]
+            n = triangle_neighbors_np[t, j]
             if n < 0:
                 continue
             jn = neighbor_edge_indices_np[t, j]
-            test.assertEqual(tri_tri_np[n, jn], t)
+            test.assertEqual(triangle_neighbors_np[n, jn], t)
             test.assertEqual(neighbor_edge_indices_np[n, jn], j)
 
 
@@ -219,11 +221,11 @@ def test_adjacency_infers_vertex_count(test, device):
     """Verify that omitting vertex_count (device-side max-vertex-index reduction) matches passing it explicitly."""
     points, tris = _grid_mesh(5, 4, jitter=0.2, seed=11)
     indices = wp.array(tris, dtype=wp.int32, device=device)
-    tri_tri_inferred, neighbor_edge_indices_inferred = warp.geometry.tri_tri_adjacency(indices)
-    tri_tri_explicit, neighbor_edge_indices_explicit = warp.geometry.tri_tri_adjacency(
+    triangle_neighbors_inferred, neighbor_edge_indices_inferred = warp.geometry.tri_tri_adjacency(indices)
+    triangle_neighbors_explicit, neighbor_edge_indices_explicit = warp.geometry.tri_tri_adjacency(
         indices, vertex_count=points.shape[0]
     )
-    assert_np_equal(tri_tri_inferred.numpy(), tri_tri_explicit.numpy())
+    assert_np_equal(triangle_neighbors_inferred.numpy(), triangle_neighbors_explicit.numpy())
     assert_np_equal(neighbor_edge_indices_inferred.numpy(), neighbor_edge_indices_explicit.numpy())
 
 
