@@ -1,6 +1,9 @@
 # Inverse-elasticity shape optimization example (sparse Gauss–Newton)
 
-- **Status:** In progress
+- **Status:** Implemented (GD / Adam / Gauss-Newton on CPU and CUDA, validated against a
+  numpy/scipy host oracle and finite differences; headless convergence gif). Follow-ups:
+  docs-gallery integration, larger-mesh solver robustness (Levenberg-Marquardt damping),
+  and eventual replacement of `example_elastic_shape_optimization.py`.
 - **Author:** AI-authored (Claude Code), directed by @alecjacobson
 - **Reference:** https://github.com/alecjacobson/gauss-newton-sensitivity-analysis
   (C++/TinyAD/libigl/Eigen); derivation in that repo's `sparse_kkt_gauss_newton.md`.
