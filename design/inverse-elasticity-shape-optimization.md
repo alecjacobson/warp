@@ -258,16 +258,35 @@ Head-to-head at count=8 (BiCGSTAB on the `T`-solve, tol 1e-8):
   stabilization (`+εx` primal, `-ελ` on the zero multiplier block) does **not**
   by itself lower the 2-norm condition here (measured); its value is enabling
   that direct factorization.
-- **LM damping** `T <- A + G_ff + µI` (implemented, scatters onto the precomputed
-  diagonal blocks) is the effective *GPU-available* lever: it regularizes `T`
-  and cuts BiCGSTAB iterations ~200x. The cost is a damped GN step, so the outer
-  iteration count grows with µ -- the sweet spot balances inner (solve) vs outer
-  (optimization) iterations, and is the recommended default over trying the
-  larger saddle systems (which are worse-conditioned here).
+- **`T <- A + G_ff + µI` is NOT a valid lever** (corrected). It does cut BiCGSTAB
+  iterations ~200x, but a settings sweep shows it *cripples the optimization*:
+  at count=8, µ=100 leaves the loss ratio stuck at ~0.36 (barely 3x reduction)
+  vs. the ~1e-8 that exact GN reaches at small meshes. The reason is that adding
+  µI to `T = A + G_ff` damps the **state/equilibrium response**, not the
+  **design step** -- it is not the true Levenberg-Marquardt regularization
+  (which damps the primal `(p,p)` block of the KKT, `c^2 I -> (c^2 + µ)I`). So
+  the implemented `damping` on `assemble_T_inplace` regularizes the linear solve
+  but must not be used as an LM step; the default is µ=0.
 
-Remaining productionization: wire the captured in-place step + LM damping into a
-`BridgeProblem.optimize(..., capture=True)` path, and add a device-side loss so
-the whole convergence loop (not just one step) is captured.
+### Settled Gauss-Newton settings
+
+**µ=0 (exact GN), BiCGSTAB, scalar-Jacobi preconditioner, inner tol ~1e-8.** This
+converges in ~4-5 outer iterations at the example's target scales (count<=4-6),
+which is where GN's ~100x wall-clock advantage over Adam is real. GMRES is not
+used (it stalls on the nonsymmetric ill-conditioned `T`).
+
+The one genuine limitation is the **`T`-solve at large meshes** (count>=8): `T`
+becomes ill-conditioned enough that scalar-Jacobi BiCGSTAB plateaus without
+reaching tol, and no valid quick fix exists in Warp today (no strong sparse
+preconditioner / direct factorization; `T+µI` breaks the step; the larger saddle
+systems are worse-conditioned). Proper fixes are future work: a real Warp
+ILU/block-ILU or sparse-direct preconditioner, or a correctly-derived LM step via
+the (damped-primal) KKT. For the shipped example, GN is the fast path at its
+intended scales and Adam is the robust fallback that keeps working at any size.
+
+Remaining productionization: wire the captured in-place step into a
+`BridgeProblem.optimize(..., capture=True)` path with a device-side loss so the
+whole convergence loop (not just one step) is captured.
 
 ### Alternative Gauss-Newton solver routes to try
 
