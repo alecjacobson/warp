@@ -209,5 +209,38 @@ class TestWarpGaussNewton(unittest.TestCase):
             self.assertLess(e_fd, 1e-4, f"{device}: GN vs dense-FD rel err {e_fd:.3e}")
 
 
+class TestConvergence(unittest.TestCase):
+    """End-to-end optimizer behavior reproduces the reference: GN converges fast,
+    Adam converges, plain gradient descent fails."""
+
+    @classmethod
+    def setUpClass(cls):
+        wp.init()
+        cls.device = wp.get_device("cuda:0") if wp.is_cuda_available() else wp.get_device("cpu")
+
+    def _problem(self, count):
+        p = oracle.Problem(count=count)
+        return ex.BridgeProblem(p.V, p.F, p.free_vertices, p.young, p.poisson, device=self.device)
+
+    def test_gauss_newton_converges_fast(self):
+        r = self._problem(4).optimize(method="gn", num_iters=12, tol=1e-8)
+        self.assertTrue(r["converged"], f"GN did not converge: {r['final_loss']:.3e}")
+        self.assertLess(r["final_loss"], 1e-6)
+        self.assertLessEqual(r["iters"], 8, "GN should converge in a handful of iterations")
+        self.assertLess(r["max_spike_ratio"], 1.5, "GN should be ~monotone")
+
+    def test_adam_converges(self):
+        r = self._problem(2).optimize(method="adam", num_iters=700, step_size=0.02, tol=1e-8)
+        # Adam reaches high precision, just far more slowly than GN.
+        self.assertLess(r["final_loss"], 1e-4 * r["initial_loss"], f"Adam stalled: {r['final_loss']:.3e}")
+
+    def test_gradient_descent_fails(self):
+        r = self._problem(4).optimize(method="gd", num_iters=150, step_size=0.5, tol=1e-8)
+        # The whole point: plain GD never reaches GN-level precision here; it
+        # stalls / oscillates far above it (reference: ~0.005-0.014).
+        self.assertFalse(r["converged"], "gradient descent unexpectedly converged")
+        self.assertGreater(r["best_loss"], 1e-3, f"GD got closer than expected: {r['best_loss']:.3e}")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

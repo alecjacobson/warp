@@ -18,8 +18,10 @@
 # Plain gradient descent fails on this problem (it collapses triangles), so we
 # feature a sparse Gauss-Newton step computed without ever forming a dense
 # Jacobian: T = A + G_ff (A = K_ff, G the geometry sensitivity of the load
-# minus stiffness*displacement), solved with Warp's GMRES because T is sparse
-# but nonsymmetric. See design/inverse-elasticity-shape-optimization.md.
+# minus stiffness*displacement), solved with a Warp Krylov solver (BiCGSTAB)
+# because T is sparse but nonsymmetric. Adam (a warp-parallel first-order
+# optimizer) also converges, just far more slowly, giving a nice CPU/GPU
+# contrast. See design/inverse-elasticity-shape-optimization.md.
 ###########################################################################
 
 import numpy as np
@@ -319,6 +321,61 @@ def _scatter_free_step(
         dV[v] = vec2d(wp.float64(0.0), wp.float64(0.0))
 
 
+# ---------------------------------------------------------------------------
+# Optimizers: gradient descent, Adam, Gauss-Newton
+# ---------------------------------------------------------------------------
+
+
+@wp.kernel
+def _apply_step(verts: wp.array(dtype=vec2d), alpha: wp.float64, dV: wp.array(dtype=vec2d)):
+    """In-place update V <- V + alpha dV (dV is zero at pins, so pins stay fixed)."""
+    v = wp.tid()
+    verts[v] = verts[v] + alpha * dV[v]
+
+
+@wp.kernel
+def _gather_free_positions(
+    verts: wp.array(dtype=vec2d), free_verts: wp.array(dtype=wp.int32), out: wp.array(dtype=vec2d)
+):
+    i = wp.tid()
+    out[i] = verts[free_verts[i]]
+
+
+@wp.kernel
+def _scatter_free_positions(
+    params: wp.array(dtype=vec2d), free_verts: wp.array(dtype=wp.int32), verts: wp.array(dtype=vec2d)
+):
+    i = wp.tid()
+    verts[free_verts[i]] = params[i]
+
+
+@wp.kernel
+def _adam_update(
+    g: wp.array(dtype=vec2d),
+    m: wp.array(dtype=vec2d),
+    v: wp.array(dtype=vec2d),
+    lr: wp.float64,
+    b1: wp.float64,
+    b2: wp.float64,
+    bc1: wp.float64,  # 1 - b1**t
+    bc2: wp.float64,  # 1 - b2**t
+    eps: wp.float64,
+    params: wp.array(dtype=vec2d),
+):
+    """Per-free-vertex Adam update (double precision; warp.optim.Adam is fp32/vec3 only)."""
+    i = wp.tid()
+    gi = g[i]
+    one = wp.float64(1.0)
+    mi = b1 * m[i] + (one - b1) * gi
+    vi = b2 * v[i] + (one - b2) * wp.cw_mul(gi, gi)
+    m[i] = mi
+    v[i] = vi
+    mhat = mi / bc1
+    vhat = vi / bc2
+    denom = vec2d(wp.sqrt(vhat[0]) + eps, wp.sqrt(vhat[1]) + eps)
+    params[i] = params[i] - lr * wp.cw_div(mhat, denom)
+
+
 class BridgeProblem:
     """Device-side state and operators for the inverse-elasticity bridge problem.
 
@@ -345,6 +402,7 @@ class BridgeProblem:
         self.v_target = wp.array(verts_np, dtype=vec2d, device=self.device)
         self.tris = wp.array(tris_np, dtype=wp.vec3i, device=self.device)
         self.vert_to_free = wp.array(vert_to_free, dtype=wp.int32, device=self.device)
+        self.free_verts = wp.array(np.asarray(free_vertices_np, dtype=np.int32), dtype=wp.int32, device=self.device)
 
         f_ext_np = np.zeros((self.num_verts, 2), dtype=np.float64)
         f_ext_np[:, 1] = gravity
@@ -427,11 +485,8 @@ class BridgeProblem:
         diff = (self.v_target.numpy() - U.numpy()).reshape(-1)
         return float(np.mean(diff**2))
 
-    def gradient_step(self, tol=1e-10):
-        """Ascent gradient of the loss w.r.t. free rest positions, via one adjoint solve.
-
-        Returns a per-vertex ``dV`` (vec2d, zero at pinned vertices).
-        """
+    def gradient_free(self, tol=1e-10):
+        """Ascent gradient of the loss at the free vertices (array of vec2d, length #free)."""
         U, u, _, A = self.forward(tol=tol)
         r_free = self.residual_free(U)
         Gff = self.assemble_Gff(u)
@@ -451,7 +506,11 @@ class BridgeProblem:
             inputs=[r_free, gt_lambda, wp.float64(scale), grad_free],
             device=self.device,
         )
+        return grad_free
 
+    def gradient_step(self, tol=1e-10):
+        """Ascent gradient of the loss as a per-vertex ``dV`` (vec2d, zero at pins)."""
+        grad_free = self.gradient_free(tol=tol)
         dV = wp.empty(self.num_verts, dtype=vec2d, device=self.device)
         wp.launch(_scatter_free_step, dim=self.num_verts, inputs=[grad_free, self.vert_to_free, dV], device=self.device)
         return dV
@@ -488,3 +547,109 @@ class BridgeProblem:
         dV = wp.empty(self.num_verts, dtype=vec2d, device=self.device)
         wp.launch(_scatter_free_step, dim=self.num_verts, inputs=[p, self.vert_to_free, dV], device=self.device)
         return dV
+
+    # -- optimization driver --
+
+    def get_free_positions(self):
+        out = wp.empty(self.num_free, dtype=vec2d, device=self.device)
+        wp.launch(
+            _gather_free_positions, dim=self.num_free, inputs=[self.verts, self.free_verts, out], device=self.device
+        )
+        return out
+
+    def set_free_positions(self, params):
+        wp.launch(
+            _scatter_free_positions, dim=self.num_free, inputs=[params, self.free_verts, self.verts], device=self.device
+        )
+
+    def apply_step(self, alpha, dV):
+        wp.launch(_apply_step, dim=self.num_verts, inputs=[self.verts, wp.float64(alpha), dV], device=self.device)
+
+    def optimize(
+        self,
+        method="gn",
+        num_iters=100,
+        step_size=None,
+        tol=1e-8,
+        betas=(0.9, 0.999),
+        adam_eps=1e-8,
+        forward_tol=1e-10,
+        record_every=0,
+        quiet=True,
+    ):
+        """Run a fixed-step-size optimization and return a result dict.
+
+        ``method`` is one of ``"gn"`` (Gauss-Newton), ``"gd"`` (gradient descent),
+        or ``"adam"``. Tracks the loss trajectory, the best loss, the worst spike
+        ratio, and convergence/divergence flags (mirroring the reference). When
+        ``record_every > 0``, snapshots ``(V, U)`` every that many iterations for
+        visualization.
+        """
+        if step_size is None:
+            step_size = {"gn": 1.0, "gd": 0.5, "adam": 0.02}[method]
+
+        b1, b2 = betas
+        if method == "adam":
+            params = self.get_free_positions()
+            m = wp.zeros_like(params)
+            v = wp.zeros_like(params)
+
+        losses = []
+        frames = []
+        init_loss = self.loss(tol=forward_tol)
+        best = init_loss
+        max_spike = 1.0
+        diverged = False
+        converged = False
+        t = 0
+
+        for it in range(num_iters):
+            loss_val = self.loss(tol=forward_tol)
+            losses.append(loss_val)
+            if not np.isfinite(loss_val) or loss_val > 1e6 * init_loss:
+                diverged = True
+                break
+            best = min(best, loss_val)
+            max_spike = max(max_spike, loss_val / max(best, 1e-300))
+            if record_every and it % record_every == 0:
+                U, _, _, _ = self.forward(tol=forward_tol)
+                frames.append((self.verts.numpy().copy(), U.numpy().copy()))
+            if not quiet:
+                print(f"  iter {it:4d}  loss {loss_val:.6e}")
+            if loss_val < tol * init_loss:
+                converged = True
+                break
+
+            if method == "gn":
+                self.apply_step(step_size, self.gauss_newton_step(tol=forward_tol))
+            elif method == "gd":
+                self.apply_step(-step_size, self.gradient_step(tol=forward_tol))
+            elif method == "adam":
+                g = self.gradient_free(tol=forward_tol)
+                t += 1
+                bc1 = 1.0 - b1**t
+                bc2 = 1.0 - b2**t
+                wp.launch(
+                    _adam_update,
+                    dim=self.num_free,
+                    inputs=[g, m, v, wp.float64(step_size), wp.float64(b1), wp.float64(b2),
+                            wp.float64(bc1), wp.float64(bc2), wp.float64(adam_eps), params],
+                    device=self.device,
+                )  # fmt: skip
+                self.set_free_positions(params)
+            else:
+                raise ValueError(f"unknown method {method!r}")
+
+        final_loss = self.loss(tol=forward_tol)
+        return {
+            "method": method,
+            "iters": len(losses),
+            "initial_loss": init_loss,
+            "final_loss": final_loss,
+            "best_loss": min(best, final_loss),
+            "max_spike_ratio": max_spike,
+            "converged": converged,
+            "diverged": diverged,
+            "losses": losses,
+            "frames": frames,
+        }
