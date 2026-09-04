@@ -653,3 +653,162 @@ class BridgeProblem:
             "losses": losses,
             "frames": frames,
         }
+
+
+# ---------------------------------------------------------------------------
+# Visualization (host-side; optional polyscope headless renderer)
+# ---------------------------------------------------------------------------
+
+
+def per_face_von_mises(V, U, F, young, poisson):
+    """Per-triangle von Mises stress from the linear strain B (U - V), evaluated at rest V."""
+    lam = young * poisson / ((1.0 + poisson) * (1.0 - 2.0 * poisson))
+    mu = young / (2.0 * (1.0 + poisson))
+    C = np.array([[lam + 2 * mu, lam, 0.0], [lam, lam + 2 * mu, 0.0], [0.0, 0.0, mu]])
+    Mg = np.array([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0]])
+    vm = np.zeros(len(F))
+    for f, tri in enumerate(F):
+        Vf = V[tri]
+        Uf = U[tri]
+        Dm = Mg @ Vf
+        G = np.linalg.inv(Dm) @ Mg
+        B = np.array(
+            [
+                [G[0, 0], 0, G[0, 1], 0, G[0, 2], 0],
+                [0, G[1, 0], 0, G[1, 1], 0, G[1, 2]],
+                [G[1, 0], G[0, 0], G[1, 1], G[0, 1], G[1, 2], G[0, 2]],
+            ]
+        )
+        u_local = (Uf - Vf).reshape(-1)
+        sxx, syy, sxy = C @ (B @ u_local)
+        vm[f] = np.sqrt(sxx * sxx - sxx * syy + syy * syy + 3.0 * sxy * sxy)
+    return vm
+
+
+def render_convergence_gif(frames, F, young, poisson, out_path, fps=4, hold=8):
+    """Render optimization frames to a gif (headless matplotlib, Agg backend).
+
+    Each frame stacks the rest shape being optimized (top, blue) over the
+    gravity-deformed shape (bottom, colored by per-face von Mises stress). Uses
+    matplotlib because its 2D triangle coloring is fully reliable in a headless
+    environment. Requires ``matplotlib`` and ``imageio``.
+    """
+    import matplotlib  # noqa: PLC0415
+
+    matplotlib.use("Agg")
+    import imageio.v2 as imageio  # noqa: PLC0415
+    import matplotlib.pyplot as plt  # noqa: PLC0415
+    import matplotlib.tri as mtri  # noqa: PLC0415
+
+    F = np.asarray(F)
+    all_V = np.concatenate([f[0] for f in frames])
+    all_U = np.concatenate([f[1] for f in frames])
+    vmax = max((per_face_von_mises(V, U, F, young, poisson).max() for V, U in frames), default=1.0)
+
+    # Fixed bounds so the animation does not jump between frames.
+    xlo, xhi = all_V[:, 0].min(), all_V[:, 0].max()
+    padx = 0.02 * (xhi - xlo)
+
+    def _bounds(P):
+        lo, hi = P[:, 1].min(), P[:, 1].max()
+        m = 0.25 * max(hi - lo, 1e-6)
+        return lo - m, hi + m
+
+    r_lo, r_hi = _bounds(all_V)
+    d_lo, d_hi = _bounds(all_U)
+
+    images = []
+    for i, (V, U) in enumerate(frames):
+        fig, (ax_r, ax_d) = plt.subplots(2, 1, figsize=(12, 4.2), dpi=110)
+        vm = per_face_von_mises(V, U, F, young, poisson)
+
+        tri_rest = mtri.Triangulation(V[:, 0], V[:, 1], F)
+        ax_r.tripcolor(tri_rest, facecolors=np.zeros(len(F)), cmap="Blues", vmin=-1, vmax=1)
+        ax_r.triplot(tri_rest, color="#2c6fbb", lw=0.5)
+        ax_r.set_title("rest shape being optimized", fontsize=9)
+        ax_r.set_ylim(r_lo, r_hi)
+
+        tri_def = mtri.Triangulation(U[:, 0], U[:, 1], F)
+        tpc = ax_d.tripcolor(tri_def, facecolors=vm, cmap="viridis", vmin=0.0, vmax=vmax, edgecolors="face")
+        ax_d.triplot(tri_def, color="k", lw=0.12, alpha=0.3)
+        ax_d.set_title("gravity-deformed shape (von Mises stress) -> converges to flat target", fontsize=9)
+        ax_d.set_ylim(d_lo, d_hi)
+
+        # No equal aspect: the bridge is 15:1, so we let the vertical scale
+        # exaggerate the (small) arch and sag to make them clearly visible.
+        for ax in (ax_r, ax_d):
+            ax.set_xlim(xlo - padx, xhi + padx)
+            ax.axis("off")
+        fig.colorbar(tpc, ax=(ax_r, ax_d), fraction=0.015, pad=0.01, label="von Mises stress")
+        fig.suptitle(f"Inverse elasticity via Gauss-Newton  -  iteration {i}", fontsize=11)
+
+        fig.canvas.draw()
+        rgba = np.asarray(fig.canvas.buffer_rgba())
+        images.append(rgba[..., :3].copy())
+        plt.close(fig)
+
+    images += [images[-1]] * hold  # pause on the converged result
+    imageio.mimsave(out_path, images, fps=fps, loop=0)
+    return out_path
+
+
+def _make_bridge(count, young, poisson, device):
+    """Build a 15:1 triangulated-grid bridge pinned at its left/right edges."""
+    ny = 1 + count
+    nx = 15 * (ny - 1) + 1
+    xs = np.linspace(0.0, 1.0, nx)
+    ys = np.linspace(0.0, 1.0, ny)
+    gx, gy = np.meshgrid(xs, ys)
+    V = np.stack([gx.ravel(), gy.ravel()], axis=1)
+    V[:, 0] *= (nx - 1) / (ny - 1)  # stretch to 15:1
+    tris = []
+    for j in range(ny - 1):
+        for i in range(nx - 1):
+            idx = j * nx + i
+            tris.append([idx, idx + 1, idx + nx + 1])
+            tris.append([idx, idx + nx + 1, idx + nx])
+    F = np.array(tris, dtype=np.int32)
+    x_min, x_max = V[:, 0].min(), V[:, 0].max()
+    free = [i for i in range(V.shape[0]) if abs(V[i, 0] - x_min) > 1e-8 and abs(V[i, 0] - x_max) > 1e-8]
+    return V, F, np.array(free, dtype=np.int32)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("--device", type=str, default=None, help="Override the default Warp device.")
+    parser.add_argument("--count", type=int, default=4, help="Grid resolution parameter (ny = 1 + count).")
+    parser.add_argument("--method", choices=("gn", "gd", "adam"), default="gn", help="Optimizer.")
+    parser.add_argument("--num-iters", type=int, default=None, help="Iteration cap (defaults per method).")
+    parser.add_argument("--step-size", type=float, default=None, help="Fixed step size (defaults per method).")
+    parser.add_argument("--young", type=float, default=2e3, help="Young's modulus.")
+    parser.add_argument("--poisson", type=float, default=0.49, help="Poisson's ratio.")
+    parser.add_argument("--tol", type=float, default=1e-8, help="Relative loss tolerance for convergence.")
+    parser.add_argument("--gif", type=str, default=None, help="Render a convergence gif to this path (polyscope).")
+    parser.add_argument("--quiet", action="store_true", help="Suppress per-iteration loss output.")
+    args = parser.parse_args()
+
+    num_iters = args.num_iters or {"gn": 20, "gd": 500, "adam": 4000}[args.method]
+
+    with wp.ScopedDevice(args.device):
+        V, F, free = _make_bridge(args.count, args.young, args.poisson, args.device)
+        bridge = BridgeProblem(V, F, free, args.young, args.poisson)
+        result = bridge.optimize(
+            method=args.method,
+            num_iters=num_iters,
+            step_size=args.step_size,
+            tol=args.tol,
+            record_every=1 if args.gif else 0,
+            quiet=args.quiet,
+        )
+        print(
+            f"RESULT method={result['method']} count={args.count} nV={V.shape[0]} "
+            f"iters={result['iters']} initial_loss={result['initial_loss']:.6e} "
+            f"final_loss={result['final_loss']:.6e} best_loss={result['best_loss']:.6e} "
+            f"max_spike={result['max_spike_ratio']:.3f} converged={result['converged']} diverged={result['diverged']}"
+        )
+
+        if args.gif:
+            path = render_convergence_gif(result["frames"], F, args.young, args.poisson, args.gif)
+            print(f"wrote {path} ({len(result['frames'])} frames)")
