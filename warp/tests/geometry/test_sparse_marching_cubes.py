@@ -759,6 +759,14 @@ def test_sparse_mc_invalid_arguments(test, device):
         with test.assertRaises(ValueError):
             wp.geometry.sparse_marching_cubes_from_cells(cells, corner_values, cell_width=bad_width, device=device)
 
+    # An empty cell array still validates corner_values -- a mismatched size
+    # is rejected rather than silently ignored just because there are no
+    # cells to attach it to.
+    with test.assertRaises(ValueError):
+        wp.geometry.sparse_marching_cubes_from_cells(
+            np.zeros((0, 3), dtype=np.int32), np.zeros((3,), dtype=np.float32), device=device
+        )
+
 
 devices = get_test_devices()
 

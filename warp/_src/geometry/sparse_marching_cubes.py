@@ -937,8 +937,10 @@ def sparse_marching_cubes_from_cells(
     band of voxels around an object from a vision or generative model, and the
     implicit field has already been sampled at their corners.
 
-    :func:`sparse_marching_cubes_via_lipschitz_pruning` is a thin wrapper that discovers the cells with
-    a :func:`lipschitz_octree` and then calls this function.
+    :func:`sparse_marching_cubes_via_lipschitz_pruning` shares this function's cell-deduplication and
+    extraction internals rather than composing :func:`lipschitz_octree` and this function directly:
+    :func:`lipschitz_octree` returns world-space cell origins, while this function expects integer
+    cell subscripts and sampled corner values.
 
     .. note::
 
@@ -993,9 +995,6 @@ def sparse_marching_cubes_from_cells(
     cells_wp = _as_cell_subscripts(cells, device)
     n_cells = cells_wp.shape[0]
 
-    if n_cells == 0:
-        return _empty_mesh(device)
-
     values_wp = (
         corner_values
         if isinstance(corner_values, wp.array)
@@ -1007,6 +1006,10 @@ def sparse_marching_cubes_from_cells(
         raise ValueError(f"corner_values must be float32, got {values_wp.dtype}.")
     if values_wp.size != 8 * n_cells:
         raise ValueError(f"corner_values must have {8 * n_cells} entries for {n_cells} cells, got {values_wp.size}.")
+
+    if n_cells == 0:
+        return _empty_mesh(device)
+
     # reshape() only works on contiguous arrays, and a caller pulling corner
     # values out of a larger structure can easily hand us a strided view.
     if not values_wp.is_contiguous:
