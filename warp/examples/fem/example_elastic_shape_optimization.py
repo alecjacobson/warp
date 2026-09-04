@@ -515,8 +515,12 @@ if __name__ == "__main__":
     )
     parser.add_argument("--lr", type=float, default=1.0e-3, help="Learning rate.")
     parser.add_argument("--num-iters", type=int, default=750, help="Number of iterations.")
+    # Improving the remesher revealed that poor/inactive remeshing was acting as
+    # an ad-hoc regularizer for the shape optimization. Remeshing drives to a
+    # lower loss, but less aesthetic solution, so disabled by default until the
+    # loss definition can be revisited.
     parser.add_argument(
-        "--remesh-interval", type=int, default=10, help="Edge-flip remeshing every N iters (0 to disable)."
+        "--remesh-interval", type=int, default=0, help="Edge-flip remeshing every N iters (0 to disable)."
     )
 
     args = parser.parse_known_args()[0]
