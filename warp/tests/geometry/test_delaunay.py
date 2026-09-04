@@ -213,6 +213,16 @@ def test_adjacency_matches_grid(test, device):
             test.assertEqual(tri_tri_reciprocal_np[n, jn], j)
 
 
+def test_adjacency_infers_num_verts(test, device):
+    """Verify that omitting num_verts (device-side max-vertex-index reduction) matches passing it explicitly."""
+    points, tris = _grid_mesh(5, 4, jitter=0.2, seed=11)
+    indices = wp.array(tris, dtype=wp.int32, device=device)
+    tri_tri_inferred, tri_tri_reciprocal_inferred = warp.geometry.tri_tri_adjacency(indices)
+    tri_tri_explicit, tri_tri_reciprocal_explicit = warp.geometry.tri_tri_adjacency(indices, num_verts=points.shape[0])
+    assert_np_equal(tri_tri_inferred.numpy(), tri_tri_explicit.numpy())
+    assert_np_equal(tri_tri_reciprocal_inferred.numpy(), tri_tri_reciprocal_explicit.numpy())
+
+
 def test_flip_single_edge(test, device):
     """Flip the one non-Delaunay edge of a thin quad."""
     points = np.array([[-3.0, 0.0], [3.0, 0.0], [0.0, 1.0], [0.0, -1.0]], dtype=np.float32)
@@ -547,6 +557,7 @@ class TestDelaunay(unittest.TestCase):
 add_function_test(TestDelaunay, "test_predicates", test_predicates, devices=devices)
 add_function_test(TestDelaunay, "test_adjacency_single_pair", test_adjacency_single_pair, devices=devices)
 add_function_test(TestDelaunay, "test_adjacency_matches_grid", test_adjacency_matches_grid, devices=devices)
+add_function_test(TestDelaunay, "test_adjacency_infers_num_verts", test_adjacency_infers_num_verts, devices=devices)
 add_function_test(TestDelaunay, "test_flip_single_edge", test_flip_single_edge, devices=devices)
 add_function_test(TestDelaunay, "test_flip_grid", test_flip_grid, devices=devices)
 add_function_test(TestDelaunay, "test_flip_grid_large", test_flip_grid_large, devices=devices)

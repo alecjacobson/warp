@@ -1,11 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Geometry processing utilities for triangle meshes.
+"""Geometry processing utilities.
 
-This module provides GPU-accelerated geometry operations on triangle meshes,
-currently in-place Delaunay edge flipping for 2D meshes and the
-triangle-triangle adjacency structure it builds on.
+This module provides functions to process 2D and 3D geometry and their
+associated topological data structures (e.g., meshes).
 
 Usage:
     This module must be explicitly imported::
