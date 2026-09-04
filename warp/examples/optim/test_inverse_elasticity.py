@@ -158,5 +158,39 @@ class TestWarpForward(unittest.TestCase):
             self.assertLess(err_u, 1e-6, f"{device}: forward U rel err {err_u:.3e}")
 
 
+class TestWarpGradient(unittest.TestCase):
+    """Warp sensitivity G and adjoint gradient match the oracle and dense FD."""
+
+    def test_gradient(self):
+        p = oracle.Problem(count=3)
+        _, uh, _, _ = oracle.forward_sim(p.V, p.F, p.young, p.poisson, p.f_ext, p.free_dofs)
+        Gff_h = oracle.assemble_G(p.V, p.F, p.young, p.poisson, uh, p.f_ext)[np.ix_(p.free_dofs, p.free_dofs)]
+        g_oracle = oracle.gradient_step(p.V, p.F, p.young, p.poisson, p.f_ext, p.free_dofs, p.V_target)
+        g_fd = oracle.fd_gradient_step(p.V, p.F, p.young, p.poisson, p.f_ext, p.free_dofs, p.V_target)
+
+        rng = np.random.default_rng(1)
+        v = rng.standard_normal(p.free_dofs.size)
+        y_host = Gff_h @ v
+
+        for device in _test_devices():
+            bp = ex.BridgeProblem(p.V, p.F, p.free_vertices, p.young, p.poisson, device=device)
+            _, u, _, _ = bp.forward(tol=1e-12)
+
+            # G_ff reproduces the host element-FD sensitivity (matvec check).
+            Gff = bp.assemble_Gff(u)
+            vv = wp.array(v.reshape(-1, 2), dtype=ex.vec2d, device=device)
+            yv = wp.zeros(bp.num_free, dtype=ex.vec2d, device=device)
+            wps.bsr_mv(Gff, vv, yv)
+            err_g = _maxabs(yv.numpy().reshape(-1) - y_host) / max(1e-12, _maxabs(y_host))
+            self.assertLess(err_g, 1e-6, f"{device}: G_ff matvec rel err {err_g:.3e}")
+
+            # Adjoint gradient matches the oracle and the independent dense-FD gradient.
+            g = bp.gradient_step(tol=1e-12).numpy()
+            e_oracle = _maxabs(g - g_oracle) / max(1e-12, _maxabs(g_oracle))
+            e_fd = _maxabs(g - g_fd) / max(1e-12, _maxabs(g_fd))
+            self.assertLess(e_oracle, 1e-4, f"{device}: gradient vs oracle rel err {e_oracle:.3e}")
+            self.assertLess(e_fd, 1e-4, f"{device}: gradient vs dense-FD rel err {e_fd:.3e}")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

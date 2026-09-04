@@ -200,6 +200,119 @@ def _add(a: wp.array(dtype=vec2d), b: wp.array(dtype=vec2d), out: wp.array(dtype
     out[v] = a[v] + b[v]
 
 
+# ---------------------------------------------------------------------------
+# Geometry sensitivity G and the adjoint gradient
+# ---------------------------------------------------------------------------
+#
+# The sensitivity of the free equilibrium to a rest-shape change is captured by
+# G, defined column-wise by G(:,a) = dM/dx_a f_ext - dK/dx_a u (u, f_ext held
+# fixed). Element-locally, G_e is a 6x6 matrix whose column a is the derivative
+# of h(V_e) = M_e f_e - K_e u_e with respect to local geometry coordinate a. We
+# evaluate those derivatives by central differences over the six local
+# coordinates (the reference's "six broadcast finite-difference directions"),
+# fully in parallel over elements, and scatter the free-free 2x2 blocks into a
+# BSR matrix G_ff.
+
+
+@wp.func
+def _elem_h(v0: vec2d, v1: vec2d, v2: vec2d, young: wp.float64, poisson: wp.float64, u_e: vec6d, f_e: vec6d) -> vec6d:
+    """Element load-minus-restoring-force vector h(V_e) = M_e f_e - K_e u_e."""
+    return local_mass(v0, v1, v2) * f_e - local_stiffness(v0, v1, v2, young, poisson) * u_e
+
+
+@wp.kernel
+def _assemble_G_triplets(
+    tris: wp.array(dtype=wp.vec3i),
+    verts: wp.array(dtype=vec2d),
+    young: wp.float64,
+    poisson: wp.float64,
+    u: wp.array(dtype=vec2d),
+    f_ext: wp.array(dtype=vec2d),
+    vert_to_free: wp.array(dtype=wp.int32),
+    eps: wp.float64,
+    rows: wp.array(dtype=wp.int32),
+    cols: wp.array(dtype=wp.int32),
+    blocks: wp.array(dtype=mat22d),
+):
+    t = wp.tid()
+    f = tris[t]
+    p0 = verts[f[0]]
+    p1 = verts[f[1]]
+    p2 = verts[f[2]]
+    u_e = vec6d(u[f[0]][0], u[f[0]][1], u[f[1]][0], u[f[1]][1], u[f[2]][0], u[f[2]][1])
+    f_e = vec6d(f_ext[f[0]][0], f_ext[f[0]][1], f_ext[f[1]][0], f_ext[f[1]][1], f_ext[f[2]][0], f_ext[f[2]][1])
+
+    Ge = mat66d(wp.float64(0.0))
+    for g in range(6):
+        vtx = g // 2
+        comp = g % 2
+        d = vec2d(wp.where(comp == 0, eps, wp.float64(0.0)), wp.where(comp == 1, eps, wp.float64(0.0)))
+        # Perturb only the g-th local coordinate (vtx is constant per unrolled iter).
+        pp0 = p0 + wp.where(vtx == 0, d, vec2d(wp.float64(0.0), wp.float64(0.0)))
+        pp1 = p1 + wp.where(vtx == 1, d, vec2d(wp.float64(0.0), wp.float64(0.0)))
+        pp2 = p2 + wp.where(vtx == 2, d, vec2d(wp.float64(0.0), wp.float64(0.0)))
+        pm0 = p0 - wp.where(vtx == 0, d, vec2d(wp.float64(0.0), wp.float64(0.0)))
+        pm1 = p1 - wp.where(vtx == 1, d, vec2d(wp.float64(0.0), wp.float64(0.0)))
+        pm2 = p2 - wp.where(vtx == 2, d, vec2d(wp.float64(0.0), wp.float64(0.0)))
+        col = (_elem_h(pp0, pp1, pp2, young, poisson, u_e, f_e) - _elem_h(pm0, pm1, pm2, young, poisson, u_e, f_e)) / (
+            wp.float64(2.0) * eps
+        )
+        for i in range(6):
+            Ge[i, g] = col[i]
+
+    for bi in range(3):
+        fi = vert_to_free[f[bi]]
+        for bj in range(3):
+            fj = vert_to_free[f[bj]]
+            slot = t * 9 + bi * 3 + bj
+            if fi >= 0 and fj >= 0:
+                rows[slot] = fi
+                cols[slot] = fj
+                blocks[slot] = _sub_block(Ge, bi, bj)
+            else:
+                rows[slot] = 0
+                cols[slot] = 0
+                blocks[slot] = mat22d(wp.float64(0.0))
+
+
+@wp.kernel
+def _gather_residual_free(
+    v_target: wp.array(dtype=vec2d),
+    U: wp.array(dtype=vec2d),
+    vert_to_free: wp.array(dtype=wp.int32),
+    r_free: wp.array(dtype=vec2d),
+):
+    v = wp.tid()
+    fi = vert_to_free[v]
+    if fi >= 0:
+        r_free[fi] = v_target[v] - U[v]
+
+
+@wp.kernel
+def _grad_combine(
+    r_free: wp.array(dtype=vec2d),
+    gt_lambda: wp.array(dtype=vec2d),
+    scale: wp.float64,
+    grad_free: wp.array(dtype=vec2d),
+):
+    i = wp.tid()
+    grad_free[i] = scale * (-(r_free[i] + gt_lambda[i]))
+
+
+@wp.kernel
+def _scatter_free_step(
+    step_free: wp.array(dtype=vec2d),
+    vert_to_free: wp.array(dtype=wp.int32),
+    dV: wp.array(dtype=vec2d),
+):
+    v = wp.tid()
+    fi = vert_to_free[v]
+    if fi >= 0:
+        dV[v] = step_free[fi]
+    else:
+        dV[v] = vec2d(wp.float64(0.0), wp.float64(0.0))
+
+
 class BridgeProblem:
     """Device-side state and operators for the inverse-elasticity bridge problem.
 
@@ -220,7 +333,10 @@ class BridgeProblem:
         vert_to_free[free_vertices_np] = np.arange(len(free_vertices_np), dtype=np.int32)
         self.num_free = int(len(free_vertices_np))
 
+        # verts is the (mutable) rest shape being optimized; v_target is the flat
+        # target the sagged shape should match (the original rest shape).
         self.verts = wp.array(verts_np, dtype=vec2d, device=self.device)
+        self.v_target = wp.array(verts_np, dtype=vec2d, device=self.device)
         self.tris = wp.array(tris_np, dtype=wp.vec3i, device=self.device)
         self.vert_to_free = wp.array(vert_to_free, dtype=wp.int32, device=self.device)
 
@@ -276,3 +392,60 @@ class BridgeProblem:
         U = wp.empty(self.num_verts, dtype=vec2d, device=self.device)
         wp.launch(_add, dim=self.num_verts, inputs=[self.verts, u, U], device=self.device)
         return U, u, q, A
+
+    def assemble_Gff(self, u, eps=1e-6):
+        """Assemble the free-free geometry-sensitivity matrix G_ff as a BSR matrix."""
+        wp.launch(
+            _assemble_G_triplets,
+            dim=self.num_tris,
+            inputs=[self.tris, self.verts, self.young, self.poisson, u, self.f_ext, self.vert_to_free,
+                    wp.float64(eps), self._rows, self._cols, self._blocks],
+            device=self.device,
+        )  # fmt: skip
+        return wps.bsr_from_triplets(self.num_free, self.num_free, self._rows, self._cols, self._blocks)
+
+    def residual_free(self, U):
+        """Gather the free-vertex residual r = v_target - U (array of vec2d)."""
+        r_free = wp.empty(self.num_free, dtype=vec2d, device=self.device)
+        wp.launch(
+            _gather_residual_free,
+            dim=self.num_verts,
+            inputs=[self.v_target, U, self.vert_to_free, r_free],
+            device=self.device,
+        )
+        return r_free
+
+    def loss(self, tol=1e-10):
+        """Mean squared error mean((v_target - U)^2) at the current rest shape."""
+        U, _, _, _ = self.forward(tol=tol)
+        diff = (self.v_target.numpy() - U.numpy()).reshape(-1)
+        return float(np.mean(diff**2))
+
+    def gradient_step(self, tol=1e-10):
+        """Ascent gradient of the loss w.r.t. free rest positions, via one adjoint solve.
+
+        Returns a per-vertex ``dV`` (vec2d, zero at pinned vertices).
+        """
+        U, u, _, A = self.forward(tol=tol)
+        r_free = self.residual_free(U)
+        Gff = self.assemble_Gff(u)
+
+        # Adjoint solve A lambda = r_free (A is SPD).
+        lam = wp.zeros(self.num_free, dtype=vec2d, device=self.device)
+        wpl.cr(A, r_free, lam, tol=tol, maxiter=self.num_free * 2, M=wpl.preconditioner(A, "diag"))
+
+        gt_lambda = wp.zeros(self.num_free, dtype=vec2d, device=self.device)
+        wps.bsr_mv(wps.bsr_transposed(Gff), lam, gt_lambda)
+
+        grad_free = wp.empty(self.num_free, dtype=vec2d, device=self.device)
+        scale = 2.0 / (self.num_verts * 2)
+        wp.launch(
+            _grad_combine,
+            dim=self.num_free,
+            inputs=[r_free, gt_lambda, wp.float64(scale), grad_free],
+            device=self.device,
+        )
+
+        dV = wp.empty(self.num_verts, dtype=vec2d, device=self.device)
+        wp.launch(_scatter_free_step, dim=self.num_verts, inputs=[grad_free, self.vert_to_free, dV], device=self.device)
+        return dV
