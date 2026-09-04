@@ -911,14 +911,16 @@ def per_face_von_mises(V, U, F, young, poisson):
     return vm
 
 
-def render_convergence_gif(frames, F, young, poisson, out_path, fps=4, hold=8):
+def render_convergence_gif(frames, F, young, poisson, out_path, fps=4, hold=8, frame_stride=1, method_label=""):
     """Render optimization frames to a gif (headless matplotlib, Agg backend).
 
     Each frame stacks the rest shape being optimized (top, blue) over the
     gravity-deformed shape (bottom, colored by per-face von Mises stress). Uses
     matplotlib for a labeled 2D figure with a colorbar; the triangles are drawn
-    with equal aspect so the isotropic grid reads correctly. Requires
-    ``matplotlib`` and ``imageio``.
+    with equal aspect so the isotropic grid reads correctly. ``frame_stride`` is
+    the number of optimizer iterations between recorded frames (used only to
+    label frames with the true iteration number). Requires ``matplotlib`` and
+    ``imageio``.
     """
     import matplotlib  # noqa: PLC0415
 
@@ -967,7 +969,8 @@ def render_convergence_gif(frames, F, young, poisson, out_path, fps=4, hold=8):
         ax.set_aspect("equal")
         ax.axis("off")
         fig.colorbar(tpc, ax=ax, fraction=0.015, pad=0.01, label="von Mises stress")
-        fig.suptitle(f"Inverse elasticity shape optimization  -  iteration {i}", fontsize=11)
+        prefix = f"Inverse elasticity ({method_label})" if method_label else "Inverse elasticity shape optimization"
+        fig.suptitle(f"{prefix}  -  iteration {i * frame_stride}", fontsize=11)
 
         fig.canvas.draw()
         rgba = np.asarray(fig.canvas.buffer_rgba())
@@ -1053,6 +1056,9 @@ if __name__ == "__main__":
     parser.add_argument("--tol", type=float, default=1e-8, help="Relative loss tolerance for convergence.")
     parser.add_argument("--gif", type=str, default=None, help="Render a convergence gif to this path (matplotlib).")
     parser.add_argument(
+        "--gif-every", type=int, default=1, help="Record a gif frame every N iterations (use >1 for Adam)."
+    )
+    parser.add_argument(
         "--profile", action="store_true", help="Print per-granularity step timing vs. mesh size and exit."
     )
     parser.add_argument("--quiet", action="store_true", help="Suppress per-iteration loss output.")
@@ -1073,7 +1079,7 @@ if __name__ == "__main__":
             num_iters=num_iters,
             step_size=args.step_size,
             tol=args.tol,
-            record_every=1 if args.gif else 0,
+            record_every=args.gif_every if args.gif else 0,
             quiet=args.quiet,
         )
         print(
@@ -1084,5 +1090,8 @@ if __name__ == "__main__":
         )
 
         if args.gif:
-            path = render_convergence_gif(result["frames"], F, args.young, args.poisson, args.gif)
+            path = render_convergence_gif(
+                result["frames"], F, args.young, args.poisson, args.gif,
+                frame_stride=args.gif_every, method_label=args.method,
+            )  # fmt: skip
             print(f"wrote {path} ({len(result['frames'])} frames)")
