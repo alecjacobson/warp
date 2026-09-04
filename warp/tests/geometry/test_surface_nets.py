@@ -359,7 +359,7 @@ def test_surface_nets_ambiguous_configs(test, device):
 
 
 def _reference_replica(field_np, threshold):
-    """Independent NumPy reimplementation of OpenVDB's uniform meshing path.
+    """Compute reference surface-mesh data using NumPy logic adapted from OpenVDB's uniform meshing path.
 
     Derived from VolumeToMesh.h (v13.0.0) and the ported tables only (it
     shares no code with warp._src.geometry.surface_nets, and computes edge crossings
