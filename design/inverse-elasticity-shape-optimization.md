@@ -231,11 +231,10 @@ times (preconditioner built once; `bsr_mv(transpose=True)` avoids forming `G_ff^
 
 The captured Adam step is flat ~0.3 ms (launch-bound). The captured GN step is
 cheap at small meshes but **explodes at count=8** because BiCGSTAB on the
-ill-conditioned `T` needs thousands of iterations. Combined with iterations to
-convergence (GN ~4-5, Adam ~500 at count=2, growing with mesh): **GN wins by
-~100x+ at small meshes, but its advantage erodes as `T` grows ill-conditioned**
-(comparable to Adam by count=8) -- so improving the `T`-solve is the key to
-keeping GN's edge at scale.
+ill-conditioned `T` needs thousands of iterations *and still fails to solve it*.
+Combined with measured convergence (see the comparison below): **GN wins by
+~100x+ at small meshes where both converge, but at count>=8 the `T`-solve fails
+and GN diverges** -- so a robust large-mesh `T`-solve is the key open item.
 
 ### Preconditioning vs. Levenberg-Marquardt on the GN `T`-solve
 
@@ -284,22 +283,30 @@ ILU/block-ILU or sparse-direct preconditioner, or a correctly-derived LM step vi
 the (damped-primal) KKT. For the shipped example, GN is the fast path at its
 intended scales and Adam is the robust fallback that keeps working at any size.
 
-### Final fair Adam-vs-GN wall clock (captured per-step x iterations)
+### Final Adam-vs-GN comparison (measured end-to-end convergence)
 
-Combining the captured per-step times with iterations-to-convergence (GN ~4-5;
-Adam ~507 at count=2, growing with mesh):
+**Do both actually reach ~zero loss?** Measured (`final/initial` loss ratio):
 
-| count | GN (iters x step) | Adam (iters x step) | winner |
-|---|---|---|---|
-| 2 | 4 x 0.21 ms = **0.8 ms** | 507 x 0.22 ms = 112 ms | GN ~130x |
-| 4 | 5 x 0.34 ms = **1.7 ms** | ~1500 x 0.33 ms = ~500 ms | GN ~290x |
-| 8 | 5 x 210 ms = **1050 ms** | ~3000 x 0.34 ms = ~1020 ms | ~tie |
+| count | GN | Adam |
+|---|---|---|
+| 2 | converges, 4 iters -> **1.3e-10** | converges, 507 iters -> 1.9e-9 |
+| 4 | converges, 5 iters -> **9.8e-9** | converging but **slow** -- 900 iters -> 2.1e-2 (reference: ~4000-5750 iters to reach ~zero) |
+| 8 | **DIVERGES** -- 4 iters -> 3.3e6 (bad `T`-solve step blows the loss up) | (untested; would be slow) |
 
-Graph capture speeds *both* methods by removing per-step launch/sync overhead
-(Adam's step drops from ~17 ms eager to ~0.3 ms), so the comparison is now fair.
-GN retains a large advantage at the example's target scales (few globally-coupled
-steps beat thousands of local ones), and only loses that edge once the `T`-solve
-becomes the bottleneck (count>=8). Adam is the size-robust fallback.
+So at the example's target scales (count<=4) **both converge to ~zero**: GN in a
+handful of iterations, Adam far more slowly but it does get there. Combining the
+captured per-step times (GN ~0.2-0.34 ms, Adam ~0.3 ms) with these iteration
+counts, GN is ~100x+ faster wall-clock where it converges.
+
+The key caveat, corrected: **at count>=8 GN does not merely lose its edge -- it
+diverges**, because the ill-conditioned `T` is not solvable by scalar-Jacobi
+BiCGSTAB (it plateaus / returns a garbage step, and the loss explodes to ~1e7).
+An earlier draft of this table listed count=8 as a "tie" from a captured
+per-step *time*; that was misleading, since the step at count=8 is not a valid
+GN step. So the honest summary is: **GN is dramatically faster where it works
+(count<=~6), and Adam is the size-robust fallback that keeps converging (slowly)
+at any size.** Making GN robust at large meshes requires a real Warp sparse
+preconditioner / direct `T`-solve (future work; see above).
 
 ### Productionization status and remaining obstacle
 
