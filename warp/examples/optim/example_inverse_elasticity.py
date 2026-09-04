@@ -406,6 +406,78 @@ def _adam_update(
     params[i] = params[i] - lr * wp.cw_div(mhat, denom)
 
 
+@wp.kernel
+def _scatter_G_inplace(
+    tris: wp.array(dtype=wp.vec3i),
+    verts: wp.array(dtype=vec2d),
+    young: wp.float64,
+    poisson: wp.float64,
+    u: wp.array(dtype=vec2d),
+    f_ext: wp.array(dtype=vec2d),
+    eps: wp.float64,
+    dst: wp.array(dtype=wp.int32),
+    values: wp.array3d(dtype=wp.float64),  # G_ff.scalar_values (nnz, 2, 2), zeroed first
+):
+    """Scatter-add the element sensitivity blocks into the fixed-pattern G_ff.values."""
+    t = wp.tid()
+    f = tris[t]
+    p0 = verts[f[0]]
+    p1 = verts[f[1]]
+    p2 = verts[f[2]]
+    u_e = vec6d(u[f[0]][0], u[f[0]][1], u[f[1]][0], u[f[1]][1], u[f[2]][0], u[f[2]][1])
+    f_e = vec6d(f_ext[f[0]][0], f_ext[f[0]][1], f_ext[f[1]][0], f_ext[f[1]][1], f_ext[f[2]][0], f_ext[f[2]][1])
+    zero2 = vec2d(wp.float64(0.0), wp.float64(0.0))
+    Ge = mat66d(wp.float64(0.0))
+    for g in range(6):
+        vtx = g // 2
+        comp = g % 2
+        d = vec2d(wp.where(comp == 0, eps, wp.float64(0.0)), wp.where(comp == 1, eps, wp.float64(0.0)))
+        pp0 = p0 + wp.where(vtx == 0, d, zero2)
+        pp1 = p1 + wp.where(vtx == 1, d, zero2)
+        pp2 = p2 + wp.where(vtx == 2, d, zero2)
+        pm0 = p0 - wp.where(vtx == 0, d, zero2)
+        pm1 = p1 - wp.where(vtx == 1, d, zero2)
+        pm2 = p2 - wp.where(vtx == 2, d, zero2)
+        col = (_elem_h(pp0, pp1, pp2, young, poisson, u_e, f_e) - _elem_h(pm0, pm1, pm2, young, poisson, u_e, f_e)) / (
+            wp.float64(2.0) * eps
+        )
+        for i in range(6):
+            Ge[i, g] = col[i]
+
+    for bi in range(3):
+        for bj in range(3):
+            dd = dst[t * 9 + bi * 3 + bj]
+            if dd >= 0:
+                blk = _sub_block(Ge, bi, bj)
+                wp.atomic_add(values, dd, 0, 0, blk[0, 0])
+                wp.atomic_add(values, dd, 0, 1, blk[0, 1])
+                wp.atomic_add(values, dd, 1, 0, blk[1, 0])
+                wp.atomic_add(values, dd, 1, 1, blk[1, 1])
+
+
+@wp.kernel
+def _add_blocks(a: wp.array(dtype=mat22d), b: wp.array(dtype=mat22d), out: wp.array(dtype=mat22d)):
+    """out[k] = a[k] + b[k] over the shared block pattern (T.values = A.values + G_ff.values)."""
+    k = wp.tid()
+    out[k] = a[k] + b[k]
+
+
+@wp.kernel
+def _add_damping_diag(diag_block_idx: wp.array(dtype=wp.int32), damping: wp.float64, values: wp.array(dtype=mat22d)):
+    """Add damping to the (v,v) diagonal blocks (indices precomputed)."""
+    v = wp.tid()
+    k = diag_block_idx[v]
+    values[k] = values[k] + mat22d(damping, wp.float64(0.0), wp.float64(0.0), damping)
+
+
+@wp.kernel
+def _accumulate_sq(v_target: wp.array(dtype=vec2d), U: wp.array(dtype=vec2d), out: wp.array(dtype=wp.float64)):
+    """Accumulate sum of squared residual components into out[0] (device-side loss)."""
+    v = wp.tid()
+    dv = v_target[v] - U[v]
+    wp.atomic_add(out, 0, dv[0] * dv[0] + dv[1] * dv[1])
+
+
 class BridgeProblem:
     """Device-side state and operators for the inverse-elasticity bridge problem.
 
@@ -486,9 +558,54 @@ class BridgeProblem:
                     k = int(np.searchsorted(rowcols, fj))
                     if k < len(rowcols) and int(rowcols[k]) == fj:
                         dst[t * 9 + i * 3 + j] = beg + k
+        # Diagonal (v,v) block index per free vertex, for Levenberg-Marquardt damping.
+        diag = np.empty(self.num_free, dtype=np.int32)
+        for v in range(self.num_free):
+            beg, end = int(offsets[v]), int(offsets[v + 1])
+            rowcols = columns[beg:end]
+            k = int(np.searchsorted(rowcols, v))
+            diag[v] = beg + k
+
         self.scatter_dst = wp.array(dst, dtype=wp.int32, device=self.device)
+        self.diag_block_idx = wp.array(diag, dtype=wp.int32, device=self.device)
+        self.nnz = nnz
         self.A_pattern = A
+        # G_ff and T share A's exact sparsity pattern (same element free-free
+        # couplings), so their values arrays are block-index-aligned with A's.
+        self.Gff_pattern = wps.bsr_copy(A)
+        self.T_pattern = wps.bsr_copy(A)
         return A
+
+    def assemble_Gff_inplace(self, u, eps=1e-6):
+        """Refill ``self.Gff_pattern`` values from the current rest shape (fixed pattern)."""
+        if not hasattr(self, "Gff_pattern"):
+            self.build_sparsity()
+        self.Gff_pattern.values.zero_()
+        wp.launch(
+            _scatter_G_inplace,
+            dim=self.num_tris,
+            inputs=[self.tris, self.verts, self.young, self.poisson, u, self.f_ext,
+                    wp.float64(eps), self.scatter_dst, self.Gff_pattern.scalar_values],
+            device=self.device,
+        )  # fmt: skip
+        return self.Gff_pattern
+
+    def assemble_T_inplace(self, damping=0.0):
+        """Form ``T = A + G_ff (+ damping*I)`` in place, reusing the shared pattern."""
+        wp.launch(
+            _add_blocks,
+            dim=self.nnz,
+            inputs=[self.A_pattern.values, self.Gff_pattern.values, self.T_pattern.values],
+            device=self.device,
+        )
+        if damping != 0.0:
+            wp.launch(
+                _add_damping_diag,
+                dim=self.num_free,
+                inputs=[self.diag_block_idx, wp.float64(damping), self.T_pattern.values],
+                device=self.device,
+            )
+        return self.T_pattern
 
     def assemble_stiffness_inplace(self):
         """Refill ``self.A_pattern`` values from the current rest shape (fixed pattern)."""
