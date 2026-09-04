@@ -28,13 +28,13 @@ def torus_sdf(p: wp.vec3):
 
 
 @wp.kernel(enable_backward=False)
-def _sphere_batch_kernel(points: wp.array(dtype=wp.vec3), values: wp.array(dtype=wp.float32)):
+def _sphere_batch_kernel(points: wp.array[wp.vec3], values: wp.array[wp.float32]):
     i = wp.tid()
     values[i] = wp.float32(sphere_sdf(points[i]))
 
 
 @wp.kernel(enable_backward=False)
-def _torus_batch_kernel(points: wp.array(dtype=wp.vec3), values: wp.array(dtype=wp.float32)):
+def _torus_batch_kernel(points: wp.array[wp.vec3], values: wp.array[wp.float32]):
     i = wp.tid()
     values[i] = wp.float32(torus_sdf(points[i]))
 
@@ -357,7 +357,7 @@ def test_sparse_mc_numpy_evaluator(test, device):
     """Check that an off-device (NumPy) batched evaluator is still correct.
 
     The batched-callable contract only requires the *returned* array to be a
-    ``wp.array(dtype=wp.float32)`` on the query points' device -- a callable is
+    ``wp.array[wp.float32]`` on the query points' device -- a callable is
     free to round-trip through host memory (NumPy, PyTorch, ...) internally.
     This is slower (every call pays a device/host sync), but must produce the
     exact same surface as an all-device Warp evaluator.
@@ -398,7 +398,7 @@ def test_sparse_mc_mesh_sdf(test, device):
     )
 
     @wp.kernel(enable_backward=False)
-    def mesh_sdf_kernel(mesh_id: wp.uint64, points: wp.array(dtype=wp.vec3), out: wp.array(dtype=wp.float32)):
+    def mesh_sdf_kernel(mesh_id: wp.uint64, points: wp.array[wp.vec3], out: wp.array[wp.float32]):
         i = wp.tid()
         p = points[i]
         query = wp.mesh_query_point_sign_normal(mesh_id, p, 1.0e6)
@@ -422,9 +422,9 @@ def test_sparse_mc_mesh_sdf(test, device):
 @wp.kernel(enable_backward=False)
 def _mesh_minus_sphere_kernel(
     mesh_id: wp.uint64,
-    points: wp.array(dtype=wp.vec3),
+    points: wp.array[wp.vec3],
     sphere_radius: wp.float32,
-    out: wp.array(dtype=wp.float32),
+    out: wp.array[wp.float32],
 ):
     """CSG subtraction of an analytic sphere from a mesh SDF, entirely on-device.
 

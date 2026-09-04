@@ -2994,7 +2994,7 @@ vertex positions, to floating-point tolerance -- only the near-surface cells
 are instantiated here.
 
 The provided function ``sdf`` must be batched callable, ``evaluate(points:
-wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32)``. A callable backed by a
+wp.array[wp.vec3]) -> wp.array[wp.float32]``. A callable backed by a
 host library (NumPy, PyTorch, ...) also works, at the cost of a device/host sync
 per call.
 
@@ -3008,7 +3008,7 @@ per call.
         return wp.length(p) - 0.5
 
     @wp.kernel
-    def eval_sphere_sdf(points: wp.array(dtype=wp.vec3), values: wp.array(dtype=wp.float32)):
+    def eval_sphere_sdf(points: wp.array[wp.vec3], values: wp.array[wp.float32]):
         i = wp.tid()
         values[i] = sphere_sdf(points[i])
 
