@@ -146,10 +146,75 @@ unavailable.) The gif is committed under `docs/img/examples/` via git-LFS.
 
 ### CPU/GPU story
 
-Adam is embarrassingly parallel and runs entirely on-GPU across thousands of cheap
-iterations; GN does few iterations but each needs a sparse assembly + `gmres`
-solve. The example times both and both run on CPU and CUDA, illustrating the
-tradeoff (many cheap parallel steps vs. few expensive globally-coupled solves).
+Adam is embarrassingly parallel and runs entirely on-GPU across many cheap
+iterations; GN does few iterations but each needs a sparse assembly + a Krylov
+solve. See the performance findings below for the actual tradeoff.
+
+## Performance findings (NVIDIA L40, CUDA 12.6, float64)
+
+Measured on this machine (throwaway harnesses; numbers are representative).
+
+### Per-granularity step time vs. mesh size
+
+| count | #verts | #tris | #free | assemble A | load | forward (CR) | G_ff | gradient | GN step |
+|---|---|---|---|---|---|---|---|---|---|
+| 2 | 93 | 120 | 87 | 0.27 ms | 0.05 | 5.6 ms | 0.28 | 11.5 ms | 23 ms |
+| 4 | 305 | 480 | 295 | 0.32 | 0.06 | 16 | 0.33 | 32 | 78 |
+| 8 | 1089 | 1920 | 1071 | 0.32 | 0.06 | 33 | 0.31 | 65 | 415 |
+| 16 | 4097 | 7680 | 4063 | 0.30 | 0.05 | 67 | 0.32 | 132 | 1515 |
+| 32 | 15873 | 30720 | 15807 | 0.32 | 0.05 | 145 | 0.35 | 279 | **5974** |
+
+- **Memory** scales `O(#tris)` (`A.nnz = 9·#tris` before compaction); block-diagonal
+  workspace is `O(#tris)`. As expected.
+- **Assembly** (A, G_ff, load) is cheap and roughly flat -- launch-bound at these
+  sizes, not the bottleneck.
+- **Forward/adjoint CR solves** are overhead-bound at small sizes (5.6 ms for 87
+  dofs is almost entirely launch + per-iteration host residual-check sync, not
+  compute) and grow ~`O(#free)` at large sizes.
+- **The Gauss-Newton step is dominated by BiCGSTAB on `T = A + G_ff`** and scales
+  **super-linearly** (6 s/step at count=32): `T` is ill-conditioned (`cond(T)`
+  ranges ~1e5 at count=2 to ~1e8 at count=12) and the Jacobi-preconditioned
+  BiCGSTAB iteration count grows with the mesh. This -- not assembly or host
+  syncs -- is the real GN scaling limit, and the natural next optimization
+  (a better preconditioner, or the direct sparse factorization the C++ reference
+  uses, which Warp lacks natively).
+
+### Precision (is float64 necessary?)
+
+`cond(A)`/`cond(T)` grow to ~1e7/1e8 by count=12, so a **single-precision** direct
+solve loses accuracy: relative error ~1e-3 at count≤4 but **~2-4% by count=12**.
+float32 therefore "works" only for small meshes at low precision; the
+high-precision GN convergence (to ~1e-9) and larger-mesh robustness that make this
+example interesting **require float64**. float32 could be offered as a fast
+low-precision mode but is not the right default here.
+
+### Graph capturability (host syncs)
+
+The optimizer step is **not currently CUDA-graph capturable**: a capture attempt
+fails on a device→host copy from (a) the Krylov solvers' host-side residual checks
+(`check_every>0`) and (b) `bsr_from_triplets`' nnz read-back, plus (c) the
+per-iteration `loss()` `.numpy()`. This matters because the as-is Adam-vs-GN
+wall-clock is overhead-dominated (see below) and thus unfair to Adam. Making the
+step capturable requires: solvers with `check_every=0` (device-side convergence
+via conditional graph nodes, supported on CUDA ≥12.4), **fixed-pattern in-place
+assembly** (build the sparsity once, then scatter-add element blocks into the
+compact `values` array with a precomputed triplet→block map, avoiding
+`bsr_from_triplets` per step), and a device-side loss. This is the recommended
+next optimization.
+
+### Adam vs. Gauss-Newton wall clock (count=2, as-is)
+
+| method | iters to `tol=1e-8` | wall clock | final loss |
+|---|---|---|---|
+| Gauss-Newton | 4 | 111 ms | 1.3e-10 |
+| Adam (lr 0.02) | 507 | 8.9 s | 1.9e-9 |
+
+GN is ~80× faster **as measured**, but Adam's ~17 ms/iter is almost all host-sync
+/ launch overhead (its actual per-step compute at 87 dofs is microseconds). With
+the graph-capture refactor above, Adam's per-step overhead collapses and the gap
+is expected to narrow to roughly single-digit-x; at larger meshes GN's BiCGSTAB
+cost grows, narrowing it further. A fully fair comparison should be run on the
+capturable implementation.
 
 ## Open questions / risks
 

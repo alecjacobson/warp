@@ -774,6 +774,45 @@ def _make_bridge(count, young, poisson, device):
     return V, F, np.array(free, dtype=np.int32)
 
 
+def profile(device, counts=(2, 4, 8, 16, 32), young=2e3, poisson=0.49):
+    """Print per-granularity step time (ms) versus mesh size on ``device``.
+
+    Times each building block (assembly, forward solve, sensitivity, gradient,
+    Gauss-Newton step) so their runtime/memory asymptotics can be inspected. See
+    the performance section of the design doc for representative numbers.
+    """
+    import time  # noqa: PLC0415
+
+    dev = wp.get_device(device)
+
+    def timed(fn, reps, warmup=3):
+        for _ in range(warmup):
+            fn()
+        wp.synchronize_device(dev)
+        t0 = time.perf_counter()
+        for _ in range(reps):
+            fn()
+        wp.synchronize_device(dev)
+        return (time.perf_counter() - t0) / reps * 1e3
+
+    header = f"{'count':>5} {'#verts':>8} {'#tris':>8} {'#free':>7} | {'assemA':>8} {'load':>7} {'fwd':>9} {'Gff':>8} {'grad':>9} {'GN':>10}  (ms)"
+    print(header)
+    for count in counts:
+        V, F, free = _make_bridge(count, young, poisson, dev)
+        bp = BridgeProblem(V, F, free, young, poisson, device=dev)
+        _, u, _, _ = bp.forward(tol=1e-8)
+        t_a = timed(bp.assemble_stiffness, 20)
+        t_l = timed(bp.assemble_load, 20)
+        t_f = timed(lambda bp=bp: bp.forward(tol=1e-8), 10)
+        t_g = timed(lambda bp=bp, u=u: bp.assemble_Gff(u), 10)
+        t_gr = timed(lambda bp=bp: bp.gradient_free(tol=1e-8), 8)
+        t_gn = timed(lambda bp=bp: bp.gauss_newton_step(tol=1e-8, solve_tol=1e-8), 6)
+        print(
+            f"{count:>5} {V.shape[0]:>8} {F.shape[0]:>8} {bp.num_free:>7} | "
+            f"{t_a:>8.3f} {t_l:>7.3f} {t_f:>9.3f} {t_g:>8.3f} {t_gr:>9.3f} {t_gn:>10.3f}"
+        )
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -786,9 +825,17 @@ if __name__ == "__main__":
     parser.add_argument("--young", type=float, default=2e3, help="Young's modulus.")
     parser.add_argument("--poisson", type=float, default=0.49, help="Poisson's ratio.")
     parser.add_argument("--tol", type=float, default=1e-8, help="Relative loss tolerance for convergence.")
-    parser.add_argument("--gif", type=str, default=None, help="Render a convergence gif to this path (polyscope).")
+    parser.add_argument("--gif", type=str, default=None, help="Render a convergence gif to this path (matplotlib).")
+    parser.add_argument(
+        "--profile", action="store_true", help="Print per-granularity step timing vs. mesh size and exit."
+    )
     parser.add_argument("--quiet", action="store_true", help="Suppress per-iteration loss output.")
     args = parser.parse_args()
+
+    if args.profile:
+        with wp.ScopedDevice(args.device):
+            profile(args.device)
+        raise SystemExit
 
     num_iters = args.num_iters or {"gn": 20, "gd": 500, "adam": 4000}[args.method]
 
