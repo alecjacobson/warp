@@ -213,14 +213,61 @@ assembly** (build the sparsity once, then scatter-add element blocks into the
 compact `values` array with a precomputed triplet→block map, avoiding
 `bsr_from_triplets` per step), and a device-side loss.
 
-Progress: the two enabling mechanisms are verified. Atomic scatter into a BSR's
-`scalar_values` view works (a tiny test confirmed it), and `build_sparsity()` +
-`assemble_stiffness_inplace()` refill `A` from a fixed pattern, matching the
-triplet assembly to 1.5e-16 on CPU and CUDA. `check_every=0` alone already gives
-~2x on the forward solve at count=8 (little at count=2, where per-call solver
-graph setup ~20 ms dominates). Remaining to fully capture the step: the same
-in-place treatment for `G_ff` and `T = A + G_ff` (identical pattern to `A`), a
-device-side loss, and wrapping one optimizer step in a captured graph.
+Progress: the enabling mechanisms are verified and the step is now capturable.
+Atomic scatter into a BSR's `scalar_values` view works; `build_sparsity()` +
+in-place `assemble_stiffness_inplace()` / `assemble_Gff_inplace()` /
+`assemble_T_inplace()` refill `A`, `G_ff`, `T` (all sharing `A`'s pattern) from a
+fixed pattern, matching the triplet assembly to ~1e-16 on CPU and CUDA. With
+in-place assembly + `check_every=0` solvers + a preconditioner built once, a full
+forward solve **captures and replays in 0.061 ms at count=8** (vs ~87 ms eager --
+a ~1400x reduction in per-call overhead), correct to 1.2e-12. Captured **per-step**
+times (preconditioner built once; `bsr_mv(transpose=True)` avoids forming `G_ff^T`):
+
+| count | #free | Adam step (captured) | GN step (captured) |
+|---|---|---|---|
+| 2 | 87 | 0.22 ms | 0.21 ms |
+| 4 | 295 | 0.33 ms | 0.34 ms |
+| 8 | 1071 | 0.34 ms | **210 ms** |
+
+The captured Adam step is flat ~0.3 ms (launch-bound). The captured GN step is
+cheap at small meshes but **explodes at count=8** because BiCGSTAB on the
+ill-conditioned `T` needs thousands of iterations. Combined with iterations to
+convergence (GN ~4-5, Adam ~500 at count=2, growing with mesh): **GN wins by
+~100x+ at small meshes, but its advantage erodes as `T` grows ill-conditioned**
+(comparable to Adam by count=8) -- so improving the `T`-solve is the key to
+keeping GN's edge at scale.
+
+### Preconditioning vs. Levenberg-Marquardt on the GN `T`-solve
+
+Head-to-head at count=8 (BiCGSTAB on the `T`-solve, tol 1e-8):
+
+| strategy | BiCGSTAB iters |
+|---|---|
+| Jacobi (scalar diag) | 8568 (plateaus, does not reach tol) |
+| LM damping µ=10 | 2150 |
+| LM damping µ=100 | 430 |
+| LM damping µ=1000 | 120 |
+| LM damping µ=1e4 | 40 |
+
+- **Preconditioning**: Warp's `preconditioner(A, "diag")` is *scalar* Jacobi
+  (element-wise on the block diagonal), not full 2x2 block-Jacobi. Neither fixes
+  `T`'s *global* ill-conditioning, so Jacobi-BiCGSTAB plateaus on the undamped
+  `T`. The strong preconditioner Zehnder et al. (SGN) rely on -- a direct
+  `LDL^T` factorization of the stabilized saddle matrix (PARDISO) used as the
+  BiCGSTAB preconditioner -- has no native Warp equivalent. Their diagonal
+  stabilization (`+εx` primal, `-ελ` on the zero multiplier block) does **not**
+  by itself lower the 2-norm condition here (measured); its value is enabling
+  that direct factorization.
+- **LM damping** `T <- A + G_ff + µI` (implemented, scatters onto the precomputed
+  diagonal blocks) is the effective *GPU-available* lever: it regularizes `T`
+  and cuts BiCGSTAB iterations ~200x. The cost is a damped GN step, so the outer
+  iteration count grows with µ -- the sweet spot balances inner (solve) vs outer
+  (optimization) iterations, and is the recommended default over trying the
+  larger saddle systems (which are worse-conditioned here).
+
+Remaining productionization: wire the captured in-place step + LM damping into a
+`BridgeProblem.optimize(..., capture=True)` path, and add a device-side loss so
+the whole convergence loop (not just one step) is captured.
 
 ### Alternative Gauss-Newton solver routes to try
 
