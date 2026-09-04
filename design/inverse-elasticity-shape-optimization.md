@@ -230,11 +230,14 @@ times (preconditioner built once; `bsr_mv(transpose=True)` avoids forming `G_ff^
 | 8 | 1071 | 0.34 ms | **210 ms** |
 
 The captured Adam step is flat ~0.3 ms (launch-bound). The captured GN step is
-cheap at small meshes but **explodes at count=8** because BiCGSTAB on the
-ill-conditioned `T` needs thousands of iterations *and still fails to solve it*.
-Combined with measured convergence (see the comparison below): **GN wins by
-~100x+ at small meshes where both converge, but at count>=8 the `T`-solve fails
-and GN diverges** -- so a robust large-mesh `T`-solve is the key open item.
+cheap at small meshes but **grows steeply at count=8** because BiCGSTAB on the
+ill-conditioned `T` needs many iterations (scalar Jacobi plateaus before a tight
+inner tol -- see below). This makes the inner solve *inexact* at count=8, but not
+useless: with a resolution-scaled outer step it still yields a usable descent
+direction. Combined with measured convergence (see the comparison below): **GN
+wins by ~100x+ at small meshes; at count=8 it still converges once the step is
+reduced; beyond ~count=10 the inexact `T`-solve makes it erratic** -- so a robust
+large-mesh `T`-solve (a strong sparse preconditioner) is the key open item.
 
 ### Preconditioning vs. Levenberg-Marquardt on the GN `T`-solve
 
@@ -269,16 +272,24 @@ Head-to-head at count=8 (BiCGSTAB on the `T`-solve, tol 1e-8):
 
 ### Settled Gauss-Newton settings
 
-**µ=0 (exact GN), BiCGSTAB, scalar-Jacobi preconditioner, inner tol ~1e-8.** This
-converges in ~4-5 outer iterations at the example's target scales (count<=4-6),
-which is where GN's ~100x wall-clock advantage over Adam is real. GMRES is not
-used (it stalls on the nonsymmetric ill-conditioned `T`).
+**µ=0 (exact GN), BiCGSTAB, scalar-Jacobi preconditioner, inner tol ~1e-8, plus a
+resolution-scaled outer step.** The full step `step_size=1.0` is only safe on
+coarse meshes; like the C++ reference, it overshoots and diverges on finer meshes
+*even when the linear solve is trustworthy*, so the default step shrinks with
+resolution as `min(1.0, 4/count)`. Measured, with that default: count=4 converges
+in 6 iters, count=6 in 10, count=8 in 14 (all to ~1e-8..1e-10). The earlier
+"count=8 diverges" claim was a **step-size** artifact (full step at count=8
+overshoots: loss -> nan, spike ~1000x), not a solve failure -- at step 0.5 the
+same mesh converges cleanly to 3e-8.
 
-The one genuine limitation is the **`T`-solve at large meshes** (count>=8): `T`
-becomes ill-conditioned enough that scalar-Jacobi BiCGSTAB plateaus without
-reaching tol, and no valid quick fix exists in Warp today (no strong sparse
-preconditioner / direct factorization; `T+µI` breaks the step; the larger saddle
-systems are worse-conditioned). Proper fixes are future work: a real Warp
+The genuine limitation is the **inexact `T`-solve at large meshes** (count>=10):
+`T` becomes ill-conditioned enough that scalar-Jacobi BiCGSTAB plateaus before a
+tight inner tol, so the inner solve returns only an approximate step. Through
+count=8 a reduced outer step absorbs that inexactness; beyond count=10 convergence
+becomes erratic w.r.t. step size (some steps converge, others blow up at iter 2-3
+from a garbage direction), and no valid quick fix exists in Warp today (no strong
+sparse preconditioner / direct factorization; `T+µI` breaks the step; the larger
+saddle systems are worse-conditioned). Proper fixes are future work: a real Warp
 ILU/block-ILU or sparse-direct preconditioner, or a correctly-derived LM step via
 the (damped-primal) KKT. For the shipped example, GN is the fast path at its
 intended scales and Adam is the robust fallback that keeps working at any size.
@@ -287,26 +298,30 @@ intended scales and Adam is the robust fallback that keeps working at any size.
 
 **Do both actually reach ~zero loss?** Measured (`final/initial` loss ratio):
 
+GN below uses the resolution-scaled default step `min(1.0, 4/count)`:
+
 | count | GN | Adam |
 |---|---|---|
 | 2 | converges, 4 iters -> **1.3e-10** | converges, 507 iters -> 1.9e-9 |
-| 4 | converges, 5 iters -> **9.8e-9** | converging but **slow** -- 900 iters -> 2.1e-2 (reference: ~4000-5750 iters to reach ~zero) |
-| 8 | **DIVERGES** -- 4 iters -> 3.3e6 (bad `T`-solve step blows the loss up) | (untested; would be slow) |
+| 4 | converges, 6 iters -> **1.7e-10** | converging but **slow** -- 900 iters -> 2.1e-2 (reference: ~4000-5750 iters to reach ~zero) |
+| 6 | converges, 10 iters -> **4.4e-9** | (slow, like count=4) |
+| 8 | converges, 14 iters -> **3.0e-8** (step 0.5; full step 1.0 *overshoots* -> nan) | (untested; would be slow) |
 
-So at the example's target scales (count<=4) **both converge to ~zero**: GN in a
-handful of iterations, Adam far more slowly but it does get there. Combining the
-captured per-step times (GN ~0.2-0.34 ms, Adam ~0.3 ms) with these iteration
-counts, GN is ~100x+ faster wall-clock where it converges.
+So at the example's target scales **both converge to ~zero**: GN in a handful of
+iterations, Adam far more slowly but it does get there. Combining the captured
+per-step times (GN ~0.2-0.34 ms, Adam ~0.3 ms) with these iteration counts, GN is
+~100x+ faster wall-clock where it converges.
 
-The key caveat, corrected: **at count>=8 GN does not merely lose its edge -- it
-diverges**, because the ill-conditioned `T` is not solvable by scalar-Jacobi
-BiCGSTAB (it plateaus / returns a garbage step, and the loss explodes to ~1e7).
-An earlier draft of this table listed count=8 as a "tie" from a captured
-per-step *time*; that was misleading, since the step at count=8 is not a valid
-GN step. So the honest summary is: **GN is dramatically faster where it works
-(count<=~6), and Adam is the size-robust fallback that keeps converging (slowly)
-at any size.** Making GN robust at large meshes requires a real Warp sparse
-preconditioner / direct `T`-solve (future work; see above).
+The key caveat, corrected twice: an early draft listed count=8 as a "tie" from a
+captured per-step *time*; a later draft called it a *divergence from `T`-solve
+failure*. Both were wrong. count=8 **converges** with the resolution-scaled step
+(0.5): the full step 1.0 overshoots (loss -> nan, spike ~1000x) exactly as the
+C++ reference documents, and the inner BiCGSTAB is inexact but usable. The honest
+summary: **GN is dramatically faster where it works (through count~8 with a scaled
+step), and Adam is the size-robust fallback that keeps converging (slowly) at any
+size.** GN's real ceiling is count>=10, where the inexact `T`-solve makes it
+erratic; fixing that requires a real Warp sparse preconditioner / direct
+`T`-solve (future work; see above).
 
 ### Productionization status and remaining obstacle
 

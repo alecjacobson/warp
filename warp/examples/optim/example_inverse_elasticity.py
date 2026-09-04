@@ -810,6 +810,11 @@ class BridgeProblem:
         ratio, and convergence/divergence flags (mirroring the reference). When
         ``record_every > 0``, snapshots ``(V, U)`` every that many iterations for
         visualization.
+
+        The default ``step_size=1.0`` (a full Gauss-Newton step) only converges on
+        coarse meshes; on finer meshes it overshoots and diverges even when the
+        linear solve is accurate, so the step must be reduced with resolution (see
+        the resolution-scaled default in ``__main__``).
         """
         if step_size is None:
             step_size = {"gn": 1.0, "gd": 0.5, "adam": 0.02}[method]
@@ -1071,13 +1076,21 @@ if __name__ == "__main__":
 
     num_iters = args.num_iters or {"gn": 20, "gd": 500, "adam": 4000}[args.method]
 
+    step_size = args.step_size
+    if step_size is None and args.method == "gn":
+        # The full Gauss-Newton step (step_size=1.0) is only safe on coarse
+        # meshes; it must shrink with resolution or the update overshoots and
+        # diverges even when the linear solve is trustworthy (matches the C++
+        # reference). min(1.0, 4/count) converges cleanly through count=8.
+        step_size = min(1.0, 4.0 / max(args.count, 1))
+
     with wp.ScopedDevice(args.device):
         V, F, free = _make_bridge(args.count, args.young, args.poisson, args.device)
         bridge = BridgeProblem(V, F, free, args.young, args.poisson)
         result = bridge.optimize(
             method=args.method,
             num_iters=num_iters,
-            step_size=args.step_size,
+            step_size=step_size,
             tol=args.tol,
             record_every=args.gif_every if args.gif else 0,
             quiet=args.quiet,
