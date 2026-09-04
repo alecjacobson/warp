@@ -23,6 +23,7 @@ import unittest
 import numpy as np
 
 import warp as wp
+import warp.sparse as wps
 
 sys.path.insert(0, os.path.dirname(__file__))
 import _inverse_elasticity_oracle as oracle
@@ -128,6 +129,33 @@ class TestWarpElementOperators(unittest.TestCase):
             err_m = _maxabs(m_out.numpy() - m_ref)
             self.assertLess(err_k, 1e-8, f"{device}: local_stiffness err {err_k:.3e}")
             self.assertLess(err_m, 1e-10, f"{device}: local_mass err {err_m:.3e}")
+
+
+class TestWarpForward(unittest.TestCase):
+    """Warp assembly and forward solve match the scipy oracle (per device)."""
+
+    def test_assembly_and_forward(self):
+        p = oracle.Problem(count=3)
+        Uh, _, K, _ = oracle.forward_sim(p.V, p.F, p.young, p.poisson, p.f_ext, p.free_dofs)
+        Aff = K[np.ix_(p.free_dofs, p.free_dofs)]
+        rng = np.random.default_rng(0)
+        v = rng.standard_normal(p.free_dofs.size)
+        y_host = Aff @ v
+
+        for device in _test_devices():
+            bp = ex.BridgeProblem(p.V, p.F, p.free_vertices, p.young, p.poisson, gravity=-9.8, device=device)
+            U, _, _, A = bp.forward(tol=1e-12)
+
+            # Assembled matrix reproduces the host A_ff exactly (matvec check).
+            vv = wp.array(v.reshape(-1, 2), dtype=ex.vec2d, device=device)
+            yv = wp.zeros(bp.num_free, dtype=ex.vec2d, device=device)
+            wps.bsr_mv(A, vv, yv)
+            err_mv = _maxabs(yv.numpy().reshape(-1) - y_host) / max(1e-12, _maxabs(y_host))
+            self.assertLess(err_mv, 1e-10, f"{device}: A matvec rel err {err_mv:.3e}")
+
+            # Forward displacement matches the direct solver.
+            err_u = _maxabs(U.numpy() - Uh) / max(1e-12, _maxabs(Uh - p.V))
+            self.assertLess(err_u, 1e-6, f"{device}: forward U rel err {err_u:.3e}")
 
 
 if __name__ == "__main__":
