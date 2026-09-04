@@ -157,6 +157,36 @@ def _assemble_stiffness_triplets(
 
 
 @wp.kernel
+def _scatter_stiffness_inplace(
+    tris: wp.array(dtype=wp.vec3i),
+    verts: wp.array(dtype=vec2d),
+    young: wp.float64,
+    poisson: wp.float64,
+    dst: wp.array(dtype=wp.int32),  # per-triplet compact block index, -1 if it touches a pin
+    values: wp.array3d(dtype=wp.float64),  # BSR A.scalar_values, shape (nnz, 2, 2)
+):
+    """Scatter-add each element's free-free 2x2 blocks into the fixed-pattern A.values.
+
+    Assumes A.values was zeroed first. Because the mesh topology is fixed, the
+    sparsity pattern never changes during optimization; only the values do, so
+    this avoids re-running bsr_from_triplets (which host-syncs) each step and is
+    graph-capturable.
+    """
+    t = wp.tid()
+    f = tris[t]
+    Ke = local_stiffness(verts[f[0]], verts[f[1]], verts[f[2]], young, poisson)
+    for i in range(3):
+        for j in range(3):
+            d = dst[t * 9 + i * 3 + j]
+            if d >= 0:
+                blk = _sub_block(Ke, i, j)
+                wp.atomic_add(values, d, 0, 0, blk[0, 0])
+                wp.atomic_add(values, d, 0, 1, blk[0, 1])
+                wp.atomic_add(values, d, 1, 0, blk[1, 0])
+                wp.atomic_add(values, d, 1, 1, blk[1, 1])
+
+
+@wp.kernel
 def _scatter_vertex_mass(
     tris: wp.array(dtype=wp.vec3i),
     verts: wp.array(dtype=vec2d),
@@ -425,6 +455,53 @@ class BridgeProblem:
             device=self.device,
         )  # fmt: skip
         return wps.bsr_from_triplets(self.num_free, self.num_free, self._rows, self._cols, self._blocks)
+
+    def build_sparsity(self):
+        """Build the fixed sparsity pattern once and precompute the triplet->block map.
+
+        Returns a BSR matrix ``self.A_pattern`` whose values are refilled in place by
+        :meth:`assemble_stiffness_inplace` (and, sharing the identical pattern, by the
+        sensitivity/T assembly). ``self.scatter_dst[k]`` is the compact block index for
+        triplet ``k = t*9 + i*3 + j`` (``-1`` if it touches a pinned vertex).
+        """
+        A = self.assemble_stiffness()
+        nnz = A.nnz_sync()
+        offsets = A.offsets.numpy()
+        columns = A.columns.numpy()[:nnz]
+        tris = self.tris.numpy()
+        v2f = self.vert_to_free.numpy()
+        dst = np.full(self.num_tris * 9, -1, dtype=np.int32)
+        for t in range(self.num_tris):
+            tf = tris[t]
+            for i in range(3):
+                fi = int(v2f[tf[i]])
+                if fi < 0:
+                    continue
+                beg, end = int(offsets[fi]), int(offsets[fi + 1])
+                rowcols = columns[beg:end]
+                for j in range(3):
+                    fj = int(v2f[tf[j]])
+                    if fj < 0:
+                        continue
+                    k = int(np.searchsorted(rowcols, fj))
+                    if k < len(rowcols) and int(rowcols[k]) == fj:
+                        dst[t * 9 + i * 3 + j] = beg + k
+        self.scatter_dst = wp.array(dst, dtype=wp.int32, device=self.device)
+        self.A_pattern = A
+        return A
+
+    def assemble_stiffness_inplace(self):
+        """Refill ``self.A_pattern`` values from the current rest shape (fixed pattern)."""
+        if not hasattr(self, "A_pattern"):
+            self.build_sparsity()
+        self.A_pattern.values.zero_()
+        wp.launch(
+            _scatter_stiffness_inplace,
+            dim=self.num_tris,
+            inputs=[self.tris, self.verts, self.young, self.poisson, self.scatter_dst, self.A_pattern.scalar_values],
+            device=self.device,
+        )
+        return self.A_pattern
 
     def assemble_load(self):
         """Assemble the gravity load M f_ext restricted to free vertices (array of vec2d)."""

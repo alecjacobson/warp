@@ -188,6 +188,18 @@ high-precision GN convergence (to ~1e-9) and larger-mesh robustness that make th
 example interesting **require float64**. float32 could be offered as a fast
 low-precision mode but is not the right default here.
 
+**Adam specifically** is the most float32-friendly path: it never touches the
+ill-conditioned `T`, only the forward/adjoint solves (whose float32 error is
+~1e-4 at small meshes), and it is gradient-driven, so a ~1e-4-accurate gradient
+still lets it descend to roughly that noise floor. So float32 Adam is expected to
+converge to ~1e-4-1e-6 loss (vs float64's ~1e-9) at small meshes -- fine for
+Adam's role as the robust first-order baseline, and it would give Adam the ~2x
+speed/memory advantage. (This is inferred from the measured float32 solve
+accuracy; a definitive check needs the float32 Warp pipeline, a follow-up, since
+a numpy Adam proxy through the host oracle is too slow to run to convergence.)
+This is a good reason to make dtype a per-run option, with float32 available for
+Adam.
+
 ### Graph capturability (host syncs)
 
 The optimizer step is **not currently CUDA-graph capturable**: a capture attempt
@@ -199,8 +211,41 @@ step capturable requires: solvers with `check_every=0` (device-side convergence
 via conditional graph nodes, supported on CUDA ≥12.4), **fixed-pattern in-place
 assembly** (build the sparsity once, then scatter-add element blocks into the
 compact `values` array with a precomputed triplet→block map, avoiding
-`bsr_from_triplets` per step), and a device-side loss. This is the recommended
-next optimization.
+`bsr_from_triplets` per step), and a device-side loss.
+
+Progress: the two enabling mechanisms are verified. Atomic scatter into a BSR's
+`scalar_values` view works (a tiny test confirmed it), and `build_sparsity()` +
+`assemble_stiffness_inplace()` refill `A` from a fixed pattern, matching the
+triplet assembly to 1.5e-16 on CPU and CUDA. `check_every=0` alone already gives
+~2x on the forward solve at count=8 (little at count=2, where per-call solver
+graph setup ~20 ms dominates). Remaining to fully capture the step: the same
+in-place treatment for `G_ff` and `T = A + G_ff` (identical pattern to `A`), a
+device-side loss, and wrapping one optimizer step in a captured graph.
+
+### Alternative Gauss-Newton solver routes to try
+
+The C++ reference's `sparse_kkt_gauss_newton.md` lists larger, sparser
+formulations of the GN step -- the 2m x 2m square `(p,w)` system
+`S = [[I, I], [-G_ff, A]]` and the full 3m x 3m symmetric-indefinite KKT saddle
+system -- and notes the KKT is a poor fit for CPU pivotless `LDLT` (indefinite),
+so a GPU iterative solver (BiCGSTAB/GMRES, which ignore indefiniteness) is worth
+trying. **However, a measurement here found these larger systems are actually
+*worse*-conditioned than `T` for this problem**, so BiCGSTAB on them is likely
+slower, not faster:
+
+| count | m | cond(T) | cond(S, 2m) | cond(KKT, 3m) |
+|---|---|---|---|---|
+| 2 | 174 | 1.1e5 | 1.3e6 | 7.7e6 |
+| 3 | 352 | 3.9e5 | 3.3e6 | 4.4e7 |
+| 4 | 590 | 1.0e6 | 1.6e8 | 1.6e8 |
+
+The saddle structure (rank-deficient `[[I,I],[I,I]]` block, zero corner) drives
+the higher condition number -- also why LDLT fails. Still on the list to try
+empirically on GPU (iterative convergence depends on spectrum clustering, not
+just `cond`; and the notes' `c^2 = 1/n` scaling or a small Levenberg-Marquardt
+`T <- T + µI` regularization may change the picture), but the naive larger
+systems are not an obvious win. Improving the GN solver is better pursued via a
+stronger preconditioner for `T` (which is already the best-conditioned form).
 
 ### Adam vs. Gauss-Newton wall clock (count=2, as-is)
 
