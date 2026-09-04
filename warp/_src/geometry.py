@@ -152,15 +152,15 @@ def _match_vertex_buckets(
 
 
 @wp.kernel
-def _match_vertex_buckets_full(
+def _match_vertex_buckets_with_neighbor_edge_indices(
     offsets: wp.array[wp.int32],
     counts: wp.array[wp.int32],
     bucket_hi: wp.array[wp.int32],
     bucket_he: wp.array[wp.int32],
     tri_tri: wp.array2d[wp.int32],
-    tri_tri_reciprocal: wp.array2d[wp.int32],
+    neighbor_edge_indices: wp.array2d[wp.int32],
 ):
-    # As _match_vertex_buckets, but also records the reciprocal local edge index.
+    # As _match_vertex_buckets, but also records each edge's local index within its neighbor.
     v = wp.tid()
     beg = offsets[v]
     end = beg + counts[v]
@@ -177,15 +177,15 @@ def _match_vertex_buckets_full(
                 tb = he_b // 3
                 jb = he_b % 3
                 tri_tri[ta, ja] = tb
-                tri_tri_reciprocal[ta, ja] = jb
+                neighbor_edge_indices[ta, ja] = jb
                 tri_tri[tb, jb] = ta
-                tri_tri_reciprocal[tb, jb] = ja
+                neighbor_edge_indices[tb, jb] = ja
                 bucket_he[a] = -1
                 bucket_he[b] = -1
                 break
 
 
-def _bucket_half_edges(indices: wp.array2d[wp.int32], num_verts: int, device, num_tris: int):
+def _bucket_half_edges(indices: wp.array2d[wp.int32], vertex_count: int, device, num_tris: int):
     """Counting-sort the half-edges into per-vertex buckets keyed by their lower endpoint.
 
     Returns ``(offsets, counts, bucket_hi, bucket_he)``: for vertex ``v`` the slice
@@ -196,9 +196,9 @@ def _bucket_half_edges(indices: wp.array2d[wp.int32], num_verts: int, device, nu
     """
     num_half_edges = 3 * num_tris
 
-    counts = wp.zeros(shape=num_verts, dtype=wp.int32, device=device)
-    offsets = wp.empty(shape=num_verts, dtype=wp.int32, device=device)
-    fill = wp.zeros(shape=num_verts, dtype=wp.int32, device=device)
+    counts = wp.zeros(shape=vertex_count, dtype=wp.int32, device=device)
+    offsets = wp.empty(shape=vertex_count, dtype=wp.int32, device=device)
+    fill = wp.zeros(shape=vertex_count, dtype=wp.int32, device=device)
     bucket_hi = wp.empty(shape=num_half_edges, dtype=wp.int32, device=device)
     bucket_he = wp.empty(shape=num_half_edges, dtype=wp.int32, device=device)
 
@@ -213,35 +213,34 @@ def _bucket_half_edges(indices: wp.array2d[wp.int32], num_verts: int, device, nu
     return offsets, counts, bucket_hi, bucket_he
 
 
-def tri_tri_adjacency(indices: wp.array2d[wp.int32], num_verts: int | None = None, return_reciprocal: bool = True):
-    """Build triangle-triangle adjacency for a triangle mesh.
+def tri_tri_adjacency(
+    indices: wp.array2d[wp.int32], vertex_count: int | None = None, return_neighbor_edge_indices: bool = True
+):
+    """Build triangle-triangle adjacency for a triangle mesh. Assumes
+    edge-manifold with possible boundary (i.e., exactly one or two triangles per
+    edge). Consistent triangle orientation is not required.
 
     Args:
         indices: A ``(num_tris, 3)`` :class:`warp.array` of triangle vertex
             indices (``int32``).
-        num_verts: Number of vertices in the mesh. If ``None``, inferred as one
-            plus the maximum vertex index via a device-side reduction, which
-            still requires reading back that single value and so synchronizes
-            device execution (unlike the rest of the function, which does not).
-        return_reciprocal: If ``True`` (default), also compute and return the
-            reciprocal local edge indices ``tri_tri_reciprocal``. Pass ``False`` to build only
+        vertex_count: Number of vertices in the mesh. If ``None``, inferred as one
+            plus the maximum vertex index. Must not be ``None`` when used in a
+            CUDA graph capture context.
+        return_neighbor_edge_indices: If ``True`` (default), also compute and return the
+            local edge indices ``neighbor_edge_indices``. Pass ``False`` to build only
             the neighbor array ``tri_tri``, which is faster and less memory (use
-            ``find_triangle_neighbor_edge_index`` to recover the reciprocal
-            indices on demand).
+            ``find_triangle_neighbor_edge_index`` to recover a single neighbor
+            edge index on demand).
 
     Returns:
-        If ``return_reciprocal`` is ``True``, a tuple ``(tri_tri, tri_tri_reciprocal)`` of
+        If ``return_neighbor_edge_indices`` is ``True``, a tuple ``(tri_tri, neighbor_edge_indices)`` of
         ``(num_tris, 3)`` ``int32`` arrays; otherwise the single array ``tri_tri``.
         ``tri_tri[t, j]`` is the triangle adjacent to triangle ``t`` across the edge
         opposite local vertex ``j`` (the edge joining local vertices
         ``(j + 1) % 3`` and ``(j + 2) % 3``), or ``-1`` on a boundary edge.
-        ``tri_tri_reciprocal[t, j]`` is the local edge index of that shared edge within the
+        ``neighbor_edge_indices[t, j]`` is the local edge index of that shared edge within the
         neighboring triangle.
 
-    Note:
-        Assumes an edge-manifold mesh with possible boundary (i.e., exactly one
-        or two triangles per edge). Consistent triangle orientation is not
-        required.
     """
     if indices.ndim != 2 or indices.shape[1] != 3:
         raise ValueError("indices must be a (num_tris, 3) array of triangle vertex indices")
@@ -250,31 +249,33 @@ def tri_tri_adjacency(indices: wp.array2d[wp.int32], num_verts: int | None = Non
     num_tris = indices.shape[0]
 
     tri_tri = wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device)
-    tri_tri_reciprocal = (
-        wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device) if return_reciprocal else None
+    neighbor_edge_indices = (
+        wp.full(shape=(num_tris, 3), value=-1, dtype=wp.int32, device=device) if return_neighbor_edge_indices else None
     )
 
     if num_tris == 0:
-        return (tri_tri, tri_tri_reciprocal) if return_reciprocal else tri_tri
+        return (tri_tri, neighbor_edge_indices) if return_neighbor_edge_indices else tri_tri
 
-    if num_verts is None:
+    if vertex_count is None:
+        if device.is_capturing:
+            raise RuntimeError("`tri_tri_adjacency` requires `vertex_count` to be set for use in graph capture")
         max_index = wp.zeros(shape=1, dtype=wp.int32, device=device)
         wp.launch(_reduce_max_vertex_index, dim=num_tris, inputs=[indices, max_index], device=device)
-        num_verts = int(max_index.numpy()[0]) + 1
+        vertex_count = int(max_index.numpy()[0]) + 1
 
-    offsets, counts, bucket_hi, bucket_he = _bucket_half_edges(indices, num_verts, device, num_tris)
-    if return_reciprocal:
+    offsets, counts, bucket_hi, bucket_he = _bucket_half_edges(indices, vertex_count, device, num_tris)
+    if return_neighbor_edge_indices:
         wp.launch(
-            _match_vertex_buckets_full,
-            dim=num_verts,
-            inputs=[offsets, counts, bucket_hi, bucket_he, tri_tri, tri_tri_reciprocal],
+            _match_vertex_buckets_with_neighbor_edge_indices,
+            dim=vertex_count,
+            inputs=[offsets, counts, bucket_hi, bucket_he, tri_tri, neighbor_edge_indices],
             device=device,
         )
-        return tri_tri, tri_tri_reciprocal
+        return tri_tri, neighbor_edge_indices
 
     wp.launch(
         _match_vertex_buckets,
-        dim=num_verts,
+        dim=vertex_count,
         inputs=[offsets, counts, bucket_hi, bucket_he, tri_tri],
         device=device,
     )
@@ -302,9 +303,9 @@ def find_triangle_neighbor_edge_index(
         The local edge index ``j`` such that ``triangle_neighbors[triangle, j]
         == neighbor``, or -1 if ``triangle`` and ``neighbor`` are not adjacent.
         Calling this with ``triangle`` and ``neighbor`` swapped recovers a
-        single reciprocal local edge index -- the value :func:`tri_tri_adjacency`
-        would have stored in ``tri_tri_reciprocal`` had it been called with
-        ``return_reciprocal=True`` -- without having to keep that array around.
+        single entry -- the value :func:`tri_tri_adjacency` would have stored
+        in ``neighbor_edge_indices`` had it been called with
+        ``return_neighbor_edge_indices=True`` -- without having to keep that array around.
     """
     if triangle_neighbors[triangle, 0] == neighbor:
         return 0
@@ -556,7 +557,7 @@ def delaunay_edge_flip(
     ref_positions: wp.array[wp.vec2] | None = None,
     max_passes: int = 1000,
     area_epsilon: float = 0.0,
-    ref_epsilon: float = 1.0e-10,
+    ref_area_epsilon: float = 1.0e-10,
 ) -> wp.array[wp.int32]:
     """Flip non-Delaunay interior edges in place until all are Delaunay or max
     passes is reached.
@@ -567,11 +568,11 @@ def delaunay_edge_flip(
     supported.
 
     Args:
-        positions: A ``(num_verts,)`` :class:`warp.array` of :class:`warp.vec2`
+        positions: A ``(vertex_count,)`` :class:`warp.array` of :class:`warp.vec2`
             vertex positions.
         indices: A ``(num_tris, 3)`` :class:`warp.array` of ``int32`` triangle
             vertex indices, assumed counterclockwise. Modified in place.
-        ref_positions: Optional ``(num_verts,)`` :class:`warp.array` of
+        ref_positions: Optional ``(vertex_count,)`` :class:`warp.array` of
             :class:`warp.vec2` reference positions. When provided, flips that
             would create a degenerate triangle in the reference configuration
             are rejected. Useful when the working mesh is a deformation of a
@@ -581,7 +582,7 @@ def delaunay_edge_flip(
         area_epsilon: Minimum signed area required for each triangle produced by
             a flip; guards against creating inverted or sliver triangles. Must be
             finite and non-negative.
-        ref_epsilon: Degeneracy threshold applied to ``ref_positions``. Must be
+        ref_area_epsilon: Degeneracy threshold applied to ``ref_positions``. Must be
             finite and non-negative.
 
     Returns:
@@ -606,16 +607,16 @@ def delaunay_edge_flip(
         raise ValueError("max_passes must be at least 1")
     if not math.isfinite(area_epsilon) or area_epsilon < 0.0:
         raise ValueError("area_epsilon must be a finite, non-negative number")
-    if not math.isfinite(ref_epsilon) or ref_epsilon < 0.0:
-        raise ValueError("ref_epsilon must be a finite, non-negative number")
+    if not math.isfinite(ref_area_epsilon) or ref_area_epsilon < 0.0:
+        raise ValueError("ref_area_epsilon must be a finite, non-negative number")
 
     num_tris = indices.shape[0]
     if num_tris == 0:
         # Match the documented return type: always a device accumulator.
         return wp.zeros(shape=1, dtype=wp.int32, device=device)
 
-    num_verts = positions.shape[0]
-    tri_tri = tri_tri_adjacency(indices, num_verts=num_verts, return_reciprocal=False)
+    vertex_count = positions.shape[0]
+    tri_tri = tri_tri_adjacency(indices, vertex_count=vertex_count, return_neighbor_edge_indices=False)
 
     has_ref = wp.int32(1 if ref_positions is not None else 0)
     ref = ref_positions if ref_positions is not None else positions
@@ -637,7 +638,7 @@ def delaunay_edge_flip(
         wp.launch(
             _DelaunayFlipper._stake_flip_claims,
             dim=num_tris,
-            inputs=[indices, tri_tri, positions, ref, has_ref, area_epsilon, ref_epsilon, claim],
+            inputs=[indices, tri_tri, positions, ref, has_ref, area_epsilon, ref_area_epsilon, claim],
             device=device,
         )
         wp.launch(

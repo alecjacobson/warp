@@ -168,16 +168,16 @@ def test_adjacency_single_pair(test, device):
     Two triangles sharing edge (0, 2): tri 0 = (0,1,2), tri 1 = (0,2,3).
     """
     indices = wp.array(np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32), dtype=wp.int32, device=device)
-    tri_tri, tri_tri_reciprocal = warp.geometry.tri_tri_adjacency(indices, num_verts=4)
+    tri_tri, neighbor_edge_indices = warp.geometry.tri_tri_adjacency(indices, vertex_count=4)
     tri_tri_np = tri_tri.numpy()
-    tri_tri_reciprocal_np = tri_tri_reciprocal.numpy()
+    neighbor_edge_indices_np = neighbor_edge_indices.numpy()
 
     # Shared edge (0,2) is opposite vertex 1 in tri 0 (local edge 1) and opposite
     # vertex 3 in tri 1 (local edge 2).
     test.assertEqual(tri_tri_np[0, 1], 1)
-    test.assertEqual(tri_tri_reciprocal_np[0, 1], 2)
+    test.assertEqual(neighbor_edge_indices_np[0, 1], 2)
     test.assertEqual(tri_tri_np[1, 2], 0)
-    test.assertEqual(tri_tri_reciprocal_np[1, 2], 1)
+    test.assertEqual(neighbor_edge_indices_np[1, 2], 1)
 
     # All other edges are on the boundary.
     test.assertEqual(tri_tri_np[0, 0], -1)
@@ -185,8 +185,8 @@ def test_adjacency_single_pair(test, device):
     test.assertEqual(tri_tri_np[1, 0], -1)
     test.assertEqual(tri_tri_np[1, 1], -1)
 
-    # return_reciprocal=False yields the same tri_tri as a single array (no tri_tri_reciprocal).
-    tri_tri_only = warp.geometry.tri_tri_adjacency(indices, num_verts=4, return_reciprocal=False)
+    # return_neighbor_edge_indices=False yields the same tri_tri as a single array (no neighbor_edge_indices).
+    tri_tri_only = warp.geometry.tri_tri_adjacency(indices, vertex_count=4, return_neighbor_edge_indices=False)
     test.assertFalse(isinstance(tri_tri_only, tuple))
     assert_np_equal(tri_tri_only.numpy(), tri_tri_np)
 
@@ -195,32 +195,47 @@ def test_adjacency_matches_grid(test, device):
     """Verify that adjacency pointers round-trip on a larger grid mesh."""
     points, tris = _grid_mesh(5, 4, jitter=0.2, seed=11)
     indices = wp.array(tris, dtype=wp.int32, device=device)
-    tri_tri, tri_tri_reciprocal = warp.geometry.tri_tri_adjacency(indices, num_verts=points.shape[0])
-    tri_tri_only = warp.geometry.tri_tri_adjacency(indices, num_verts=points.shape[0], return_reciprocal=False)
+    tri_tri, neighbor_edge_indices = warp.geometry.tri_tri_adjacency(indices, vertex_count=points.shape[0])
+    tri_tri_only = warp.geometry.tri_tri_adjacency(
+        indices, vertex_count=points.shape[0], return_neighbor_edge_indices=False
+    )
     tri_tri_np = tri_tri.numpy()
-    tri_tri_reciprocal_np = tri_tri_reciprocal.numpy()
-    # return_reciprocal=False must agree with the full build.
+    neighbor_edge_indices_np = neighbor_edge_indices.numpy()
+    # return_neighbor_edge_indices=False must agree with the full build.
     assert_np_equal(tri_tri_only.numpy(), tri_tri_np)
 
-    # For every interior edge, the reciprocal pointer round-trips.
+    # For every interior edge, the neighbor edge index round-trips.
     for t in range(tris.shape[0]):
         for j in range(3):
             n = tri_tri_np[t, j]
             if n < 0:
                 continue
-            jn = tri_tri_reciprocal_np[t, j]
+            jn = neighbor_edge_indices_np[t, j]
             test.assertEqual(tri_tri_np[n, jn], t)
-            test.assertEqual(tri_tri_reciprocal_np[n, jn], j)
+            test.assertEqual(neighbor_edge_indices_np[n, jn], j)
 
 
-def test_adjacency_infers_num_verts(test, device):
-    """Verify that omitting num_verts (device-side max-vertex-index reduction) matches passing it explicitly."""
+def test_adjacency_infers_vertex_count(test, device):
+    """Verify that omitting vertex_count (device-side max-vertex-index reduction) matches passing it explicitly."""
     points, tris = _grid_mesh(5, 4, jitter=0.2, seed=11)
     indices = wp.array(tris, dtype=wp.int32, device=device)
-    tri_tri_inferred, tri_tri_reciprocal_inferred = warp.geometry.tri_tri_adjacency(indices)
-    tri_tri_explicit, tri_tri_reciprocal_explicit = warp.geometry.tri_tri_adjacency(indices, num_verts=points.shape[0])
+    tri_tri_inferred, neighbor_edge_indices_inferred = warp.geometry.tri_tri_adjacency(indices)
+    tri_tri_explicit, neighbor_edge_indices_explicit = warp.geometry.tri_tri_adjacency(
+        indices, vertex_count=points.shape[0]
+    )
     assert_np_equal(tri_tri_inferred.numpy(), tri_tri_explicit.numpy())
-    assert_np_equal(tri_tri_reciprocal_inferred.numpy(), tri_tri_reciprocal_explicit.numpy())
+    assert_np_equal(neighbor_edge_indices_inferred.numpy(), neighbor_edge_indices_explicit.numpy())
+
+
+def test_adjacency_requires_vertex_count_under_capture(test, device):
+    """Reject inferring vertex_count (a host sync) during graph capture."""
+    indices = wp.array(np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32), dtype=wp.int32, device=device)
+
+    wp.load_module(warp.geometry, device=device)
+    with wp.ScopedDevice(device):
+        with test.assertRaises(RuntimeError):
+            with wp.ScopedCapture(force_module_load=False):
+                warp.geometry.tri_tri_adjacency(indices)
 
 
 def test_flip_single_edge(test, device):
@@ -415,7 +430,7 @@ def test_flip_invalid_arguments(test, device):
         with test.assertRaises(ValueError):
             warp.geometry.delaunay_edge_flip(positions, indices, area_epsilon=bad_eps)
         with test.assertRaises(ValueError):
-            warp.geometry.delaunay_edge_flip(positions, indices, ref_epsilon=bad_eps)
+            warp.geometry.delaunay_edge_flip(positions, indices, ref_area_epsilon=bad_eps)
 
     # A rejected call must leave the connectivity untouched.
     assert_np_equal(indices.numpy(), tris)
@@ -557,7 +572,15 @@ class TestDelaunay(unittest.TestCase):
 add_function_test(TestDelaunay, "test_predicates", test_predicates, devices=devices)
 add_function_test(TestDelaunay, "test_adjacency_single_pair", test_adjacency_single_pair, devices=devices)
 add_function_test(TestDelaunay, "test_adjacency_matches_grid", test_adjacency_matches_grid, devices=devices)
-add_function_test(TestDelaunay, "test_adjacency_infers_num_verts", test_adjacency_infers_num_verts, devices=devices)
+add_function_test(
+    TestDelaunay, "test_adjacency_infers_vertex_count", test_adjacency_infers_vertex_count, devices=devices
+)
+add_function_test(
+    TestDelaunay,
+    "test_adjacency_requires_vertex_count_under_capture",
+    test_adjacency_requires_vertex_count_under_capture,
+    devices=devices,
+)
 add_function_test(TestDelaunay, "test_flip_single_edge", test_flip_single_edge, devices=devices)
 add_function_test(TestDelaunay, "test_flip_grid", test_flip_grid, devices=devices)
 add_function_test(TestDelaunay, "test_flip_grid_large", test_flip_grid_large, devices=devices)
