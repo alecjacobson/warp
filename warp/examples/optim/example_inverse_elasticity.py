@@ -200,6 +200,12 @@ def _add(a: wp.array(dtype=vec2d), b: wp.array(dtype=vec2d), out: wp.array(dtype
     out[v] = a[v] + b[v]
 
 
+@wp.kernel
+def _sub(a: wp.array(dtype=vec2d), b: wp.array(dtype=vec2d), out: wp.array(dtype=vec2d)):
+    v = wp.tid()
+    out[v] = a[v] - b[v]
+
+
 # ---------------------------------------------------------------------------
 # Geometry sensitivity G and the adjoint gradient
 # ---------------------------------------------------------------------------
@@ -448,4 +454,37 @@ class BridgeProblem:
 
         dV = wp.empty(self.num_verts, dtype=vec2d, device=self.device)
         wp.launch(_scatter_free_step, dim=self.num_verts, inputs=[grad_free, self.vert_to_free, dV], device=self.device)
+        return dV
+
+    def gauss_newton_step(self, tol=1e-10, solve_tol=1e-12, solver="bicgstab"):
+        """Sparse Gauss-Newton step via the square route T = A + G_ff.
+
+        Solves ``T w = G_ff r_free``, then ``p = r_free - w``. ``T`` is sparse but
+        nonsymmetric and, on this problem, moderately ill-conditioned, so it is
+        solved with BiCGSTAB by default (GMRES stalls here: restarted GMRES loses
+        orthogonality at the conditioning of ``T``). Returns a per-vertex ``dV``
+        (vec2d, zero at pins).
+        """
+        U, u, _, A = self.forward(tol=tol)
+        r_free = self.residual_free(U)
+        Gff = self.assemble_Gff(u)
+
+        T = A + Gff  # sparse, generally nonsymmetric
+
+        rhs = wp.zeros(self.num_free, dtype=vec2d, device=self.device)
+        wps.bsr_mv(Gff, r_free, rhs)
+
+        w = wp.zeros(self.num_free, dtype=vec2d, device=self.device)
+        precond = wpl.preconditioner(T, "diag")
+        n = self.num_free * 2
+        if solver == "gmres":
+            wpl.gmres(T, rhs, w, tol=solve_tol, maxiter=n, restart=n, M=precond)
+        else:
+            wpl.bicgstab(T, rhs, w, tol=solve_tol, maxiter=n * 4, M=precond)
+
+        p = wp.empty(self.num_free, dtype=vec2d, device=self.device)
+        wp.launch(_sub, dim=self.num_free, inputs=[r_free, w, p], device=self.device)
+
+        dV = wp.empty(self.num_verts, dtype=vec2d, device=self.device)
+        wp.launch(_scatter_free_step, dim=self.num_verts, inputs=[p, self.vert_to_free, dV], device=self.device)
         return dV

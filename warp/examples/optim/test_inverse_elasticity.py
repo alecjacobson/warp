@@ -192,5 +192,22 @@ class TestWarpGradient(unittest.TestCase):
             self.assertLess(e_fd, 1e-4, f"{device}: gradient vs dense-FD rel err {e_fd:.3e}")
 
 
+class TestWarpGaussNewton(unittest.TestCase):
+    """Warp sparse Gauss-Newton step (T = A + G_ff, BiCGSTAB) matches oracle and FD."""
+
+    def test_gauss_newton(self):
+        p = oracle.Problem(count=3)
+        gn_oracle = oracle.gauss_newton_step(p.V, p.F, p.young, p.poisson, p.f_ext, p.free_dofs, p.V_target)
+        gn_fd = oracle.fd_gauss_newton_step(p.V, p.F, p.young, p.poisson, p.f_ext, p.free_dofs, p.V_target)
+
+        for device in _test_devices():
+            bp = ex.BridgeProblem(p.V, p.F, p.free_vertices, p.young, p.poisson, device=device)
+            gn = bp.gauss_newton_step(tol=1e-12, solve_tol=1e-12).numpy()
+            e_oracle = _maxabs(gn - gn_oracle) / max(1e-12, _maxabs(gn_oracle))
+            e_fd = _maxabs(gn - gn_fd) / max(1e-12, _maxabs(gn_fd))
+            self.assertLess(e_oracle, 1e-4, f"{device}: GN vs oracle rel err {e_oracle:.3e}")
+            self.assertLess(e_fd, 1e-4, f"{device}: GN vs dense-FD rel err {e_fd:.3e}")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
