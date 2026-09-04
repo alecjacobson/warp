@@ -84,6 +84,13 @@ def in_circle(a: wp.vec2, b: wp.vec2, c: wp.vec2, d: wp.vec2) -> bool:
 
 
 @wp.kernel
+def _reduce_max_vertex_index(tri: wp.array2d[wp.int32], max_index: wp.array[wp.int32]):
+    t = wp.tid()
+    for j in range(3):
+        wp.atomic_max(max_index, 0, tri[t, j])
+
+
+@wp.kernel
 def _count_vertex_edges(tri: wp.array2d[wp.int32], counts: wp.array[wp.int32]):
     # Bucket each half-edge under its lower-indexed endpoint.
     t = wp.tid()
@@ -213,12 +220,14 @@ def tri_tri_adjacency(indices: wp.array2d[wp.int32], num_verts: int | None = Non
         indices: A ``(num_tris, 3)`` :class:`warp.array` of triangle vertex
             indices (``int32``).
         num_verts: Number of vertices in the mesh. If ``None``, inferred as one
-            plus the maximum vertex index, which requires a host synchronization.
+            plus the maximum vertex index via a device-side reduction, which
+            still requires reading back that single value and so synchronizes
+            device execution (unlike the rest of the function, which does not).
         return_reciprocal: If ``True`` (default), also compute and return the
             reciprocal local edge indices ``tri_tri_reciprocal``. Pass ``False`` to build only
-            the neighbor array ``tri_tri``, which is faster and uses less memory when
-            the reciprocal indices are not needed (they can be recovered on
-            demand by searching a neighbor's three entries).
+            the neighbor array ``tri_tri``, which is faster and less memory (use
+            ``find_triangle_neighbor_edge_index`` to recover the reciprocal
+            indices on demand).
 
     Returns:
         If ``return_reciprocal`` is ``True``, a tuple ``(tri_tri, tri_tri_reciprocal)`` of
@@ -230,14 +239,9 @@ def tri_tri_adjacency(indices: wp.array2d[wp.int32], num_verts: int | None = Non
         neighboring triangle.
 
     Note:
-        Assumes an orientable manifold mesh with consistent winding. Interior
-        edges must be shared by exactly two triangles; for a non-manifold edge
-        shared by more triangles only an arbitrary two are paired.
-
-        Adjacency is built by counting-sorting the half-edges into per-vertex
-        buckets (via :func:`warp.utils.array_scan`) and matching within each
-        bucket -- no global key sort -- so the build is CUDA-graph capturable and
-        needs no host synchronization when ``num_verts`` is given.
+        Assumes an edge-manifold mesh with possible boundary (i.e., exactly one
+        or two triangles per edge). Consistent triangle orientation is not
+        required.
     """
     if indices.ndim != 2 or indices.shape[1] != 3:
         raise ValueError("indices must be a (num_tris, 3) array of triangle vertex indices")
@@ -254,7 +258,9 @@ def tri_tri_adjacency(indices: wp.array2d[wp.int32], num_verts: int | None = Non
         return (tri_tri, tri_tri_reciprocal) if return_reciprocal else tri_tri
 
     if num_verts is None:
-        num_verts = int(indices.numpy().max()) + 1
+        max_index = wp.zeros(shape=1, dtype=wp.int32, device=device)
+        wp.launch(_reduce_max_vertex_index, dim=num_tris, inputs=[indices, max_index], device=device)
+        num_verts = int(max_index.numpy()[0]) + 1
 
     offsets, counts, bucket_hi, bucket_he = _bucket_half_edges(indices, num_verts, device, num_tris)
     if return_reciprocal:
@@ -552,15 +558,13 @@ def delaunay_edge_flip(
     area_epsilon: float = 0.0,
     ref_epsilon: float = 1.0e-10,
 ) -> wp.array[wp.int32]:
-    """Flip interior edges in place until the 2D triangulation is Delaunay.
+    """Flip non-Delaunay interior edges in place until all are Delaunay or max
+    passes is reached.
 
     The triangulation is modified in place: ``indices`` is updated with the
-    flipped connectivity while ``positions`` is left unchanged. Flips run in
-    parallel on the Warp device using a priority-based maximal independent set.
-    The convergence loop is driven on-device with :func:`warp.capture_while`, so
-    the whole routine can be recorded into a CUDA graph without host
-    synchronization (a warm-up call is recommended so that internal scratch
-    allocations are sized before capture).
+    flipped connectivity while ``positions`` is left unchanged. Each iteration
+    flips an independent set of edges in parallel; CUDA graph capture is
+    supported.
 
     Args:
         positions: A ``(num_verts,)`` :class:`warp.array` of :class:`warp.vec2`
@@ -581,16 +585,13 @@ def delaunay_edge_flip(
             finite and non-negative.
 
     Returns:
-        A single-element ``int32`` :class:`warp.array` accumulator holding the
-        total number of edges flipped. It is always a device array, even in
-        eager mode, so the return type does not depend on whether the call is
-        captured; convert it to a Python ``int`` with ``int(result.numpy()[0])``.
-        Under CUDA graph capture the count is only known at replay time, so read
-        it only after :func:`warp.capture_launch`.
+        A (1,) int32 array on indices.device containing the total number of
+        edges flipped. Under graph capture, read the value after replaying the
+        graph.
 
     Note:
-        Assumes an orientable manifold mesh with consistent counterclockwise
-        winding. See :func:`tri_tri_adjacency`.
+        Assumes a manifold mesh with consistent counterclockwise winding
+        (positive signed triangle areas).
     """
     if indices.ndim != 2 or indices.shape[1] != 3:
         raise ValueError("indices must be a (num_tris, 3) array of triangle vertex indices")
