@@ -524,8 +524,8 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
 
     This class provides a stateful interface for isosurface extraction. You
     can initialize it with a specific grid configuration and then call the
-    :meth:`~.surface` method multiple times, which is efficient for processing
-    fields of the same size.
+    :meth:`~.surface` method multiple times, which is convenient for
+    processing fields of the same size.
 
     For a simpler, stateless operation, use the :meth:`~.extract` class
     method.

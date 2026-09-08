@@ -868,7 +868,7 @@ class IsoSurfaceNets(IsoSurfaceBase):
     This class provides a stateful interface following
     :class:`warp.geometry.IsoSurfaceBase`: initialize it with a specific grid
     configuration and then call the :meth:`~.surface` method multiple times,
-    which is efficient for processing fields of the same size. For a simpler,
+    which is convenient for processing fields of the same size. For a simpler,
     stateless operation, use the :meth:`~.extract` class method.
 
     The ``topology`` parameter selects the type of the faces written to
