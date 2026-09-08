@@ -5,5 +5,6 @@ forward model is solved with the cuDSS sparse **direct** solver (one factorizati
 shape, reused for the forward and adjoint solves); the rest-shape gradient is obtained by
 the adjoint method (autodiff through the assembly plus a manual adjoint for the linear
 solve), and the shape is optimized with Warp's Adam optimizer. Includes a finite-difference
-gradient regression test. The GPU solve beats an equivalent CPU sparse-direct implementation,
-with the advantage growing as the mesh is refined.
+gradient regression test and an optional headless (polyscope) convergence gif. The GPU solve
+beats an equivalent CPU sparse-direct implementation, with the advantage growing as the mesh
+is refined.

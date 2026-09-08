@@ -382,15 +382,18 @@ class InverseElasticity:
         diff = self.v_target.numpy() - self.U.numpy()
         return float(np.mean(diff**2))
 
-    def optimize(self, num_iters=800, tol=1e-8, check_every=25, quiet=True):
+    def optimize(self, num_iters=800, tol=1e-8, check_every=25, record_every=0, quiet=True):
         wp.launch(scatter_free_params, dim=self.num_free,
                   inputs=[self.params, self.free_verts, self.verts], device=self.device)  # fmt: skip
         init = self.loss()
+        self.frames = []  # (iter, rest V, deformed U) snapshots for visualization
         converged = False
         it = 0
         while it < num_iters:
             self.step()  # compute_gradient leaves self.U for the current shape
             it += 1
+            if record_every and (it % record_every == 0 or it == 1):
+                self.frames.append((it, self.verts.numpy().copy(), self.U.numpy().copy()))
             if it % check_every == 0 or it == num_iters:
                 loss = self._loss_from_U()
                 if not quiet:
@@ -421,6 +424,88 @@ def make_bridge(count):
     return V.astype(np.float64), F, fixed
 
 
+# ---------------------------------------------------------------------------
+# Optional convergence visualization (polyscope headless). Self-contained and
+# safe to delete: nothing above depends on it.
+# ---------------------------------------------------------------------------
+
+
+def per_face_von_mises(V, U, F, young, poisson):
+    """Per-triangle von Mises stress from the CST strain of displacement U - V."""
+    lam = young * poisson / ((1.0 + poisson) * (1.0 - 2.0 * poisson))
+    mu = young / (2.0 * (1.0 + poisson))
+    C = np.array([[lam + 2 * mu, lam, 0.0], [lam, lam + 2 * mu, 0.0], [0.0, 0.0, mu]])
+    Mg = np.array([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0]])
+    vm = np.zeros(len(F))
+    for f, tri in enumerate(F):
+        Dm = Mg @ V[tri]
+        G = np.linalg.inv(Dm) @ Mg
+        B = np.array([[G[0, 0], 0, G[0, 1], 0, G[0, 2], 0],
+                      [0, G[1, 0], 0, G[1, 1], 0, G[1, 2]],
+                      [G[1, 0], G[0, 0], G[1, 1], G[0, 1], G[1, 2], G[0, 2]]])  # fmt: skip
+        s = C @ (B @ (U[tri] - V[tri]).reshape(-1))
+        vm[f] = np.sqrt(s[0] ** 2 - s[0] * s[1] + s[1] ** 2 + 3.0 * s[2] ** 2)
+    return vm
+
+
+def render_convergence_gif(frames, F, young, poisson, out_path, max_frames=60, fps=12):
+    """Render a headless gif of the rest shape (top) and gravity-deformed shape
+    (bottom, colored by von Mises stress) over the optimization."""
+    import tempfile  # noqa: PLC0415
+
+    import imageio.v2 as imageio  # noqa: PLC0415
+    import polyscope as ps  # noqa: PLC0415
+    from PIL import Image, ImageDraw  # noqa: PLC0415
+
+    if len(frames) > max_frames:  # keep <= max_frames, evenly spaced (last always in)
+        idx = np.linspace(0, len(frames) - 1, max_frames).round().astype(int)
+        frames = [frames[i] for i in dict.fromkeys(idx)]
+
+    ps.set_use_prefs_file(False)
+    ps.set_allow_headless_backends(True)
+    ps.init()
+    ps.set_ground_plane_mode("none")
+    ps.set_view_projection_mode("orthographic")
+
+    F3 = np.asarray(F, dtype=np.int32)
+    span_y = max(U[:, 1].max() - U[:, 1].min() for _, _, U in frames)
+    gap = span_y + 1.0  # stack the rest shape this far above the deformed shape
+    all_U = np.vstack([U for _, _, U in frames])
+    cx = 0.5 * (all_U[:, 0].min() + all_U[:, 0].max())
+    cy = 0.5 * gap
+    vmax = max(per_face_von_mises(V, U, F3, young, poisson).max() for _, V, U in frames)
+
+    def to3d(P2, dy):
+        return np.column_stack([P2[:, 0], P2[:, 1] + dy, np.zeros(len(P2))])
+
+    tmp = tempfile.mkdtemp()
+    shots = []
+    for k, (_, V, U) in enumerate(frames):
+        ps.register_surface_mesh("rest", to3d(V, gap), F3, color=(0.55, 0.68, 0.9), edge_width=0.5)
+        defo = ps.register_surface_mesh("deformed", to3d(U, 0.0), F3, edge_width=0.5)
+        defo.add_scalar_quantity("von Mises", per_face_von_mises(V, U, F3, young, poisson),
+                                 defined_on="faces", vminmax=(0.0, vmax), cmap="viridis", enabled=True)  # fmt: skip
+        ps.look_at((cx, cy, 2.0 * gap), (cx, cy, 0.0))
+        p = f"{tmp}/f{k:04d}.png"
+        ps.screenshot(p, transparent_bg=False)
+        shots.append(np.asarray(Image.open(p).convert("RGB")))
+
+    # Fixed crop to the content (non-white) bounding box across all frames, +margin.
+    content = np.stack([(s < 245).any(axis=2) for s in shots]).any(axis=0)
+    ys, xs = np.where(content)
+    m = 20
+    y0, y1 = max(ys.min() - m, 0), min(ys.max() + m, shots[0].shape[0])
+    x0, x1 = max(xs.min() - m, 0), min(xs.max() + m, shots[0].shape[1])
+    imgs = []
+    for (it, _, _), s in zip(frames, shots, strict=True):
+        img = Image.fromarray(s[y0:y1, x0:x1])
+        ImageDraw.Draw(img).text((10, 8), f"iteration {it}", fill=(20, 20, 20))
+        imgs.append(np.asarray(img))
+    imgs += [imgs[-1]] * fps  # hold the converged frame ~1s
+    imageio.mimsave(out_path, imgs, fps=fps, loop=0)
+    return out_path
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -429,13 +514,19 @@ if __name__ == "__main__":
     parser.add_argument("--count", type=int, default=4)
     parser.add_argument("--num-iters", type=int, default=800)
     parser.add_argument("--tol", type=float, default=1e-8)
+    parser.add_argument("--gif", type=str, default=None, help="Render a headless convergence gif to this path.")
+    parser.add_argument("--record-every", type=int, default=25, help="Iterations between recorded gif frames.")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
     with wp.ScopedDevice(args.device):
         V, F, fixed = make_bridge(args.count)
         problem = InverseElasticity(V, F, fixed)
-        result = problem.optimize(num_iters=args.num_iters, tol=args.tol, quiet=args.quiet)
+        result = problem.optimize(num_iters=args.num_iters, tol=args.tol,
+                                  record_every=args.record_every if args.gif else 0, quiet=args.quiet)  # fmt: skip
+        if args.gif:
+            path = render_convergence_gif(problem.frames, F, problem.young, problem.poisson, args.gif)
+            print(f"wrote {path} ({min(len(problem.frames), 60)} frames)")
         print(f"RESULT count={args.count} nV={V.shape[0]} iters={result['iters']} "
               f"initial_loss={result['initial_loss']:.6e} final_loss={result['final_loss']:.6e} "
               f"converged={result['converged']}")  # fmt: skip
