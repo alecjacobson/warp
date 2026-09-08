@@ -466,27 +466,29 @@ class InverseElasticity3D:
 
 
 def per_tet_von_mises(V, U, T, young, poisson):
-    """Per-tet von Mises stress from the linear-tet strain of displacement U - V."""
+    """Per-tet von Mises stress from the linear-tet strain of displacement U - V.
+
+    Vectorized over tets (batched 3x3 inverse) so it stays fast on fine meshes."""
     lam = young * poisson / ((1.0 + poisson) * (1.0 - 2.0 * poisson))
     mu = young / (2.0 * (1.0 + poisson))
     d = lam + 2 * mu
     C = np.array([[d, lam, lam, 0, 0, 0], [lam, d, lam, 0, 0, 0], [lam, lam, d, 0, 0, 0],
                   [0, 0, 0, mu, 0, 0], [0, 0, 0, 0, mu, 0], [0, 0, 0, 0, 0, mu]])  # fmt: skip
     Mg = np.array([[1, 0, 0, -1], [0, 1, 0, -1], [0, 0, 1, -1]], dtype=float)
-    vm = np.zeros(len(T))
-    for f, tet in enumerate(T):
-        Dm = np.array([V[tet[0]] - V[tet[3]], V[tet[1]] - V[tet[3]], V[tet[2]] - V[tet[3]]])
-        G = np.linalg.inv(Dm) @ Mg
-        B = np.zeros((6, 12))
-        for j in range(4):
-            B[0, 3 * j] = G[0, j]; B[1, 3 * j + 1] = G[1, j]; B[2, 3 * j + 2] = G[2, j]  # noqa: E702
-            B[3, 3 * j] = G[1, j]; B[3, 3 * j + 1] = G[0, j]  # noqa: E702
-            B[4, 3 * j + 1] = G[2, j]; B[4, 3 * j + 2] = G[1, j]  # noqa: E702
-            B[5, 3 * j] = G[2, j]; B[5, 3 * j + 2] = G[0, j]  # noqa: E702
-        s = C @ (B @ (U[tet] - V[tet]).reshape(-1))
-        vm[f] = np.sqrt(0.5 * ((s[0] - s[1]) ** 2 + (s[1] - s[2]) ** 2 + (s[2] - s[0]) ** 2)
-                        + 3.0 * (s[3] ** 2 + s[4] ** 2 + s[5] ** 2))  # fmt: skip
-    return vm
+    P = V[T]  # (nT, 4, 3)
+    Dm = np.stack([P[:, 0] - P[:, 3], P[:, 1] - P[:, 3], P[:, 2] - P[:, 3]], axis=1)  # (nT, 3, 3)
+    G = np.linalg.inv(Dm) @ Mg  # (nT, 3, 4): dN_j/dx_i
+    nT = len(T)
+    B = np.zeros((nT, 6, 12))
+    for j in range(4):
+        B[:, 0, 3 * j] = G[:, 0, j]; B[:, 1, 3 * j + 1] = G[:, 1, j]; B[:, 2, 3 * j + 2] = G[:, 2, j]  # noqa: E702
+        B[:, 3, 3 * j] = G[:, 1, j]; B[:, 3, 3 * j + 1] = G[:, 0, j]  # noqa: E702
+        B[:, 4, 3 * j + 1] = G[:, 2, j]; B[:, 4, 3 * j + 2] = G[:, 1, j]  # noqa: E702
+        B[:, 5, 3 * j] = G[:, 2, j]; B[:, 5, 3 * j + 2] = G[:, 0, j]  # noqa: E702
+    disp = (U[T] - P).reshape(nT, 12)
+    s = np.einsum("ij,nj->ni", C, np.einsum("nij,nj->ni", B, disp))  # (nT, 6) stress
+    return np.sqrt(0.5 * ((s[:, 0] - s[:, 1]) ** 2 + (s[:, 1] - s[:, 2]) ** 2 + (s[:, 2] - s[:, 0]) ** 2)
+                   + 3.0 * (s[:, 3] ** 2 + s[:, 4] ** 2 + s[:, 5] ** 2))  # fmt: skip
 
 
 def render_convergence_gif(frames, T, young, poisson, out_path, fps=3):
@@ -498,11 +500,13 @@ def render_convergence_gif(frames, T, young, poisson, out_path, fps=3):
 
     import imageio.v2 as imageio  # noqa: PLC0415
     import polyscope as ps  # noqa: PLC0415
-    from PIL import Image, ImageDraw  # noqa: PLC0415
+    from PIL import Image, ImageDraw, ImageFont  # noqa: PLC0415
 
     ps.set_use_prefs_file(False)
     ps.set_allow_headless_backends(True)
     ps.init()
+    ps.set_window_size(1600, 1200)
+    ps.set_SSAA_factor(3)  # supersample for crisp edges on the fine mesh
     ps.set_up_dir("z_up")
     ps.set_background_color((1.0, 1.0, 1.0))
     # Soft contact shadows on a ground plane held at a fixed height across frames.
@@ -548,10 +552,14 @@ def render_convergence_gif(frames, T, young, poisson, out_path, fps=3):
     m = 20
     y0, y1 = max(ys.min() - m, 0), min(ys.max() + m, shots[0].shape[0])
     x0, x1 = max(xs.min() - m, 0), min(xs.max() + m, shots[0].shape[1])
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", 34)
+    except OSError:
+        font = ImageFont.load_default()
     imgs = []
     for (it, _, _), s in zip(frames, shots, strict=True):
         img = Image.fromarray(s[y0:y1, x0:x1])
-        ImageDraw.Draw(img).text((10, 8), f"iteration {it}", fill=(20, 20, 20))
+        ImageDraw.Draw(img).text((22, 16), f"iteration {it}", fill=(20, 20, 20), font=font)
         imgs.append(np.asarray(img))
     imgs += [imgs[-1]] * fps  # hold the converged frame ~1s
     imageio.mimsave(out_path, imgs, fps=fps, loop=0)
