@@ -145,7 +145,7 @@ def test_marching_cubes_functional(test, device):
     )
 
     # call via the functional interface
-    verts, faces = wp.geometry.IsoSurfaceMarchingCubes.extract_surface_marching_cubes(
+    verts, faces = wp.geometry.IsoSurfaceMarchingCubes.extract(
         field, threshold=0.0, domain_bounds_lower_corner=bounds_low, domain_bounds_upper_corner=bounds_high
     )
 
@@ -256,7 +256,7 @@ def test_marching_cubes_differentiable(test, device):
         )
 
         # call via the functional interface
-        verts, faces = wp.geometry.IsoSurfaceMarchingCubes.extract_surface_marching_cubes(
+        verts, faces = wp.geometry.IsoSurfaceMarchingCubes.extract(
             field, threshold=0.0, domain_bounds_lower_corner=bounds_low, domain_bounds_upper_corner=bounds_high
         )
 

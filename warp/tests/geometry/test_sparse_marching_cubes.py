@@ -166,7 +166,7 @@ def _dense_surface(field_kernel, origin, root_width, max_depth, threshold, devic
     field = wp.empty((n_nodes, n_nodes, n_nodes), dtype=float, device=device)
     wp.launch(field_kernel, dim=field.shape, inputs=[field, wp.vec3(origin), float(h)], device=device)
     upper = wp.vec3(origin[0] + root_width, origin[1] + root_width, origin[2] + root_width)
-    verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract_surface_marching_cubes(
+    verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract(
         field,
         threshold=threshold,
         domain_bounds_lower_corner=wp.vec3(origin),
