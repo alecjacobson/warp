@@ -15,8 +15,10 @@
 # Requires the cuDSS sparse direct solver via warp-cuDSS (see the 2D example).
 
 import numpy as np
+import warp_cudss
 
 import warp as wp
+import warp.sparse as wps
 
 scalar = wp.float64
 vec3 = wp.types.vector(3, scalar)
@@ -133,3 +135,190 @@ def make_box(count):
     fixed = np.array([i for i in range(V.shape[0]) if abs(V[i, 0] - xmin) < 1e-8 or abs(V[i, 0] - xmax) < 1e-8],
                      dtype=np.int32)  # fmt: skip
     return V.astype(np.float64), T, fixed
+
+
+# ---------------------------------------------------------------------------
+# Assembly / solve kernels (3x3 blocks; 4 nodes per tet)
+# ---------------------------------------------------------------------------
+
+
+@wp.func
+def _block(Ke: mat12, a: int, b: int) -> mat33:
+    return mat33(Ke[3 * a + 0, 3 * b + 0], Ke[3 * a + 0, 3 * b + 1], Ke[3 * a + 0, 3 * b + 2],
+                 Ke[3 * a + 1, 3 * b + 0], Ke[3 * a + 1, 3 * b + 1], Ke[3 * a + 1, 3 * b + 2],
+                 Ke[3 * a + 2, 3 * b + 0], Ke[3 * a + 2, 3 * b + 1], Ke[3 * a + 2, 3 * b + 2])  # fmt: skip
+
+
+@wp.kernel
+def assemble_triplets(tets: wp.array2d(dtype=wp.int32), verts: wp.array(dtype=vec3), young: scalar, poisson: scalar,
+                      vert_to_free: wp.array(dtype=wp.int32), rows: wp.array(dtype=wp.int32),
+                      cols: wp.array(dtype=wp.int32), blocks: wp.array(dtype=mat33)):  # fmt: skip
+    t = wp.tid()
+    Ke = element_stiffness(verts[tets[t, 0]], verts[tets[t, 1]], verts[tets[t, 2]], verts[tets[t, 3]], young, poisson)
+    for a in range(4):
+        fa = vert_to_free[tets[t, a]]
+        for b in range(4):
+            fb = vert_to_free[tets[t, b]]
+            slot = t * 16 + a * 4 + b
+            if fa >= 0 and fb >= 0:
+                rows[slot] = fa
+                cols[slot] = fb
+                blocks[slot] = _block(Ke, a, b)
+            else:
+                rows[slot] = 0
+                cols[slot] = 0
+                blocks[slot] = mat33(scalar(0.0))
+
+
+@wp.kernel
+def scatter_stiffness_inplace(tets: wp.array2d(dtype=wp.int32), verts: wp.array(dtype=vec3), young: scalar,
+                              poisson: scalar, dst: wp.array(dtype=wp.int32), values: wp.array3d(dtype=scalar)):  # fmt: skip
+    t = wp.tid()
+    Ke = element_stiffness(verts[tets[t, 0]], verts[tets[t, 1]], verts[tets[t, 2]], verts[tets[t, 3]], young, poisson)
+    for a in range(4):
+        for b in range(4):
+            blk = dst[t * 16 + a * 4 + b]
+            if blk >= 0:
+                for i in range(3):
+                    for j in range(3):
+                        wp.atomic_add(values, blk, i, j, Ke[3 * a + i, 3 * b + j])
+
+
+@wp.kernel
+def accumulate_vertex_mass(tets: wp.array2d(dtype=wp.int32), verts: wp.array(dtype=vec3), mass: wp.array(dtype=scalar)):
+    """Lumped mass: each node gets vol/4 from every incident tet."""
+    t = wp.tid()
+    v4 = element_volume(verts[tets[t, 0]], verts[tets[t, 1]], verts[tets[t, 2]], verts[tets[t, 3]]) / scalar(4.0)
+    for a in range(4):
+        wp.atomic_add(mass, tets[t, a], v4)
+
+
+@wp.kernel
+def build_free_load(mass: wp.array(dtype=scalar), f_ext: wp.array(dtype=vec3),
+                    vert_to_free: wp.array(dtype=wp.int32), load: wp.array(dtype=vec3)):  # fmt: skip
+    v = wp.tid()
+    f = vert_to_free[v]
+    if f >= 0:
+        load[f] = mass[v] * f_ext[v]
+
+
+@wp.kernel
+def scatter_solution(q: wp.array(dtype=vec3), vert_to_free: wp.array(dtype=wp.int32), verts: wp.array(dtype=vec3),
+                     u_full: wp.array(dtype=vec3), U: wp.array(dtype=vec3)):  # fmt: skip
+    v = wp.tid()
+    f = vert_to_free[v]
+    if f >= 0:
+        u_full[v] = q[f]
+        U[v] = verts[v] + q[f]
+    else:
+        u_full[v] = vec3(scalar(0.0))
+        U[v] = verts[v]
+
+
+@wp.kernel
+def gather_free_residual(v_target: wp.array(dtype=vec3), U: wp.array(dtype=vec3),
+                         vert_to_free: wp.array(dtype=wp.int32), r_free: wp.array(dtype=vec3)):  # fmt: skip
+    v = wp.tid()
+    f = vert_to_free[v]
+    if f >= 0:
+        r_free[f] = v_target[v] - U[v]
+
+
+# ---------------------------------------------------------------------------
+# Problem
+# ---------------------------------------------------------------------------
+
+
+class InverseElasticity3D:
+    """3D bar whose rest shape is optimized so its gravity-sagged shape is flat."""
+
+    def __init__(self, V, T, fixed, young=2e3, poisson=0.3, gravity=-9.8, device=None):
+        self.device = wp.get_device(device)
+        self.young, self.poisson = float(young), float(poisson)
+        self.num_verts = int(V.shape[0])
+        self.num_tets = int(T.shape[0])
+
+        fixed_set = {int(i) for i in fixed}
+        free = np.array([i for i in range(self.num_verts) if i not in fixed_set], dtype=np.int32)
+        self.num_free = int(free.size)
+        v2f = np.full(self.num_verts, -1, dtype=np.int32)
+        v2f[free] = np.arange(self.num_free, dtype=np.int32)
+
+        d = self.device
+        self.verts = wp.array(V.astype(np.float64), dtype=vec3, device=d, requires_grad=True)
+        self.tets = wp.array(T.astype(np.int32), dtype=wp.int32, device=d)
+        self.free_verts = wp.array(free, dtype=wp.int32, device=d)
+        self.vert_to_free = wp.array(v2f, dtype=wp.int32, device=d)
+        self.v_target = wp.array(V.astype(np.float64), dtype=vec3, device=d)  # flat initial shape
+        f_ext = np.zeros((self.num_verts, 3), dtype=np.float64)
+        f_ext[:, 2] = gravity  # gravity along -z (the "height")
+        self.f_ext = wp.array(f_ext, dtype=vec3, device=d)
+
+        self._build_sparsity()
+
+        nf, nv = self.num_free, self.num_verts
+        self.mass = wp.zeros(nv, dtype=scalar, device=d)
+        self.load = wp.zeros(nf, dtype=vec3, device=d)
+        self.q = wp.zeros(nf, dtype=vec3, device=d)
+        self.u_full = wp.zeros(nv, dtype=vec3, device=d)
+        self.U = wp.empty(nv, dtype=vec3, device=d)
+        self.r_free = wp.zeros(nf, dtype=vec3, device=d)
+
+        self._assemble()
+        self.solver = warp_cudss.CudssSolver(mtype="spd", device=d)
+        self.solver.setup(self.A, self.q, self.load)
+
+    def _build_sparsity(self):
+        d = self.device
+        nt = self.num_tets
+        rows = wp.empty(nt * 16, dtype=wp.int32, device=d)
+        cols = wp.empty(nt * 16, dtype=wp.int32, device=d)
+        blocks = wp.empty(nt * 16, dtype=mat33, device=d)
+        wp.launch(assemble_triplets, dim=nt,
+                  inputs=[self.tets, self.verts, scalar(self.young), scalar(self.poisson),
+                          self.vert_to_free, rows, cols, blocks], device=d)  # fmt: skip
+        self.A = wps.bsr_from_triplets(self.num_free, self.num_free, rows, cols, blocks)
+        nnz = self.nnz = self.A.nnz_sync()
+        offsets = self.A.offsets.numpy()
+        columns = self.A.columns.numpy()[:nnz]
+        tets = self.tets.numpy()
+        v2f = self.vert_to_free.numpy()
+        dst = np.full(nt * 16, -1, dtype=np.int32)
+        for t in range(nt):
+            for a in range(4):
+                fa = int(v2f[tets[t, a]])
+                if fa < 0:
+                    continue
+                beg, end = int(offsets[fa]), int(offsets[fa + 1])
+                rc = columns[beg:end]
+                for b in range(4):
+                    fb = int(v2f[tets[t, b]])
+                    if fb < 0:
+                        continue
+                    k = int(np.searchsorted(rc, fb))
+                    if k < len(rc) and int(rc[k]) == fb:
+                        dst[t * 16 + a * 4 + b] = beg + k
+        self.scatter_dst = wp.array(dst, dtype=wp.int32, device=d)
+
+    def _assemble(self):
+        self.A.scalar_values.zero_()
+        wp.launch(scatter_stiffness_inplace, dim=self.num_tets,
+                  inputs=[self.tets, self.verts, scalar(self.young), scalar(self.poisson),
+                          self.scatter_dst, self.A.scalar_values], device=self.device)  # fmt: skip
+        self.mass.zero_()
+        wp.launch(accumulate_vertex_mass, dim=self.num_tets, inputs=[self.tets, self.verts, self.mass], device=self.device)
+        wp.launch(build_free_load, dim=self.num_verts,
+                  inputs=[self.mass, self.f_ext, self.vert_to_free, self.load], device=self.device)  # fmt: skip
+
+    def forward(self):
+        self._assemble()
+        self.solver.refactor(self.A)
+        self.solver.solve(x=self.q, b=self.load)
+        wp.launch(scatter_solution, dim=self.num_verts,
+                  inputs=[self.q, self.vert_to_free, self.verts, self.u_full, self.U], device=self.device)  # fmt: skip
+        return self.U
+
+    def loss(self):
+        self.forward()
+        diff = self.v_target.numpy() - self.U.numpy()
+        return float(np.mean(diff**2))

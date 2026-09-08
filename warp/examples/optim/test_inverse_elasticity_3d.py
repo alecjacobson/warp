@@ -50,6 +50,27 @@ def _numpy_tet_stiffness(P, young, poisson):
     return (abs(np.linalg.det(Dm)) / 6) * B.T @ C @ B
 
 
+def _numpy_forward(V, T, fixed, young, poisson, gravity=-9.8):
+    """Independent dense numpy assembly + solve of the same physics."""
+    nV = V.shape[0]
+    K = np.zeros((nV * 3, nV * 3))
+    mass = np.zeros(nV)
+    for tet in T:
+        Ke = _numpy_tet_stiffness(V[tet], young, poisson)
+        dofs = np.array([3 * v + c for v in tet for c in range(3)])
+        K[np.ix_(dofs, dofs)] += Ke
+        Dm = np.array([V[tet[0]] - V[tet[3]], V[tet[1]] - V[tet[3]], V[tet[2]] - V[tet[3]]])
+        for v in tet:
+            mass[v] += abs(np.linalg.det(Dm)) / 6 / 4
+    f_ext = np.zeros((nV, 3)); f_ext[:, 2] = gravity  # noqa: E702
+    load = np.repeat(mass, 3) * f_ext.reshape(-1)
+    free = [i for i in range(nV) if i not in set(fixed.tolist())]
+    fdofs = np.array([3 * v + c for v in free for c in range(3)])
+    u = np.zeros(nV * 3)
+    u[fdofs] = np.linalg.solve(K[np.ix_(fdofs, fdofs)], load[fdofs])
+    return V + u.reshape(-1, 3)
+
+
 class TestElement3D(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -77,6 +98,16 @@ class TestElement3D(unittest.TestCase):
             ev = np.sort(np.linalg.eigvalsh(0.5 * (K + K.T)))
             self.assertEqual(int(np.sum(np.abs(ev) < 1e-6 * ev[-1])), 6)
             self.assertGreater(ev[6], 0.0)
+
+    def test_forward_matches_numpy(self):
+        """The GPU forward solve matches an independent numpy assembly + solve."""
+        from warp.examples.optim.example_inverse_elasticity_3d import InverseElasticity3D  # noqa: PLC0415
+        V, T, fixed = make_box(1)
+        prob = InverseElasticity3D(V, T, fixed, young=2e3, poisson=0.3, device=self.device)
+        U_w = prob.forward().numpy()
+        U_n = _numpy_forward(V, T, fixed, 2e3, 0.3)
+        rel = np.linalg.norm(U_w - U_n) / np.linalg.norm(U_n - V)
+        self.assertLess(rel, 1e-8, f"forward vs numpy relerr={rel:.2e}")
 
     def test_mesh_tiles_box(self):
         V, T, _ = make_box(2)
