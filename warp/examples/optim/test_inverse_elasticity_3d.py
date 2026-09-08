@@ -120,5 +120,50 @@ class TestElement3D(unittest.TestCase):
         self.assertAlmostEqual(box_vol, 45.0, places=6)  # 15 : 3 : 1
 
 
+class TestGaussNewton3D(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        wp.init()
+        cls.device = "cuda:0" if wp.is_cuda_available() else "cpu"
+
+    def _problem(self, count):
+        from warp.examples.optim.example_inverse_elasticity_3d import InverseElasticity3D  # noqa: PLC0415
+        V, T, fixed = make_box(count)
+        prob = InverseElasticity3D(V, T, fixed, device=self.device)
+        return prob, V, np.array([i for i in range(V.shape[0]) if i not in set(fixed.tolist())])
+
+    def test_gauss_newton_step_matches_finite_difference(self):
+        """Analytic GN step vs a Newton step from a finite-difference Jacobian of
+        the forward map (independent of the sensitivity assembly). Square system,
+        so GN = Newton: p = -J^{-1} r_free."""
+        prob, V0, free = self._problem(1)
+
+        def r_free(V):
+            prob.verts.assign(wp.array(V, dtype=vec3, device=self.device))
+            U = prob.forward().numpy()
+            return (V0 - U)[free].reshape(-1)
+
+        prob.verts.assign(wp.array(V0, dtype=vec3, device=self.device))
+        p_analytic = prob.gauss_newton_step().numpy().reshape(-1)
+        r0 = prob.r_free.numpy().reshape(-1)
+        n, eps = free.size * 3, 1e-6
+        J = np.zeros((n, n))
+        for j in range(n):
+            v, c = free[j // 3], j % 3
+            Vp = V0.copy(); Vp[v, c] += eps  # noqa: E702
+            Vm = V0.copy(); Vm[v, c] -= eps  # noqa: E702
+            J[:, j] = (r_free(Vp) - r_free(Vm)) / (2 * eps)
+        p_fd = -np.linalg.solve(J, r0)
+        rel = np.linalg.norm(p_analytic - p_fd) / np.linalg.norm(p_fd)
+        self.assertLess(rel, 1e-5, f"GN step vs FD-Newton relerr={rel:.2e}")
+
+    def test_gauss_newton_converges(self):
+        """Gauss-Newton converges quadratically to ~zero in a handful of steps."""
+        prob, _, _ = self._problem(2)
+        r = prob.gauss_newton_optimize(num_iters=12, step_size=1.0, tol=1e-8)
+        self.assertTrue(r["converged"], f"did not converge: {r['final_loss']:.3e}")
+        self.assertLessEqual(r["iters"], 6)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

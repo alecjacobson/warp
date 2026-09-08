@@ -224,6 +224,74 @@ def gather_free_residual(v_target: wp.array(dtype=vec3), U: wp.array(dtype=vec3)
         r_free[f] = v_target[v] - U[v]
 
 
+# --- Gauss-Newton assembly (sensitivity G_ff, the T = A + G_ff system) ---
+
+
+@wp.func
+def element_residual(p0: vec3, p1: vec3, p2: vec3, p3: vec3, young: scalar, poisson: scalar,
+                     u_e: vec12, f_e: vec12) -> vec12:  # fmt: skip
+    """Element equilibrium residual force ``M_e f_e - K_e u_e`` (lumped mass)."""
+    vol4 = element_volume(p0, p1, p2, p3) / scalar(4.0)
+    return vol4 * f_e - element_stiffness(p0, p1, p2, p3, young, poisson) * u_e
+
+
+@wp.kernel
+def scatter_sensitivity_inplace(tets: wp.array2d(dtype=wp.int32), verts: wp.array(dtype=vec3), young: scalar,
+                                poisson: scalar, u_full: wp.array(dtype=vec3), f_ext: wp.array(dtype=vec3),
+                                eps: scalar, dst: wp.array(dtype=wp.int32), values: wp.array3d(dtype=scalar)):  # fmt: skip
+    """Refill G_ff, ``G_e[:,a] = d(M_e f_e - K_e u_e)/dx_a`` by central differences."""
+    t = wp.tid()
+    i0, i1, i2, i3 = tets[t, 0], tets[t, 1], tets[t, 2], tets[t, 3]
+    p0, p1, p2, p3 = verts[i0], verts[i1], verts[i2], verts[i3]
+    u_e = vec12(u_full[i0][0], u_full[i0][1], u_full[i0][2], u_full[i1][0], u_full[i1][1], u_full[i1][2],
+               u_full[i2][0], u_full[i2][1], u_full[i2][2], u_full[i3][0], u_full[i3][1], u_full[i3][2])  # fmt: skip
+    f_e = vec12(f_ext[i0][0], f_ext[i0][1], f_ext[i0][2], f_ext[i1][0], f_ext[i1][1], f_ext[i1][2],
+               f_ext[i2][0], f_ext[i2][1], f_ext[i2][2], f_ext[i3][0], f_ext[i3][1], f_ext[i3][2])  # fmt: skip
+    Ge = mat12(scalar(0.0))
+    for a in range(12):
+        comp = a % 3
+        d = vec3(wp.where(comp == 0, eps, scalar(0.0)), wp.where(comp == 1, eps, scalar(0.0)),
+                 wp.where(comp == 2, eps, scalar(0.0)))  # fmt: skip
+        node = a // 3
+        d0 = wp.where(node == 0, d, vec3(scalar(0.0)))
+        d1 = wp.where(node == 1, d, vec3(scalar(0.0)))
+        d2 = wp.where(node == 2, d, vec3(scalar(0.0)))
+        d3 = wp.where(node == 3, d, vec3(scalar(0.0)))
+        col = (element_residual(p0 + d0, p1 + d1, p2 + d2, p3 + d3, young, poisson, u_e, f_e)
+               - element_residual(p0 - d0, p1 - d1, p2 - d2, p3 - d3, young, poisson, u_e, f_e)) / (scalar(2.0) * eps)  # fmt: skip
+        for i in range(12):
+            Ge[i, a] = col[i]
+    for an in range(4):
+        for bn in range(4):
+            blk = dst[t * 16 + an * 4 + bn]
+            if blk >= 0:
+                for i in range(3):
+                    for j in range(3):
+                        wp.atomic_add(values, blk, i, j, Ge[3 * an + i, 3 * bn + j])
+
+
+@wp.kernel
+def add_blocks(a: wp.array3d(dtype=scalar), b: wp.array3d(dtype=scalar), out: wp.array3d(dtype=scalar)):
+    """T = A + G_ff on the BSR scalar_values (what cuDSS reads on refactor)."""
+    k = wp.tid()
+    for i in range(3):
+        for j in range(3):
+            out[k, i, j] = a[k, i, j] + b[k, i, j]
+
+
+@wp.kernel
+def sub_free(a: wp.array(dtype=vec3), b: wp.array(dtype=vec3), out: wp.array(dtype=vec3)):
+    i = wp.tid()
+    out[i] = a[i] - b[i]
+
+
+@wp.kernel
+def apply_free_step(step: scalar, p_step: wp.array(dtype=vec3), free_verts: wp.array(dtype=wp.int32),
+                    verts: wp.array(dtype=vec3)):  # fmt: skip
+    i = wp.tid()
+    verts[free_verts[i]] = verts[free_verts[i]] + step * p_step[i]
+
+
 # ---------------------------------------------------------------------------
 # Problem
 # ---------------------------------------------------------------------------
@@ -322,3 +390,172 @@ class InverseElasticity3D:
         self.forward()
         diff = self.v_target.numpy() - self.U.numpy()
         return float(np.mean(diff**2))
+
+    # -- Gauss-Newton --
+
+    def _assemble_T(self):
+        """Refill G_ff and T = A + G_ff on the scalar_values (what cuDSS reads)."""
+        self.Gff.scalar_values.zero_()
+        wp.launch(scatter_sensitivity_inplace, dim=self.num_tets,
+                  inputs=[self.tets, self.verts, scalar(self.young), scalar(self.poisson),
+                          self.u_full, self.f_ext, scalar(1e-6), self.scatter_dst, self.Gff.scalar_values], device=self.device)  # fmt: skip
+        wp.launch(add_blocks, dim=self.nnz,
+                  inputs=[self.A.scalar_values, self.Gff.scalar_values, self.T.scalar_values], device=self.device)  # fmt: skip
+
+    def _setup_gn(self):
+        if getattr(self, "_gn_ready", False):
+            return
+        d = self.device
+        self.Gff = wps.bsr_copy(self.A)
+        self.T = wps.bsr_copy(self.A)
+        self.p_step = wp.zeros(self.num_free, dtype=vec3, device=d)
+        self.gn_rhs = wp.zeros(self.num_free, dtype=vec3, device=d)
+        self.gn_w = wp.zeros(self.num_free, dtype=vec3, device=d)
+        self.forward()
+        self._assemble_T()
+        self.T_solver = warp_cudss.CudssSolver(mtype="general", device=d)
+        self.T_solver.setup(self.T, self.gn_w, self.gn_rhs)
+        self._gn_ready = True
+
+    def gauss_newton_step(self):
+        """One Gauss-Newton step via the square route: T w = G_ff r, p = r - w."""
+        self._setup_gn()
+        self.forward()
+        self.r_free.zero_()
+        wp.launch(gather_free_residual, dim=self.num_verts,
+                  inputs=[self.v_target, self.U, self.vert_to_free, self.r_free], device=self.device)  # fmt: skip
+        self._assemble_T()
+        self.gn_rhs.zero_()
+        wps.bsr_mv(self.Gff, self.r_free, self.gn_rhs)
+        self.T_solver.refactor(self.T)
+        self.T_solver.solve(x=self.gn_w, b=self.gn_rhs)
+        wp.launch(sub_free, dim=self.num_free, inputs=[self.r_free, self.gn_w, self.p_step], device=self.device)
+        return self.p_step
+
+    def gauss_newton_optimize(self, num_iters=20, step_size=1.0, tol=1e-8, record_every=0, quiet=True):
+        init = self.loss()
+        self.frames = [(0, self.verts.numpy().copy(), self.U.numpy().copy())] if record_every else []
+        converged = False
+        it = 0
+        while it < num_iters:
+            self.gauss_newton_step()
+            wp.launch(apply_free_step, dim=self.num_free,
+                      inputs=[scalar(step_size), self.p_step, self.free_verts, self.verts], device=self.device)  # fmt: skip
+            it += 1
+            loss = self.loss()
+            if record_every and it % record_every == 0:
+                self.frames.append((it, self.verts.numpy().copy(), self.U.numpy().copy()))
+            if not quiet:
+                print(f"  gn iter {it:3d}  loss {loss:.6e}", flush=True)
+            if loss < tol * init:
+                converged = True
+                break
+        return {"iters": it, "initial_loss": init, "final_loss": loss, "converged": converged}
+
+
+# ---------------------------------------------------------------------------
+# Optional convergence visualization (polyscope headless). Self-contained and
+# safe to delete: nothing above depends on it.
+# ---------------------------------------------------------------------------
+
+
+def per_tet_von_mises(V, U, T, young, poisson):
+    """Per-tet von Mises stress from the linear-tet strain of displacement U - V."""
+    lam = young * poisson / ((1.0 + poisson) * (1.0 - 2.0 * poisson))
+    mu = young / (2.0 * (1.0 + poisson))
+    d = lam + 2 * mu
+    C = np.array([[d, lam, lam, 0, 0, 0], [lam, d, lam, 0, 0, 0], [lam, lam, d, 0, 0, 0],
+                  [0, 0, 0, mu, 0, 0], [0, 0, 0, 0, mu, 0], [0, 0, 0, 0, 0, mu]])  # fmt: skip
+    Mg = np.array([[1, 0, 0, -1], [0, 1, 0, -1], [0, 0, 1, -1]], dtype=float)
+    vm = np.zeros(len(T))
+    for f, tet in enumerate(T):
+        Dm = np.array([V[tet[0]] - V[tet[3]], V[tet[1]] - V[tet[3]], V[tet[2]] - V[tet[3]]])
+        G = np.linalg.inv(Dm) @ Mg
+        B = np.zeros((6, 12))
+        for j in range(4):
+            B[0, 3 * j] = G[0, j]; B[1, 3 * j + 1] = G[1, j]; B[2, 3 * j + 2] = G[2, j]  # noqa: E702
+            B[3, 3 * j] = G[1, j]; B[3, 3 * j + 1] = G[0, j]  # noqa: E702
+            B[4, 3 * j + 1] = G[2, j]; B[4, 3 * j + 2] = G[1, j]  # noqa: E702
+            B[5, 3 * j] = G[2, j]; B[5, 3 * j + 2] = G[0, j]  # noqa: E702
+        s = C @ (B @ (U[tet] - V[tet]).reshape(-1))
+        vm[f] = np.sqrt(0.5 * ((s[0] - s[1]) ** 2 + (s[1] - s[2]) ** 2 + (s[2] - s[0]) ** 2)
+                        + 3.0 * (s[3] ** 2 + s[4] ** 2 + s[5] ** 2))  # fmt: skip
+    return vm
+
+
+def render_convergence_gif(frames, T, young, poisson, out_path, fps=3):
+    """Headless gif of the rest shape stacked over the gravity-deformed shape
+    (colored by von Mises stress) over the Gauss-Newton iterations."""
+    import tempfile  # noqa: PLC0415
+
+    import imageio.v2 as imageio  # noqa: PLC0415
+    import polyscope as ps  # noqa: PLC0415
+    from PIL import Image, ImageDraw  # noqa: PLC0415
+
+    ps.set_use_prefs_file(False)
+    ps.set_allow_headless_backends(True)
+    ps.init()
+    ps.set_ground_plane_mode("none")
+
+    Ti = np.asarray(T, dtype=np.int32)
+    span_z = max(U[:, 2].max() - U[:, 2].min() for _, _, U in frames)
+    gap = 2.0 * (span_z + 1.0)  # stack the rest shape this far above (in z) the deformed shape
+    vmax = max(per_tet_von_mises(V, U, Ti, young, poisson).max() for _, V, U in frames)
+
+    def lift(P, dz):
+        Q = P.copy(); Q[:, 2] += dz  # noqa: E702
+        return Q
+
+    tmp = tempfile.mkdtemp()
+    shots = []
+    for k, (_, V, U) in enumerate(frames):
+        ps.register_volume_mesh("rest", lift(V, gap), tets=Ti, color=(0.55, 0.68, 0.9), edge_width=0.3)
+        defo = ps.register_volume_mesh("deformed", U, tets=Ti, edge_width=0.3)
+        defo.add_scalar_quantity("von Mises", per_tet_von_mises(V, U, Ti, young, poisson),
+                                 defined_on="cells", vminmax=(0.0, vmax), cmap="viridis", enabled=True)  # fmt: skip
+        if k == 0:
+            ps.reset_camera_to_home_view()
+        p = f"{tmp}/f{k:04d}.png"
+        ps.screenshot(p, transparent_bg=False)
+        shots.append(np.asarray(Image.open(p).convert("RGB")))
+
+    content = np.stack([(s < 245).any(axis=2) for s in shots]).any(axis=0)
+    ys, xs = np.where(content)
+    m = 20
+    y0, y1 = max(ys.min() - m, 0), min(ys.max() + m, shots[0].shape[0])
+    x0, x1 = max(xs.min() - m, 0), min(xs.max() + m, shots[0].shape[1])
+    imgs = []
+    for (it, _, _), s in zip(frames, shots, strict=True):
+        img = Image.fromarray(s[y0:y1, x0:x1])
+        ImageDraw.Draw(img).text((10, 8), f"iteration {it}", fill=(20, 20, 20))
+        imgs.append(np.asarray(img))
+    imgs += [imgs[-1]] * fps  # hold the converged frame ~1s
+    imageio.mimsave(out_path, imgs, fps=fps, loop=0)
+    return out_path
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--count", type=int, default=2)
+    parser.add_argument("--num-iters", type=int, default=30)
+    parser.add_argument("--step-size", type=float, default=1.0,
+                        help="Gauss-Newton step size (finer meshes may need a smaller step).")  # fmt: skip
+    parser.add_argument("--tol", type=float, default=1e-8)
+    parser.add_argument("--gif", type=str, default=None, help="Render a headless convergence gif to this path.")
+    parser.add_argument("--quiet", action="store_true")
+    args = parser.parse_args()
+
+    with wp.ScopedDevice(args.device):
+        V, T, fixed = make_box(args.count)
+        problem = InverseElasticity3D(V, T, fixed)
+        result = problem.gauss_newton_optimize(num_iters=args.num_iters, step_size=args.step_size,
+                                               tol=args.tol, record_every=1 if args.gif else 0, quiet=args.quiet)  # fmt: skip
+        if args.gif:
+            path = render_convergence_gif(problem.frames, T, problem.young, problem.poisson, args.gif)
+            print(f"wrote {path} ({len(problem.frames)} frames)")
+        print(f"RESULT count={args.count} nV={V.shape[0]} nT={T.shape[0]} iters={result['iters']} "
+              f"initial_loss={result['initial_loss']:.6e} final_loss={result['final_loss']:.6e} "
+              f"converged={result['converged']}")  # fmt: skip
