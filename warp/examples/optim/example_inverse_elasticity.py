@@ -473,8 +473,9 @@ class InverseElasticity:
         wp.launch(sub_free, dim=self.num_free, inputs=[self.r_free, self.gn_w, self.p_step], device=self.device)
         return self.p_step
 
-    def gauss_newton_optimize(self, num_iters=20, step_size=1.0, tol=1e-8, quiet=True):
+    def gauss_newton_optimize(self, num_iters=20, step_size=1.0, tol=1e-8, record_every=0, quiet=True):
         init = self.loss()
+        self.frames = [(0, self.verts.numpy().copy(), self.U.numpy().copy())] if record_every else []
         converged = False
         it = 0
         while it < num_iters:
@@ -482,7 +483,9 @@ class InverseElasticity:
             wp.launch(apply_free_step, dim=self.num_free,
                       inputs=[scalar(step_size), self.p_step, self.free_verts, self.verts], device=self.device)  # fmt: skip
             it += 1
-            loss = self.loss()
+            loss = self.loss()  # forward at the updated shape -> self.U
+            if record_every and it % record_every == 0:
+                self.frames.append((it, self.verts.numpy().copy(), self.U.numpy().copy()))
             if not quiet:
                 print(f"  gn iter {it:3d}  loss {loss:.6e}", flush=True)
             if loss < tol * init:
@@ -641,6 +644,7 @@ if __name__ == "__main__":
     parser.add_argument("--tol", type=float, default=1e-8)
     parser.add_argument("--gif", type=str, default=None, help="Render a headless convergence gif to this path.")
     parser.add_argument("--record-every", type=int, default=25, help="Iterations between recorded gif frames.")
+    parser.add_argument("--fps", type=int, default=12, help="Gif frames per second.")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
@@ -648,13 +652,13 @@ if __name__ == "__main__":
         V, F, fixed = make_bridge(args.count)
         problem = InverseElasticity(V, F, fixed)
         if args.method == "gn":
-            result = problem.gauss_newton_optimize(num_iters=args.num_iters or 30,
-                                                   step_size=args.step_size, tol=args.tol, quiet=args.quiet)  # fmt: skip
+            result = problem.gauss_newton_optimize(num_iters=args.num_iters or 30, step_size=args.step_size,
+                                                   tol=args.tol, record_every=1 if args.gif else 0, quiet=args.quiet)  # fmt: skip
         else:
             result = problem.optimize(num_iters=args.num_iters or 8000, tol=args.tol,
                                       record_every=args.record_every if args.gif else 0, quiet=args.quiet)  # fmt: skip
         if args.gif:
-            path = render_convergence_gif(problem.frames, F, problem.young, problem.poisson, args.gif)
+            path = render_convergence_gif(problem.frames, F, problem.young, problem.poisson, args.gif, fps=args.fps)
             print(f"wrote {path} ({min(len(problem.frames), 60)} frames)")
         print(f"RESULT method={args.method} count={args.count} nV={V.shape[0]} iters={result['iters']} "
               f"initial_loss={result['initial_loss']:.6e} final_loss={result['final_loss']:.6e} "
