@@ -80,8 +80,25 @@ convergence check) and does not depend on it.
 the gravity-deformed shape (colored by von Mises stress) across the optimization,
 subsampled to ≤60 frames. It is self-contained and safe to delete.
 
-## Not yet done
+## Gauss-Newton
 
-A Gauss-Newton variant (the reference's `gauss_newton_step`, a nonsymmetric
-`T = A + G_ff` solve that converges in a handful of iterations) is a natural
-follow-up; cuDSS with `mtype="general"` would carry over as the direct solve.
+The example also provides a Gauss-Newton optimizer (the reference's square-route
+step). Per step: solve the forward equilibrium, assemble the geometry sensitivity
+`G_ff` (element residual-force Jacobian, `G_e[:,a] = ∂(M_e f_e − K_e u_e)/∂x_a`,
+sharing `A`'s pattern), form the nonsymmetric `T = A + G_ff`, solve
+`T w = G_ff r_free` with cuDSS (`mtype="general"`), and take `p = r_free − w`.
+Both the SPD forward solve and the general T-solve run on cuDSS.
+
+GN converges **quadratically in a handful of iterations** regardless of mesh size
+(3/4/6 iterations at count=2/4/8, vs Adam's 575/4200/11500), matching the C++
+reference to the digit. `step_size = 1.0` is safe through count=8; finer meshes
+need a smaller step (~0.25 at count≥16) to avoid overshoot — the reference's
+documented behavior, confirmed against the trusted C++ (which also diverges at
+step 1.0 there). Because GN takes so few iterations, the GPU advantage over the
+C++ CPU appears only once the per-solve work is non-trivial: ~0.4× at count=4 (GN
+is trivially fast there), 1.5× at count=8, 3.8× at count=16.
+
+Note: the current GN T-solve uses a fresh cuDSS solver each step (re-running the
+symbolic analysis), where the C++ reuses one factorization workspace. Reusing a
+persistent T solver across steps (two persistent cuDSS solvers coexist fine) would
+remove that redundant analysis — a straightforward future optimization.

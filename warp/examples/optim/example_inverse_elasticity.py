@@ -224,6 +224,74 @@ def scatter_free_params(params: wp.array(dtype=wp.float32), free_verts: wp.array
     verts[v] = vec2(scalar(params[2 * i]), scalar(params[2 * i + 1]))
 
 
+# --- Gauss-Newton assembly (the sensitivity G_ff, the T = A + G_ff system) ---
+
+
+@wp.func
+def element_residual(p0: vec2, p1: vec2, p2: vec2, young: scalar, poisson: scalar,
+                     u_e: vec6, f_e: vec6) -> vec6:  # fmt: skip
+    """Element equilibrium residual force ``M_e f_e - K_e u_e`` (lumped mass)."""
+    return (element_area(p0, p1, p2) / scalar(3.0)) * f_e - element_stiffness(p0, p1, p2, young, poisson) * u_e
+
+
+@wp.kernel
+def scatter_sensitivity_inplace(
+    tris: wp.array2d(dtype=wp.int32),
+    verts: wp.array(dtype=vec2),
+    young: scalar,
+    poisson: scalar,
+    u_full: wp.array(dtype=vec2),
+    f_ext: wp.array(dtype=vec2),
+    eps: scalar,
+    dst: wp.array(dtype=wp.int32),
+    values: wp.array3d(dtype=scalar),  # G_ff scalar_values (nnz, 2, 2), zeroed first
+):
+    """Refill G_ff, ``G_e[:,a] = d(M_e f_e - K_e u_e)/dx_a`` by central differences."""
+    t = wp.tid()
+    i0, i1, i2 = tris[t, 0], tris[t, 1], tris[t, 2]
+    p0, p1, p2 = verts[i0], verts[i1], verts[i2]
+    u_e = vec6(u_full[i0][0], u_full[i0][1], u_full[i1][0], u_full[i1][1], u_full[i2][0], u_full[i2][1])
+    f_e = vec6(f_ext[i0][0], f_ext[i0][1], f_ext[i1][0], f_ext[i1][1], f_ext[i2][0], f_ext[i2][1])
+    Ge = mat66(scalar(0.0))
+    for a in range(6):
+        comp = a % 2
+        d = vec2(wp.where(comp == 0, eps, scalar(0.0)), wp.where(comp == 1, eps, scalar(0.0)))
+        d0 = wp.where(a // 2 == 0, d, vec2(scalar(0.0)))
+        d1 = wp.where(a // 2 == 1, d, vec2(scalar(0.0)))
+        d2 = wp.where(a // 2 == 2, d, vec2(scalar(0.0)))
+        col = (element_residual(p0 + d0, p1 + d1, p2 + d2, young, poisson, u_e, f_e)
+               - element_residual(p0 - d0, p1 - d1, p2 - d2, young, poisson, u_e, f_e)) / (scalar(2.0) * eps)  # fmt: skip
+        for i in range(6):
+            Ge[i, a] = col[i]
+    for bi in range(3):
+        for bj in range(3):
+            blk = dst[t * 9 + bi * 3 + bj]
+            if blk >= 0:
+                wp.atomic_add(values, blk, 0, 0, Ge[2 * bi + 0, 2 * bj + 0])
+                wp.atomic_add(values, blk, 0, 1, Ge[2 * bi + 0, 2 * bj + 1])
+                wp.atomic_add(values, blk, 1, 0, Ge[2 * bi + 1, 2 * bj + 0])
+                wp.atomic_add(values, blk, 1, 1, Ge[2 * bi + 1, 2 * bj + 1])
+
+
+@wp.kernel
+def add_blocks(a: wp.array(dtype=mat22), b: wp.array(dtype=mat22), out: wp.array(dtype=mat22)):
+    k = wp.tid()
+    out[k] = a[k] + b[k]
+
+
+@wp.kernel
+def sub_free(a: wp.array(dtype=vec2), b: wp.array(dtype=vec2), out: wp.array(dtype=vec2)):
+    i = wp.tid()
+    out[i] = a[i] - b[i]
+
+
+@wp.kernel
+def apply_free_step(step: scalar, p_step: wp.array(dtype=vec2), free_verts: wp.array(dtype=wp.int32),
+                    verts: wp.array(dtype=vec2)):  # fmt: skip
+    i = wp.tid()
+    verts[free_verts[i]] = verts[free_verts[i]] + step * p_step[i]
+
+
 # ---------------------------------------------------------------------------
 # Problem
 # ---------------------------------------------------------------------------
@@ -369,6 +437,59 @@ class InverseElasticity:
         gl = self.verts.grad.numpy()[self.free_verts.numpy()]
         return -scale * (r + gl)
 
+    # -- Gauss-Newton --
+
+    def _assemble_T(self):
+        """Refill G_ff and T = A + G_ff in place (both share A's pattern)."""
+        self.Gff.values.zero_()
+        wp.launch(scatter_sensitivity_inplace, dim=self.num_tris,
+                  inputs=[self.tris, self.verts, scalar(self.young), scalar(self.poisson),
+                          self.u_full, self.f_ext, scalar(1e-6), self.scatter_dst, self.Gff.scalar_values], device=self.device)  # fmt: skip
+        wp.launch(add_blocks, dim=self.A.values.shape[0], inputs=[self.A.values, self.Gff.values, self.T.values], device=self.device)
+
+    def _setup_gn(self):
+        if getattr(self, "_gn_ready", False):
+            return
+        d = self.device
+        self.Gff = wps.bsr_copy(self.A)
+        self.T = wps.bsr_copy(self.A)
+        self.p_step = wp.zeros(self.num_free, dtype=vec2, device=d)
+        self.gn_rhs = wp.zeros(self.num_free, dtype=vec2, device=d)
+        self.gn_w = wp.zeros(self.num_free, dtype=vec2, device=d)
+        self._gn_ready = True
+
+    def gauss_newton_step(self):
+        """One Gauss-Newton step via the square route: T w = G_ff r, p = r - w."""
+        self._setup_gn()
+        self.forward()
+        self.r_free.zero_()
+        wp.launch(gather_free_residual, dim=self.num_verts,
+                  inputs=[self.v_target, self.U, self.vert_to_free, self.r_free], device=self.device)  # fmt: skip
+        self._assemble_T()
+        self.gn_rhs.zero_()
+        wps.bsr_mv(self.Gff, self.r_free, self.gn_rhs)
+        s = warp_cudss.solve(self.T, self.gn_rhs, self.gn_w, mtype="general")
+        s.release()
+        wp.launch(sub_free, dim=self.num_free, inputs=[self.r_free, self.gn_w, self.p_step], device=self.device)
+        return self.p_step
+
+    def gauss_newton_optimize(self, num_iters=20, step_size=1.0, tol=1e-8, quiet=True):
+        init = self.loss()
+        converged = False
+        it = 0
+        while it < num_iters:
+            self.gauss_newton_step()
+            wp.launch(apply_free_step, dim=self.num_free,
+                      inputs=[scalar(step_size), self.p_step, self.free_verts, self.verts], device=self.device)  # fmt: skip
+            it += 1
+            loss = self.loss()
+            if not quiet:
+                print(f"  gn iter {it:3d}  loss {loss:.6e}", flush=True)
+            if loss < tol * init:
+                converged = True
+                break
+        return {"iters": it, "initial_loss": init, "final_loss": loss, "converged": converged}
+
     # -- optimization --
 
     def step(self):
@@ -512,7 +633,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--count", type=int, default=4)
-    parser.add_argument("--num-iters", type=int, default=800)
+    parser.add_argument("--method", choices=("adam", "gn"), default="adam", help="Optimizer.")
+    parser.add_argument("--num-iters", type=int, default=None, help="Iteration cap (defaults per method).")
+    parser.add_argument("--step-size", type=float, default=1.0,
+                        help="Gauss-Newton step size (1.0 is safe through count=8; finer meshes "
+                             "need a smaller step, e.g. ~0.25 for count>=16, to avoid overshoot).")  # fmt: skip
     parser.add_argument("--tol", type=float, default=1e-8)
     parser.add_argument("--gif", type=str, default=None, help="Render a headless convergence gif to this path.")
     parser.add_argument("--record-every", type=int, default=25, help="Iterations between recorded gif frames.")
@@ -522,11 +647,15 @@ if __name__ == "__main__":
     with wp.ScopedDevice(args.device):
         V, F, fixed = make_bridge(args.count)
         problem = InverseElasticity(V, F, fixed)
-        result = problem.optimize(num_iters=args.num_iters, tol=args.tol,
-                                  record_every=args.record_every if args.gif else 0, quiet=args.quiet)  # fmt: skip
+        if args.method == "gn":
+            result = problem.gauss_newton_optimize(num_iters=args.num_iters or 30,
+                                                   step_size=args.step_size, tol=args.tol, quiet=args.quiet)  # fmt: skip
+        else:
+            result = problem.optimize(num_iters=args.num_iters or 8000, tol=args.tol,
+                                      record_every=args.record_every if args.gif else 0, quiet=args.quiet)  # fmt: skip
         if args.gif:
             path = render_convergence_gif(problem.frames, F, problem.young, problem.poisson, args.gif)
             print(f"wrote {path} ({min(len(problem.frames), 60)} frames)")
-        print(f"RESULT count={args.count} nV={V.shape[0]} iters={result['iters']} "
+        print(f"RESULT method={args.method} count={args.count} nV={V.shape[0]} iters={result['iters']} "
               f"initial_loss={result['initial_loss']:.6e} final_loss={result['final_loss']:.6e} "
               f"converged={result['converged']}")  # fmt: skip

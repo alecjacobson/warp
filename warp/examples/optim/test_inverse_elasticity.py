@@ -58,6 +58,13 @@ class TestInverseElasticity(unittest.TestCase):
         self.assertTrue(result["converged"], f"did not converge: {result['final_loss']:.3e}")
         self.assertLess(result["final_loss"], 1e-8 * result["initial_loss"])
 
+    def test_gauss_newton_converges_fast(self):
+        """Gauss-Newton converges in a handful of iterations (quadratically)."""
+        prob, _ = self._problem(4)
+        result = prob.gauss_newton_optimize(num_iters=15, step_size=1.0, tol=1e-8)
+        self.assertTrue(result["converged"], f"did not converge: {result['final_loss']:.3e}")
+        self.assertLessEqual(result["iters"], 6, "Gauss-Newton should converge in a few iterations")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
