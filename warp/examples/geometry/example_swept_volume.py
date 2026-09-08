@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ###########################################################################
@@ -19,23 +19,24 @@
 # conservatively bounded. Sample finely enough for the tolerance you need.
 #
 # By default the example animates a procedural two-link arm, so it runs with no
-# external assets. Pass --usd to run on an animated USD hierarchy instead, such
-# as the UR10 arm from the swept-volume feature request (GH-1824).
+# external assets. Pass --usd-path to run on an animated USD hierarchy instead,
+# such as a UR10 arm.
 #
 # Inside/outside is classified with the generalized winding number, which is
-# what warp.geometry defaults to. Pass --sign normal for the faster
-# closest-face-normal classifier, which suits watertight input like the
+# what warp.geometry.swept_volume() defaults to. Pass --sign-mode normal for the
+# faster closest-face-normal classifier, which suits watertight input like the
 # procedural arm but is incoherent on the open, non-watertight visual shells
 # that CAD parts like the UR10 are made of (spurious interior pockets, hundreds
 # of disconnected junk shells).
 #
 #   uv run --with usd-core warp/examples/geometry/example_swept_volume.py
-#   uv run --with usd-core warp/examples/geometry/example_swept_volume.py --usd ur10_animated.usda
+#   uv run --with usd-core warp/examples/geometry/example_swept_volume.py --usd-path ur10_animated.usda
 ###########################################################################
 
 import math
 
 import numpy as np
+from pxr import Gf, Usd, UsdGeom
 
 import warp as wp
 import warp.geometry
@@ -166,8 +167,6 @@ def load_usd_assembly(path, num_samples=24, device=None):
     interior pockets, hundreds of junk shells), so the winding number matters
     here (see :class:`warp.geometry.SweptVolumeSign`).
     """
-    from pxr import Gf, Usd, UsdGeom  # noqa: PLC0415
-
     stage = Usd.Stage.Open(path, Usd.Stage.LoadAll)
     pred = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
 
@@ -218,8 +217,6 @@ def load_usd_assembly(path, num_samples=24, device=None):
 
 
 def write_usd(stage_path, verts, indices):
-    from pxr import Gf, Usd, UsdGeom  # noqa: PLC0415
-
     stage = Usd.Stage.CreateNew(stage_path)
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
     mesh = UsdGeom.Mesh.Define(stage, "/swept_volume")
@@ -236,15 +233,13 @@ def main(
     num_samples=24,
     voxel_size=0.08,
     sign_mode=warp.geometry.SweptVolumeSign.WINDING_NUMBER,
-    stage_path="example_geometry_swept_volume.usd",
+    stage_path="example_swept_volume.usd",
 ):
-    device = wp.get_device()
-
     if usd_path is not None:
-        meshes, transforms, times = load_usd_assembly(usd_path, num_samples=num_samples, device=device)
+        meshes, transforms, times = load_usd_assembly(usd_path, num_samples=num_samples)
         label = usd_path
     else:
-        meshes, transforms, times = procedural_arm(num_samples=num_samples, device=device)
+        meshes, transforms, times = procedural_arm(num_samples=num_samples)
         label = "procedural two-link arm"
 
     total_tris = sum(len(m.indices.numpy()) // 3 for m in meshes)
@@ -264,7 +259,6 @@ def main(
             voxel_size=voxel_size,
             iso=iso,
             sign_mode=sign_mode,
-            device=device,
         )
         wp.synchronize_device()
 
@@ -283,24 +277,28 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--device", type=str, default=None, help="Override the default Warp device.")
     parser.add_argument(
-        "--usd",
+        "--usd-path",
         type=str,
         default=None,
-        help="Path to an animated USD assembly (e.g. the UR10). Uses a procedural arm if omitted.",
+        help="Path to an animated USD assembly (e.g. a UR10 arm). Uses a procedural arm if omitted.",
     )
     parser.add_argument("--num-samples", type=int, default=24, help="Number of pose samples to stamp.")
     parser.add_argument("--voxel-size", type=float, default=0.08, help="Grid cell size in world units.")
     parser.add_argument(
-        "--sign",
+        "--sign-mode",
         type=str,
         default="winding",
         choices=["normal", "winding"],
-        help="Inside/outside classifier.",
+        help=(
+            "How to classify inside from outside. 'winding' handles the open, non-watertight shells "
+            "that CAD and robot assets are usually made of; 'normal' is faster but needs watertight, "
+            "consistently oriented meshes."
+        ),
     )
     parser.add_argument(
         "--stage-path",
         type=lambda x: None if x == "None" else str(x),
-        default="example_geometry_swept_volume.usd",
+        default="example_swept_volume.usd",
         help="Path to the output USD file.",
     )
     args = parser.parse_known_args()[0]
@@ -308,10 +306,10 @@ if __name__ == "__main__":
     sign_mode = {
         "normal": warp.geometry.SweptVolumeSign.NORMAL,
         "winding": warp.geometry.SweptVolumeSign.WINDING_NUMBER,
-    }[args.sign]
+    }[args.sign_mode]
     with wp.ScopedDevice(args.device):
         main(
-            usd_path=args.usd,
+            usd_path=args.usd_path,
             num_samples=args.num_samples,
             voxel_size=args.voxel_size,
             sign_mode=sign_mode,
