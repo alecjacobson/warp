@@ -433,6 +433,12 @@ class InverseElasticity3D:
         return self.p_step
 
     def gauss_newton_optimize(self, num_iters=20, step_size=1.0, tol=1e-8, record_every=0, quiet=True):
+        """Damped Gauss-Newton on the rest shape with a fixed ``step_size``.
+
+        The square-route system ``T = A + G_ff`` becomes ill-conditioned as the mesh
+        refines, so the step size must shrink with resolution to avoid overshoot: ``1.0``
+        works at coarse resolution, while finer meshes need progressively smaller steps.
+        """
         init = self.loss()
         self.frames = [(0, self.verts.numpy().copy(), self.U.numpy().copy())] if record_every else []
         converged = False
@@ -560,7 +566,8 @@ if __name__ == "__main__":
     parser.add_argument("--count", type=int, default=2)
     parser.add_argument("--num-iters", type=int, default=30)
     parser.add_argument("--step-size", type=float, default=1.0,
-                        help="Gauss-Newton step size (finer meshes may need a smaller step).")  # fmt: skip
+                        help="Gauss-Newton step size; must shrink as the mesh refines "
+                             "(see gauss_newton_optimize). Too large a step diverges.")  # fmt: skip
     parser.add_argument("--tol", type=float, default=1e-8)
     parser.add_argument("--gif", type=str, default=None, help="Render a headless convergence gif to this path.")
     parser.add_argument("--quiet", action="store_true")

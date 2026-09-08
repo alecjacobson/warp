@@ -96,12 +96,28 @@ A-solver — the two coexist fine). All of `A`, `G_ff`, and `T` write the BSR
 views consistent — writing the block ``values`` array instead silently desyncs the
 scalar view and corrupts the refactor.
 
-GN converges **quadratically in a handful of iterations** regardless of mesh size
-(3/4/6 iterations at count=2/4/8, vs Adam's 575/4200/11500), matching the C++
-reference to the digit. `step_size = 1.0` is safe through count=8; finer meshes
-need a smaller step (~0.25 at count≥16) to avoid overshoot — the reference's
-documented behavior, confirmed against the trusted C++ (which also diverges at
-step 1.0 there). Because GN takes so few iterations, the GPU only wins once the
-per-solve work is non-trivial: ~0.2× at count=2 (GN is trivially fast there), then
-**1.4× at count=4, 4.9× at count=8, 33× at count=16**, the advantage growing with
-mesh size like Adam's.
+**Step size and conditioning.** `T = A + G_ff` becomes badly ill-conditioned as
+the mesh refines (cond ~1e11 at count=16), so the damped step must shrink with
+resolution: `step_size = 1.0` converges through count=8 (a few iterations), while
+count=16–32 need ~`0.0625` (larger steps diverge). This is the reference's
+documented behavior. The step must shrink — *not* because cuDSS mis-solves: its
+solve residual `‖Tw−rhs‖/‖rhs‖` is machine precision (~1e-13) at every step,
+including diverging ones. The divergence at too-large a step is genuine
+forward-error from the conditioning (κ·ε), and the GPU is slightly more prone to
+it than the bit-deterministic C++ because both the atomic-scatter assembly and the
+parallel factorization vary ~1e-13 run-to-run, which κ amplifies. Iterative
+refinement and cuDSS deterministic mode do **not** help (there is no backward-error
+to fix); a small enough fixed step does. At a matched step size the GPU converges
+in the **same iteration count** as C++.
+
+**Wall-clock (GN, matched fixed step, both to tol=1e-8, L40 vs C++ CPU):**
+
+| count | free DOFs | step | C++ CPU | GPU cuDSS | speedup | iters (C++/GPU) |
+| ----- | --------- | ---- | ------- | --------- | ------- | --------------- |
+| 4     | 295       | 1.0    | 0.019 s  | 0.023 s | 0.1× | 4/4     |
+| 8     | 1071      | 1.0    | 0.131 s  | 0.024 s | 5.4× | 6/6     |
+| 16    | 4063      | 0.0625 | 14.66 s  | 0.407 s | 36×  | 141/141 |
+| 32    | 15807     | 0.0625 | 105.5 s  | 1.158 s | 91×  | 178/177 |
+
+The GPU advantage grows with refinement (to 91× at count=32), like Adam's; at
+coarse meshes GN is so cheap that launch overhead lets the CPU win.

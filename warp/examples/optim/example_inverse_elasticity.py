@@ -496,6 +496,14 @@ class InverseElasticity:
         return self.p_step
 
     def gauss_newton_optimize(self, num_iters=20, step_size=1.0, tol=1e-8, record_every=0, quiet=True):
+        """Damped Gauss-Newton on the rest shape with a fixed ``step_size``.
+
+        The square-route system ``T = A + G_ff`` becomes ill-conditioned as the mesh
+        refines (cond ~1e11 at count=16), so the undamped step badly overshoots and the
+        step size must shrink with resolution: ``1.0`` converges through count=8, while
+        count=16-32 need ~``0.0625`` (a larger step diverges). This mirrors the C++
+        reference; at a matched step size the GPU converges in the same iteration count.
+        """
         init = self.loss()
         self.frames = [(0, self.verts.numpy().copy(), self.U.numpy().copy())] if record_every else []
         converged = False
@@ -661,8 +669,9 @@ if __name__ == "__main__":
     parser.add_argument("--method", choices=("adam", "gn"), default="adam", help="Optimizer.")
     parser.add_argument("--num-iters", type=int, default=None, help="Iteration cap (defaults per method).")
     parser.add_argument("--step-size", type=float, default=1.0,
-                        help="Gauss-Newton step size (1.0 is safe through count=8; finer meshes "
-                             "need a smaller step, e.g. ~0.25 for count>=16, to avoid overshoot).")  # fmt: skip
+                        help="Gauss-Newton step size. The step must shrink as the mesh refines "
+                             "(see gauss_newton_optimize): 1.0 through count=8, ~0.0625 for count=16-32. "
+                             "Too large a step diverges.")  # fmt: skip
     parser.add_argument("--tol", type=float, default=1e-8)
     parser.add_argument("--gif", type=str, default=None, help="Render a headless convergence gif to this path.")
     parser.add_argument("--record-every", type=int, default=25, help="Iterations between recorded gif frames.")
