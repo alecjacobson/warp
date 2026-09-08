@@ -2993,7 +2993,7 @@ nodes over a (possibly anisotropic) domain box. Calling this function and
 vertex positions, to floating-point tolerance -- only the near-surface cells
 are instantiated here.
 
-The provided function ``sdf`` must be batched callable, ``evaluate(points:
+The provided function ``field`` must be batched callable, ``evaluate(points:
 wp.array[wp.vec3]) -> wp.array[wp.float32]``. A callable backed by a
 host library (NumPy, PyTorch, ...) also works, at the cost of a device/host sync
 per call.

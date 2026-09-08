@@ -103,21 +103,21 @@ def _get_edge_axis_table(device) -> wp.array:
 # =============================================================================
 
 
-def _make_evaluator(sdf, device) -> Callable[[wp.array], wp.array]:
-    """Return a callable mapping a ``wp.array(vec3)`` batch to a ``wp.array(float32)``.
+def _make_evaluator(field, device) -> Callable[[wp.array], wp.array]:
+    """Return a callable mapping a ``wp.array[wp.vec3]`` batch to a ``wp.array[wp.float32]``.
 
-    ``sdf`` must already be a batched callable; a bare ``@wp.func`` taking a
+    ``field`` must already be a batched callable; a bare ``@wp.func`` taking a
     single point is rejected with a pointer to how to batch it, since silently
     wrapping it here would hide a per-point kernel launch inside what looks
     like a single call.
     """
-    if isinstance(sdf, wp.Function):
+    if isinstance(field, wp.Function):
         raise TypeError(
-            "`sdf` must be a batched callable with signature "
-            "evaluate(points: wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32), not a single-point "
+            "`field` must be a batched callable with signature "
+            "evaluate(points: wp.array[wp.vec3]) -> wp.array[wp.float32], not a single-point "
             "@wp.func. Wrap it in a small kernel that evaluates it over the batch, e.g.:\n\n"
             "    @wp.kernel\n"
-            "    def eval_kernel(points: wp.array(dtype=wp.vec3), values: wp.array(dtype=wp.float32)):\n"
+            "    def eval_kernel(points: wp.array[wp.vec3], values: wp.array[wp.float32]):\n"
             "        i = wp.tid()\n"
             "        values[i] = my_sdf(points[i])\n\n"
             "    def evaluate(points):\n"
@@ -128,14 +128,14 @@ def _make_evaluator(sdf, device) -> Callable[[wp.array], wp.array]:
             "This keeps evaluation on the GPU; see warp/examples/core/example_sparse_marching_cubes.py."
         )
 
-    if not callable(sdf):
+    if not callable(field):
         raise TypeError(
-            "`sdf` must be a callable mapping a warp.array(dtype=wp.vec3) batch of query points to a "
-            f"warp.array(dtype=wp.float32) of distances, but got {type(sdf)}."
+            "`field` must be a callable mapping a warp.array[wp.vec3] batch of query points to a "
+            f"warp.array[wp.float32] of distances, but got {type(field)}."
         )
 
     def evaluate(points: wp.array) -> wp.array:
-        values = sdf(points)
+        values = field(points)
         if not isinstance(values, wp.array):
             raise TypeError(
                 "The implicit function callable must return a warp.array of float32 distance values, "
@@ -173,10 +173,10 @@ def _make_evaluator(sdf, device) -> Callable[[wp.array], wp.array]:
 
 @wp.kernel(enable_backward=False)
 def _compute_cell_centers_kernel(
-    cells: wp.array(dtype=wp.vec3i),
+    cells: wp.array[wp.vec3i],
     origin: wp.vec3,
     cell_width: wp.vec3,
-    centers: wp.array(dtype=wp.vec3),
+    centers: wp.array[wp.vec3],
 ):
     """Compute the geometric center of each octree cell at the current depth."""
     tid = wp.tid()
@@ -189,10 +189,10 @@ def _compute_cell_centers_kernel(
 
 @wp.kernel(enable_backward=False)
 def _cell_subscripts_to_origins_kernel(
-    cells: wp.array(dtype=wp.vec3i),
+    cells: wp.array[wp.vec3i],
     origin: wp.vec3,
     cell_width: wp.vec3,
-    origins: wp.array(dtype=wp.vec3),
+    origins: wp.array[wp.vec3],
 ):
     """Compute the minimum corner (world position) of each octree cell."""
     tid = wp.tid()
@@ -202,10 +202,10 @@ def _cell_subscripts_to_origins_kernel(
 
 @wp.kernel(enable_backward=False)
 def _mark_active_cells_kernel(
-    values: wp.array(dtype=wp.float32),
+    values: wp.array[wp.float32],
     isovalue: wp.float32,
     band: wp.float32,
-    keep: wp.array(dtype=wp.int32),
+    keep: wp.array[wp.int32],
 ):
     """Flag cells whose subtree can still bracket the level set.
 
@@ -219,9 +219,9 @@ def _mark_active_cells_kernel(
 
 @wp.kernel(enable_backward=False)
 def _cell_subscript_bounds_kernel(
-    cells: wp.array(dtype=wp.vec3i),
-    lo: wp.array(dtype=wp.int32),
-    hi: wp.array(dtype=wp.int32),
+    cells: wp.array[wp.vec3i],
+    lo: wp.array[wp.int32],
+    hi: wp.array[wp.int32],
 ):
     """Reduce the per-axis minimum and maximum of the cell subscripts."""
     tid = wp.tid()
@@ -233,10 +233,10 @@ def _cell_subscript_bounds_kernel(
 
 @wp.kernel(enable_backward=False)
 def _compact_cells_kernel(
-    cells: wp.array(dtype=wp.vec3i),
-    keep: wp.array(dtype=wp.int32),
-    scan: wp.array(dtype=wp.int32),
-    out_cells: wp.array(dtype=wp.vec3i),
+    cells: wp.array[wp.vec3i],
+    keep: wp.array[wp.int32],
+    scan: wp.array[wp.int32],
+    out_cells: wp.array[wp.vec3i],
 ):
     """Stream-compact the kept cells using an inclusive scan of ``keep``."""
     tid = wp.tid()
@@ -246,9 +246,9 @@ def _compact_cells_kernel(
 
 @wp.kernel(enable_backward=False)
 def _cull_out_of_bounds_kernel(
-    cells: wp.array(dtype=wp.vec3i),
+    cells: wp.array[wp.vec3i],
     ncells: wp.vec3i,
-    keep: wp.array(dtype=wp.int32),
+    keep: wp.array[wp.int32],
 ):
     """Flag leaf cells whose subscript lies outside the requested grid.
 
@@ -264,8 +264,8 @@ def _cull_out_of_bounds_kernel(
 
 @wp.kernel(enable_backward=False)
 def _subdivide_cells_kernel(
-    cells: wp.array(dtype=wp.vec3i),
-    out_cells: wp.array(dtype=wp.vec3i),
+    cells: wp.array[wp.vec3i],
+    out_cells: wp.array[wp.vec3i],
 ):
     """Split each surviving cell into its 8 children at the next-finer depth."""
     tid = wp.tid()
@@ -287,11 +287,11 @@ def _subdivide_cells_kernel(
 
 @wp.kernel(enable_backward=False)
 def _compute_corner_codes_kernel(
-    cells: wp.array(dtype=wp.vec3i),
+    cells: wp.array[wp.vec3i],
     offset: wp.vec3i,
     stride_x: wp.int64,
     stride_y: wp.int64,
-    codes: wp.array(dtype=wp.int64),
+    codes: wp.array[wp.int64],
 ):
     """Emit the 8 linear corner codes of each cell, in cube-corner order.
 
@@ -309,8 +309,8 @@ def _compute_corner_codes_kernel(
 
 @wp.kernel(enable_backward=False)
 def _mark_first_occurrence_kernel(
-    sorted_codes: wp.array(dtype=wp.int64),
-    is_first: wp.array(dtype=wp.int32),
+    sorted_codes: wp.array[wp.int64],
+    is_first: wp.array[wp.int32],
 ):
     """Flag the first element of each run of equal (sorted) corner codes."""
     tid = wp.tid()
@@ -322,9 +322,9 @@ def _mark_first_occurrence_kernel(
 
 @wp.kernel(enable_backward=False)
 def _scatter_inverse_kernel(
-    sorted_perm: wp.array(dtype=wp.int32),
-    unique_scan: wp.array(dtype=wp.int32),
-    inverse: wp.array(dtype=wp.int32),
+    sorted_perm: wp.array[wp.int32],
+    unique_scan: wp.array[wp.int32],
+    inverse: wp.array[wp.int32],
 ):
     """Write, for each original corner, the index of its unique representative."""
     tid = wp.tid()
@@ -333,10 +333,10 @@ def _scatter_inverse_kernel(
 
 @wp.kernel(enable_backward=False)
 def _record_unique_codes_kernel(
-    sorted_codes: wp.array(dtype=wp.int64),
-    is_first: wp.array(dtype=wp.int32),
-    unique_scan: wp.array(dtype=wp.int32),
-    unique_codes: wp.array(dtype=wp.int64),
+    sorted_codes: wp.array[wp.int64],
+    is_first: wp.array[wp.int32],
+    unique_scan: wp.array[wp.int32],
+    unique_codes: wp.array[wp.int64],
 ):
     """Gather one representative code per unique corner."""
     tid = wp.tid()
@@ -346,12 +346,12 @@ def _record_unique_codes_kernel(
 
 @wp.kernel(enable_backward=False)
 def _decode_corner_positions_kernel(
-    unique_codes: wp.array(dtype=wp.int64),
+    unique_codes: wp.array[wp.int64],
     stride_x: wp.int64,
     stride_y: wp.int64,
     base: wp.vec3,
     cell_width: wp.vec3,
-    positions: wp.array(dtype=wp.vec3),
+    positions: wp.array[wp.vec3],
 ):
     """Recover world-space positions of the unique corners from their codes.
 
@@ -374,16 +374,16 @@ def _decode_corner_positions_kernel(
 
 
 @wp.kernel(enable_backward=False)
-def _fill_iota_kernel(out: wp.array(dtype=wp.int32)):
+def _fill_iota_kernel(out: wp.array[wp.int32]):
     tid = wp.tid()
     out[tid] = tid
 
 
 @wp.kernel(enable_backward=False)
 def _scatter_corner_values_kernel(
-    cell_corners: wp.array(dtype=wp.int32, ndim=2),
-    per_cell_values: wp.array(dtype=wp.float32, ndim=2),
-    unique_values: wp.array(dtype=wp.float32),
+    cell_corners: wp.array2d[wp.int32],
+    per_cell_values: wp.array2d[wp.float32],
+    unique_values: wp.array[wp.float32],
 ):
     """Scatter per-cell corner values onto the unique corners they de-duplicate to.
 
@@ -402,8 +402,8 @@ def _scatter_corner_values_kernel(
 
 @wp.func
 def _cell_case_code(
-    cell_corners: wp.array(dtype=wp.int32, ndim=2),
-    corner_values: wp.array(dtype=wp.float32),
+    cell_corners: wp.array2d[wp.int32],
+    corner_values: wp.array[wp.float32],
     isovalue: wp.float32,
     cell: wp.int32,
 ):
@@ -417,16 +417,16 @@ def _cell_case_code(
 
 @wp.kernel(enable_backward=False)
 def _mark_active_edges_kernel(
-    cell_corners: wp.array(dtype=wp.int32, ndim=2),
-    corner_values: wp.array(dtype=wp.float32),
+    cell_corners: wp.array2d[wp.int32],
+    corner_values: wp.array[wp.float32],
     isovalue: wp.float32,
-    case_to_tri_range: wp.array(dtype=wp.int32),
-    tri_local_inds: wp.array(dtype=wp.int32),
-    edge_owner: wp.array(dtype=wp.int32),
-    edge_upper: wp.array(dtype=wp.int32),
-    edge_axis: wp.array(dtype=wp.int32),
-    edge_active: wp.array(dtype=wp.int32),
-    edge_upper_corner: wp.array(dtype=wp.int32),
+    case_to_tri_range: wp.array[wp.int32],
+    tri_local_inds: wp.array[wp.int32],
+    edge_owner: wp.array[wp.int32],
+    edge_upper: wp.array[wp.int32],
+    edge_axis: wp.array[wp.int32],
+    edge_active: wp.array[wp.int32],
+    edge_upper_corner: wp.array[wp.int32],
 ):
     """Mark every edge that a cell's triangles reference as crossing the surface.
 
@@ -450,13 +450,13 @@ def _mark_active_edges_kernel(
 
 @wp.kernel(enable_backward=False)
 def _emit_vertices_kernel(
-    edge_active: wp.array(dtype=wp.int32),
-    edge_vertex_index: wp.array(dtype=wp.int32),
-    edge_upper_corner: wp.array(dtype=wp.int32),
-    corner_positions: wp.array(dtype=wp.vec3),
-    corner_values: wp.array(dtype=wp.float32),
+    edge_active: wp.array[wp.int32],
+    edge_vertex_index: wp.array[wp.int32],
+    edge_upper_corner: wp.array[wp.int32],
+    corner_positions: wp.array[wp.vec3],
+    corner_values: wp.array[wp.float32],
     isovalue: wp.float32,
-    verts_out: wp.array(dtype=wp.vec3),
+    verts_out: wp.array[wp.vec3],
 ):
     """Place one interpolated vertex on each active edge."""
     slot = wp.tid()
@@ -476,11 +476,11 @@ def _emit_vertices_kernel(
 
 @wp.kernel(enable_backward=False)
 def _count_faces_kernel(
-    cell_corners: wp.array(dtype=wp.int32, ndim=2),
-    corner_values: wp.array(dtype=wp.float32),
+    cell_corners: wp.array2d[wp.int32],
+    corner_values: wp.array[wp.float32],
     isovalue: wp.float32,
-    case_to_tri_range: wp.array(dtype=wp.int32),
-    face_count: wp.array(dtype=wp.int32),
+    case_to_tri_range: wp.array[wp.int32],
+    face_count: wp.array[wp.int32],
 ):
     """Count the triangles each cell will emit."""
     cell = wp.tid()
@@ -490,16 +490,16 @@ def _count_faces_kernel(
 
 @wp.kernel(enable_backward=False)
 def _emit_faces_kernel(
-    cell_corners: wp.array(dtype=wp.int32, ndim=2),
-    corner_values: wp.array(dtype=wp.float32),
+    cell_corners: wp.array2d[wp.int32],
+    corner_values: wp.array[wp.float32],
     isovalue: wp.float32,
-    case_to_tri_range: wp.array(dtype=wp.int32),
-    tri_local_inds: wp.array(dtype=wp.int32),
-    edge_owner: wp.array(dtype=wp.int32),
-    edge_axis: wp.array(dtype=wp.int32),
-    edge_vertex_index: wp.array(dtype=wp.int32),
-    face_scan: wp.array(dtype=wp.int32),
-    indices_out: wp.array(dtype=wp.int32),
+    case_to_tri_range: wp.array[wp.int32],
+    tri_local_inds: wp.array[wp.int32],
+    edge_owner: wp.array[wp.int32],
+    edge_axis: wp.array[wp.int32],
+    edge_vertex_index: wp.array[wp.int32],
+    face_scan: wp.array[wp.int32],
+    indices_out: wp.array[wp.int32],
 ):
     """Emit triangle index triples, referencing the de-duplicated vertices."""
     cell = wp.tid()
@@ -535,7 +535,7 @@ def _scan_total(keep: wp.array, scan: wp.array) -> int:
 
 
 def _as_cell_subscripts(cells, device) -> wp.array:
-    """Return ``cells`` as a contiguous ``wp.array(dtype=wp.vec3i)`` on ``device``.
+    """Return ``cells`` as a contiguous ``wp.array[wp.vec3i]`` on ``device``.
 
     A ``wp.array`` of ``vec3i`` or ``int32`` already on ``device`` is
     reinterpreted in place, so cells produced on the GPU are never round-tripped
@@ -578,7 +578,7 @@ def _build_lipschitz_octree(evaluate, origin, root_width, max_depth, isovalue, l
     """Build the sparse set of leaf cells that may contain the level set.
 
     ``root_width`` is a ``wp.vec3`` giving the (possibly anisotropic) side
-    lengths of the root box. Returns a ``wp.array(dtype=wp.vec3i)`` of
+    lengths of the root box. Returns a ``wp.array[wp.vec3i]`` of
     leaf-cell minimum-corner subscripts at resolution ``2**max_depth`` (or
     ``None`` if the level set is not bracketed).
     """
@@ -853,7 +853,7 @@ def _extract_from_dedup(cell_corners, corner_positions, corner_values, threshold
 
 
 def lipschitz_octree(
-    sdf,
+    field,
     origin: wp.vec3 | tuple[float, float, float],
     root_width: float,
     max_depth: int,
@@ -865,7 +865,7 @@ def lipschitz_octree(
 
     Builds a sparse octree top-down, keeping only cells whose subtree can still
     reach the ``threshold`` level set of a 1-Lipschitz field: a cell of width
-    ``h`` centered at ``c`` survives when ``|sdf(c) - threshold| <= lipschitz_bound * (sqrt(3)/2) * h``.
+    ``h`` centered at ``c`` survives when ``|field(c) - threshold| <= lipschitz_bound * (sqrt(3)/2) * h``.
     The surviving leaves at ``max_depth`` form a thin shell around the surface.
 
     This mirrors ``igl::lipschitz_octree`` from libigl. It is the pruning stage
@@ -873,7 +873,7 @@ def lipschitz_octree(
     build their own extractors, visualize the adaptive grid, or reuse the cells.
 
     Args:
-        sdf: The implicit function, in the batched form accepted by
+        field: The implicit function, in the batched form accepted by
             :func:`sparse_marching_cubes_via_lipschitz_pruning`.
         origin: The minimum corner of the cubic root cell. Set ``origin`` and
             ``root_width`` so that the box ``[origin, origin + root_width]``
@@ -882,12 +882,12 @@ def lipschitz_octree(
         root_width: The side length of the cubic root cell.
         max_depth: The octree depth. Leaf cells have width ``root_width / 2**max_depth``.
         threshold: The isovalue defining the surface.
-        lipschitz_bound: An upper bound on the Lipschitz constant of ``sdf``.
+        lipschitz_bound: An upper bound on the Lipschitz constant of ``field``.
         device: The Warp device to run on. Defaults to the current device.
 
     Returns:
         A tuple ``(cell_origins, cell_width)`` where ``cell_origins`` is a
-        ``wp.array(dtype=wp.vec3)`` of the leaf cells' minimum corners and
+        ``wp.array[wp.vec3]`` of the leaf cells' minimum corners and
         ``cell_width`` is their common side length. ``cell_origins`` is empty if
         the level set is not bracketed.
     """
@@ -904,7 +904,7 @@ def lipschitz_octree(
     cell_width = root_width / float(1 << max_depth)
     root_width_vec = wp.vec3(root_width, root_width, root_width)
 
-    evaluate = _make_evaluator(sdf, device)
+    evaluate = _make_evaluator(field, device)
     cells = _build_lipschitz_octree(evaluate, origin, root_width_vec, max_depth, threshold, lipschitz_bound, device)
     if cells is None:
         return wp.empty(0, dtype=wp.vec3, device=device), cell_width
@@ -964,7 +964,7 @@ def sparse_marching_cubes_from_cells(
 
     Args:
         cells: An ``(N, 3)`` array of integer cell minimum-corner subscripts, as a
-            ``wp.array(dtype=wp.vec3i)``, a ``wp.array(dtype=wp.int32)`` of shape
+            ``wp.array[wp.vec3i]``, a ``wp.array[wp.int32]`` of shape
             ``(N, 3)``, or any array-like convertible to one. A cell at subscript
             ``(i, j, k)`` occupies the box with minimum corner
             ``origin + cell_width * (i, j, k)``. Subscripts may be negative and
@@ -1040,7 +1040,7 @@ def sparse_marching_cubes_from_cells(
 
 
 def sparse_marching_cubes_via_lipschitz_pruning(
-    sdf,
+    field,
     nx: int,
     ny: int,
     nz: int,
@@ -1072,7 +1072,7 @@ def sparse_marching_cubes_via_lipschitz_pruning(
     are discarded before extraction.
 
     Both the pruning pass (at cell centers) and the extraction pass (at cell
-    corners) query ``sdf`` in batches, never one point at a time. If ``sdf`` is
+    corners) query ``field`` in batches, never one point at a time. If ``field`` is
     implemented entirely with Warp (a kernel launch, with no host round trip),
     the whole pipeline stays on the GPU; see
     ``warp/examples/core/example_sparse_marching_cubes.py`` for a mesh-query
@@ -1082,8 +1082,8 @@ def sparse_marching_cubes_via_lipschitz_pruning(
     query points' device.
 
     Args:
-        sdf: The implicit function, as a batched callable with the contract
-            ``evaluate(points: wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32)``,
+        field: The implicit function, as a batched callable with the contract
+            ``evaluate(points: wp.array[wp.vec3]) -> wp.array[wp.float32]``,
             returning the signed distance (or any 1-Lipschitz field whose
             ``threshold`` level set is the surface) at each query point. A bare
             single-point ``@wp.func`` is not accepted directly -- wrap it in a
@@ -1103,7 +1103,7 @@ def sparse_marching_cubes_via_lipschitz_pruning(
             index ``(nx - 1, ny - 1, nz - 1)`` maps to. Defaults to align with the
             grid's maximal indices if ``None``.
         threshold: The isovalue defining the surface.
-        lipschitz_bound: An upper bound on the Lipschitz constant of ``sdf``. Use
+        lipschitz_bound: An upper bound on the Lipschitz constant of ``field``. Use
             ``1.0`` for a true signed distance function. Larger values widen the
             retained band, trading speed for a stronger guarantee when the field
             varies faster than unit rate.
@@ -1115,14 +1115,14 @@ def sparse_marching_cubes_via_lipschitz_pruning(
 
     Returns:
         A tuple ``(vertices, indices)`` where ``vertices`` is a
-        ``wp.array(dtype=wp.vec3)`` and ``indices`` is a flat
-        ``wp.array(dtype=wp.int32)`` with three consecutive entries per triangle.
+        ``wp.array[wp.vec3]`` and ``indices`` is a flat
+        ``wp.array[wp.int32]`` with three consecutive entries per triangle.
         If ``return_stats`` is ``True``, returns ``(vertices, indices, stats)``.
 
     Raises:
         ValueError: If ``nx``, ``ny``, or ``nz`` is less than 2, or
             ``lipschitz_bound`` is negative.
-        TypeError: If ``sdf`` is not callable (including a bare
+        TypeError: If ``field`` is not callable (including a bare
             single-point ``@wp.func``, which must be wrapped in a batched
             kernel first).
     """
@@ -1142,7 +1142,7 @@ def sparse_marching_cubes_via_lipschitz_pruning(
     root_width = grid_delta * float(resolution)
     ncells = (ncells_x, ncells_y, ncells_z)
 
-    evaluate = _make_evaluator(sdf, device)
+    evaluate = _make_evaluator(field, device)
 
     stats = {
         "leaf_cells": 0,
