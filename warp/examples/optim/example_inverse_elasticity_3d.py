@@ -496,11 +496,19 @@ def render_convergence_gif(frames, T, young, poisson, out_path, fps=3):
     ps.set_allow_headless_backends(True)
     ps.init()
     ps.set_ground_plane_mode("none")
+    ps.set_up_dir("z_up")
 
     Ti = np.asarray(T, dtype=np.int32)
+    V0 = frames[0][1]
     span_z = max(U[:, 2].max() - U[:, 2].min() for _, _, U in frames)
-    gap = 2.0 * (span_z + 1.0)  # stack the rest shape this far above (in z) the deformed shape
+    gap = span_z + 3.0  # stack the rest shape this far above (in z) the deformed shape
     vmax = max(per_tet_von_mises(V, U, Ti, young, poisson).max() for _, V, U in frames)
+
+    # A fixed 3/4 view looking along -y so the long (x) axis runs left-to-right,
+    # z is up, and the small (y) depth gives the bar a 3D read.
+    cx, cy = 0.5 * (V0[:, 0].min() + V0[:, 0].max()), 0.5 * (V0[:, 1].min() + V0[:, 1].max())
+    cz = 0.5 * gap
+    span_x = V0[:, 0].max() - V0[:, 0].min()
 
     def lift(P, dz):
         Q = P.copy(); Q[:, 2] += dz  # noqa: E702
@@ -509,12 +517,12 @@ def render_convergence_gif(frames, T, young, poisson, out_path, fps=3):
     tmp = tempfile.mkdtemp()
     shots = []
     for k, (_, V, U) in enumerate(frames):
-        ps.register_volume_mesh("rest", lift(V, gap), tets=Ti, color=(0.55, 0.68, 0.9), edge_width=0.3)
-        defo = ps.register_volume_mesh("deformed", U, tets=Ti, edge_width=0.3)
+        ps.register_volume_mesh("rest", lift(V, gap), tets=Ti, color=(0.55, 0.68, 0.9), edge_width=0.25)
+        defo = ps.register_volume_mesh("deformed", U, tets=Ti, edge_width=0.25)
         defo.add_scalar_quantity("von Mises", per_tet_von_mises(V, U, Ti, young, poisson),
                                  defined_on="cells", vminmax=(0.0, vmax), cmap="viridis", enabled=True)  # fmt: skip
         if k == 0:
-            ps.reset_camera_to_home_view()
+            ps.look_at((cx + 0.25 * span_x, cy - 1.9 * span_x, cz + 0.55 * span_x), (cx, cy, cz))
         p = f"{tmp}/f{k:04d}.png"
         ps.screenshot(p, transparent_bg=False)
         shots.append(np.asarray(Image.open(p).convert("RGB")))
