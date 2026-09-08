@@ -7,12 +7,20 @@
 # under gravity, its deformed shape matches a flat target. A constant-strain
 # triangle (CST), plane-strain linear-elasticity forward model computes the
 # gravity-sagged shape; the rest-shape gradient of the mean-squared shape error
-# is obtained by the adjoint method (autodiff through the assembly + a manual
-# adjoint for the linear solve, via the implicit function theorem), and the shape
-# is optimized with Warp's Adam optimizer.
+# is obtained by the adjoint method (autodiff through the assembly plus a manual
+# adjoint for the linear solve, via the implicit function theorem). The shape is
+# optimized either with Warp's Adam optimizer or with a sparse Gauss-Newton step
+# (the reference's "square route", T = A + G_ff), which converges in a handful of
+# iterations. Both the SPD forward solve and the nonsymmetric Gauss-Newton solve
+# are direct factorizations on the GPU via cuDSS, which beats an equivalent CPU
+# sparse-direct implementation with the margin growing as the mesh is refined.
 #
 # The physics is a pure-Warp reimplementation of Jacobson's
-# gauss-newton-sensitivity-analysis reference and is validated against it.
+# gauss-newton-sensitivity-analysis reference and was validated against it.
+#
+# Requires the cuDSS sparse direct solver via the warp-cuDSS package
+# (https://github.com/alecjacobson/warp-cuDSS): `pip install warp-cudss` and the
+# cuDSS shared library (`pip install nvidia-cudss-cu12`, or a system install).
 
 import numpy as np
 import warp_cudss
