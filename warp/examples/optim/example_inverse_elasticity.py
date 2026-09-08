@@ -274,9 +274,12 @@ def scatter_sensitivity_inplace(
 
 
 @wp.kernel
-def add_blocks(a: wp.array(dtype=mat22), b: wp.array(dtype=mat22), out: wp.array(dtype=mat22)):
+def add_blocks(a: wp.array3d(dtype=scalar), b: wp.array3d(dtype=scalar), out: wp.array3d(dtype=scalar)):
+    """T = A + G_ff, on the BSR scalar_values (what the solver reads)."""
     k = wp.tid()
-    out[k] = a[k] + b[k]
+    for i in range(2):
+        for j in range(2):
+            out[k, i, j] = a[k, i, j] + b[k, i, j]
 
 
 @wp.kernel
@@ -358,7 +361,7 @@ class InverseElasticity:
                   inputs=[self.tris, self.verts, scalar(self.young), scalar(self.poisson),
                           self.vert_to_free, rows, cols, blocks], device=d)  # fmt: skip
         self.A = wps.bsr_from_triplets(self.num_free, self.num_free, rows, cols, blocks)
-        nnz = self.A.nnz_sync()
+        nnz = self.nnz = self.A.nnz_sync()
         offsets = self.A.offsets.numpy()
         columns = self.A.columns.numpy()[:nnz]
         tris = self.tris.numpy()
@@ -440,12 +443,17 @@ class InverseElasticity:
     # -- Gauss-Newton --
 
     def _assemble_T(self):
-        """Refill G_ff and T = A + G_ff in place (both share A's pattern)."""
-        self.Gff.values.zero_()
+        """Refill G_ff and T = A + G_ff in place (both share A's pattern).
+
+        Everything writes the BSR ``scalar_values`` -- which is what cuDSS reads on
+        ``refactor()`` -- so the block and scalar views stay consistent.
+        """
+        self.Gff.scalar_values.zero_()
         wp.launch(scatter_sensitivity_inplace, dim=self.num_tris,
                   inputs=[self.tris, self.verts, scalar(self.young), scalar(self.poisson),
                           self.u_full, self.f_ext, scalar(1e-6), self.scatter_dst, self.Gff.scalar_values], device=self.device)  # fmt: skip
-        wp.launch(add_blocks, dim=self.A.values.shape[0], inputs=[self.A.values, self.Gff.values, self.T.values], device=self.device)
+        wp.launch(add_blocks, dim=self.nnz,
+                  inputs=[self.A.scalar_values, self.Gff.scalar_values, self.T.scalar_values], device=self.device)  # fmt: skip
 
     def _setup_gn(self):
         if getattr(self, "_gn_ready", False):
@@ -456,6 +464,12 @@ class InverseElasticity:
         self.p_step = wp.zeros(self.num_free, dtype=vec2, device=d)
         self.gn_rhs = wp.zeros(self.num_free, dtype=vec2, device=d)
         self.gn_w = wp.zeros(self.num_free, dtype=vec2, device=d)
+        # T is nonsymmetric; factor it once (symbolic analysis) and refactor each
+        # step -- a second persistent cuDSS solver alongside the SPD A-solver.
+        self.forward()
+        self._assemble_T()
+        self.T_solver = warp_cudss.CudssSolver(mtype="general", device=d)
+        self.T_solver.setup(self.T, self.gn_w, self.gn_rhs)
         self._gn_ready = True
 
     def gauss_newton_step(self):
@@ -468,8 +482,8 @@ class InverseElasticity:
         self._assemble_T()
         self.gn_rhs.zero_()
         wps.bsr_mv(self.Gff, self.r_free, self.gn_rhs)
-        s = warp_cudss.solve(self.T, self.gn_rhs, self.gn_w, mtype="general")
-        s.release()
+        self.T_solver.refactor(self.T)
+        self.T_solver.solve(x=self.gn_w, b=self.gn_rhs)
         wp.launch(sub_free, dim=self.num_free, inputs=[self.r_free, self.gn_w, self.p_step], device=self.device)
         return self.p_step
 

@@ -89,16 +89,19 @@ sharing `A`'s pattern), form the nonsymmetric `T = A + G_ff`, solve
 `T w = G_ff r_free` with cuDSS (`mtype="general"`), and take `p = r_free − w`.
 Both the SPD forward solve and the general T-solve run on cuDSS.
 
+The T-solve reuses a **persistent** cuDSS solver: symbolic analysis runs once at
+setup, and each step only refactors (a second persistent solver alongside the SPD
+A-solver — the two coexist fine). All of `A`, `G_ff`, and `T` write the BSR
+``scalar_values`` (what cuDSS reads on refactor), keeping the block and scalar
+views consistent — writing the block ``values`` array instead silently desyncs the
+scalar view and corrupts the refactor.
+
 GN converges **quadratically in a handful of iterations** regardless of mesh size
 (3/4/6 iterations at count=2/4/8, vs Adam's 575/4200/11500), matching the C++
 reference to the digit. `step_size = 1.0` is safe through count=8; finer meshes
 need a smaller step (~0.25 at count≥16) to avoid overshoot — the reference's
 documented behavior, confirmed against the trusted C++ (which also diverges at
-step 1.0 there). Because GN takes so few iterations, the GPU advantage over the
-C++ CPU appears only once the per-solve work is non-trivial: ~0.4× at count=4 (GN
-is trivially fast there), 1.5× at count=8, 3.8× at count=16.
-
-Note: the current GN T-solve uses a fresh cuDSS solver each step (re-running the
-symbolic analysis), where the C++ reuses one factorization workspace. Reusing a
-persistent T solver across steps (two persistent cuDSS solvers coexist fine) would
-remove that redundant analysis — a straightforward future optimization.
+step 1.0 there). Because GN takes so few iterations, the GPU only wins once the
+per-solve work is non-trivial: ~0.2× at count=2 (GN is trivially fast there), then
+**1.4× at count=4, 4.9× at count=8, 33× at count=16**, the advantage growing with
+mesh size like Adam's.
