@@ -277,7 +277,12 @@ class TestGeometryExamples(unittest.TestCase):
     pass
 
 
-add_example_test(TestGeometryExamples, name="geometry.example_swept_volume", devices=test_devices)
+add_example_test(
+    TestGeometryExamples,
+    name="geometry.example_swept_volume",
+    devices=test_devices,
+    test_options={"usd_required": True},
+)
 
 
 class TestOptimExamples(unittest.TestCase):
