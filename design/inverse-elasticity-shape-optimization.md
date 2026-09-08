@@ -110,14 +110,25 @@ refinement and cuDSS deterministic mode do **not** help (there is no backward-er
 to fix); a small enough fixed step does. At a matched step size the GPU converges
 in the **same iteration count** as C++.
 
+**Host-sync-free, graph-captured loop.** The per-iteration GN step — one forward
+(assemble, cuDSS `refactor`/`solve`), the sensitivity assembly and T-solve, the
+apply, and an on-device loss reduction — is CUDA-graph captured once and replayed,
+so the loop issues no per-iteration host syncs beyond reading back a single scalar
+loss every `check_every` iterations for the stopping test (the old loop copied the
+whole displacement field to the host every iteration and, worse, solved the forward
+system *twice* per step — once for the step and again inside `loss()`). Replacing
+that with one forward plus a captured replay roughly halves the per-step GPU cost.
+
 **Wall-clock (GN, matched fixed step, both to tol=1e-8, L40 vs C++ CPU):**
 
 | count | free DOFs | step | C++ CPU | GPU cuDSS | speedup | iters (C++/GPU) |
 | ----- | --------- | ---- | ------- | --------- | ------- | --------------- |
-| 4     | 295       | 1.0    | 0.019 s  | 0.023 s | 0.1× | 4/4     |
-| 8     | 1071      | 1.0    | 0.131 s  | 0.024 s | 5.4× | 6/6     |
-| 16    | 4063      | 0.0625 | 14.66 s  | 0.407 s | 36×  | 141/141 |
-| 32    | 15807     | 0.0625 | 105.5 s  | 1.158 s | 91×  | 178/177 |
+| 4     | 295       | 1.0    | 0.019 s  | 0.024 s | 0.1× | 4/5     |
+| 8     | 1071      | 1.0    | 0.128 s  | 0.025 s | 5.2× | 6/7     |
+| 16    | 4063      | 0.0625 | 15.44 s  | 0.275 s | 56×  | 141/142 |
+| 32    | 15807     | 0.0625 | 105.2 s  | 0.596 s | 176× | 178/125 |
 
-The GPU advantage grows with refinement (to 91× at count=32), like Adam's; at
-coarse meshes GN is so cheap that launch overhead lets the CPU win.
+The GPU advantage grows with refinement (to ~176× at count=32), like Adam's; at
+coarse meshes GN is so cheap that launch overhead lets the CPU win. The GPU takes
+one extra iteration to *detect* convergence (its scalar loss lags the current shape
+by one step); at count=32 the run-to-run nondeterminism widens the iteration spread.
