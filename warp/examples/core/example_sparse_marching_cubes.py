@@ -216,10 +216,11 @@ class Example:
             self.indices = indices
 
             if self.show_cells:
-                cell_origins, cell_width = wp.geometry.lipschitz_octree(
+                cells, cell_width = wp.geometry.lipschitz_octree(
                     self._make_evaluator(angle), self.origin, self.root_width, self.cell_depth
                 )
-                self.cell_verts, self.cell_indices = voxel_mesh(cell_origins.numpy(), cell_width)
+                cell_origins = np.array(self.origin) + cell_width * cells.numpy()
+                self.cell_verts, self.cell_indices = voxel_mesh(cell_origins, cell_width)
 
             if self.verbose:
                 resolution = stats["resolution"]

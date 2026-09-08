@@ -539,11 +539,10 @@ def test_sparse_mc_from_cells(test, device):
     f_ref = f_ref.numpy().reshape(-1, 3)
 
     # Recover the octree cells, then sample the field at their corners ourselves.
-    cell_origins, cell_width = wp.geometry.lipschitz_octree(
+    cells_wp, cell_width = wp.geometry.lipschitz_octree(
         sphere_evaluate, origin, root_width, max_depth=depth, device=device
     )
-    co = cell_origins.numpy()
-    cells = np.round((co - np.array(origin)) / cell_width).astype(np.int32)
+    cells = cells_wp.numpy()
     corner_pos = np.array(origin) + cell_width * (cells[:, None, :] + corner_offsets[None, :, :])
     corner_vals = (np.linalg.norm(corner_pos, axis=2) - 0.5).astype(np.float32)  # (N, 8)
 
@@ -584,6 +583,35 @@ def test_sparse_mc_from_cells(test, device):
     vs = verts_s.numpy()
     test.assertEqual(vs.shape[0], v_ref.shape[0])
     np.testing.assert_allclose(np.sort(np.linalg.norm(vs, axis=1)), np.sort(np.linalg.norm(v_ref, axis=1)), atol=1e-4)
+
+
+def test_lipschitz_octree_cells_compose_with_from_cells(test, device):
+    """Regression: lipschitz_octree()'s cells feed sparse_marching_cubes_from_cells() directly.
+
+    lipschitz_octree() used to return world-space cell origins (wp.vec3),
+    which required rounding to recover integer subscripts before calling
+    sparse_marching_cubes_from_cells() -- a lossy round trip once subscripts
+    exceed float32's exact-integer range. It now returns the same wp.vec3i
+    subscripts sparse_marching_cubes_from_cells() expects, so the array can be
+    passed straight through with no conversion and no host round trip.
+    """
+    origin = (-1.0, -1.0, -1.0)
+    root_width = 2.0
+    depth = 5
+    corner_offsets = np.array(wp.geometry.IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS, dtype=np.int32)
+
+    cells_wp, cell_width = wp.geometry.lipschitz_octree(sphere_evaluate, origin, root_width, depth, device=device)
+    test.assertEqual(cells_wp.dtype, wp.vec3i)
+
+    cells = cells_wp.numpy()
+    corner_pos = np.array(origin) + cell_width * (cells[:, None, :] + corner_offsets[None, :, :])
+    corner_vals = wp.array((np.linalg.norm(corner_pos, axis=2) - 0.5).astype(np.float32).reshape(-1), device=device)
+
+    # cells_wp is passed straight through -- no .numpy()/np.round() conversion.
+    verts, indices = wp.geometry.sparse_marching_cubes_from_cells(
+        cells_wp, corner_vals, origin=origin, cell_width=float(cell_width), device=device
+    )
+    _validate_mesh(test, verts.numpy(), indices.numpy().reshape(-1, 3))
 
 
 def test_sparse_mc_large_subscripts(test, device):
@@ -653,10 +681,10 @@ def test_sparse_mc_noncontiguous_corner_values(test, device):
     depth = 5
     corner_offsets = np.array(wp.geometry.IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS, dtype=np.int32)
 
-    cell_origins, cell_width = wp.geometry.lipschitz_octree(
+    cells_wp, cell_width = wp.geometry.lipschitz_octree(
         sphere_evaluate, origin, 2.0, max_depth=depth, device=device
     )
-    cells = np.round((cell_origins.numpy() - np.array(origin)) / cell_width).astype(np.int32)
+    cells = cells_wp.numpy()
     corner_pos = np.array(origin) + cell_width * (cells[:, None, :] + corner_offsets[None, :, :])
     corner_vals = (np.linalg.norm(corner_pos, axis=2) - 0.5).astype(np.float32)
 
@@ -688,21 +716,22 @@ def test_lipschitz_octree_brackets_surface(test, device):
     max_depth = 5
     resolution = 1 << max_depth
 
-    cell_origins, cell_width = wp.geometry.lipschitz_octree(
+    cells_wp, cell_width = wp.geometry.lipschitz_octree(
         sphere_evaluate, origin, root_width, max_depth, device=device
     )
-    origins = cell_origins.numpy()
-    test.assertGreater(origins.shape[0], 0)
+    cells = cells_wp.numpy()
+    test.assertGreater(cells.shape[0], 0)
     np.testing.assert_allclose(cell_width, root_width / resolution)
 
     # Every kept cell's center is within the Lipschitz band of the surface.
+    origins = np.array(origin) + cell_width * cells
     centers = origins + 0.5 * cell_width
     band = np.sqrt(3.0) / 2.0 * cell_width
     center_sdf = np.linalg.norm(centers, axis=1) - 0.5
     test.assertLessEqual(np.abs(center_sdf).max(), band + 1e-5)
 
-    # Recover integer subscripts and confirm completeness against a dense grid.
-    kept = {tuple(np.round((o - np.array(origin)) / cell_width).astype(int)) for o in origins}
+    # Confirm completeness against a dense grid.
+    kept = {tuple(c) for c in cells}
 
     n_nodes = resolution + 1
     xs = origin[0] + cell_width * np.arange(n_nodes)
@@ -811,6 +840,12 @@ add_function_test(
 )
 add_function_test(TestSparseMarchingCubes, "test_sparse_mc_watertight", test_sparse_mc_watertight, devices=devices)
 add_function_test(TestSparseMarchingCubes, "test_sparse_mc_from_cells", test_sparse_mc_from_cells, devices=devices)
+add_function_test(
+    TestSparseMarchingCubes,
+    "test_lipschitz_octree_cells_compose_with_from_cells",
+    test_lipschitz_octree_cells_compose_with_from_cells,
+    devices=devices,
+)
 add_function_test(
     TestSparseMarchingCubes, "test_sparse_mc_large_subscripts", test_sparse_mc_large_subscripts, devices=devices
 )

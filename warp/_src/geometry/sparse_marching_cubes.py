@@ -188,19 +188,6 @@ def _compute_cell_centers_kernel(
 
 
 @wp.kernel(enable_backward=False)
-def _cell_subscripts_to_origins_kernel(
-    cells: wp.array[wp.vec3i],
-    origin: wp.vec3,
-    cell_width: wp.vec3,
-    origins: wp.array[wp.vec3],
-):
-    """Compute the minimum corner (world position) of each octree cell."""
-    tid = wp.tid()
-    c = cells[tid]
-    origins[tid] = origin + wp.cw_mul(cell_width, wp.vec3(wp.float32(c[0]), wp.float32(c[1]), wp.float32(c[2])))
-
-
-@wp.kernel(enable_backward=False)
 def _mark_active_cells_kernel(
     values: wp.array[wp.float32],
     isovalue: wp.float32,
@@ -886,9 +873,12 @@ def lipschitz_octree(
         device: The Warp device to run on. Defaults to the current device.
 
     Returns:
-        A tuple ``(cell_origins, cell_width)`` where ``cell_origins`` is a
-        ``wp.array[wp.vec3]`` of the leaf cells' minimum corners and
-        ``cell_width`` is their common side length. ``cell_origins`` is empty if
+        A tuple ``(cells, cell_width)`` where ``cells`` is a
+        ``wp.array[wp.vec3i]`` of the leaf cells' integer minimum-corner
+        subscripts, in the convention :func:`sparse_marching_cubes_from_cells`
+        expects (cell ``(i, j, k)`` covers
+        ``[origin + cell_width * (i, j, k), origin + cell_width * (i + 1, j + 1, k + 1)]``),
+        and ``cell_width`` is their common side length. ``cells`` is empty if
         the level set is not bracketed.
     """
     if max_depth < 0:
@@ -907,17 +897,9 @@ def lipschitz_octree(
     evaluate = _make_evaluator(field, device)
     cells = _build_lipschitz_octree(evaluate, origin, root_width_vec, max_depth, threshold, lipschitz_bound, device)
     if cells is None:
-        return wp.empty(0, dtype=wp.vec3, device=device), cell_width
+        return wp.empty(0, dtype=wp.vec3i, device=device), cell_width
 
-    cell_origins = wp.empty(cells.shape[0], dtype=wp.vec3, device=device)
-    wp.launch(
-        _cell_subscripts_to_origins_kernel,
-        dim=cells.shape[0],
-        inputs=[cells, origin, wp.vec3(cell_width, cell_width, cell_width)],
-        outputs=[cell_origins],
-        device=device,
-    )
-    return cell_origins, cell_width
+    return cells, cell_width
 
 
 def sparse_marching_cubes_from_cells(
@@ -939,8 +921,8 @@ def sparse_marching_cubes_from_cells(
 
     :func:`sparse_marching_cubes_via_lipschitz_pruning` shares this function's cell-deduplication and
     extraction internals rather than composing :func:`lipschitz_octree` and this function directly:
-    :func:`lipschitz_octree` returns world-space cell origins, while this function expects integer
-    cell subscripts and sampled corner values.
+    :func:`lipschitz_octree` returns the same cell subscripts this function expects, but not sampled
+    corner values, which the caller must still supply.
 
     .. note::
 
