@@ -574,6 +574,7 @@ class InverseElasticity:
                 self._gn_body(ss)
             it += 1
             if record_every and it % record_every == 0:
+                self.forward()  # refresh U at the stepped shape for a consistent (rest, deformed) snapshot
                 self.frames.append((it, self.verts.numpy().copy(), self.U.numpy().copy()))
             if it % check_every == 0 or it == num_iters:
                 loss = float(self.loss_acc.numpy()[0]) * inv  # sync one scalar, not the whole field

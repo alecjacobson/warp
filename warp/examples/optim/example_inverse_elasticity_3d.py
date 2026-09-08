@@ -292,6 +292,17 @@ def apply_free_step(step: scalar, p_step: wp.array(dtype=vec3), free_verts: wp.a
     verts[free_verts[i]] = verts[free_verts[i]] + step * p_step[i]
 
 
+@wp.kernel
+def accumulate_sq_error(v_target: wp.array(dtype=vec3), U: wp.array(dtype=vec3), out: wp.array(dtype=scalar)):
+    """Sum of squared position error into ``out[0]``; loss = out[0] / (3 * num_verts).
+
+    On-device reduction so the optimization loop syncs only a single scalar (or nothing,
+    inside a graph capture) instead of copying the whole displacement field to the host."""
+    i = wp.tid()
+    d = v_target[i] - U[i]
+    wp.atomic_add(out, 0, wp.dot(d, d))
+
+
 # ---------------------------------------------------------------------------
 # Problem
 # ---------------------------------------------------------------------------
@@ -331,6 +342,7 @@ class InverseElasticity3D:
         self.u_full = wp.zeros(nv, dtype=vec3, device=d)
         self.U = wp.empty(nv, dtype=vec3, device=d)
         self.r_free = wp.zeros(nf, dtype=vec3, device=d)
+        self.loss_acc = wp.zeros(1, dtype=scalar, device=d)  # on-device MSE accumulator
 
         self._assemble()
         self.solver = warp_cudss.CudssSolver(mtype="spd", device=d)
@@ -432,31 +444,79 @@ class InverseElasticity3D:
         wp.launch(sub_free, dim=self.num_free, inputs=[self.r_free, self.gn_w, self.p_step], device=self.device)
         return self.p_step
 
-    def gauss_newton_optimize(self, num_iters=20, step_size=1.0, tol=1e-8, record_every=0, quiet=True):
+    def _gn_body(self, step_size):
+        """One Gauss-Newton step plus the on-device loss reduction, with no host syncs --
+        the unit that is CUDA-graph captured and replayed. Leaves the squared position
+        error of the pre-step shape in ``self.loss_acc``. ``step_size`` must be a ``scalar``
+        so the value is baked into the captured graph."""
+        self.forward()  # -> self.U at the current shape
+        self.loss_acc.zero_()
+        wp.launch(accumulate_sq_error, dim=self.num_verts,
+                  inputs=[self.v_target, self.U, self.loss_acc], device=self.device)  # fmt: skip
+        self.r_free.zero_()
+        wp.launch(gather_free_residual, dim=self.num_verts,
+                  inputs=[self.v_target, self.U, self.vert_to_free, self.r_free], device=self.device)  # fmt: skip
+        self._assemble_T()
+        self.gn_rhs.zero_()
+        wps.bsr_mv(self.Gff, self.r_free, self.gn_rhs)
+        self.T_solver.refactor(self.T)
+        self.T_solver.solve(x=self.gn_w, b=self.gn_rhs)
+        wp.launch(sub_free, dim=self.num_free, inputs=[self.r_free, self.gn_w, self.p_step], device=self.device)
+        wp.launch(apply_free_step, dim=self.num_free,
+                  inputs=[step_size, self.p_step, self.free_verts, self.verts], device=self.device)  # fmt: skip
+
+    def gauss_newton_optimize(self, num_iters=20, step_size=1.0, tol=1e-8, check_every=1,
+                              record_every=0, quiet=True, use_graph=None):  # fmt: skip
         """Damped Gauss-Newton on the rest shape with a fixed ``step_size``.
 
         The square-route system ``T = A + G_ff`` becomes ill-conditioned as the mesh
         refines, so the step size must shrink with resolution to avoid overshoot: ``1.0``
         works at coarse resolution, while finer meshes need progressively smaller steps.
+
+        The per-iteration step (assemble, cuDSS ``refactor``/``solve``, apply) plus an
+        on-device loss reduction is CUDA-graph captured once and replayed, so the loop
+        performs no per-iteration host syncs beyond reading a single scalar loss every
+        ``check_every`` iterations for the stopping test. Capture is used on CUDA when not
+        recording frames; pass ``use_graph`` to force it. The eager path is numerically
+        identical (the reported loss lags the shape by one iteration; ``final_loss`` is
+        measured exactly at the final shape).
         """
+        self._setup_gn()  # symbolic analysis + first factorization (not capturable)
+        if use_graph is None:
+            use_graph = record_every == 0  # frame capture needs per-iteration host copies
+        use_graph = use_graph and self.device.is_cuda  # capture requires CUDA
+        ss = scalar(step_size)
+        inv = 1.0 / (3 * self.num_verts)
         init = self.loss()
         self.frames = [(0, self.verts.numpy().copy(), self.U.numpy().copy())] if record_every else []
+
+        self._gn_body(ss)  # warm up (loads modules / cuDSS work buffers) and take the first step
+        it = 1
+        graph = None
+        if use_graph:
+            with wp.ScopedCapture(self.device) as capture:
+                self._gn_body(ss)
+            graph = capture.graph
+        self._gn_graph = graph
+
         converged = False
-        it = 0
         while it < num_iters:
-            self.gauss_newton_step()
-            wp.launch(apply_free_step, dim=self.num_free,
-                      inputs=[scalar(step_size), self.p_step, self.free_verts, self.verts], device=self.device)  # fmt: skip
+            if graph is not None:
+                wp.capture_launch(graph)
+            else:
+                self._gn_body(ss)
             it += 1
-            loss = self.loss()
             if record_every and it % record_every == 0:
+                self.forward()  # refresh U at the stepped shape for a consistent (rest, deformed) snapshot
                 self.frames.append((it, self.verts.numpy().copy(), self.U.numpy().copy()))
-            if not quiet:
-                print(f"  gn iter {it:3d}  loss {loss:.6e}", flush=True)
-            if loss < tol * init:
-                converged = True
-                break
-        return {"iters": it, "initial_loss": init, "final_loss": loss, "converged": converged}
+            if it % check_every == 0 or it == num_iters:
+                loss = float(self.loss_acc.numpy()[0]) * inv  # sync one scalar, not the whole field
+                if not quiet:
+                    print(f"  gn iter {it:3d}  loss {loss:.6e}", flush=True)
+                if loss < tol * init:
+                    converged = True
+                    break
+        return {"iters": it, "initial_loss": init, "final_loss": self.loss(), "converged": converged}
 
 
 # ---------------------------------------------------------------------------

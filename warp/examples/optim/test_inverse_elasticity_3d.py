@@ -162,7 +162,28 @@ class TestGaussNewton3D(unittest.TestCase):
         prob, _, _ = self._problem(2)
         r = prob.gauss_newton_optimize(num_iters=12, step_size=1.0, tol=1e-8)
         self.assertTrue(r["converged"], f"did not converge: {r['final_loss']:.3e}")
-        self.assertLessEqual(r["iters"], 6)
+        self.assertLessEqual(r["iters"], 7)
+
+    def test_gauss_newton_graph_matches_eager(self):
+        """The CUDA-graph-captured GN loop matches the eager path (both converge, same
+        optimized shape). Not bit-identical (atomic-scatter assembly is nondeterministic)."""
+        prob_e, _, _ = self._problem(2)
+        re = prob_e.gauss_newton_optimize(num_iters=15, step_size=1.0, tol=1e-8, use_graph=False)
+        prob_g, _, _ = self._problem(2)
+        rg = prob_g.gauss_newton_optimize(num_iters=15, step_size=1.0, tol=1e-8, use_graph=True)
+        self.assertTrue(re["converged"] and rg["converged"], "did not converge")
+        self.assertLessEqual(abs(re["iters"] - rg["iters"]), 2, "eager/graph iteration count differs")
+        rel = np.linalg.norm(prob_e.verts.numpy() - prob_g.verts.numpy()) / np.linalg.norm(prob_e.verts.numpy())
+        self.assertLess(rel, 1e-2, f"optimized shapes differ (relerr={rel:.2e})")
+
+    def test_gauss_newton_graph_captured(self):
+        """Performance regression: the GN loop must capture a CUDA graph (removing the
+        per-iteration full-field host sync). Guards against a silent eager fallback."""
+        if not wp.is_cuda_available():
+            self.skipTest("CUDA graph capture requires a CUDA device")
+        prob, _, _ = self._problem(2)
+        prob.gauss_newton_optimize(num_iters=10, step_size=1.0, tol=1e-8)
+        self.assertIsNotNone(prob._gn_graph, "gauss_newton_optimize should capture a CUDA graph")
 
 
 if __name__ == "__main__":
