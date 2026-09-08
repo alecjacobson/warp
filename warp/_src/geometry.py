@@ -678,9 +678,9 @@ def delaunay_edge_flip(
     return total_flips
 
 
-##########################################################################
-## Swept volume (motion envelope) of animated rigid meshes
-##########################################################################
+# ---------------------------------------------------------------------------
+# Swept volume (motion envelope) of animated rigid meshes
+# ---------------------------------------------------------------------------
 
 
 class SweptVolumeSign(enum.IntEnum):

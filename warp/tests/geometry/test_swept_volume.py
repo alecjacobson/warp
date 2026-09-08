@@ -252,8 +252,11 @@ def test_sign_modes_agree_on_watertight_mesh(test, device):
 
 
 def _open_box_mesh(device, half=0.5, support_winding_number=True):
-    """An axis-aligned box with its +z face removed: a non-watertight shell whose
-    interior the closest-face-normal test cannot classify reliably."""
+    """Build an axis-aligned box with its +z face removed.
+
+    The result is a non-watertight shell whose interior the closest-face-normal
+    test cannot classify reliably.
+    """
     h = half
     pts = np.array(
         [
