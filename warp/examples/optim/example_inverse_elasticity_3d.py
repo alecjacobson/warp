@@ -484,8 +484,10 @@ def per_tet_von_mises(V, U, T, young, poisson):
 
 
 def render_convergence_gif(frames, T, young, poisson, out_path, fps=3):
-    """Headless gif of the rest shape stacked over the gravity-deformed shape
-    (colored by von Mises stress) over the Gauss-Newton iterations."""
+    """Headless gif of the gravity-deformed shape (colored by von Mises stress)
+    in front of its optimized rest shape, both sitting on a shadowed ground plane,
+    over the Gauss-Newton iterations. The two shapes are placed in the same scene
+    and separated along the camera's depth axis (not composited side by side)."""
     import tempfile  # noqa: PLC0415
 
     import imageio.v2 as imageio  # noqa: PLC0415
@@ -495,34 +497,42 @@ def render_convergence_gif(frames, T, young, poisson, out_path, fps=3):
     ps.set_use_prefs_file(False)
     ps.set_allow_headless_backends(True)
     ps.init()
-    ps.set_ground_plane_mode("none")
     ps.set_up_dir("z_up")
+    ps.set_background_color((1.0, 1.0, 1.0))
+    # Soft contact shadows on a ground plane held at a fixed height across frames.
+    ps.set_ground_plane_mode("shadow_only")
+    ps.set_shadow_blur_iters(6)
+    ps.set_shadow_darkness(0.35)
+    ps.set_ground_plane_height_mode("manual")
 
     Ti = np.asarray(T, dtype=np.int32)
     V0 = frames[0][1]
-    span_z = max(U[:, 2].max() - U[:, 2].min() for _, _, U in frames)
-    gap = span_z + 3.0  # stack the rest shape this far above (in z) the deformed shape
-    vmax = max(per_tet_von_mises(V, U, Ti, young, poisson).max() for _, V, U in frames)
-
-    # A fixed 3/4 view looking along -y so the long (x) axis runs left-to-right,
-    # z is up, and the small (y) depth gives the bar a 3D read.
-    cx, cy = 0.5 * (V0[:, 0].min() + V0[:, 0].max()), 0.5 * (V0[:, 1].min() + V0[:, 1].max())
-    cz = 0.5 * gap
     span_x = V0[:, 0].max() - V0[:, 0].min()
+    span_y = V0[:, 1].max() - V0[:, 1].min()
+    depth = span_y + 2.0  # push the rest shape this far behind the deformed one (camera depth)
+    vmax = max(per_tet_von_mises(V, U, Ti, young, poisson).max() for _, V, U in frames)
+    z_floor = min(min(V[:, 2].min(), U[:, 2].min()) for _, V, U in frames) - 0.05
+    ps.set_ground_plane_height(z_floor)
 
-    def lift(P, dz):
-        Q = P.copy(); Q[:, 2] += dz  # noqa: E702
+    # Fixed 3/4 view looking roughly along -y: the long (x) axis runs left-to-right,
+    # z is up, and the deformed/rest shapes recede front-to-back in depth (y).
+    cx = 0.5 * (V0[:, 0].min() + V0[:, 0].max())
+    cy = 0.5 * (V0[:, 1].min() + V0[:, 1].max()) + 0.5 * depth
+    cz = 0.5 * (z_floor + 1.0)
+
+    def behind(P, dy):
+        Q = P.copy(); Q[:, 1] += dy  # noqa: E702
         return Q
 
     tmp = tempfile.mkdtemp()
     shots = []
     for k, (_, V, U) in enumerate(frames):
-        ps.register_volume_mesh("rest", lift(V, gap), tets=Ti, color=(0.55, 0.68, 0.9), edge_width=0.25)
+        ps.register_volume_mesh("rest", behind(V, depth), tets=Ti, color=(0.6, 0.72, 0.92), edge_width=0.25)
         defo = ps.register_volume_mesh("deformed", U, tets=Ti, edge_width=0.25)
         defo.add_scalar_quantity("von Mises", per_tet_von_mises(V, U, Ti, young, poisson),
                                  defined_on="cells", vminmax=(0.0, vmax), cmap="viridis", enabled=True)  # fmt: skip
         if k == 0:
-            ps.look_at((cx + 0.25 * span_x, cy - 1.9 * span_x, cz + 0.55 * span_x), (cx, cy, cz))
+            ps.look_at((cx + 0.25 * span_x, cy - 1.9 * span_x, cz + 0.6 * span_x), (cx, cy, cz))
         p = f"{tmp}/f{k:04d}.png"
         ps.screenshot(p, transparent_bg=False)
         shots.append(np.asarray(Image.open(p).convert("RGB")))
