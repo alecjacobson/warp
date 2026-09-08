@@ -58,7 +58,7 @@ def _subdivide(points: np.ndarray, faces: np.ndarray) -> tuple[np.ndarray, np.nd
 
 
 def icosphere(subdivisions: int = 2, radius: float = 1.0, center=(0.0, 0.0, 0.0)):
-    """A closed genus-0 sphere approximation, outward-oriented."""
+    """Build a closed, outward-oriented genus-0 sphere approximation."""
     points, faces = _icosahedron()
     points /= np.linalg.norm(points, axis=1, keepdims=True)
     for _ in range(subdivisions):
