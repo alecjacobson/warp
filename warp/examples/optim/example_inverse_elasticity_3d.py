@@ -544,6 +544,9 @@ def render_convergence_gif(frames, T, young, poisson, out_path, fps=3):
         if k == 0:
             ps.look_at((cx + 0.25 * span_x, cy - 1.9 * span_x, cz + 0.6 * span_x), (cx, cy, cz))
         p = f"{tmp}/f{k:04d}.png"
+        # Draw twice: the ground-plane shadow map occasionally isn't populated on the
+        # first draw after re-registering the meshes; the second capture has it.
+        ps.screenshot(p, transparent_bg=False)
         ps.screenshot(p, transparent_bg=False)
         shots.append(np.asarray(Image.open(p).convert("RGB")))
 
