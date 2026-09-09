@@ -885,6 +885,14 @@ class IsoSurfaceNets(IsoSurfaceBase):
     :class:`warp.geometry.IsoSurfaceMarchingCubes` (this deliberately differs from raw OpenVDB
     level-set output, which uses the opposite winding).
 
+    Both :meth:`~.surface` and :meth:`~.extract` support backward-mode
+    automatic differentiation: if ``field`` has ``requires_grad=True`` and
+    the call is wrapped in a ``wp.Tape()``, gradient flows from the output
+    ``verts`` positions back to ``field`` -- each vertex is an average of
+    linear zero-crossing interpolations over its edge group. Cell
+    classification, ambiguity correction, and the resulting
+    ``indices``/topology are discrete and carry no gradient.
+
     Args:
         nx: Number of grid nodes in the x-direction.
         ny: Number of grid nodes in the y-direction.

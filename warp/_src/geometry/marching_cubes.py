@@ -530,6 +530,13 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
     For a simpler, stateless operation, use the :meth:`~.extract` class
     method.
 
+    Both :meth:`~.surface` and :meth:`~.extract` support backward-mode
+    automatic differentiation: if ``field`` has ``requires_grad=True`` and
+    the call is wrapped in a ``wp.Tape()``, gradient flows from the output
+    ``verts`` positions back to ``field`` through the ``wp.lerp`` edge
+    interpolation. Cell classification and the resulting ``indices`` are
+    discrete and carry no gradient.
+
     Args:
         nx: Number of grid nodes in the x-direction.
         ny: Number of grid nodes in the y-direction.

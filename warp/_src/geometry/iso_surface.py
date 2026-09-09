@@ -95,6 +95,11 @@ class IsoSurfaceBase(ABC):
     ``topology`` parameter of :class:`warp.geometry.IsoSurfaceNets`, which can produce
     quads instead).
 
+    All backends support backward-mode automatic differentiation from
+    ``field`` to the output ``verts`` positions; ``indices`` is always
+    discrete and carries no gradient. See each backend's class docstring
+    for the specific interpolation its gradient flows through.
+
     Args:
         nx: Number of grid nodes in the x-direction.
         ny: Number of grid nodes in the y-direction.

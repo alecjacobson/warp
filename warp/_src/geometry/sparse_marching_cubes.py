@@ -944,6 +944,14 @@ def sparse_cells_via_lipschitz_pruning(
     used by :func:`sparse_marching_cubes`, exposed separately so callers can
     build their own extractors, visualize the adaptive grid, or reuse the cells.
 
+    This function does not support backward-mode automatic differentiation,
+    by design: cell selection is a discrete, threshold-based search, not a
+    smooth function of ``field``'s values, so there is no gradient to carry
+    from ``field`` to the output ``cells``. Its kernels have no adjoint, so
+    recording it on a ``wp.Tape()`` and calling ``.backward()`` prints benign
+    ``enable_backward=False`` warnings; see :func:`sparse_marching_cubes_from_cells`
+    for the differentiable extraction stage.
+
     Args:
         field: The implicit function, in the batched form accepted by
             :func:`sparse_marching_cubes`.
