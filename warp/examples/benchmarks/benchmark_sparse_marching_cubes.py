@@ -8,7 +8,7 @@
 #
 #   dense  : evaluate the field on a full (2^d + 1)^3 grid, then run
 #            wp.geometry.IsoSurfaceMarchingCubes (cost ~ O(R^3), the surface *volume*).
-#   sparse : build a Lipschitz octree and run wp.geometry.sparse_marching_cubes_via_lipschitz_pruning
+#   sparse : build a Lipschitz octree and run wp.geometry.sparse_marching_cubes
 #            (cost ~ O(R^2), the surface *area*).
 #
 # Both paths evaluate the SAME implicit function on the GPU and, at a given
@@ -92,7 +92,7 @@ def analytic_backend(device):
         wp.launch(_analytic_field_kernel, dim=field.shape, inputs=[field, origin, float(h)], device=device)
         return field
 
-    # sparse_marching_cubes_via_lipschitz_pruning only accepts a batched
+    # sparse_marching_cubes only accepts a batched
     # callable, not a bare @wp.func -- wrap it in a kernel so evaluation stays
     # entirely on the GPU. It computes the same values as the dense field
     # kernel above.
@@ -171,22 +171,20 @@ def bunny_backend(device):
 def dense_extract(dense_field, origin, root_width, depth):
     field = dense_field(depth)
     upper = wp.vec3(origin[0] + root_width, origin[1] + root_width, origin[2] + root_width)
-    verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract(
-        field, threshold=0.0, domain_bounds_lower_corner=origin, domain_bounds_upper_corner=upper
-    )
+    verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract(field, threshold=0.0, lower=origin, upper=upper)
     return verts, indices
 
 
 def sparse_extract(sdf, origin, root_width, depth, device, return_stats=False):
     n = (1 << depth) + 1
     upper = wp.vec3(origin[0] + root_width, origin[1] + root_width, origin[2] + root_width)
-    return wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+    return wp.geometry.sparse_marching_cubes(
         sdf,
         n,
         n,
         n,
-        domain_bounds_lower_corner=origin,
-        domain_bounds_upper_corner=upper,
+        lower=origin,
+        upper=upper,
         threshold=0.0,
         device=device,
         return_stats=return_stats,
@@ -201,13 +199,13 @@ def sparse_extract_grid(sdf, nx, ny, nz, origin, root_width, device, return_stat
     against the isotropic (unpadded) case.
     """
     upper = wp.vec3(origin[0] + root_width, origin[1] + root_width, origin[2] + root_width)
-    return wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+    return wp.geometry.sparse_marching_cubes(
         sdf,
         nx,
         ny,
         nz,
-        domain_bounds_lower_corner=origin,
-        domain_bounds_upper_corner=upper,
+        lower=origin,
+        upper=upper,
         threshold=0.0,
         device=device,
         return_stats=return_stats,
@@ -217,17 +215,15 @@ def sparse_extract_grid(sdf, nx, ny, nz, origin, root_width, device, return_stat
 def from_cells_extract_setup(sdf, origin, root_width, depth, device):
     """Precompute the (cells, corner_values) an octree would find, for timing
     sparse_marching_cubes_from_cells in isolation from cell selection."""
-    cell_origins, cell_width = wp.geometry.lipschitz_octree(sdf, origin, root_width, depth, device=device)
+    cells, cell_width = wp.geometry.sparse_cells_via_lipschitz_pruning(sdf, origin, root_width, depth, device=device)
     corner_offsets = np.array(wp.geometry.IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS, dtype=np.int32)
-    co = cell_origins.numpy()
-    cells_np = np.round((co - np.array(origin)) / cell_width).astype(np.int32)
+    cells_np = cells.numpy()
     corner_pos = np.array(origin) + cell_width * (cells_np[:, None, :] + corner_offsets[None, :, :])
 
     # Evaluate corner values with the same evaluator used for the octree, in one batch.
     corner_pos_wp = wp.array(corner_pos.reshape(-1, 3), dtype=wp.vec3, device=device)
     corner_vals_wp = sdf(corner_pos_wp)
 
-    cells = wp.array(cells_np, dtype=wp.vec3i, device=device)
     return cells, corner_vals_wp, origin, float(cell_width)
 
 

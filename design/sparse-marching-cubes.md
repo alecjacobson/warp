@@ -43,7 +43,7 @@ callable on an explicit cell set, independent of how the cells were chosen.
 | R3  | Accept the implicit function as a batched Python callable `evaluate(points) -> values` | Must | Batches evaluate meshes, neural implicits, and NumPy/PyTorch fields uniformly; see "Batched-callable-only contract" below |
 | R4  | Produce a watertight, manifold mesh matching dense marching cubes at equal resolution | Must | Correctness / fair comparison |
 | R5  | Expose the extraction stage on an explicit `(cells, corner_values)` list | Should | Vision/genAI "marked voxels" workflow |
-| R6  | Expose the cell-selection stage (`lipschitz_octree`) on its own | Should | Custom extractors, visualization |
+| R6  | Expose the cell-selection stage (`sparse_cells_via_lipschitz_pruning`) on its own | Should | Custom extractors, visualization |
 | R7  | Asymptotically beat the dense grid in time and evaluations as resolution grows | Should | The performance justification |
 | R8  | Support backward-mode autodiff w.r.t. field values, without differentiating cell selection | Should | Matches dense `IsoSurfaceMarchingCubes`; see "Backward-mode autodiff" below |
 
@@ -58,13 +58,13 @@ is implemented entirely in the pure-Python Warp layer.
 
 Two stages, each exposed as a public function, composed by a third:
 
-1. **`wp.geometry.lipschitz_octree(sdf, origin, root_width, max_depth, ...)`** -- build a
+1. **`wp.geometry.sparse_cells_via_lipschitz_pruning(sdf, origin, root_width, max_depth, ...)`** -- build a
    sparse set of leaf cells that provably bracket the level set of a 1-Lipschitz
    field, top-down, level by level.
 2. **`wp.geometry.sparse_marching_cubes_from_cells(cells, corner_values, ...)`** -- run
    marching cubes on an explicit list of occupied cells and their sampled corner
    values, sharing vertices between neighbors so the result is watertight.
-3. **`wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sdf, ...)`** -- chain the two: run the octree,
+3. **`wp.geometry.sparse_marching_cubes(sdf, ...)`** -- chain the two: run the octree,
    sample the field at the surviving cells' corners, and extract.
 
 This mirrors libigl's decomposition and, as suggested in review discussion, is
@@ -178,16 +178,16 @@ is deterministic. Confirmed on both CPU (multithreaded) and CUDA.
 ```python
 # Full pipeline: implicit function -> mesh. Parameterized exactly like
 # warp.geometry.IsoSurfaceMarchingCubes.extract, so the two are interchangeable.
-verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+verts, indices = wp.geometry.sparse_marching_cubes(
     sdf,                 # evaluate(points: wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32)
     nx, ny, nz,
-    domain_bounds_lower_corner=None, domain_bounds_upper_corner=None,
+    lower=None, upper=None,
     threshold=0.0, lipschitz_bound=1.0, device=None, return_stats=False,
 )
 
 # Stage 1: choose occupied cells (cubic root box; lower-level primitive, not
 # required to mirror a dense grid).
-cell_origins, cell_width = wp.geometry.lipschitz_octree(sdf, origin, root_width, max_depth, ...)
+cells, cell_width = wp.geometry.sparse_cells_via_lipschitz_pruning(sdf, origin, root_width, max_depth, ...)
 
 # Stage 2: extract on an explicit cell set (e.g. marked voxels from a model).
 verts, indices = wp.geometry.sparse_marching_cubes_from_cells(
@@ -204,13 +204,13 @@ bracketing guarantee.
 ### Matching the dense grid parameterization
 
 Review feedback on the initial `(origin, root_width, max_depth)` signature of
-`sparse_marching_cubes_via_lipschitz_pruning` asked that it accept the same
+`sparse_marching_cubes` asked that it accept the same
 grid description as `IsoSurfaceMarchingCubes.extract` -- `nx, ny, nz` node
-counts plus `domain_bounds_lower_corner`/`domain_bounds_upper_corner` -- so
-that calling either extractor with the same arguments yields the same
-surface. This is nontrivial because the octree needs a single cubic-ish root
-box subdivided by 2 on every axis, while the requested grid can be
-anisotropic and need not have a power-of-two cell count on any axis.
+counts plus `lower`/`upper` -- so that calling either extractor with the
+same arguments yields the same surface. This is nontrivial because the
+octree needs a single cubic-ish root box subdivided by 2 on every axis,
+while the requested grid can be anisotropic and need not have a
+power-of-two cell count on any axis.
 
 The reconciliation:
 
@@ -224,9 +224,8 @@ The reconciliation:
    `dx * 2**max_depth, dy * 2**max_depth, dz * 2**max_depth`, so the leaf
    cell size matches the dense cell size exactly on every axis. Any axis
    whose `ncells` is not itself a power of two gets a box that extends past
-   `domain_bounds_upper_corner` on that axis (this can happen on every axis,
-   including the longest one, unless its cell count is already a power of
-   two).
+   `upper` on that axis (this can happen on every axis, including the
+   longest one, unless its cell count is already a power of two).
 4. The Lipschitz pruning bound generalizes from the cubic
    `L * (sqrt(3)/2) * h` to the box half-diagonal
    `L * 0.5 * ||(dx, dy, dz)||` at each depth, which reduces to the cubic
@@ -234,11 +233,10 @@ The reconciliation:
 5. After the octree finishes, **cull leaf cells whose subscript is `>=
    ncells` on any axis** -- the cells that exist only because of the
    power-of-two padding -- before dedup/extraction, so the output is
-   identical to a dense grid over exactly `[domain_bounds_lower_corner,
-   domain_bounds_upper_corner]` at `nx, ny, nz`.
+   identical to a dense grid over exactly `[lower, upper]` at `nx, ny, nz`.
 
 `max_depth` is fully derived and is not part of the public signature.
-`lipschitz_octree` and `sparse_marching_cubes_from_cells` keep their
+`sparse_cells_via_lipschitz_pruning` and `sparse_marching_cubes_from_cells` keep their
 existing cubic/scalar-width signatures: they are documented as general
 low-level primitives (R5/R6), not required to mirror a dense grid.
 
@@ -251,8 +249,8 @@ allocated with `requires_grad=field.requires_grad`, and the interpolation is
 `enable_backward=False`. Review feedback (R8) asked for
 `sparse_marching_cubes_from_cells` to support backward-mode autodiff
 w.r.t. `corner_values`, while deliberately *not* differentiating
-`lipschitz_octree` -- cell selection is a discrete, threshold-based search,
-not a smooth function of the field.
+`sparse_cells_via_lipschitz_pruning` -- cell selection is a discrete,
+threshold-based search, not a smooth function of the field.
 
 **The scatter-write problem.** `sparse_marching_cubes_from_cells` takes
 `corner_values` as one entry per `(cell, corner)` pair, redundant at shared
@@ -271,7 +269,7 @@ non-reproducible.
 order" structure needed to pick one canonical `(cell, corner)` source per
 unique corner. A new opt-in step (`compute_unique_source=True`, used only by
 `sparse_marching_cubes_from_cells` -- the octree-driven path never scatters,
-since it evaluates `sdf` directly on already-unique corner positions) records
+since it evaluates `field` directly on already-unique corner positions) records
 `unique_source[unique_id]`, the flat `cell*8+corner` index of that canonical
 source. `_gather_corner_values_kernel` then does a pure 1:1 gather --
 `unique_values[i] = per_cell_values_flat[unique_source[i]]` -- with no
@@ -291,22 +289,22 @@ where the actual gradient computation is a no-op (e.g. `_emit_faces_kernel`'s
 discrete triangle indices), mirroring the precedent dense marching cubes
 already set for its own faces kernel. Octree-*construction* kernels
 (`_compute_cell_centers_kernel`, `_mark_active_cells_kernel`,
-`_subdivide_cells_kernel`, `_compact_cells_kernel`, `_cull_out_of_bounds_kernel`,
-`_cell_subscripts_to_origins_kernel` -- used only by `lipschitz_octree`/
-`_build_lipschitz_octree`) stay `enable_backward=False`: they are never
-reached by `sparse_marching_cubes_from_cells`, and by design should not be
-differentiated. `sparse_marching_cubes_via_lipschitz_pruning` reuses the same
-`_extract_from_dedup` core directly on already-deduplicated values, so it
-inherits differentiability w.r.t. whatever `sdf` returns, as a natural side
-effect, with zero changes to the octree machinery -- but calling it inside a
-`wp.Tape()` prints benign warnings for the octree-construction kernels, since
-they're recorded on that same tape even though nothing differentiates through
-them. Callers who want a warning-free tape should call `lipschitz_octree`
-outside it and use `sparse_marching_cubes_from_cells` directly inside.
+`_subdivide_cells_kernel`, `_compact_cells_kernel`, `_cull_out_of_bounds_kernel`
+-- used only by `sparse_cells_via_lipschitz_pruning`/`_build_lipschitz_octree`)
+stay `enable_backward=False`: they are never reached by
+`sparse_marching_cubes_from_cells`, and by design should not be
+differentiated. `sparse_marching_cubes` reuses the same `_extract_from_dedup`
+core directly on already-deduplicated values, so it inherits differentiability
+w.r.t. whatever `field` returns, as a natural side effect, with zero changes
+to the octree machinery -- but calling it inside a `wp.Tape()` prints benign
+warnings for the octree-construction kernels, since they're recorded on that
+same tape even though nothing differentiates through them. Callers who want a
+warning-free tape should call `sparse_cells_via_lipschitz_pruning` outside it
+and use `sparse_marching_cubes_from_cells` directly inside.
 
 **Caller responsibility.** As with any Warp kernel output that should carry
-gradient, the caller's `sdf` evaluator (for `sparse_marching_cubes_via_lipschitz_pruning`)
-or `corner_values` array (for `sparse_marching_cubes_from_cells`) must itself
+gradient, the caller's `field` evaluator (for `sparse_marching_cubes`) or
+`corner_values` array (for `sparse_marching_cubes_from_cells`) must itself
 be allocated with `requires_grad=True` -- this can't be inferred on the
 caller's behalf, and forgetting it fails silently (zero gradient, no error).
 

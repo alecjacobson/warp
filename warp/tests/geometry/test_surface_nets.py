@@ -1,5 +1,14 @@
+# Copyright Contributors to the OpenVDB Project
+# SPDX-License-Identifier: Apache-2.0
+#
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# _reference_replica() below ports the cell-sign classification, ambiguity
+# correction, and edge-group vertex placement from the uniform (non-adaptive)
+# meshing path of OpenVDB's volume-to-mesh tool
+# (openvdb/openvdb/tools/VolumeToMesh.h at v13.0.0, Apache-2.0). See
+# licenses/openvdb-LICENSE.txt.
 
 import unittest
 from collections import Counter
@@ -142,8 +151,8 @@ def test_surface_nets(test, device):
         nx=node_dim,
         ny=node_dim,
         nz=node_dim,
-        domain_bounds_lower_corner=bounds_low,
-        domain_bounds_upper_corner=bounds_high,
+        lower=bounds_low,
+        upper=bounds_high,
     )
 
     field, center, radius = make_sphere_field(device, node_dim)
@@ -359,7 +368,7 @@ def test_surface_nets_ambiguous_configs(test, device):
 
 
 def _reference_replica(field_np, threshold):
-    """Independent NumPy reimplementation of OpenVDB's uniform meshing path.
+    """Compute reference surface-mesh data using NumPy logic adapted from OpenVDB's uniform meshing path.
 
     Derived from VolumeToMesh.h (v13.0.0) and the ported tables only (it
     shares no code with warp._src.geometry.surface_nets, and computes edge crossings
@@ -515,8 +524,8 @@ def test_surface_nets_nonuniform(test, device):
         nx=dim_x,
         ny=dim_y,
         nz=dim_z,
-        domain_bounds_lower_corner=bounds_low,
-        domain_bounds_upper_corner=bounds_high,
+        lower=bounds_low,
+        upper=bounds_high,
     )
     iso.surface(field=field, threshold=0.0)
     verts_np = iso.verts.numpy()
@@ -593,9 +602,7 @@ def test_surface_nets_differentiable(test, device):
             device=device,
         )
 
-        verts, indices = wp.geometry.IsoSurfaceNets.extract(
-            field, threshold=0.0, domain_bounds_lower_corner=bounds_low, domain_bounds_upper_corner=bounds_high
-        )
+        verts, indices = wp.geometry.IsoSurfaceNets.extract(field, threshold=0.0, lower=bounds_low, upper=bounds_high)
         test.assertTrue(verts.requires_grad)
 
         # compute surface area

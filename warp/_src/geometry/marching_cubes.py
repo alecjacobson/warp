@@ -37,7 +37,7 @@ MC_EDGE_TO_CORNERS: Final[tuple[tuple[int, int], ...]] = (
 def marching_cubes_extract_vertices(
     field: wp.array3d(dtype=wp.float32),
     threshold: float,
-    domain_bounds_lower_corner: wp.vec3,
+    lower: wp.vec3,
     grid_pos_delta: wp.vec3,
 ):
     """Invoke kernels to extract vertices and indices to uniquely identify them."""
@@ -52,7 +52,7 @@ def marching_cubes_extract_vertices(
         inputs=[
             field,
             threshold,
-            domain_bounds_lower_corner,
+            lower,
             grid_pos_delta,
             None,
             True,  # count only == True : just count the vertices
@@ -84,7 +84,7 @@ def marching_cubes_extract_vertices(
         inputs=[
             field,
             threshold,
-            domain_bounds_lower_corner,
+            lower,
             grid_pos_delta,
             vertex_result_ind,
             False,  # count only == False : actually write out the vertices
@@ -105,7 +105,7 @@ def marching_cubes_extract_vertices(
 def extract_vertices_kernel(
     values: wp.array3d(dtype=wp.float32),
     threshold: wp.float32,
-    domain_bounds_lower_corner: wp.vec3,
+    lower: wp.vec3,
     grid_pos_delta: wp.vec3,
     vertex_result_ind: wp.array(dtype=wp.int32),
     count_only: bool,
@@ -153,12 +153,12 @@ def extract_vertices_kernel(
             # generated vertex along the edge
             t_interp = (threshold - this_val) / (opp_val - this_val)
             t_interp = wp.clamp(t_interp, 0.0, 1.0)
-            this_pos = domain_bounds_lower_corner + wp.vec3(
+            this_pos = lower + wp.vec3(
                 wp.float32(ti) * grid_pos_delta.x,
                 wp.float32(tj) * grid_pos_delta.y,
                 wp.float32(tk) * grid_pos_delta.z,
             )
-            opp_pos = domain_bounds_lower_corner + wp.vec3(
+            opp_pos = lower + wp.vec3(
                 wp.float32(i_opp) * grid_pos_delta.x,
                 wp.float32(j_opp) * grid_pos_delta.y,
                 wp.float32(k_opp) * grid_pos_delta.z,
@@ -524,8 +524,8 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
 
     This class provides a stateful interface for isosurface extraction. You
     can initialize it with a specific grid configuration and then call the
-    :meth:`~.surface` method multiple times, which is efficient for processing
-    fields of the same size.
+    :meth:`~.surface` method multiple times, which is convenient for
+    processing fields of the same size.
 
     For a simpler, stateless operation, use the :meth:`~.extract` class
     method.
@@ -543,21 +543,19 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
         device: Deprecated since Warp 1.9 and scheduled for removal in Warp
           1.19. The input field determines where extraction runs; remove this
           argument from calls.
-        domain_bounds_lower_corner: See the documentation in
-          :meth:`~.extract`.
-        domain_bounds_upper_corner: See the documentation in
-          :meth:`~.extract`.
+        lower: See the documentation in :meth:`~.extract`.
+        upper: See the documentation in :meth:`~.extract`.
 
     Attributes:
         nx (int): The number of grid nodes in the x-direction.
         ny (int): The number of grid nodes in the y-direction.
         nz (int): The number of grid nodes in the z-direction.
-        domain_bounds_lower_corner (warp.vec3f | tuple | None): The lower bound
-          for the mesh coordinate scaling. See the documentation in
-          :meth:`~.extract` for more details.
-        domain_bounds_upper_corner (warp.vec3f | tuple | None): The upper bound
-          for the mesh coordinate scaling. See the documentation in
-          :meth:`~.extract` for more details.
+        lower (warp.vec3f | tuple | None): The lower bound for the mesh
+          coordinate scaling. See the documentation in :meth:`~.extract`
+          for more details.
+        upper (warp.vec3f | tuple | None): The upper bound for the mesh
+          coordinate scaling. See the documentation in :meth:`~.extract`
+          for more details.
         verts (warp.array | None): An array of vertex positions of type
           :class:`warp.vec3f` for the output mesh.
           This is populated by calling the :meth:`~.surface` method.
@@ -604,8 +602,8 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
         max_verts: int = _DEFAULT_ZERO,
         max_tris: int = _DEFAULT_ZERO,
         device: wp.DeviceLike = _DEFAULT_NONE,
-        domain_bounds_lower_corner=None,
-        domain_bounds_upper_corner=None,
+        lower=None,
+        upper=None,
     ):
         if max_verts is _DEFAULT_ZERO:
             max_verts = 0
@@ -638,8 +636,8 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
             nx,
             ny,
             nz,
-            domain_bounds_lower_corner=domain_bounds_lower_corner,
-            domain_bounds_upper_corner=domain_bounds_upper_corner,
+            lower=lower,
+            upper=upper,
         )
 
         # These are unused, but retained for backwards compatibility during the deprecation period.
@@ -791,8 +789,8 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
         verts, faces = self.extract(
             field=field,
             threshold=wp.float32(threshold),
-            domain_bounds_lower_corner=self.domain_bounds_lower_corner,
-            domain_bounds_upper_corner=self.domain_bounds_upper_corner,
+            lower=self.lower,
+            upper=self.upper,
         )
 
         self.verts = verts
@@ -804,8 +802,8 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
         field: wp.array3d(dtype=wp.float32),
         threshold: float = 0.0,
         *,
-        domain_bounds_lower_corner: wp.vec3 | tuple[float, float, float] | None = None,
-        domain_bounds_upper_corner: wp.vec3 | tuple[float, float, float] | None = None,
+        lower: wp.vec3 | tuple[float, float, float] | None = None,
+        upper: wp.vec3 | tuple[float, float, float] | None = None,
     ) -> tuple[wp.array(dtype=wp.vec3), wp.array(dtype=wp.int32)]:
         """Extract a triangular mesh from a 3D scalar field.
 
@@ -814,8 +812,8 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
         array and may differ along each dimension.
 
         The coordinates of the mesh can be scaled to a specific bounding box
-        using the ``domain_bounds_lower_corner`` and
-        ``domain_bounds_upper_corner`` parameters. If a bound is not provided
+        using the ``lower`` and
+        ``upper`` parameters. If a bound is not provided
         (i.e., left as ``None``), it will be assigned a default value that
         aligns the mesh with the integer indices of the input grid.
 
@@ -826,11 +824,11 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
         Args:
             field: A 3D array representing the scalar values on a regular grid.
             threshold: The field value defining the isosurface to extract.
-            domain_bounds_lower_corner: The 3D coordinate that the grid's corner
-                at index (0,0,0) maps to. Defaults to ``(0.0, 0.0, 0.0)``
-                if ``None``.
-            domain_bounds_upper_corner: The 3D coordinate that the grid's corner
-                at index (nx-1, ny-1, nz-1) maps to. Defaults to align with the
+            lower: The 3D coordinate that the grid's corner at index
+                (0,0,0) maps to. Defaults to ``(0.0, 0.0, 0.0)`` if
+                ``None``.
+            upper: The 3D coordinate that the grid's corner at index
+                (nx-1, ny-1, nz-1) maps to. Defaults to align with the
                 grid's maximal indices if ``None``.
 
         Returns:
@@ -848,16 +846,12 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
         validate_field(field)
 
         # Apply default policies for bounds and compute the grid spacing
-        domain_bounds_lower_corner, grid_delta = resolve_domain_bounds(
-            field.shape, domain_bounds_lower_corner, domain_bounds_upper_corner
-        )
+        lower, grid_delta = resolve_domain_bounds(field.shape, lower, upper)
 
         # Extract the vertices
         # The second output of this kernel is an is-boundary flag for each vertex, which
         # we currently do not expose. (maybe this should be exposed in the future)
-        verts, _, edge_generated_vert_ind = marching_cubes_extract_vertices(
-            field, threshold, domain_bounds_lower_corner, grid_delta
-        )
+        verts, _, edge_generated_vert_ind = marching_cubes_extract_vertices(field, threshold, lower, grid_delta)
 
         # Extract faces between those vertices
         tris = marching_cubes_extract_faces(field, threshold, edge_generated_vert_ind)
@@ -885,6 +879,6 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
         return IsoSurfaceMarchingCubes.extract(
             field,
             threshold,
-            domain_bounds_lower_corner=domain_bounds_lower_corner,
-            domain_bounds_upper_corner=domain_bounds_upper_corner,
+            lower=domain_bounds_lower_corner,
+            upper=domain_bounds_upper_corner,
         )

@@ -28,13 +28,13 @@ def torus_sdf(p: wp.vec3):
 
 
 @wp.kernel(enable_backward=False)
-def _sphere_batch_kernel(points: wp.array(dtype=wp.vec3), values: wp.array(dtype=wp.float32)):
+def _sphere_batch_kernel(points: wp.array[wp.vec3], values: wp.array[wp.float32]):
     i = wp.tid()
     values[i] = wp.float32(sphere_sdf(points[i]))
 
 
 @wp.kernel(enable_backward=False)
-def _torus_batch_kernel(points: wp.array(dtype=wp.vec3), values: wp.array(dtype=wp.float32)):
+def _torus_batch_kernel(points: wp.array[wp.vec3], values: wp.array[wp.float32]):
     i = wp.tid()
     values[i] = wp.float32(torus_sdf(points[i]))
 
@@ -42,7 +42,7 @@ def _torus_batch_kernel(points: wp.array(dtype=wp.vec3), values: wp.array(dtype=
 def sphere_evaluate(points):
     """Batched, all-on-device evaluator for ``sphere_sdf``.
 
-    ``sparse_marching_cubes_via_lipschitz_pruning``/``lipschitz_octree`` only
+    ``sparse_marching_cubes``/``sparse_cells_via_lipschitz_pruning`` only
     accept a batched callable, not a bare single-point ``@wp.func`` -- this is
     the pattern callers use to batch one, matching
     ``warp/examples/core/example_sparse_marching_cubes.py``.
@@ -90,9 +90,7 @@ _CUBE_CORNER_OFFSETS = wp.geometry.IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS
 
 
 @wp.kernel
-def sphere_field_kernel_grad(
-    field: wp.array3d(dtype=float), lower: wp.vec3, delta: wp.vec3, radius: wp.array(dtype=wp.float32)
-):
+def sphere_field_kernel_grad(field: wp.array3d[float], lower: wp.vec3, delta: wp.vec3, radius: wp.array[wp.float32]):
     i, j, k = wp.tid()
     p = lower + wp.cw_mul(delta, wp.vec3(float(i), float(j), float(k)))
     field[i, j, k] = wp.length(p) - radius[0]
@@ -100,11 +98,11 @@ def sphere_field_kernel_grad(
 
 @wp.kernel
 def sphere_corner_values_kernel(
-    cells: wp.array(dtype=wp.vec3i),
+    cells: wp.array[wp.vec3i],
     lower: wp.vec3,
     delta: wp.vec3,
-    radius: wp.array(dtype=wp.float32),
-    out: wp.array(dtype=wp.float32, ndim=2),
+    radius: wp.array[wp.float32],
+    out: wp.array2d[wp.float32],
 ):
     """Differentiable per-cell corner values for every cell of a dense grid.
 
@@ -122,9 +120,7 @@ def sphere_corner_values_kernel(
 
 
 @wp.kernel
-def compute_surface_area_kernel(
-    verts: wp.array(dtype=wp.vec3), faces: wp.array(dtype=wp.int32), out_area: wp.array(dtype=wp.float32)
-):
+def compute_surface_area_kernel(verts: wp.array[wp.vec3], faces: wp.array[wp.int32], out_area: wp.array[wp.float32]):
     """Heron's-formula surface area reduction, matching test_marching_cubes.py's ``compute_surface_area``."""
     tid = wp.tid()
     p0 = verts[faces[3 * tid + 0]]
@@ -139,21 +135,19 @@ def compute_surface_area_kernel(
 
 
 @wp.kernel
-def sphere_batch_kernel_grad(
-    points: wp.array(dtype=wp.vec3), radius: wp.array(dtype=wp.float32), out: wp.array(dtype=wp.float32)
-):
+def sphere_batch_kernel_grad(points: wp.array[wp.vec3], radius: wp.array[wp.float32], out: wp.array[wp.float32]):
     i = wp.tid()
     out[i] = wp.length(points[i]) - radius[0]
 
 
 def sphere_evaluate_grad(radius_wp):
     """Batched sphere evaluator parametrized by ``radius_wp``, for testing that gradient
-    flows through sparse_marching_cubes_via_lipschitz_pruning.
+    flows through sparse_marching_cubes.
 
     The output array must be allocated with ``requires_grad=True`` for Warp's
     tape to track it -- the same requirement as any other differentiable Warp
-    kernel output; ``sparse_marching_cubes_via_lipschitz_pruning`` cannot infer
-    this on the caller's behalf.
+    kernel output; ``sparse_marching_cubes`` cannot infer this on the
+    caller's behalf.
     """
 
     def evaluate(points):
@@ -255,11 +249,11 @@ def _dense_surface(field_kernel, origin, root_width, max_depth, threshold, devic
     field = wp.empty((n_nodes, n_nodes, n_nodes), dtype=float, device=device)
     wp.launch(field_kernel, dim=field.shape, inputs=[field, wp.vec3(origin), float(h)], device=device)
     upper = wp.vec3(origin[0] + root_width, origin[1] + root_width, origin[2] + root_width)
-    verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract_surface_marching_cubes(
+    verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract(
         field,
         threshold=threshold,
-        domain_bounds_lower_corner=wp.vec3(origin),
-        domain_bounds_upper_corner=upper,
+        lower=wp.vec3(origin),
+        upper=upper,
     )
     return verts.numpy(), indices.numpy().reshape(-1, 3)
 
@@ -278,8 +272,8 @@ def _dense_surface_aniso(field_kernel, lower, upper, nx, ny, nz, threshold, devi
     verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract(
         field,
         threshold=threshold,
-        domain_bounds_lower_corner=lower,
-        domain_bounds_upper_corner=upper,
+        lower=lower,
+        upper=upper,
     )
     return verts.numpy(), indices.numpy().reshape(-1, 3)
 
@@ -305,9 +299,7 @@ def _sparse_mc(sdf, origin, root_width, max_depth, **kwargs):
     """
     n = (1 << max_depth) + 1
     lower, upper = _bounds_from_origin_width(origin, root_width)
-    return wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-        sdf, n, n, n, domain_bounds_lower_corner=lower, domain_bounds_upper_corner=upper, **kwargs
-    )
+    return wp.geometry.sparse_marching_cubes(sdf, n, n, n, lower=lower, upper=upper, **kwargs)
 
 
 def test_sparse_mc_sphere(test, device):
@@ -363,13 +355,13 @@ def test_sparse_mc_anisotropic_matches_dense(test, device):
     upper = (1.0, 1.3, 1.1)
     for nx, ny, nz in ((11, 15, 21), (17, 17, 17), (9, 33, 13)):
         with test.subTest(nx=nx, ny=ny, nz=nz):
-            verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+            verts, indices = wp.geometry.sparse_marching_cubes(
                 sphere_evaluate,
                 nx,
                 ny,
                 nz,
-                domain_bounds_lower_corner=lower,
-                domain_bounds_upper_corner=upper,
+                lower=lower,
+                upper=upper,
                 device=device,
             )
             sv = verts.numpy()
@@ -446,7 +438,7 @@ def test_sparse_mc_numpy_evaluator(test, device):
     """Check that an off-device (NumPy) batched evaluator is still correct.
 
     The batched-callable contract only requires the *returned* array to be a
-    ``wp.array(dtype=wp.float32)`` on the query points' device -- a callable is
+    ``wp.array[wp.float32]`` on the query points' device -- a callable is
     free to round-trip through host memory (NumPy, PyTorch, ...) internally.
     This is slower (every call pays a device/host sync), but must produce the
     exact same surface as an all-device Warp evaluator.
@@ -487,7 +479,7 @@ def test_sparse_mc_mesh_sdf(test, device):
     )
 
     @wp.kernel(enable_backward=False)
-    def mesh_sdf_kernel(mesh_id: wp.uint64, points: wp.array(dtype=wp.vec3), out: wp.array(dtype=wp.float32)):
+    def mesh_sdf_kernel(mesh_id: wp.uint64, points: wp.array[wp.vec3], out: wp.array[wp.float32]):
         i = wp.tid()
         p = points[i]
         query = wp.mesh_query_point_sign_normal(mesh_id, p, 1.0e6)
@@ -511,14 +503,14 @@ def test_sparse_mc_mesh_sdf(test, device):
 @wp.kernel(enable_backward=False)
 def _mesh_minus_sphere_kernel(
     mesh_id: wp.uint64,
-    points: wp.array(dtype=wp.vec3),
+    points: wp.array[wp.vec3],
     sphere_radius: wp.float32,
-    out: wp.array(dtype=wp.float32),
+    out: wp.array[wp.float32],
 ):
     """CSG subtraction of an analytic sphere from a mesh SDF, entirely on-device.
 
     No ``.numpy()``/host round trip anywhere in this kernel or the launch that
-    wraps it below: this is the pattern ``sparse_marching_cubes_via_lipschitz_pruning``
+    wraps it below: this is the pattern ``sparse_marching_cubes``
     expects for an implicit function that should stay on the GPU end to end.
     """
     i = wp.tid()
@@ -628,11 +620,10 @@ def test_sparse_mc_from_cells(test, device):
     f_ref = f_ref.numpy().reshape(-1, 3)
 
     # Recover the octree cells, then sample the field at their corners ourselves.
-    cell_origins, cell_width = wp.geometry.lipschitz_octree(
+    cells_wp, cell_width = wp.geometry.sparse_cells_via_lipschitz_pruning(
         sphere_evaluate, origin, root_width, max_depth=depth, device=device
     )
-    co = cell_origins.numpy()
-    cells = np.round((co - np.array(origin)) / cell_width).astype(np.int32)
+    cells = cells_wp.numpy()
     corner_pos = np.array(origin) + cell_width * (cells[:, None, :] + corner_offsets[None, :, :])
     corner_vals = (np.linalg.norm(corner_pos, axis=2) - 0.5).astype(np.float32)  # (N, 8)
 
@@ -685,9 +676,7 @@ def _sphere_area_grad_dense(node_dim, radius, device):
     with wp.Tape() as tape:
         field = wp.zeros((node_dim, node_dim, node_dim), dtype=float, device=device, requires_grad=True)
         wp.launch(sphere_field_kernel_grad, dim=field.shape, inputs=[field, lower, delta, radius_wp], device=device)
-        verts, faces = wp.geometry.IsoSurfaceMarchingCubes.extract(
-            field, threshold=0.0, domain_bounds_lower_corner=lower, domain_bounds_upper_corner=upper
-        )
+        verts, faces = wp.geometry.IsoSurfaceMarchingCubes.extract(field, threshold=0.0, lower=lower, upper=upper)
         area = wp.zeros(1, dtype=float, device=device, requires_grad=True)
         wp.launch(compute_surface_area_kernel, dim=faces.shape[0] // 3, inputs=[verts, faces, area], device=device)
 
@@ -697,7 +686,7 @@ def _sphere_area_grad_dense(node_dim, radius, device):
 
 def _sphere_area_grad_sparse(node_dim, radius, device):
     """d(area)/d(radius) of a sphere via sparse_marching_cubes_from_cells, on every cell
-    of the same dense grid (no octree -- lipschitz_octree is not differentiated)."""
+    of the same dense grid (no octree -- sparse_cells_via_lipschitz_pruning is not differentiated)."""
     lower = wp.vec3(-1.0, -1.0, -1.0)
     upper = wp.vec3(1.0, 1.0, 1.0)
     ncells = node_dim - 1
@@ -733,9 +722,10 @@ def test_sparse_mc_from_cells_differentiable(test, device):
 
     Mirrors ``test_marching_cubes_differentiable`` in test_marching_cubes.py:
     constructs a sphere via a differentiable per-cell corner-value kernel
-    (every cell of a dense grid -- not an octree, since lipschitz_octree is
-    deliberately not differentiated), extracts a surface, computes its area,
-    and differentiates the area with respect to the sphere's radius.
+    (every cell of a dense grid -- not an octree, since
+    sparse_cells_via_lipschitz_pruning is deliberately not differentiated),
+    extracts a surface, computes its area, and differentiates the area with
+    respect to the sphere's radius.
     """
     node_dim = 33
     radius = 0.5
@@ -783,29 +773,29 @@ def test_sparse_mc_gradient_deterministic(test, device):
 
 
 def test_sparse_mc_via_lipschitz_pruning_differentiable(test, device):
-    """Check that sparse_marching_cubes_via_lipschitz_pruning inherits differentiability.
+    """Check that sparse_marching_cubes inherits differentiability.
 
     It reuses sparse_marching_cubes_from_cells's extraction core directly on
     already-deduplicated corner values, so gradient flows through as soon as
-    the caller's ``sdf`` evaluator itself returns a requires_grad array --
+    the caller's ``field`` evaluator itself returns a requires_grad array --
     with no changes needed to the octree machinery. That octree machinery
-    (lipschitz_octree) is still not differentiated, and running this inside a
-    wp.Tape() prints benign 'enable_backward=False' warnings for its
-    kernels, which is expected and does not affect the gradient's
-    correctness.
+    (sparse_cells_via_lipschitz_pruning) is still not differentiated, and
+    running this inside a wp.Tape() prints benign 'enable_backward=False'
+    warnings for its kernels, which is expected and does not affect the
+    gradient's correctness.
     """
     radius = 0.5
     radius_wp = wp.full((1,), value=radius, dtype=wp.float32, device=device, requires_grad=True)
     evaluate = sphere_evaluate_grad(radius_wp)
 
     with wp.Tape() as tape:
-        verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+        verts, indices = wp.geometry.sparse_marching_cubes(
             evaluate,
             33,
             33,
             33,
-            domain_bounds_lower_corner=(-1.0, -1.0, -1.0),
-            domain_bounds_upper_corner=(1.0, 1.0, 1.0),
+            lower=(-1.0, -1.0, -1.0),
+            upper=(1.0, 1.0, 1.0),
             device=device,
         )
         area = wp.zeros(1, dtype=float, device=device, requires_grad=True)
@@ -814,6 +804,37 @@ def test_sparse_mc_via_lipschitz_pruning_differentiable(test, device):
     tape.backward(area)
     grad = float(radius_wp.grad.numpy()[0])
     test.assertLess(abs(grad - 8.0 * np.pi * radius), 5e-1)
+
+
+def test_sparse_cells_via_lipschitz_pruning_compose_with_from_cells(test, device):
+    """Regression: sparse_cells_via_lipschitz_pruning()'s cells feed sparse_marching_cubes_from_cells() directly.
+
+    sparse_cells_via_lipschitz_pruning() used to return world-space cell origins (wp.vec3),
+    which required rounding to recover integer subscripts before calling
+    sparse_marching_cubes_from_cells() -- a lossy round trip once subscripts
+    exceed float32's exact-integer range. It now returns the same wp.vec3i
+    subscripts sparse_marching_cubes_from_cells() expects, so the array can be
+    passed straight through with no conversion and no host round trip.
+    """
+    origin = (-1.0, -1.0, -1.0)
+    root_width = 2.0
+    depth = 5
+    corner_offsets = np.array(wp.geometry.IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS, dtype=np.int32)
+
+    cells_wp, cell_width = wp.geometry.sparse_cells_via_lipschitz_pruning(
+        sphere_evaluate, origin, root_width, depth, device=device
+    )
+    test.assertEqual(cells_wp.dtype, wp.vec3i)
+
+    cells = cells_wp.numpy()
+    corner_pos = np.array(origin) + cell_width * (cells[:, None, :] + corner_offsets[None, :, :])
+    corner_vals = wp.array((np.linalg.norm(corner_pos, axis=2) - 0.5).astype(np.float32).reshape(-1), device=device)
+
+    # cells_wp is passed straight through -- no .numpy()/np.round() conversion.
+    verts, indices = wp.geometry.sparse_marching_cubes_from_cells(
+        cells_wp, corner_vals, origin=origin, cell_width=float(cell_width), device=device
+    )
+    _validate_mesh(test, verts.numpy(), indices.numpy().reshape(-1, 3))
 
 
 def test_sparse_mc_large_subscripts(test, device):
@@ -883,10 +904,10 @@ def test_sparse_mc_noncontiguous_corner_values(test, device):
     depth = 5
     corner_offsets = np.array(wp.geometry.IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS, dtype=np.int32)
 
-    cell_origins, cell_width = wp.geometry.lipschitz_octree(
+    cells_wp, cell_width = wp.geometry.sparse_cells_via_lipschitz_pruning(
         sphere_evaluate, origin, 2.0, max_depth=depth, device=device
     )
-    cells = np.round((cell_origins.numpy() - np.array(origin)) / cell_width).astype(np.int32)
+    cells = cells_wp.numpy()
     corner_pos = np.array(origin) + cell_width * (cells[:, None, :] + corner_offsets[None, :, :])
     corner_vals = (np.linalg.norm(corner_pos, axis=2) - 0.5).astype(np.float32)
 
@@ -906,7 +927,7 @@ def test_sparse_mc_noncontiguous_corner_values(test, device):
     np.testing.assert_array_equal(indices.numpy(), f_ref.numpy())
 
 
-def test_lipschitz_octree_brackets_surface(test, device):
+def test_sparse_cells_via_lipschitz_pruning_brackets_surface(test, device):
     """Check that the octree keeps every cell the surface actually passes through.
 
     Correctness of the sparse extractor rests on this conservative guarantee:
@@ -918,21 +939,22 @@ def test_lipschitz_octree_brackets_surface(test, device):
     max_depth = 5
     resolution = 1 << max_depth
 
-    cell_origins, cell_width = wp.geometry.lipschitz_octree(
+    cells_wp, cell_width = wp.geometry.sparse_cells_via_lipschitz_pruning(
         sphere_evaluate, origin, root_width, max_depth, device=device
     )
-    origins = cell_origins.numpy()
-    test.assertGreater(origins.shape[0], 0)
+    cells = cells_wp.numpy()
+    test.assertGreater(cells.shape[0], 0)
     np.testing.assert_allclose(cell_width, root_width / resolution)
 
     # Every kept cell's center is within the Lipschitz band of the surface.
+    origins = np.array(origin) + cell_width * cells
     centers = origins + 0.5 * cell_width
     band = np.sqrt(3.0) / 2.0 * cell_width
     center_sdf = np.linalg.norm(centers, axis=1) - 0.5
     test.assertLessEqual(np.abs(center_sdf).max(), band + 1e-5)
 
-    # Recover integer subscripts and confirm completeness against a dense grid.
-    kept = {tuple(np.round((o - np.array(origin)) / cell_width).astype(int)) for o in origins}
+    # Confirm completeness against a dense grid.
+    kept = {tuple(c) for c in cells}
 
     n_nodes = resolution + 1
     xs = origin[0] + cell_width * np.arange(n_nodes)
@@ -961,25 +983,23 @@ def test_lipschitz_octree_brackets_surface(test, device):
 def test_sparse_mc_invalid_arguments(test, device):
     """Check that argument validation raises informative errors."""
     with test.assertRaises(ValueError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sphere_evaluate, 1, 17, 17, device=device)
+        wp.geometry.sparse_marching_cubes(sphere_evaluate, 1, 17, 17, device=device)
     with test.assertRaises(ValueError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sphere_evaluate, 17, 0, 17, device=device)
+        wp.geometry.sparse_marching_cubes(sphere_evaluate, 17, 0, 17, device=device)
     with test.assertRaises(ValueError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-            sphere_evaluate, 17, 17, 17, lipschitz_bound=-1.0, device=device
-        )
+        wp.geometry.sparse_marching_cubes(sphere_evaluate, 17, 17, 17, lipschitz_bound=-1.0, device=device)
     with test.assertRaises(ValueError):
-        wp.geometry.lipschitz_octree(
+        wp.geometry.sparse_cells_via_lipschitz_pruning(
             sphere_evaluate, (0.0, 0.0, 0.0), 2.0, max_depth=4, lipschitz_bound=-1.0, device=device
         )
     with test.assertRaises(TypeError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(42, 17, 17, 17, device=device)
+        wp.geometry.sparse_marching_cubes(42, 17, 17, 17, device=device)
     # A bare single-point @wp.func is rejected -- only a batched callable is
     # accepted, so that the on-GPU-or-not choice is explicit to the caller.
     with test.assertRaises(TypeError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sphere_sdf, 17, 17, 17, device=device)
+        wp.geometry.sparse_marching_cubes(sphere_sdf, 17, 17, 17, device=device)
     with test.assertRaises(TypeError):
-        wp.geometry.lipschitz_octree(sphere_sdf, (0.0, 0.0, 0.0), 2.0, max_depth=4, device=device)
+        wp.geometry.sparse_cells_via_lipschitz_pruning(sphere_sdf, (0.0, 0.0, 0.0), 2.0, max_depth=4, device=device)
 
     # A non-positive cell width collapses every corner onto the origin (or
     # mirrors the cell), so the explicit-cells entry point rejects it.
@@ -988,6 +1008,14 @@ def test_sparse_mc_invalid_arguments(test, device):
     for bad_width in (0.0, -1.0):
         with test.assertRaises(ValueError):
             wp.geometry.sparse_marching_cubes_from_cells(cells, corner_values, cell_width=bad_width, device=device)
+
+    # An empty cell array still validates corner_values -- a mismatched size
+    # is rejected rather than silently ignored just because there are no
+    # cells to attach it to.
+    with test.assertRaises(ValueError):
+        wp.geometry.sparse_marching_cubes_from_cells(
+            np.zeros((0, 3), dtype=np.int32), np.zeros((3,), dtype=np.float32), device=device
+        )
 
 
 devices = get_test_devices()
@@ -1058,6 +1086,12 @@ add_function_test(
     devices=devices,
 )
 add_function_test(
+    TestSparseMarchingCubes,
+    "test_sparse_cells_via_lipschitz_pruning_compose_with_from_cells",
+    test_sparse_cells_via_lipschitz_pruning_compose_with_from_cells,
+    devices=devices,
+)
+add_function_test(
     TestSparseMarchingCubes, "test_sparse_mc_large_subscripts", test_sparse_mc_large_subscripts, devices=devices
 )
 add_function_test(
@@ -1068,8 +1102,8 @@ add_function_test(
 )
 add_function_test(
     TestSparseMarchingCubes,
-    "test_lipschitz_octree_brackets_surface",
-    test_lipschitz_octree_brackets_surface,
+    "test_sparse_cells_via_lipschitz_pruning_brackets_surface",
+    test_sparse_cells_via_lipschitz_pruning_brackets_surface,
     devices=devices,
 )
 add_function_test(
