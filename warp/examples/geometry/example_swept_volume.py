@@ -160,6 +160,12 @@ def load_usd_assembly(path, num_samples=24, device=None):
     :class:`warp.Mesh`; its per-sample world transform is read from the stage's
     xform cache. Returns ``(meshes, transforms, times)``.
 
+    The swept volume assumes rigid motion, so a prim's local-to-world transform
+    must be a fixed scale followed by an animated rotation and translation. A
+    static scale is baked into the rest-pose points; a scale that changes over
+    time, or a transform carrying shear or a scale orientation, cannot be split
+    into a fixed mesh plus rigid motion and raises :class:`ValueError`.
+
     The meshes are built with ``support_winding_number=True``, which the
     default classifier requires. CAD assemblies like the UR10 are made of open,
     non-watertight visual shells, for which closest-face-normal sign
@@ -170,7 +176,7 @@ def load_usd_assembly(path, num_samples=24, device=None):
     stage = Usd.Stage.Open(path, Usd.Stage.LoadAll)
     pred = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
 
-    prims, meshes = [], []
+    prims, rest_points, rest_faces = [], [], []
     for prim in stage.Traverse(pred):
         if not prim.IsA(UsdGeom.Mesh):
             continue
@@ -183,16 +189,15 @@ def load_usd_assembly(path, num_samples=24, device=None):
         if not counts or not vertex_indices:
             continue
         faces = _triangulate(counts, vertex_indices)
+        # USD's leftHanded orientation is the opposite winding to the one Warp's
+        # mesh queries expect, so flip those triangles.
+        if geom.GetOrientationAttr().Get() == UsdGeom.Tokens.leftHanded:
+            faces = faces[:, ::-1]
         prims.append(prim)
-        meshes.append(
-            wp.Mesh(
-                wp.array(np.asarray(points, dtype=np.float32), dtype=wp.vec3, device=device),
-                wp.array(faces.reshape(-1).astype(np.int32), dtype=wp.int32, device=device),
-                support_winding_number=True,
-            )
-        )
+        rest_points.append(np.asarray(points, dtype=np.float64))
+        rest_faces.append(faces)
 
-    if not meshes:
+    if not prims:
         raise SystemExit(f"No UsdGeomMesh found in {path}")
 
     t0 = stage.GetStartTimeCode()
@@ -202,16 +207,55 @@ def load_usd_assembly(path, num_samples=24, device=None):
     times = np.linspace(t0, t1, num_samples).astype(np.float32)
 
     cache = UsdGeom.XformCache()
-    transforms = np.zeros((len(meshes), num_samples, 7), dtype=np.float32)
+    transforms = np.zeros((len(prims), num_samples, 7), dtype=np.float32)
+    scales = np.zeros((len(prims), 3), dtype=np.float64)
     for s, t in enumerate(times):
         cache.SetTime(Usd.TimeCode(float(t)))
         for m, prim in enumerate(prims):
             mat = cache.GetLocalToWorldTransform(prim)
             xform = Gf.Transform(mat)
+
+            # Reject anything that is not a scale followed by a rigid motion:
+            # recomposing from just those three pieces has to reproduce the
+            # matrix, which fails on shear, a scale orientation, or a pivot.
+            rigid_with_scale = Gf.Transform()
+            rigid_with_scale.SetScale(xform.GetScale())
+            rigid_with_scale.SetRotation(xform.GetRotation())
+            rigid_with_scale.SetTranslation(xform.GetTranslation())
+            if not Gf.IsClose(rigid_with_scale.GetMatrix(), mat, 1e-5):
+                raise ValueError(
+                    f"'{prim.GetPath()}' has a local-to-world transform that is not a scale followed by a "
+                    "rotation and a translation, so it cannot be expressed as a rest mesh under rigid motion."
+                )
+
+            scale = np.array(xform.GetScale(), dtype=np.float64)
+            if s == 0:
+                scales[m] = scale
+            elif not np.allclose(scale, scales[m], rtol=1e-5, atol=1e-6):
+                raise ValueError(
+                    f"'{prim.GetPath()}' is scaled by {scales[m].tolist()} at time {times[0]:g} and "
+                    f"{scale.tolist()} at time {t:g}. The swept volume assumes rigid motion, so the "
+                    "scale must not change over time."
+                )
+
             trans = xform.GetTranslation()
             rot = xform.GetRotation().GetQuat()
             imag = rot.GetImaginary()
             transforms[m, s] = [trans[0], trans[1], trans[2], imag[0], imag[1], imag[2], rot.GetReal()]
+
+    meshes = []
+    for m in range(len(prims)):
+        # Bake the static scale into the rest pose, leaving the motion rigid. A
+        # negative determinant mirrors the mesh, which reverses its winding.
+        points = rest_points[m] * scales[m]
+        faces = rest_faces[m][:, ::-1] if np.prod(scales[m]) < 0.0 else rest_faces[m]
+        meshes.append(
+            wp.Mesh(
+                wp.array(points.astype(np.float32), dtype=wp.vec3, device=device),
+                wp.array(np.ascontiguousarray(faces).reshape(-1).astype(np.int32), dtype=wp.int32, device=device),
+                support_winding_number=True,
+            )
+        )
 
     return meshes, transforms, times
 
