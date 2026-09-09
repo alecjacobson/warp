@@ -169,8 +169,8 @@ def _dense_surface(field_kernel, origin, root_width, max_depth, threshold, devic
     verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract(
         field,
         threshold=threshold,
-        domain_bounds_lower_corner=wp.vec3(origin),
-        domain_bounds_upper_corner=upper,
+        lower=wp.vec3(origin),
+        upper=upper,
     )
     return verts.numpy(), indices.numpy().reshape(-1, 3)
 
@@ -189,8 +189,8 @@ def _dense_surface_aniso(field_kernel, lower, upper, nx, ny, nz, threshold, devi
     verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract(
         field,
         threshold=threshold,
-        domain_bounds_lower_corner=lower,
-        domain_bounds_upper_corner=upper,
+        lower=lower,
+        upper=upper,
     )
     return verts.numpy(), indices.numpy().reshape(-1, 3)
 
@@ -216,9 +216,7 @@ def _sparse_mc(sdf, origin, root_width, max_depth, **kwargs):
     """
     n = (1 << max_depth) + 1
     lower, upper = _bounds_from_origin_width(origin, root_width)
-    return wp.geometry.sparse_marching_cubes(
-        sdf, n, n, n, domain_bounds_lower_corner=lower, domain_bounds_upper_corner=upper, **kwargs
-    )
+    return wp.geometry.sparse_marching_cubes(sdf, n, n, n, lower=lower, upper=upper, **kwargs)
 
 
 def test_sparse_mc_sphere(test, device):
@@ -279,8 +277,8 @@ def test_sparse_mc_anisotropic_matches_dense(test, device):
                 nx,
                 ny,
                 nz,
-                domain_bounds_lower_corner=lower,
-                domain_bounds_upper_corner=upper,
+                lower=lower,
+                upper=upper,
                 device=device,
             )
             sv = verts.numpy()

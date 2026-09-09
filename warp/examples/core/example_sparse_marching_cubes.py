@@ -179,8 +179,8 @@ class Example:
             n_nodes,
             n_nodes,
             n_nodes,
-            domain_bounds_lower_corner=self.origin,
-            domain_bounds_upper_corner=upper,
+            lower=self.origin,
+            upper=upper,
             threshold=0.0,
             return_stats=True,
         )
@@ -197,7 +197,7 @@ class Example:
             self.origin[0] + self.root_width, self.origin[1] + self.root_width, self.origin[2] + self.root_width
         )
         verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract(
-            field, threshold=0.0, domain_bounds_lower_corner=self.origin, domain_bounds_upper_corner=upper
+            field, threshold=0.0, lower=self.origin, upper=upper
         )
         stats = {"resolution": resolution, "leaf_cells": resolution**3, "sdf_evaluations": n_nodes**3}
         return verts, indices, stats

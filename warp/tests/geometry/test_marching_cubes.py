@@ -99,8 +99,8 @@ def test_marching_cubes(test, device):
         nx=node_dim,
         ny=node_dim,
         nz=node_dim,
-        domain_bounds_lower_corner=bounds_low,
-        domain_bounds_upper_corner=bounds_high,
+        lower=bounds_low,
+        upper=bounds_high,
     )
 
     radius = node_dim / 4.0
@@ -146,7 +146,7 @@ def test_marching_cubes_functional(test, device):
 
     # call via the functional interface
     verts, faces = wp.geometry.IsoSurfaceMarchingCubes.extract(
-        field, threshold=0.0, domain_bounds_lower_corner=bounds_low, domain_bounds_upper_corner=bounds_high
+        field, threshold=0.0, lower=bounds_low, upper=bounds_high
     )
 
     verts_np = verts.numpy()
@@ -174,8 +174,8 @@ def test_marching_cubes_nonuniform(test, device):
         nx=dimX,
         ny=dimY,
         nz=dimZ,
-        domain_bounds_lower_corner=bounds_low,
-        domain_bounds_upper_corner=bounds_high,
+        lower=bounds_low,
+        upper=bounds_high,
     )
 
     radius = dimX / 4.0
@@ -257,7 +257,7 @@ def test_marching_cubes_differentiable(test, device):
 
         # call via the functional interface
         verts, faces = wp.geometry.IsoSurfaceMarchingCubes.extract(
-            field, threshold=0.0, domain_bounds_lower_corner=bounds_low, domain_bounds_upper_corner=bounds_high
+            field, threshold=0.0, lower=bounds_low, upper=bounds_high
         )
 
         # compute surface area

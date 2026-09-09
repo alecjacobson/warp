@@ -3021,8 +3021,8 @@ per call.
     verts, indices = wp.geometry.sparse_marching_cubes(
         sphere_evaluate,
         257, 257, 257,
-        domain_bounds_lower_corner=wp.vec3(-1.0, -1.0, -1.0),
-        domain_bounds_upper_corner=wp.vec3(1.0, 1.0, 1.0),
+        lower=wp.vec3(-1.0, -1.0, -1.0),
+        upper=wp.vec3(1.0, 1.0, 1.0),
         threshold=0.0,
         device="cuda:0",
     )

@@ -506,7 +506,7 @@ def _sn_compute_points_kernel(
     edge_group_table: wp.array(dtype=wp.int32),
     cell_flags: wp.array3d(dtype=wp.int32),
     point_offsets: wp.array(dtype=wp.int32),
-    domain_bounds_lower_corner: wp.vec3,
+    lower: wp.vec3,
     grid_pos_delta: wp.vec3,
     verts_pos_out: wp.array(dtype=wp.vec3),
 ):
@@ -619,7 +619,7 @@ def _sn_compute_points_kernel(
             avg_z *= weight
 
         local = wp.vec3(float(ci) + avg_x, float(cj) + avg_y, float(ck) + avg_z)
-        verts_pos_out[out_ind + group - 1] = domain_bounds_lower_corner + wp.cw_mul(local, grid_pos_delta)
+        verts_pos_out[out_ind + group - 1] = lower + wp.cw_mul(local, grid_pos_delta)
 
 
 @wp.func
@@ -762,7 +762,7 @@ def _sn_build_faces_kernel(
 def surface_nets_extract(
     field: wp.array3d(dtype=wp.float32),
     threshold: float,
-    domain_bounds_lower_corner: wp.vec3,
+    lower: wp.vec3,
     grid_pos_delta: wp.vec3,
     topology: str,
 ):
@@ -820,7 +820,7 @@ def surface_nets_extract(
             edge_group_table,
             cell_flags,
             point_offsets,
-            domain_bounds_lower_corner,
+            lower,
             grid_pos_delta,
         ],
         outputs=[
@@ -887,10 +887,8 @@ class IsoSurfaceNets(IsoSurfaceBase):
         nx: Number of grid nodes in the x-direction.
         ny: Number of grid nodes in the y-direction.
         nz: Number of grid nodes in the z-direction.
-        domain_bounds_lower_corner: See the documentation in
-          :meth:`~.extract`.
-        domain_bounds_upper_corner: See the documentation in
-          :meth:`~.extract`.
+        lower: See the documentation in :meth:`~.extract`.
+        upper: See the documentation in :meth:`~.extract`.
         topology: The type of the faces that :meth:`~.surface` produces:
           ``"triangle"`` or ``"quad"``.
 
@@ -898,12 +896,12 @@ class IsoSurfaceNets(IsoSurfaceBase):
         nx (int): The number of grid nodes in the x-direction.
         ny (int): The number of grid nodes in the y-direction.
         nz (int): The number of grid nodes in the z-direction.
-        domain_bounds_lower_corner (warp.vec3f | tuple | None): The lower bound
-          for the mesh coordinate scaling. See the documentation in
-          :meth:`~.extract` for more details.
-        domain_bounds_upper_corner (warp.vec3f | tuple | None): The upper bound
-          for the mesh coordinate scaling. See the documentation in
-          :meth:`~.extract` for more details.
+        lower (warp.vec3f | tuple | None): The lower bound for the mesh
+          coordinate scaling. See the documentation in :meth:`~.extract`
+          for more details.
+        upper (warp.vec3f | tuple | None): The upper bound for the mesh
+          coordinate scaling. See the documentation in :meth:`~.extract`
+          for more details.
         topology (str): The type of the faces that :meth:`~.surface` produces:
           ``"triangle"`` or ``"quad"``.
         verts (warp.array | None): An array of vertex positions of type
@@ -922,8 +920,8 @@ class IsoSurfaceNets(IsoSurfaceBase):
         ny: int,
         nz: int,
         *,
-        domain_bounds_lower_corner: wp.vec3 | tuple[float, float, float] | None = None,
-        domain_bounds_upper_corner: wp.vec3 | tuple[float, float, float] | None = None,
+        lower: wp.vec3 | tuple[float, float, float] | None = None,
+        upper: wp.vec3 | tuple[float, float, float] | None = None,
         topology: Literal["triangle", "quad"] = "triangle",
     ):
         _validate_topology(topology)
@@ -932,8 +930,8 @@ class IsoSurfaceNets(IsoSurfaceBase):
             nx,
             ny,
             nz,
-            domain_bounds_lower_corner=domain_bounds_lower_corner,
-            domain_bounds_upper_corner=domain_bounds_upper_corner,
+            lower=lower,
+            upper=upper,
         )
 
         self.topology = topology
@@ -960,8 +958,8 @@ class IsoSurfaceNets(IsoSurfaceBase):
         verts, indices = self.extract(
             field=field,
             threshold=wp.float32(threshold),
-            domain_bounds_lower_corner=self.domain_bounds_lower_corner,
-            domain_bounds_upper_corner=self.domain_bounds_upper_corner,
+            lower=self.lower,
+            upper=self.upper,
             topology=self.topology,
         )
 
@@ -974,8 +972,8 @@ class IsoSurfaceNets(IsoSurfaceBase):
         field: wp.array3d(dtype=wp.float32),
         threshold: float = 0.0,
         *,
-        domain_bounds_lower_corner: wp.vec3 | tuple[float, float, float] | None = None,
-        domain_bounds_upper_corner: wp.vec3 | tuple[float, float, float] | None = None,
+        lower: wp.vec3 | tuple[float, float, float] | None = None,
+        upper: wp.vec3 | tuple[float, float, float] | None = None,
         topology: Literal["triangle", "quad"] = "triangle",
     ) -> tuple[wp.array(dtype=wp.vec3), wp.array(dtype=wp.int32)]:
         """Extract a mesh from a 3D scalar field.
@@ -985,19 +983,19 @@ class IsoSurfaceNets(IsoSurfaceBase):
         array and may differ along each dimension.
 
         The coordinates of the mesh can be scaled to a specific bounding box
-        using the ``domain_bounds_lower_corner`` and
-        ``domain_bounds_upper_corner`` parameters. If a bound is not provided
+        using the ``lower`` and
+        ``upper`` parameters. If a bound is not provided
         (i.e., left as ``None``), it will be assigned a default value that
         aligns the mesh with the integer indices of the input grid.
 
         Args:
             field: A 3D array representing the scalar values on a regular grid.
             threshold: The field value defining the isosurface to extract.
-            domain_bounds_lower_corner: The 3D coordinate that the grid's corner
-                at index (0,0,0) maps to. Defaults to ``(0.0, 0.0, 0.0)``
-                if ``None``.
-            domain_bounds_upper_corner: The 3D coordinate that the grid's corner
-                at index (nx-1, ny-1, nz-1) maps to. Defaults to align with the
+            lower: The 3D coordinate that the grid's corner at index
+                (0,0,0) maps to. Defaults to ``(0.0, 0.0, 0.0)`` if
+                ``None``.
+            upper: The 3D coordinate that the grid's corner at index
+                (nx-1, ny-1, nz-1) maps to. Defaults to align with the
                 grid's maximal indices if ``None``.
             topology: The type of the faces to produce: ``"triangle"`` or
                 ``"quad"``.
@@ -1018,8 +1016,6 @@ class IsoSurfaceNets(IsoSurfaceBase):
         _validate_topology(topology)
 
         # Apply default policies for bounds and compute the grid spacing
-        domain_bounds_lower_corner, grid_delta = resolve_domain_bounds(
-            field.shape, domain_bounds_lower_corner, domain_bounds_upper_corner
-        )
+        lower, grid_delta = resolve_domain_bounds(field.shape, lower, upper)
 
-        return surface_nets_extract(field, threshold, domain_bounds_lower_corner, grid_delta, topology)
+        return surface_nets_extract(field, threshold, lower, grid_delta, topology)

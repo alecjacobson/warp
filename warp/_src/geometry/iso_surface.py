@@ -33,21 +33,20 @@ def validate_field(field: wp.array) -> None:
 
 def resolve_domain_bounds(
     shape: tuple[int, int, int],
-    domain_bounds_lower_corner: wp.vec3 | tuple[float, float, float] | None,
-    domain_bounds_upper_corner: wp.vec3 | tuple[float, float, float] | None,
+    lower: wp.vec3 | tuple[float, float, float] | None,
+    upper: wp.vec3 | tuple[float, float, float] | None,
 ) -> tuple[wp.vec3, wp.vec3]:
     """Apply the default bounds policy and compute the grid spacing.
 
     Args:
         shape: The grid dimensions, as numbers of nodes ``(nx, ny, nz)``.
-        domain_bounds_lower_corner: The 3D coordinate that the grid's corner
-            at index (0,0,0) maps to, or ``None`` for the default policy.
-        domain_bounds_upper_corner: The 3D coordinate that the grid's corner
-            at index (nx-1, ny-1, nz-1) maps to, or ``None`` for the default
-            policy.
+        lower: The 3D coordinate that the grid's corner at index (0,0,0)
+            maps to, or ``None`` for the default policy.
+        upper: The 3D coordinate that the grid's corner at index
+            (nx-1, ny-1, nz-1) maps to, or ``None`` for the default policy.
 
     Returns:
-        A tuple ``(lower_corner, grid_delta)`` where ``grid_delta`` is the
+        A tuple ``(lower, grid_delta)`` where ``grid_delta`` is the
         per-axis cell size.
     """
     # Parse out dimensions, being careful to distinguish between nodes and cells
@@ -55,24 +54,24 @@ def resolve_domain_bounds(
     ncell_x, ncell_y, ncell_z = nnode_x - 1, nnode_y - 1, nnode_z - 1
 
     # Apply default policies for bounds
-    if domain_bounds_lower_corner is None:
-        domain_bounds_lower_corner = wp.vec3((0.0, 0.0, 0.0))
-    if domain_bounds_upper_corner is None:
+    if lower is None:
+        lower = wp.vec3((0.0, 0.0, 0.0))
+    if upper is None:
         # The default convention is to treat the nodes of the grid as having integer coordinates at 0,1,2,...
         # This means the upper-rightmost node of the grid has coordinates (nnode_x-1, nnode_y-1, nnode_z-1)
         # (which happens to be the same as the number cells, although it may be more confusing to think of it that way)
-        domain_bounds_upper_corner = wp.vec3((float(nnode_x - 1), float(nnode_y - 1), float(nnode_z - 1)))
+        upper = wp.vec3((float(nnode_x - 1), float(nnode_y - 1), float(nnode_z - 1)))
 
     # quietly allow tuples as input too, although this technically violates
     # the type hinting
-    domain_bounds_lower_corner = wp.vec3(domain_bounds_lower_corner)
-    domain_bounds_upper_corner = wp.vec3(domain_bounds_upper_corner)
+    lower = wp.vec3(lower)
+    upper = wp.vec3(upper)
 
     # Compute the grid spacing
-    domain_width = domain_bounds_upper_corner - domain_bounds_lower_corner
+    domain_width = upper - lower
     grid_delta = wp.cw_div(domain_width, wp.vec3(ncell_x, ncell_y, ncell_z))
 
-    return domain_bounds_lower_corner, grid_delta
+    return lower, grid_delta
 
 
 class IsoSurfaceBase(ABC):
@@ -100,21 +99,20 @@ class IsoSurfaceBase(ABC):
         nx: Number of grid nodes in the x-direction.
         ny: Number of grid nodes in the y-direction.
         nz: Number of grid nodes in the z-direction.
-        domain_bounds_lower_corner: The 3D coordinate that the grid's corner
-          at index (0,0,0) maps to. Defaults to ``(0.0, 0.0, 0.0)`` if
-          ``None``.
-        domain_bounds_upper_corner: The 3D coordinate that the grid's corner
-          at index (nx-1, ny-1, nz-1) maps to. Defaults to align with the
-          grid's maximal indices if ``None``.
+        lower: The 3D coordinate that the grid's corner at index (0,0,0)
+          maps to. Defaults to ``(0.0, 0.0, 0.0)`` if ``None``.
+        upper: The 3D coordinate that the grid's corner at index
+          (nx-1, ny-1, nz-1) maps to. Defaults to align with the grid's
+          maximal indices if ``None``.
 
     Attributes:
         nx (int): The number of grid nodes in the x-direction.
         ny (int): The number of grid nodes in the y-direction.
         nz (int): The number of grid nodes in the z-direction.
-        domain_bounds_lower_corner (warp.vec3f | tuple | None): The lower bound
-          for the mesh coordinate scaling.
-        domain_bounds_upper_corner (warp.vec3f | tuple | None): The upper bound
-          for the mesh coordinate scaling.
+        lower (warp.vec3f | tuple | None): The lower bound for the mesh
+          coordinate scaling.
+        upper (warp.vec3f | tuple | None): The upper bound for the mesh
+          coordinate scaling.
     """
 
     def __init__(
@@ -123,8 +121,8 @@ class IsoSurfaceBase(ABC):
         ny: int,
         nz: int,
         *,
-        domain_bounds_lower_corner: wp.vec3 | tuple[float, float, float] | None = None,
-        domain_bounds_upper_corner: wp.vec3 | tuple[float, float, float] | None = None,
+        lower: wp.vec3 | tuple[float, float, float] | None = None,
+        upper: wp.vec3 | tuple[float, float, float] | None = None,
     ):
         # Input domain sizes, as number of nodes in the grid (note this is 1 more than the number of cubes)
         self.nx = nx
@@ -133,8 +131,8 @@ class IsoSurfaceBase(ABC):
 
         # Geometry of the extraction domain
         # (or None, to implicitly use a domain with integer-coordinate nodes)
-        self.domain_bounds_lower_corner = domain_bounds_lower_corner
-        self.domain_bounds_upper_corner = domain_bounds_upper_corner
+        self.lower = lower
+        self.upper = upper
 
         # Output arrays
         self.verts: wp.array[wp.vec3f] | None = None
@@ -198,19 +196,19 @@ class IsoSurfaceBase(ABC):
         field: wp.array3d(dtype=wp.float32),
         threshold: float = 0.0,
         *,
-        domain_bounds_lower_corner: wp.vec3 | tuple[float, float, float] | None = None,
-        domain_bounds_upper_corner: wp.vec3 | tuple[float, float, float] | None = None,
+        lower: wp.vec3 | tuple[float, float, float] | None = None,
+        upper: wp.vec3 | tuple[float, float, float] | None = None,
     ) -> tuple[wp.array(dtype=wp.vec3), wp.array(dtype=wp.int32)]:
         """Extract a mesh from a 3D scalar field in a single stateless call.
 
         Args:
             field: A 3D array representing the scalar values on a regular grid.
             threshold: The field value defining the isosurface to extract.
-            domain_bounds_lower_corner: The 3D coordinate that the grid's corner
-                at index (0,0,0) maps to. Defaults to ``(0.0, 0.0, 0.0)``
-                if ``None``.
-            domain_bounds_upper_corner: The 3D coordinate that the grid's corner
-                at index (nx-1, ny-1, nz-1) maps to. Defaults to align with the
+            lower: The 3D coordinate that the grid's corner at index
+                (0,0,0) maps to. Defaults to ``(0.0, 0.0, 0.0)`` if
+                ``None``.
+            upper: The 3D coordinate that the grid's corner at index
+                (nx-1, ny-1, nz-1) maps to. Defaults to align with the
                 grid's maximal indices if ``None``.
 
         Returns:

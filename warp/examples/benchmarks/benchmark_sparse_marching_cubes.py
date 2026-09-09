@@ -171,9 +171,7 @@ def bunny_backend(device):
 def dense_extract(dense_field, origin, root_width, depth):
     field = dense_field(depth)
     upper = wp.vec3(origin[0] + root_width, origin[1] + root_width, origin[2] + root_width)
-    verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract(
-        field, threshold=0.0, domain_bounds_lower_corner=origin, domain_bounds_upper_corner=upper
-    )
+    verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract(field, threshold=0.0, lower=origin, upper=upper)
     return verts, indices
 
 
@@ -185,8 +183,8 @@ def sparse_extract(sdf, origin, root_width, depth, device, return_stats=False):
         n,
         n,
         n,
-        domain_bounds_lower_corner=origin,
-        domain_bounds_upper_corner=upper,
+        lower=origin,
+        upper=upper,
         threshold=0.0,
         device=device,
         return_stats=return_stats,
@@ -206,8 +204,8 @@ def sparse_extract_grid(sdf, nx, ny, nz, origin, root_width, device, return_stat
         nx,
         ny,
         nz,
-        domain_bounds_lower_corner=origin,
-        domain_bounds_upper_corner=upper,
+        lower=origin,
+        upper=upper,
         threshold=0.0,
         device=device,
         return_stats=return_stats,

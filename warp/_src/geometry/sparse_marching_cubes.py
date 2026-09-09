@@ -1027,8 +1027,8 @@ def sparse_marching_cubes(
     ny: int,
     nz: int,
     *,
-    domain_bounds_lower_corner: wp.vec3 | tuple[float, float, float] | None = None,
-    domain_bounds_upper_corner: wp.vec3 | tuple[float, float, float] | None = None,
+    lower: wp.vec3 | tuple[float, float, float] | None = None,
+    upper: wp.vec3 | tuple[float, float, float] | None = None,
     threshold: float = 0.0,
     lipschitz_bound: float = 1.0,
     device: wp.DeviceLike = None,
@@ -1043,8 +1043,8 @@ def sparse_marching_cubes(
 
     The grid is specified exactly as for
     :meth:`warp.geometry.IsoSurfaceMarchingCubes.extract`: ``nx, ny, nz`` grid
-    nodes over the box ``[domain_bounds_lower_corner, domain_bounds_upper_corner]``,
-    which may be anisotropic. Calling this function and
+    nodes over the box ``[lower, upper]``, which may be anisotropic. Calling
+    this function and
     :meth:`~warp.geometry.IsoSurfaceMarchingCubes.extract` with the same
     ``nx, ny, nz`` and bounds produces the same surface. Internally, the octree
     depth is derived as the smallest ``max_depth`` such that
@@ -1075,14 +1075,13 @@ def sparse_marching_cubes(
         nx: Number of grid nodes in the x-direction.
         ny: Number of grid nodes in the y-direction.
         nz: Number of grid nodes in the z-direction.
-        domain_bounds_lower_corner: The 3D coordinate that the grid's corner at
-            index ``(0, 0, 0)`` maps to. Defaults to ``(0.0, 0.0, 0.0)`` if
-            ``None``. Anything outside
-            ``[domain_bounds_lower_corner, domain_bounds_upper_corner]`` is never
-            visited, so parts of the level set that leave it are simply missing
-            from the output, leaving the mesh open where it exits.
-        domain_bounds_upper_corner: The 3D coordinate that the grid's corner at
-            index ``(nx - 1, ny - 1, nz - 1)`` maps to. Defaults to align with the
+        lower: The 3D coordinate that the grid's corner at index
+            ``(0, 0, 0)`` maps to. Defaults to ``(0.0, 0.0, 0.0)`` if
+            ``None``. Anything outside ``[lower, upper]`` is never visited,
+            so parts of the level set that leave it are simply missing from
+            the output, leaving the mesh open where it exits.
+        upper: The 3D coordinate that the grid's corner at index
+            ``(nx - 1, ny - 1, nz - 1)`` maps to. Defaults to align with the
             grid's maximal indices if ``None``.
         threshold: The isovalue defining the surface.
         lipschitz_bound: An upper bound on the Lipschitz constant of ``field``. Use
@@ -1114,9 +1113,7 @@ def sparse_marching_cubes(
         raise ValueError(f"lipschitz_bound must be non-negative, got {lipschitz_bound}.")
 
     device = wp.get_device(device)
-    lower_corner, grid_delta = resolve_domain_bounds(
-        (nx, ny, nz), domain_bounds_lower_corner, domain_bounds_upper_corner
-    )
+    lower_corner, grid_delta = resolve_domain_bounds((nx, ny, nz), lower, upper)
 
     ncells_x, ncells_y, ncells_z = nx - 1, ny - 1, nz - 1
     max_depth = (max(ncells_x, ncells_y, ncells_z) - 1).bit_length()

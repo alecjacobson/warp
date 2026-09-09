@@ -142,8 +142,8 @@ def test_surface_nets(test, device):
         nx=node_dim,
         ny=node_dim,
         nz=node_dim,
-        domain_bounds_lower_corner=bounds_low,
-        domain_bounds_upper_corner=bounds_high,
+        lower=bounds_low,
+        upper=bounds_high,
     )
 
     field, center, radius = make_sphere_field(device, node_dim)
@@ -515,8 +515,8 @@ def test_surface_nets_nonuniform(test, device):
         nx=dim_x,
         ny=dim_y,
         nz=dim_z,
-        domain_bounds_lower_corner=bounds_low,
-        domain_bounds_upper_corner=bounds_high,
+        lower=bounds_low,
+        upper=bounds_high,
     )
     iso.surface(field=field, threshold=0.0)
     verts_np = iso.verts.numpy()
@@ -593,9 +593,7 @@ def test_surface_nets_differentiable(test, device):
             device=device,
         )
 
-        verts, indices = wp.geometry.IsoSurfaceNets.extract(
-            field, threshold=0.0, domain_bounds_lower_corner=bounds_low, domain_bounds_upper_corner=bounds_high
-        )
+        verts, indices = wp.geometry.IsoSurfaceNets.extract(field, threshold=0.0, lower=bounds_low, upper=bounds_high)
         test.assertTrue(verts.requires_grad)
 
         # compute surface area

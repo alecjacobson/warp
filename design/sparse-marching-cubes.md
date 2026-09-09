@@ -180,7 +180,7 @@ is deterministic. Confirmed on both CPU (multithreaded) and CUDA.
 verts, indices = wp.geometry.sparse_marching_cubes(
     sdf,                 # evaluate(points: wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32)
     nx, ny, nz,
-    domain_bounds_lower_corner=None, domain_bounds_upper_corner=None,
+    lower=None, upper=None,
     threshold=0.0, lipschitz_bound=1.0, device=None, return_stats=False,
 )
 
@@ -205,11 +205,11 @@ bracketing guarantee.
 Review feedback on the initial `(origin, root_width, max_depth)` signature of
 `sparse_marching_cubes` asked that it accept the same
 grid description as `IsoSurfaceMarchingCubes.extract` -- `nx, ny, nz` node
-counts plus `domain_bounds_lower_corner`/`domain_bounds_upper_corner` -- so
-that calling either extractor with the same arguments yields the same
-surface. This is nontrivial because the octree needs a single cubic-ish root
-box subdivided by 2 on every axis, while the requested grid can be
-anisotropic and need not have a power-of-two cell count on any axis.
+counts plus `lower`/`upper` -- so that calling either extractor with the
+same arguments yields the same surface. This is nontrivial because the
+octree needs a single cubic-ish root box subdivided by 2 on every axis,
+while the requested grid can be anisotropic and need not have a
+power-of-two cell count on any axis.
 
 The reconciliation:
 
@@ -223,9 +223,8 @@ The reconciliation:
    `dx * 2**max_depth, dy * 2**max_depth, dz * 2**max_depth`, so the leaf
    cell size matches the dense cell size exactly on every axis. Any axis
    whose `ncells` is not itself a power of two gets a box that extends past
-   `domain_bounds_upper_corner` on that axis (this can happen on every axis,
-   including the longest one, unless its cell count is already a power of
-   two).
+   `upper` on that axis (this can happen on every axis, including the
+   longest one, unless its cell count is already a power of two).
 4. The Lipschitz pruning bound generalizes from the cubic
    `L * (sqrt(3)/2) * h` to the box half-diagonal
    `L * 0.5 * ||(dx, dy, dz)||` at each depth, which reduces to the cubic
@@ -233,8 +232,7 @@ The reconciliation:
 5. After the octree finishes, **cull leaf cells whose subscript is `>=
    ncells` on any axis** -- the cells that exist only because of the
    power-of-two padding -- before dedup/extraction, so the output is
-   identical to a dense grid over exactly `[domain_bounds_lower_corner,
-   domain_bounds_upper_corner]` at `nx, ny, nz`.
+   identical to a dense grid over exactly `[lower, upper]` at `nx, ny, nz`.
 
 `max_depth` is fully derived and is not part of the public signature.
 `sparse_cells_via_lipschitz_pruning` and `sparse_marching_cubes_from_cells` keep their
