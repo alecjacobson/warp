@@ -43,7 +43,7 @@ callable on an explicit cell set, independent of how the cells were chosen.
 | R3  | Accept the implicit function as a batched Python callable `evaluate(points) -> values` | Must | Batches evaluate meshes, neural implicits, and NumPy/PyTorch fields uniformly; see "Batched-callable-only contract" below |
 | R4  | Produce a watertight, manifold mesh matching dense marching cubes at equal resolution | Must | Correctness / fair comparison |
 | R5  | Expose the extraction stage on an explicit `(cells, corner_values)` list | Should | Vision/genAI "marked voxels" workflow |
-| R6  | Expose the cell-selection stage (`lipschitz_octree`) on its own | Should | Custom extractors, visualization |
+| R6  | Expose the cell-selection stage (`sparse_cells_via_lipschitz_pruning`) on its own | Should | Custom extractors, visualization |
 | R7  | Asymptotically beat the dense grid in time and evaluations as resolution grows | Should | The performance justification |
 
 **Non-goals**: Adaptive/octree *output* meshes (the output is a uniform-resolution
@@ -57,7 +57,7 @@ is implemented entirely in the pure-Python Warp layer.
 
 Two stages, each exposed as a public function, composed by a third:
 
-1. **`wp.geometry.lipschitz_octree(sdf, origin, root_width, max_depth, ...)`** -- build a
+1. **`wp.geometry.sparse_cells_via_lipschitz_pruning(sdf, origin, root_width, max_depth, ...)`** -- build a
    sparse set of leaf cells that provably bracket the level set of a 1-Lipschitz
    field, top-down, level by level.
 2. **`wp.geometry.sparse_marching_cubes_from_cells(cells, corner_values, ...)`** -- run
@@ -186,7 +186,7 @@ verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
 
 # Stage 1: choose occupied cells (cubic root box; lower-level primitive, not
 # required to mirror a dense grid).
-cell_origins, cell_width = wp.geometry.lipschitz_octree(sdf, origin, root_width, max_depth, ...)
+cells, cell_width = wp.geometry.sparse_cells_via_lipschitz_pruning(sdf, origin, root_width, max_depth, ...)
 
 # Stage 2: extract on an explicit cell set (e.g. marked voxels from a model).
 verts, indices = wp.geometry.sparse_marching_cubes_from_cells(
@@ -237,7 +237,7 @@ The reconciliation:
    domain_bounds_upper_corner]` at `nx, ny, nz`.
 
 `max_depth` is fully derived and is not part of the public signature.
-`lipschitz_octree` and `sparse_marching_cubes_from_cells` keep their
+`sparse_cells_via_lipschitz_pruning` and `sparse_marching_cubes_from_cells` keep their
 existing cubic/scalar-width signatures: they are documented as general
 low-level primitives (R5/R6), not required to mirror a dense grid.
 

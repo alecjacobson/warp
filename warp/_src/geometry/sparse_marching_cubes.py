@@ -839,7 +839,7 @@ def _extract_from_dedup(cell_corners, corner_positions, corner_values, threshold
     return verts_out, indices_out
 
 
-def lipschitz_octree(
+def sparse_cells_via_lipschitz_pruning(
     field,
     origin: wp.vec3 | tuple[float, float, float],
     root_width: float,
@@ -920,9 +920,9 @@ def sparse_marching_cubes_from_cells(
     implicit field has already been sampled at their corners.
 
     :func:`sparse_marching_cubes_via_lipschitz_pruning` shares this function's cell-deduplication and
-    extraction internals rather than composing :func:`lipschitz_octree` and this function directly:
-    :func:`lipschitz_octree` returns the same cell subscripts this function expects, but not sampled
-    corner values, which the caller must still supply.
+    extraction internals rather than composing :func:`sparse_cells_via_lipschitz_pruning` and this
+    function directly: :func:`sparse_cells_via_lipschitz_pruning` returns the same cell subscripts
+    this function expects, but not sampled corner values, which the caller must still supply.
 
     .. note::
 
