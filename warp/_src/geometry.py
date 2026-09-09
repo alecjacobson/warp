@@ -724,9 +724,14 @@ def swept_volume_sdf(
     # The motion is rigid, so instead of transforming the geometry we push the
     # query point back into each mesh's rest frame. One closest-point query per
     # (mesh, sample) therefore evaluates one pose, and a single call here folds
-    # the whole space-time union into one scalar. Returns ``+max_dist`` when no
-    # face lies within ``max_dist`` of ``p`` at any pose. Callable from within
-    # user kernels.
+    # the whole space-time union into one scalar. Callable from within user
+    # kernels.
+    #
+    # ``max_dist`` bounds the closest-point search. A query that finds nothing
+    # within it returns no sign either, so this returns ``+max_dist`` for a
+    # point deep inside the union just as it does for one far outside: pass a
+    # bound that spans the region of interest, as the array-level entry points
+    # do.
     num_meshes = mesh_ids.shape[0]
     num_samples = transforms.shape[1]
 
@@ -890,7 +895,6 @@ def swept_volume_field(
     *,
     resolution: tuple[int, int, int] | None = None,
     margin: float | None = None,
-    max_dist: float | None = None,
     sign_mode: SweptVolumeSign = SweptVolumeSign.WINDING_NUMBER,
     device: DeviceLike | None = None,
 ) -> tuple[wp.array, wp.vec3, wp.vec3]:
@@ -927,10 +931,6 @@ def swept_volume_field(
             units. Defaults to twice ``voxel_size`` so the surface is not
             clipped, or to ``0`` when only ``resolution`` is given (pass an
             explicit ``margin`` to avoid clipping the surface at the boundary).
-        max_dist: Maximum search distance for the closest-point queries. Nodes
-            farther than this from every posed mesh are left at ``+max_dist``.
-            Defaults to the grid's diagonal length so the field is valid
-            everywhere.
         sign_mode: Inside/outside classification method; see
             :class:`SweptVolumeSign` for the trade-offs. The default requires
             every mesh to be built with ``support_winding_number=True``.
@@ -994,8 +994,10 @@ def swept_volume_field(
     spacing = tuple(extent[a] / (dims[a] - 1) for a in range(3))
     upper = wp.vec3(*(lower[a] + spacing[a] * (dims[a] - 1) for a in range(3)))
 
-    if max_dist is None:
-        max_dist = math.sqrt(extent[0] * extent[0] + extent[1] * extent[1] + extent[2] * extent[2])
+    # Search the whole domain. A tighter bound would make the queries cheaper,
+    # but a bounded query returns no sign at all when it finds nothing, so the
+    # field could not tell a deep interior node from a far exterior one.
+    max_dist = math.sqrt(extent[0] * extent[0] + extent[1] * extent[1] + extent[2] * extent[2])
 
     origin = lower
     spacing_v = wp.vec3(*spacing)
@@ -1021,7 +1023,6 @@ def swept_volume(
     *,
     resolution: tuple[int, int, int] | None = None,
     margin: float | None = None,
-    max_dist: float | None = None,
     iso: float = 0.0,
     sign_mode: SweptVolumeSign = SweptVolumeSign.WINDING_NUMBER,
     device: DeviceLike | None = None,
@@ -1046,8 +1047,6 @@ def swept_volume(
         margin: Padding added on every side of the swept bounding box, in world
             units. Defaults to twice ``voxel_size`` (or ``0`` when only
             ``resolution`` is given); see :func:`swept_volume_field`.
-        max_dist: Maximum closest-point search distance; see
-            :func:`swept_volume_field`.
         iso: Field level to extract. ``0.0`` traces the envelope through the
             sampled poses; a positive value dilates it outward. Marching cubes
             reconstructs the 1-Lipschitz field by linear interpolation, which at
@@ -1099,7 +1098,6 @@ def swept_volume(
         voxel_size,
         resolution=resolution,
         margin=margin,
-        max_dist=max_dist,
         sign_mode=sign_mode,
         device=device,
     )
