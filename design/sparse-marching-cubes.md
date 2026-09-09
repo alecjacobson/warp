@@ -296,11 +296,18 @@ stay `enable_backward=False`: they are never reached by
 differentiated. `sparse_marching_cubes` reuses the same `_extract_from_dedup`
 core directly on already-deduplicated values, so it inherits differentiability
 w.r.t. whatever `field` returns, as a natural side effect, with zero changes
-to the octree machinery -- but calling it inside a `wp.Tape()` prints benign
-warnings for the octree-construction kernels, since they're recorded on that
-same tape even though nothing differentiates through them. Callers who want a
-warning-free tape should call `sparse_cells_via_lipschitz_pruning` outside it
-and use `sparse_marching_cubes_from_cells` directly inside.
+to the octree machinery. Recording it on a `wp.Tape()` would otherwise print
+benign-but-alarming "may produce incorrect gradients" warnings for every
+octree-construction kernel launch, since Warp warns on any `enable_backward=False`
+kernel recorded on a tape whose `.backward()` runs, regardless of whether
+that launch's own arrays require grad. Rather than accept that noise (or ask
+callers to split their call across two tape scopes to avoid it), every
+octree-construction launch (`_compute_cell_centers_kernel`,
+`_mark_active_cells_kernel`, `_subdivide_cells_kernel`, `_compact_cells_kernel`,
+`_cull_out_of_bounds_kernel`) uses `wp.launch(..., record_tape=False)`, the
+same mechanism Warp's own `_launch_adj_copy_add()` and `render_opengl.py`
+use for launches that must never appear on a tape. They are simply never
+recorded, so no warning fires and there is nothing for callers to work around.
 
 **Caller responsibility.** As with any Warp kernel output that should carry
 gradient, the caller's `field` evaluator (for `sparse_marching_cubes`) or

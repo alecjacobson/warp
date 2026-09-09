@@ -644,6 +644,7 @@ def _build_lipschitz_octree(evaluate, origin, root_width, max_depth, isovalue, l
             inputs=[cells, wp.vec3(origin), cell_width],
             outputs=[centers],
             device=device,
+            record_tape=False,
         )
         values = evaluate(centers)
 
@@ -654,6 +655,7 @@ def _build_lipschitz_octree(evaluate, origin, root_width, max_depth, isovalue, l
             inputs=[values, wp.float32(isovalue), wp.float32(band)],
             outputs=[keep],
             device=device,
+            record_tape=False,
         )
 
         scan = wp.empty(n_cells, dtype=wp.int32, device=device)
@@ -668,13 +670,21 @@ def _build_lipschitz_octree(evaluate, origin, root_width, max_depth, isovalue, l
             inputs=[cells, keep, scan],
             outputs=[survivors],
             device=device,
+            record_tape=False,
         )
 
         if depth == max_depth:
             return survivors
 
         children = wp.empty(8 * n_keep, dtype=wp.vec3i, device=device)
-        wp.launch(_subdivide_cells_kernel, dim=n_keep, inputs=[survivors], outputs=[children], device=device)
+        wp.launch(
+            _subdivide_cells_kernel,
+            dim=n_keep,
+            inputs=[survivors],
+            outputs=[children],
+            device=device,
+            record_tape=False,
+        )
         cells = children
         n_cells = 8 * n_keep
 
@@ -698,6 +708,7 @@ def _cull_out_of_bounds(cells, ncells, device):
         inputs=[cells, wp.vec3i(ncells)],
         outputs=[keep],
         device=device,
+        record_tape=False,
     )
     scan = wp.empty(n_cells, dtype=wp.int32, device=device)
     n_keep = _scan_total(keep, scan)
@@ -711,6 +722,7 @@ def _cull_out_of_bounds(cells, ncells, device):
         inputs=[cells, keep, scan],
         outputs=[culled],
         device=device,
+        record_tape=False,
     )
     return culled, n_cells - n_keep
 
@@ -947,10 +959,11 @@ def sparse_cells_via_lipschitz_pruning(
     This function does not support backward-mode automatic differentiation,
     by design: cell selection is a discrete, threshold-based search, not a
     smooth function of ``field``'s values, so there is no gradient to carry
-    from ``field`` to the output ``cells``. Its kernels have no adjoint, so
-    recording it on a ``wp.Tape()`` and calling ``.backward()`` prints benign
-    ``enable_backward=False`` warnings; see :func:`sparse_marching_cubes_from_cells`
-    for the differentiable extraction stage.
+    from ``field`` to the output ``cells``. Its kernels are launched with
+    ``record_tape=False`` and never appear on a ``wp.Tape()``, so calling
+    this function inside one is silent; see
+    :func:`sparse_marching_cubes_from_cells` for the differentiable
+    extraction stage.
 
     Args:
         field: The implicit function, in the batched form accepted by
@@ -1181,12 +1194,9 @@ def sparse_marching_cubes(
     corner values ``field`` produced. The Lipschitz octree that selects which
     cells to evaluate (:func:`sparse_cells_via_lipschitz_pruning`) is not
     differentiated -- it is a discrete, threshold-based search, not a smooth
-    function of ``field``'s values. Because its cell-selection kernels have no
-    adjoint, running this function inside a ``wp.Tape()`` prints benign
-    ``enable_backward=False`` warnings from Warp for those kernels; the
-    resulting gradient is still correct. To avoid the warnings entirely, call
-    :func:`sparse_cells_via_lipschitz_pruning` outside the tape and pass its
-    cells to :func:`sparse_marching_cubes_from_cells` directly inside the tape.
+    function of ``field``'s values -- and its cell-selection kernels are
+    launched with ``record_tape=False`` so they never appear on the tape at
+    all, rather than being recorded and skipped.
 
     Args:
         field: The implicit function, as a batched callable with the contract

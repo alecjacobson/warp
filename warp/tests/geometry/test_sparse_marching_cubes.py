@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import unittest
+import warnings
 from collections import defaultdict
 
 import numpy as np
@@ -773,35 +774,43 @@ def test_sparse_mc_gradient_deterministic(test, device):
 
 
 def test_sparse_mc_via_lipschitz_pruning_differentiable(test, device):
-    """Check that sparse_marching_cubes inherits differentiability.
+    """Check that sparse_marching_cubes inherits differentiability, with no tape warnings.
 
     It reuses sparse_marching_cubes_from_cells's extraction core directly on
     already-deduplicated corner values, so gradient flows through as soon as
     the caller's ``field`` evaluator itself returns a requires_grad array --
     with no changes needed to the octree machinery. That octree machinery
-    (sparse_cells_via_lipschitz_pruning) is still not differentiated, and
-    running this inside a wp.Tape() prints benign 'enable_backward=False'
-    warnings for its kernels, which is expected and does not affect the
-    gradient's correctness.
+    (sparse_cells_via_lipschitz_pruning) is still not differentiated; its
+    kernels are launched with record_tape=False, so they never appear on the
+    wp.Tape() at all and recording+running this call inside one prints no
+    'enable_backward=False' warnings, unlike a plain enable_backward=False
+    kernel that gets recorded and then skipped.
     """
     radius = 0.5
     radius_wp = wp.full((1,), value=radius, dtype=wp.float32, device=device, requires_grad=True)
     evaluate = sphere_evaluate_grad(radius_wp)
 
-    with wp.Tape() as tape:
-        verts, indices = wp.geometry.sparse_marching_cubes(
-            evaluate,
-            33,
-            33,
-            33,
-            lower=(-1.0, -1.0, -1.0),
-            upper=(1.0, 1.0, 1.0),
-            device=device,
-        )
-        area = wp.zeros(1, dtype=float, device=device, requires_grad=True)
-        wp.launch(compute_surface_area_kernel, dim=indices.shape[0] // 3, inputs=[verts, indices, area], device=device)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with wp.Tape() as tape:
+            verts, indices = wp.geometry.sparse_marching_cubes(
+                evaluate,
+                33,
+                33,
+                33,
+                lower=(-1.0, -1.0, -1.0),
+                upper=(1.0, 1.0, 1.0),
+                device=device,
+            )
+            area = wp.zeros(1, dtype=float, device=device, requires_grad=True)
+            wp.launch(
+                compute_surface_area_kernel, dim=indices.shape[0] // 3, inputs=[verts, indices, area], device=device
+            )
 
-    tape.backward(area)
+        tape.backward(area)
+
+    test.assertEqual(len(caught), 0, f"Expected no warnings, got: {[str(w.message) for w in caught]}")
+
     grad = float(radius_wp.grad.numpy()[0])
     test.assertLess(abs(grad - 8.0 * np.pi * radius), 5e-1)
 
