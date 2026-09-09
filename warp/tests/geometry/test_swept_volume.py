@@ -238,17 +238,63 @@ def test_rotation_pose(test, device):
 
 
 def test_sign_modes_agree_on_watertight_mesh(test, device):
-    """Check that the opt-in NORMAL classifier matches the default on watertight input."""
+    """Check that every signed classifier gives the same envelope on watertight input."""
     radius = 0.5
     mesh = _sphere_mesh(device, radius=radius)
     tr = _translation_transforms([[[x, 0.0, 0.0] for x in np.linspace(-1.0, 1.0, 21)]])
 
-    for sign_mode in (geo.SweptVolumeSign.WINDING_NUMBER, geo.SweptVolumeSign.NORMAL):
+    for sign_mode in (
+        geo.SweptVolumeSign.WINDING_NUMBER,
+        geo.SweptVolumeSign.NORMAL,
+        geo.SweptVolumeSign.PARITY,
+    ):
         verts, _ = geo.swept_volume([mesh], tr, voxel_size=0.05, sign_mode=sign_mode, device=device)
         wp.synchronize_device()
         v = verts.numpy()
         np.testing.assert_allclose(v.min(axis=0), [-1.0 - radius, -radius, -radius], atol=0.06)
         np.testing.assert_allclose(v.max(axis=0), [1.0 + radius, radius, radius], atol=0.06)
+
+
+def test_unsigned_dilates_the_envelope(test, device):
+    """Check that NO_SIGN gives a positive field whose iso surface is an outward offset.
+
+    The unsigned field cannot be negative anywhere, and extracting it at ``iso``
+    should push the surface out by that much. A sphere thicker than ``2 * iso``
+    also picks up the documented inward shell, so the extracted mesh spans the
+    dilated bounds while the field stays non-negative.
+    """
+    radius = 0.5
+    mesh = _sphere_mesh(device, radius=radius)
+    tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
+
+    field, _, _ = geo.swept_volume_field(
+        [mesh], tr, voxel_size=0.05, sign_mode=geo.SweptVolumeSign.NO_SIGN, device=device
+    )
+    wp.synchronize_device()
+    test.assertGreaterEqual(float(field.numpy().min()), 0.0)
+
+    iso = 0.2
+    verts, _ = geo.swept_volume(
+        [mesh], tr, voxel_size=0.05, iso=iso, margin=0.3, sign_mode=geo.SweptVolumeSign.NO_SIGN, device=device
+    )
+    wp.synchronize_device()
+    v = verts.numpy()
+    np.testing.assert_allclose(v.max(axis=0), [radius + iso] * 3, atol=0.06)
+    np.testing.assert_allclose(v.min(axis=0), [-radius - iso] * 3, atol=0.06)
+
+    # The documented inward shell: the sphere is thicker than 2 * iso, so the
+    # isosurface also runs at radius - iso.
+    r = np.linalg.norm(v, axis=1)
+    test.assertGreater(int(np.count_nonzero(np.abs(r - (radius - iso)) < 0.05)), 0)
+    test.assertGreater(int(np.count_nonzero(np.abs(r - (radius + iso)) < 0.05)), 0)
+
+
+def test_unsigned_requires_positive_iso(test, device):
+    """Check that NO_SIGN rejects the degenerate zero isosurface."""
+    mesh = _sphere_mesh(device, radius=0.5)
+    tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
+    with test.assertRaises(ValueError):
+        geo.swept_volume([mesh], tr, voxel_size=0.05, sign_mode=geo.SweptVolumeSign.NO_SIGN, device=device)
 
 
 def _open_box_mesh(device, half=0.5, support_winding_number=True):
@@ -383,6 +429,12 @@ add_function_test(
     "test_sign_modes_agree_on_watertight_mesh",
     test_sign_modes_agree_on_watertight_mesh,
     devices=devices,
+)
+add_function_test(
+    TestSweptVolume, "test_unsigned_dilates_the_envelope", test_unsigned_dilates_the_envelope, devices=devices
+)
+add_function_test(
+    TestSweptVolume, "test_unsigned_requires_positive_iso", test_unsigned_requires_positive_iso, devices=devices
 )
 add_function_test(
     TestSweptVolume,
