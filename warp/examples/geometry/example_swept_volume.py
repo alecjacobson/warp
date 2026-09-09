@@ -29,8 +29,12 @@
 # that CAD parts like the UR10 are made of (spurious interior pockets, hundreds
 # of disconnected junk shells).
 #
+# --iso offsets the envelope outward, which is what makes --sign-mode no-sign
+# usable: an unsigned field has no zero level to extract.
+#
 #   uv run --with usd-core warp/examples/geometry/example_swept_volume.py
 #   uv run --with usd-core warp/examples/geometry/example_swept_volume.py --usd-path ur10_animated.usda
+#   uv run --with usd-core warp/examples/geometry/example_swept_volume.py --sign-mode no-sign --iso 0.1
 ###########################################################################
 
 import math
@@ -276,6 +280,7 @@ def main(
     usd_path=None,
     num_samples=24,
     voxel_size=0.08,
+    iso=None,
     sign_mode=warp.geometry.SweptVolumeSign.WINDING_NUMBER,
     stage_path="example_swept_volume.usd",
 ):
@@ -292,9 +297,11 @@ def main(
         f"{num_samples} pose samples over t in [{times[0]:g}, {times[-1]:g}], sign={sign_mode.name}"
     )
 
-    # Extract at the grid's covering radius rather than at 0, which is the level
-    # warp.geometry.swept_volume documents as enclosing every stamped pose.
-    iso = 0.5 * math.sqrt(3.0) * voxel_size
+    # The grid's covering radius is the level warp.geometry.swept_volume
+    # documents as enclosing every stamped pose; a larger one offsets the
+    # envelope outward, e.g. for a clearance margin.
+    if iso is None:
+        iso = 0.5 * math.sqrt(3.0) * voxel_size
 
     with wp.ScopedTimer("swept_volume"):
         verts, indices = warp.geometry.swept_volume(
@@ -331,12 +338,25 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sign-mode",
         type=str,
-        default="winding",
-        choices=["normal", "winding"],
+        default="winding-number",
+        choices=["normal", "winding-number", "parity", "no-sign"],
         help=(
-            "How to classify inside from outside. 'winding' handles the open, non-watertight shells "
-            "that CAD and robot assets are usually made of; 'normal' is faster but needs watertight, "
-            "consistently oriented meshes."
+            "How to classify inside from outside. 'winding-number' is the "
+            "default and most robust, 'normal' and 'parity' are faster but may "
+            "fail causing spurious surfaces in the swept volume. 'no-sign' is the "
+            "fastest but treats the input as a shell and is only meaningful "
+            "combined with extracting a non-zero offset surface of the swept "
+            "volume."
+        ),
+    )
+    parser.add_argument(
+        "--iso",
+        type=float,
+        default=None,
+        help=(
+            "Level to extract, offsetting the envelope outward by this much. Defaults to the grid's "
+            "covering radius, the smallest level that provably encloses every stamped pose. Must be "
+            "positive for --sign-mode no-sign."
         ),
     )
     parser.add_argument(
@@ -349,13 +369,16 @@ if __name__ == "__main__":
 
     sign_mode = {
         "normal": warp.geometry.SweptVolumeSign.NORMAL,
-        "winding": warp.geometry.SweptVolumeSign.WINDING_NUMBER,
+        "winding-number": warp.geometry.SweptVolumeSign.WINDING_NUMBER,
+        "parity": warp.geometry.SweptVolumeSign.PARITY,
+        "no-sign": warp.geometry.SweptVolumeSign.NO_SIGN,
     }[args.sign_mode]
     with wp.ScopedDevice(args.device):
         main(
             usd_path=args.usd_path,
             num_samples=args.num_samples,
             voxel_size=args.voxel_size,
+            iso=args.iso,
             sign_mode=sign_mode,
             stage_path=args.stage_path,
         )

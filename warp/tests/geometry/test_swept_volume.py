@@ -92,7 +92,6 @@ def test_swept_sphere_is_a_capsule(test, device):
     tr = _translation_transforms([[[x, 0.0, 0.0] for x in np.linspace(-1.0, 1.0, 21)]])
 
     field, lower, upper = geo.swept_volume_field([mesh], tr, voxel_size=0.05, device=device)
-    wp.synchronize_device()
 
     fnp = field.numpy()
     P, idx, _ = _grid_points(lower, upper, fnp.shape)
@@ -112,7 +111,6 @@ def test_swept_sphere_mesh_bounds(test, device):
     tr = _translation_transforms([[[x, 0.0, 0.0] for x in np.linspace(-1.0, 1.0, 21)]])
 
     verts, indices = geo.swept_volume([mesh], tr, voxel_size=0.05, device=device)
-    wp.synchronize_device()
 
     v = verts.numpy()
     test.assertGreater(len(v), 0)
@@ -132,7 +130,6 @@ def test_static_single_pose_matches_mesh(test, device):
     tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
 
     verts, _ = geo.swept_volume([mesh], tr, voxel_size=0.05, device=device)
-    wp.synchronize_device()
 
     v = verts.numpy()
     r = np.linalg.norm(v - v.mean(axis=0), axis=1)
@@ -152,7 +149,6 @@ def test_union_of_two_static_spheres(test, device):
     tr = _translation_transforms([[[-1.5, 0.0, 0.0]], [[1.5, 0.0, 0.0]]])
 
     field, lower, upper = geo.swept_volume_field([left, right], tr, voxel_size=0.05, device=device)
-    wp.synchronize_device()
 
     fnp = field.numpy()
     P, idx, _ = _grid_points(lower, upper, fnp.shape)
@@ -180,7 +176,6 @@ def test_conservative_encloses_all_poses(test, device):
 
     voxel = 0.05
     field, lower, upper = geo.swept_volume_field([mesh], tr, voxel_size=voxel, device=device)
-    wp.synchronize_device()
     fnp = field.numpy()
     lower = np.array([lower[0], lower[1], lower[2]])
     upper = np.array([upper[0], upper[1], upper[2]])
@@ -200,7 +195,6 @@ def test_conservative_encloses_all_poses(test, device):
     # The documented conservative level must enclose the poses in the extracted
     # mesh too, not just in the sampled field.
     verts, indices = geo.swept_volume([mesh], tr, voxel_size=voxel, iso=covering_radius, device=device)
-    wp.synchronize_device()
     test.assertGreater(len(verts.numpy()), 0)
     signed = _signed_distance_to_mesh(verts, indices, posed, device)
     test.assertLessEqual(float(signed.max()), 0.0)
@@ -229,7 +223,6 @@ def test_rotation_pose(test, device):
         tr[0, s, 5] = np.sin(a / 2.0)  # quaternion z component
 
     verts, _ = geo.swept_volume([mesh], tr, voxel_size=0.05, device=device)
-    wp.synchronize_device()
     v = verts.numpy()
     # The sphere center traces an arc of radius 1 from +x to +y; the envelope must
     # span both extremes in x and y.
@@ -249,7 +242,6 @@ def test_sign_modes_agree_on_watertight_mesh(test, device):
         geo.SweptVolumeSign.PARITY,
     ):
         verts, _ = geo.swept_volume([mesh], tr, voxel_size=0.05, sign_mode=sign_mode, device=device)
-        wp.synchronize_device()
         v = verts.numpy()
         np.testing.assert_allclose(v.min(axis=0), [-1.0 - radius, -radius, -radius], atol=0.06)
         np.testing.assert_allclose(v.max(axis=0), [1.0 + radius, radius, radius], atol=0.06)
@@ -270,14 +262,12 @@ def test_unsigned_dilates_the_envelope(test, device):
     field, _, _ = geo.swept_volume_field(
         [mesh], tr, voxel_size=0.05, sign_mode=geo.SweptVolumeSign.NO_SIGN, device=device
     )
-    wp.synchronize_device()
     test.assertGreaterEqual(float(field.numpy().min()), 0.0)
 
     iso = 0.2
     verts, _ = geo.swept_volume(
         [mesh], tr, voxel_size=0.05, iso=iso, sign_mode=geo.SweptVolumeSign.NO_SIGN, device=device
     )
-    wp.synchronize_device()
     v = verts.numpy()
     np.testing.assert_allclose(v.max(axis=0), [radius + iso] * 3, atol=0.06)
     np.testing.assert_allclose(v.min(axis=0), [-radius - iso] * 3, atol=0.06)
@@ -353,7 +343,6 @@ def test_winding_number_handles_non_watertight(test, device):
     tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
 
     field, lower, upper = geo.swept_volume_field([mesh], tr, voxel_size=0.05, device=device)
-    wp.synchronize_device()
     fnp = field.numpy()
 
     # The box center is half a metre inside the shell, so winding must report it
@@ -372,8 +361,8 @@ def test_resolution_argument(test, device):
     mesh = _sphere_mesh(device, radius=0.5)
     tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
     field, _, _ = geo.swept_volume_field([mesh], tr, resolution=(16, 20, 24), device=device)
-    wp.synchronize_device()
     test.assertEqual(field.shape, (16, 20, 24))
+    wp.synchronize_device(device)
 
 
 def test_voxel_size_gives_cubic_cells(test, device):
@@ -383,11 +372,11 @@ def test_voxel_size_gives_cubic_cells(test, device):
 
     voxel_size = 0.05
     field, lower, upper = geo.swept_volume_field([mesh], tr, voxel_size=voxel_size, device=device)
-    wp.synchronize_device()
     lower = np.array([lower[0], lower[1], lower[2]])
     upper = np.array([upper[0], upper[1], upper[2]])
     spacing = (upper - lower) / (np.array(field.shape) - 1)
     np.testing.assert_allclose(spacing, voxel_size, rtol=1e-5)
+    wp.synchronize_device(device)
 
 
 def test_positive_iso_is_not_clipped(test, device):
@@ -398,7 +387,6 @@ def test_positive_iso_is_not_clipped(test, device):
 
     for iso in (0.25, 0.7):
         verts, _ = geo.swept_volume([mesh], tr, voxel_size=0.05, iso=iso, device=device)
-        wp.synchronize_device()
         v = verts.numpy()
         np.testing.assert_allclose(v.max(axis=0), [radius + iso] * 3, atol=0.06)
         np.testing.assert_allclose(v.min(axis=0), [-radius - iso] * 3, atol=0.06)
@@ -418,13 +406,13 @@ def test_explicit_domain_is_used_verbatim(test, device):
         domain_bounds_upper_corner=upper,
         device=device,
     )
-    wp.synchronize_device()
     test.assertEqual(field.shape, (24, 24, 24))
     for a in range(3):
         test.assertAlmostEqual(out_lower[a], lower[a], places=5)
         test.assertAlmostEqual(out_upper[a], upper[a], places=5)
     # The padding requested is what separates the sphere from the boundary.
     np.testing.assert_allclose([lower[0], lower[1], lower[2]], [-0.8] * 3, atol=0.02)
+    wp.synchronize_device(device)
 
 
 def test_invalid_arguments(test, device):
@@ -435,11 +423,16 @@ def test_invalid_arguments(test, device):
         geo.swept_volume_field([], tr, voxel_size=0.05, device=device)
     with test.assertRaises(ValueError):
         geo.swept_volume_field([mesh], tr, device=device)  # no voxel_size or resolution
+    mismatched = _translation_transforms([[[0.0] * 3], [[0.0] * 3]])
     with test.assertRaises(ValueError):
         # Two rows of transforms but only one mesh.
-        geo.swept_volume_field(
-            [mesh], _translation_transforms([[[0.0] * 3], [[0.0] * 3]]), voxel_size=0.1, device=device
-        )
+        geo.swept_volume_field([mesh], mismatched, voxel_size=0.1, device=device)
+    with test.assertRaises(ValueError):
+        # Same check before swept_volume() reaches the bounds kernels, which
+        # would otherwise write past their per-mesh slots.
+        geo.swept_volume([mesh], mismatched, voxel_size=0.1, device=device)
+    with test.assertRaises(ValueError):
+        geo.swept_volume_bounds([mesh], mismatched, device=device)
     with test.assertRaises(ValueError):
         geo.swept_volume_field([mesh], tr, voxel_size=0.0, device=device)
     with test.assertRaises(ValueError):

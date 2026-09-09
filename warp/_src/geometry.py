@@ -692,9 +692,7 @@ class SweptVolumeSign(enum.IntEnum):
     """
 
     NORMAL = 0
-    """Sign from :func:`warp.mesh_query_point_sign_normal`. Note that it can
-    report the wrong sign far from a coarse mesh, which a swept field samples
-    routinely."""
+    """Sign from :func:`warp.mesh_query_point_sign_normal`. """
 
     WINDING_NUMBER = 1
     """Sign from :func:`warp.mesh_query_point_sign_winding_number`. Requires
@@ -705,10 +703,10 @@ class SweptVolumeSign(enum.IntEnum):
 
     NO_SIGN = 3
     """Unsigned distance, from :func:`warp.mesh_query_point_no_sign`. The field
-    is then positive everywhere, so it is only meaningful for extracting an
-    ``iso > 0`` isosurface, and that isosurface also runs *inside* the solid,
-    at depth ``iso`` from the surface, wherever the swept volume is thicker
-    than ``2 * iso``. Fastest of the four."""
+    is then positive everywhere, so it is only correct for extracting an
+    ``iso > 0`` isosurface of swept volume of a transforming thin shell. If the
+    input is a solid then this may result in erroneous interior surfaces in the
+    output."""
 
 
 @wp.func
@@ -869,11 +867,21 @@ def swept_volume_bounds(meshes, transforms, padding: float = 0.0, device: Device
         raise ValueError("'meshes' must contain at least one mesh.")
     device = wp.get_device(device) if device is not None else meshes[0].device
     transforms = _swept_volume_transforms(transforms, device)
+    _check_transforms(meshes, transforms)
+    return _swept_volume_bounds(meshes, transforms, padding, device)
+
+
+def _check_transforms(meshes, transforms) -> None:
+    """Reject pose arrays the bounds kernels would index out of bounds.
+
+    ``_swept_volume_bounds`` sizes its per-mesh slots from ``transforms`` and
+    fills them by mesh index, so a row count that disagrees with the mesh count
+    has to be caught before any launch.
+    """
     if transforms.shape[0] != len(meshes):
         raise ValueError(f"'transforms' has {transforms.shape[0]} rows but there are {len(meshes)} meshes.")
     if transforms.shape[1] == 0:
         raise ValueError("'transforms' must contain at least one pose sample.")
-    return _swept_volume_bounds(meshes, transforms, padding, device)
 
 
 def _swept_volume_bounds(meshes, transforms, margin, device):
@@ -1027,8 +1035,9 @@ def swept_volume_field(
         domain_bounds_upper_corner: World coordinate that node
             ``(nx-1, ny-1, nz-1)`` maps to.
         sign_mode: Inside/outside classification method; see
-            :class:`SweptVolumeSign` for the trade-offs. The default requires
-            every mesh to be built with ``support_winding_number=True``.
+            :class:`SweptVolumeSign`. The default
+            (``SweptVolumeSign.WINDING_NUMBER``) requires every mesh to be built
+            with ``support_winding_number=True``.
         device: Device on which to build the field. Defaults to the device of
             the first mesh.
 
@@ -1058,10 +1067,7 @@ def swept_volume_field(
 
     mesh_ids = wp.array([mesh.id for mesh in meshes], dtype=wp.uint64, device=device)
     transforms_wp = _swept_volume_transforms(transforms, device)
-    if transforms_wp.shape[0] != len(meshes):
-        raise ValueError(f"'transforms' has {transforms_wp.shape[0]} rows but there are {len(meshes)} meshes.")
-    if transforms_wp.shape[1] == 0:
-        raise ValueError("'transforms' must contain at least one pose sample.")
+    _check_transforms(meshes, transforms_wp)
 
     lower, upper, dims = _swept_volume_grid(
         meshes,
@@ -1183,6 +1189,7 @@ def swept_volume(
         raise ValueError("'meshes' must contain at least one mesh.")
     device = wp.get_device(device) if device is not None else meshes[0].device
     transforms = _swept_volume_transforms(transforms, device)
+    _check_transforms(meshes, transforms)
 
     # Pad for the level being extracted, then sample that exact domain.
     lower, upper, dims = _swept_volume_grid(
