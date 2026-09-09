@@ -2973,8 +2973,8 @@ that the function has a known Lipschitz bound (e.g., a signed distance
 function has a Lipschitz constant of 1 because
 :math:`|f(x) - f(y)| \le |x - y|`).
 
-:func:`wp.geometry.sparse_marching_cubes_via_lipschitz_pruning
-<warp.geometry.sparse_marching_cubes_via_lipschitz_pruning>` extracts the
+:func:`wp.geometry.sparse_marching_cubes
+<warp.geometry.sparse_marching_cubes>` extracts the
 isosurface by efficiently identifying cells near the requested level set using
 an octree and then running marching cubes only on those cells.
 
@@ -3018,7 +3018,7 @@ per call.
         return values
 
     # A 257^3 grid (octree depth 8) touches only cells near the surface.
-    verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+    verts, indices = wp.geometry.sparse_marching_cubes(
         sphere_evaluate,
         257, 257, 257,
         domain_bounds_lower_corner=wp.vec3(-1.0, -1.0, -1.0),
@@ -3038,7 +3038,7 @@ The pruning and extraction stages are also exposed separately:
 returns the leaf cells, and :func:`wp.geometry.sparse_marching_cubes_from_cells
 <warp.geometry.sparse_marching_cubes_from_cells>` runs marching cubes on an
 explicit list of occupied cells and their sampled corner values --
-``sparse_marching_cubes_via_lipschitz_pruning`` chains the two using shared
+``sparse_marching_cubes`` chains the two using shared
 internals. Calling the extraction stage directly is useful when the occupied
 cells are already known, such as a marked band of voxels from a vision or
 generative model, or a custom sparse data structure that already tracks which

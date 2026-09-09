@@ -42,7 +42,7 @@ def _torus_batch_kernel(points: wp.array[wp.vec3], values: wp.array[wp.float32])
 def sphere_evaluate(points):
     """Batched, all-on-device evaluator for ``sphere_sdf``.
 
-    ``sparse_marching_cubes_via_lipschitz_pruning``/``sparse_cells_via_lipschitz_pruning`` only
+    ``sparse_marching_cubes``/``sparse_cells_via_lipschitz_pruning`` only
     accept a batched callable, not a bare single-point ``@wp.func`` -- this is
     the pattern callers use to batch one, matching
     ``warp/examples/core/example_sparse_marching_cubes.py``.
@@ -216,7 +216,7 @@ def _sparse_mc(sdf, origin, root_width, max_depth, **kwargs):
     """
     n = (1 << max_depth) + 1
     lower, upper = _bounds_from_origin_width(origin, root_width)
-    return wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+    return wp.geometry.sparse_marching_cubes(
         sdf, n, n, n, domain_bounds_lower_corner=lower, domain_bounds_upper_corner=upper, **kwargs
     )
 
@@ -274,7 +274,7 @@ def test_sparse_mc_anisotropic_matches_dense(test, device):
     upper = (1.0, 1.3, 1.1)
     for nx, ny, nz in ((11, 15, 21), (17, 17, 17), (9, 33, 13)):
         with test.subTest(nx=nx, ny=ny, nz=nz):
-            verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+            verts, indices = wp.geometry.sparse_marching_cubes(
                 sphere_evaluate,
                 nx,
                 ny,
@@ -429,7 +429,7 @@ def _mesh_minus_sphere_kernel(
     """CSG subtraction of an analytic sphere from a mesh SDF, entirely on-device.
 
     No ``.numpy()``/host round trip anywhere in this kernel or the launch that
-    wraps it below: this is the pattern ``sparse_marching_cubes_via_lipschitz_pruning``
+    wraps it below: this is the pattern ``sparse_marching_cubes``
     expects for an implicit function that should stay on the GPU end to end.
     """
     i = wp.tid()
@@ -762,23 +762,21 @@ def test_sparse_cells_via_lipschitz_pruning_brackets_surface(test, device):
 def test_sparse_mc_invalid_arguments(test, device):
     """Check that argument validation raises informative errors."""
     with test.assertRaises(ValueError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sphere_evaluate, 1, 17, 17, device=device)
+        wp.geometry.sparse_marching_cubes(sphere_evaluate, 1, 17, 17, device=device)
     with test.assertRaises(ValueError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sphere_evaluate, 17, 0, 17, device=device)
+        wp.geometry.sparse_marching_cubes(sphere_evaluate, 17, 0, 17, device=device)
     with test.assertRaises(ValueError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
-            sphere_evaluate, 17, 17, 17, lipschitz_bound=-1.0, device=device
-        )
+        wp.geometry.sparse_marching_cubes(sphere_evaluate, 17, 17, 17, lipschitz_bound=-1.0, device=device)
     with test.assertRaises(ValueError):
         wp.geometry.sparse_cells_via_lipschitz_pruning(
             sphere_evaluate, (0.0, 0.0, 0.0), 2.0, max_depth=4, lipschitz_bound=-1.0, device=device
         )
     with test.assertRaises(TypeError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(42, 17, 17, 17, device=device)
+        wp.geometry.sparse_marching_cubes(42, 17, 17, 17, device=device)
     # A bare single-point @wp.func is rejected -- only a batched callable is
     # accepted, so that the on-GPU-or-not choice is explicit to the caller.
     with test.assertRaises(TypeError):
-        wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sphere_sdf, 17, 17, 17, device=device)
+        wp.geometry.sparse_marching_cubes(sphere_sdf, 17, 17, 17, device=device)
     with test.assertRaises(TypeError):
         wp.geometry.sparse_cells_via_lipschitz_pruning(sphere_sdf, (0.0, 0.0, 0.0), 2.0, max_depth=4, device=device)
 

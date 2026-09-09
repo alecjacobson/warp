@@ -63,7 +63,7 @@ Two stages, each exposed as a public function, composed by a third:
 2. **`wp.geometry.sparse_marching_cubes_from_cells(cells, corner_values, ...)`** -- run
    marching cubes on an explicit list of occupied cells and their sampled corner
    values, sharing vertices between neighbors so the result is watertight.
-3. **`wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(sdf, ...)`** -- chain the two: run the octree,
+3. **`wp.geometry.sparse_marching_cubes(sdf, ...)`** -- chain the two: run the octree,
    sample the field at the surviving cells' corners, and extract.
 
 This mirrors libigl's decomposition and, as suggested in review discussion, is
@@ -177,7 +177,7 @@ is deterministic. Confirmed on both CPU (multithreaded) and CUDA.
 ```python
 # Full pipeline: implicit function -> mesh. Parameterized exactly like
 # warp.geometry.IsoSurfaceMarchingCubes.extract, so the two are interchangeable.
-verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+verts, indices = wp.geometry.sparse_marching_cubes(
     sdf,                 # evaluate(points: wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32)
     nx, ny, nz,
     domain_bounds_lower_corner=None, domain_bounds_upper_corner=None,
@@ -203,7 +203,7 @@ bracketing guarantee.
 ### Matching the dense grid parameterization
 
 Review feedback on the initial `(origin, root_width, max_depth)` signature of
-`sparse_marching_cubes_via_lipschitz_pruning` asked that it accept the same
+`sparse_marching_cubes` asked that it accept the same
 grid description as `IsoSurfaceMarchingCubes.extract` -- `nx, ny, nz` node
 counts plus `domain_bounds_lower_corner`/`domain_bounds_upper_corner` -- so
 that calling either extractor with the same arguments yields the same

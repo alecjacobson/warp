@@ -8,7 +8,7 @@
 #
 #   dense  : evaluate the field on a full (2^d + 1)^3 grid, then run
 #            wp.geometry.IsoSurfaceMarchingCubes (cost ~ O(R^3), the surface *volume*).
-#   sparse : build a Lipschitz octree and run wp.geometry.sparse_marching_cubes_via_lipschitz_pruning
+#   sparse : build a Lipschitz octree and run wp.geometry.sparse_marching_cubes
 #            (cost ~ O(R^2), the surface *area*).
 #
 # Both paths evaluate the SAME implicit function on the GPU and, at a given
@@ -92,7 +92,7 @@ def analytic_backend(device):
         wp.launch(_analytic_field_kernel, dim=field.shape, inputs=[field, origin, float(h)], device=device)
         return field
 
-    # sparse_marching_cubes_via_lipschitz_pruning only accepts a batched
+    # sparse_marching_cubes only accepts a batched
     # callable, not a bare @wp.func -- wrap it in a kernel so evaluation stays
     # entirely on the GPU. It computes the same values as the dense field
     # kernel above.
@@ -180,7 +180,7 @@ def dense_extract(dense_field, origin, root_width, depth):
 def sparse_extract(sdf, origin, root_width, depth, device, return_stats=False):
     n = (1 << depth) + 1
     upper = wp.vec3(origin[0] + root_width, origin[1] + root_width, origin[2] + root_width)
-    return wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+    return wp.geometry.sparse_marching_cubes(
         sdf,
         n,
         n,
@@ -201,7 +201,7 @@ def sparse_extract_grid(sdf, nx, ny, nz, origin, root_width, device, return_stat
     against the isotropic (unpadded) case.
     """
     upper = wp.vec3(origin[0] + root_width, origin[1] + root_width, origin[2] + root_width)
-    return wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+    return wp.geometry.sparse_marching_cubes(
         sdf,
         nx,
         ny,

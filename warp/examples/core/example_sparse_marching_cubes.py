@@ -174,7 +174,7 @@ class Example:
         upper = wp.vec3(
             self.origin[0] + self.root_width, self.origin[1] + self.root_width, self.origin[2] + self.root_width
         )
-        return wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+        return wp.geometry.sparse_marching_cubes(
             self._make_evaluator(angle),
             n_nodes,
             n_nodes,

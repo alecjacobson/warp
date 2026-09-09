@@ -856,12 +856,12 @@ def sparse_cells_via_lipschitz_pruning(
     The surviving leaves at ``max_depth`` form a thin shell around the surface.
 
     This mirrors ``igl::lipschitz_octree`` from libigl. It is the pruning stage
-    used by :func:`sparse_marching_cubes_via_lipschitz_pruning`, exposed separately so callers can
+    used by :func:`sparse_marching_cubes`, exposed separately so callers can
     build their own extractors, visualize the adaptive grid, or reuse the cells.
 
     Args:
         field: The implicit function, in the batched form accepted by
-            :func:`sparse_marching_cubes_via_lipschitz_pruning`.
+            :func:`sparse_marching_cubes`.
         origin: The minimum corner of the cubic root cell. Set ``origin`` and
             ``root_width`` so that the box ``[origin, origin + root_width]``
             covers the entire level set to be found; cells outside it are never
@@ -919,7 +919,7 @@ def sparse_marching_cubes_from_cells(
     band of voxels around an object from a vision or generative model, and the
     implicit field has already been sampled at their corners.
 
-    :func:`sparse_marching_cubes_via_lipschitz_pruning` shares this function's cell-deduplication and
+    :func:`sparse_marching_cubes` shares this function's cell-deduplication and
     extraction internals rather than composing :func:`sparse_cells_via_lipschitz_pruning` and this
     function directly: :func:`sparse_cells_via_lipschitz_pruning` returns the same cell subscripts
     this function expects, but not sampled corner values, which the caller must still supply.
@@ -962,7 +962,7 @@ def sparse_marching_cubes_from_cells(
         device: The Warp device to run on. Defaults to the current device.
 
     Returns:
-        A tuple ``(vertices, indices)`` as in :func:`sparse_marching_cubes_via_lipschitz_pruning`.
+        A tuple ``(vertices, indices)`` as in :func:`sparse_marching_cubes`.
 
     Raises:
         ValueError: If ``cell_width`` is not positive, the shapes of ``cells`` and
@@ -1021,7 +1021,7 @@ def sparse_marching_cubes_from_cells(
     return _extract_from_dedup(cell_corners, corner_positions, unique_values, float(threshold), device)
 
 
-def sparse_marching_cubes_via_lipschitz_pruning(
+def sparse_marching_cubes(
     field,
     nx: int,
     ny: int,
