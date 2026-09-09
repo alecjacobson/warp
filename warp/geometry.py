@@ -23,6 +23,7 @@ from warp._src.geometry import SweptVolumeSign as SweptVolumeSign
 from warp._src.geometry import delaunay_edge_flip as delaunay_edge_flip
 from warp._src.geometry import find_triangle_neighbor_edge_index as find_triangle_neighbor_edge_index
 from warp._src.geometry import swept_volume as swept_volume
+from warp._src.geometry import swept_volume_bounds as swept_volume_bounds
 from warp._src.geometry import swept_volume_field as swept_volume_field
 from warp._src.geometry import swept_volume_sdf as swept_volume_sdf
 

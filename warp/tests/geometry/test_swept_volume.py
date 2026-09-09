@@ -275,7 +275,7 @@ def test_unsigned_dilates_the_envelope(test, device):
 
     iso = 0.2
     verts, _ = geo.swept_volume(
-        [mesh], tr, voxel_size=0.05, iso=iso, margin=0.3, sign_mode=geo.SweptVolumeSign.NO_SIGN, device=device
+        [mesh], tr, voxel_size=0.05, iso=iso, sign_mode=geo.SweptVolumeSign.NO_SIGN, device=device
     )
     wp.synchronize_device()
     v = verts.numpy()
@@ -376,6 +376,57 @@ def test_resolution_argument(test, device):
     test.assertEqual(field.shape, (16, 20, 24))
 
 
+def test_voxel_size_gives_cubic_cells(test, device):
+    """Check that voxel_size is the spacing, not an upper bound on it."""
+    mesh = _sphere_mesh(device, radius=0.5)
+    tr = _translation_transforms([[[x, 0.0, 0.0] for x in np.linspace(0.0, 2.0, 8)]])
+
+    voxel_size = 0.05
+    field, lower, upper = geo.swept_volume_field([mesh], tr, voxel_size=voxel_size, device=device)
+    wp.synchronize_device()
+    lower = np.array([lower[0], lower[1], lower[2]])
+    upper = np.array([upper[0], upper[1], upper[2]])
+    spacing = (upper - lower) / (np.array(field.shape) - 1)
+    np.testing.assert_allclose(spacing, voxel_size, rtol=1e-5)
+
+
+def test_positive_iso_is_not_clipped(test, device):
+    """Check that the domain grows with iso instead of clipping the dilated envelope."""
+    radius = 0.5
+    mesh = _sphere_mesh(device, radius=radius)
+    tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
+
+    for iso in (0.25, 0.7):
+        verts, _ = geo.swept_volume([mesh], tr, voxel_size=0.05, iso=iso, device=device)
+        wp.synchronize_device()
+        v = verts.numpy()
+        np.testing.assert_allclose(v.max(axis=0), [radius + iso] * 3, atol=0.06)
+        np.testing.assert_allclose(v.min(axis=0), [-radius - iso] * 3, atol=0.06)
+
+
+def test_explicit_domain_is_used_verbatim(test, device):
+    """Check that supplied domain corners are honored, so fields can share a grid."""
+    mesh = _sphere_mesh(device, radius=0.5)
+    tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
+
+    lower, upper = geo.swept_volume_bounds([mesh], tr, padding=0.3, device=device)
+    field, out_lower, out_upper = geo.swept_volume_field(
+        [mesh],
+        tr,
+        resolution=(24, 24, 24),
+        domain_bounds_lower_corner=lower,
+        domain_bounds_upper_corner=upper,
+        device=device,
+    )
+    wp.synchronize_device()
+    test.assertEqual(field.shape, (24, 24, 24))
+    for a in range(3):
+        test.assertAlmostEqual(out_lower[a], lower[a], places=5)
+        test.assertAlmostEqual(out_upper[a], upper[a], places=5)
+    # The padding requested is what separates the sphere from the boundary.
+    np.testing.assert_allclose([lower[0], lower[1], lower[2]], [-0.8] * 3, atol=0.02)
+
+
 def test_invalid_arguments(test, device):
     """Check that malformed arguments raise ``ValueError``."""
     mesh = _sphere_mesh(device, radius=0.5)
@@ -399,6 +450,23 @@ def test_invalid_arguments(test, device):
         geo.swept_volume_field([mesh], tr, resolution=(16, 20), device=device)
     with test.assertRaises(ValueError):
         geo.swept_volume_field([mesh], tr, resolution=(16, 20, 1), device=device)
+    with test.assertRaises(ValueError):
+        # Sizing the grid two ways at once is ambiguous.
+        geo.swept_volume_field([mesh], tr, voxel_size=0.05, resolution=(16, 16, 16), device=device)
+    with test.assertRaises(ValueError):
+        # An explicit domain cannot be snapped to whole cells.
+        geo.swept_volume_field(
+            [mesh],
+            tr,
+            voxel_size=0.05,
+            domain_bounds_lower_corner=(-1.0, -1.0, -1.0),
+            domain_bounds_upper_corner=(1.0, 1.0, 1.0),
+            device=device,
+        )
+    with test.assertRaises(ValueError):
+        geo.swept_volume_field(
+            [mesh], tr, resolution=(16, 16, 16), domain_bounds_lower_corner=(-1.0, -1.0, -1.0), device=device
+        )
     with test.assertRaises(ValueError):
         # The default classifier needs a mesh built with support_winding_number=True.
         plain = _sphere_mesh(device, radius=0.5, support_winding_number=False)
@@ -441,6 +509,15 @@ add_function_test(
     "test_winding_number_handles_non_watertight",
     test_winding_number_handles_non_watertight,
     devices=devices,
+)
+add_function_test(
+    TestSweptVolume, "test_voxel_size_gives_cubic_cells", test_voxel_size_gives_cubic_cells, devices=devices
+)
+add_function_test(
+    TestSweptVolume, "test_positive_iso_is_not_clipped", test_positive_iso_is_not_clipped, devices=devices
+)
+add_function_test(
+    TestSweptVolume, "test_explicit_domain_is_used_verbatim", test_explicit_domain_is_used_verbatim, devices=devices
 )
 add_function_test(TestSweptVolume, "test_resolution_argument", test_resolution_argument, devices=devices)
 add_function_test(TestSweptVolume, "test_invalid_arguments", test_invalid_arguments, devices=devices)

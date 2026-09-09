@@ -44,6 +44,7 @@ __all__ = [
     "in_circle",
     "signed_area",
     "swept_volume",
+    "swept_volume_bounds",
     "swept_volume_field",
     "swept_volume_sdf",
     "tri_tri_adjacency",
@@ -843,14 +844,40 @@ def swept_volume_bounds_kernel(
                 wp.atomic_max(out_upper, 0, p)
 
 
-def _swept_volume_bounds(meshes, transforms, margin, device):
+def swept_volume_bounds(meshes, transforms, padding: float = 0.0, device: DeviceLike | None = None):
     """World-space axis-aligned bounds of every mesh over every sampled pose.
 
     Reduces each mesh's rest-pose vertices to an axis-aligned box, then transforms
     the eight box corners by every pose and reduces their union, entirely with
-    Warp kernels. Pads by ``margin`` on every side and returns ``(lower, upper)``
-    as :class:`warp.vec3`.
+    Warp kernels.
+
+    Use this to size a domain that several fields share: union these bounds and
+    pass the result to :func:`swept_volume_field` as
+    ``domain_bounds_lower_corner`` and ``domain_bounds_upper_corner``.
+
+    Args:
+        meshes: Sequence of rest-pose :class:`warp.Mesh` objects.
+        transforms: Per-mesh, per-sample rigid poses; see
+            :func:`swept_volume_field`.
+        padding: Widening applied on every side, in world units.
+        device: Device on which to run. Defaults to the device of the first mesh.
+
+    Returns:
+        A tuple ``(lower, upper)`` of :class:`warp.vec3` world coordinates.
     """
+    if len(meshes) == 0:
+        raise ValueError("'meshes' must contain at least one mesh.")
+    device = wp.get_device(device) if device is not None else meshes[0].device
+    transforms = _swept_volume_transforms(transforms, device)
+    if transforms.shape[0] != len(meshes):
+        raise ValueError(f"'transforms' has {transforms.shape[0]} rows but there are {len(meshes)} meshes.")
+    if transforms.shape[1] == 0:
+        raise ValueError("'transforms' must contain at least one pose sample.")
+    return _swept_volume_bounds(meshes, transforms, padding, device)
+
+
+def _swept_volume_bounds(meshes, transforms, margin, device):
+    """Bounds of the posed meshes, padded by ``margin``, with arguments pre-checked."""
     num_meshes, num_samples = transforms.shape[0], transforms.shape[1]
 
     pos_inf = wp.vec3(math.inf, math.inf, math.inf)
@@ -888,13 +915,76 @@ def _swept_volume_bounds(meshes, transforms, margin, device):
     return lower, upper
 
 
+def _swept_volume_grid(meshes, transforms, voxel_size, resolution, lower, upper, extra_padding, device):
+    """Resolve the sampling domain and node counts.
+
+    Returns ``(lower, upper, dims)``. When the corners are supplied the domain is
+    used verbatim and ``resolution`` sets the node counts. Otherwise the swept
+    bounds are padded by ``extra_padding`` plus roughly two cells, so the level
+    being extracted stays strictly inside the domain, and ``voxel_size`` snaps
+    the extent up to whole cells so the spacing is exactly ``voxel_size``.
+    """
+    if (lower is None) != (upper is None):
+        raise ValueError("Pass both 'domain_bounds_lower_corner' and 'domain_bounds_upper_corner', or neither.")
+    if voxel_size is not None and resolution is not None:
+        raise ValueError("Pass either 'voxel_size' or 'resolution', not both.")
+    if voxel_size is None and resolution is None:
+        raise ValueError("Provide either 'voxel_size' or 'resolution'.")
+    if voxel_size is not None and voxel_size <= 0.0:
+        raise ValueError(f"'voxel_size' must be positive, got {voxel_size}.")
+
+    dims = None
+    if resolution is not None:
+        dims = tuple(int(n) for n in resolution)
+        if len(dims) != 3:
+            raise ValueError(f"'resolution' must have exactly 3 entries, got {dims}.")
+        if any(n < 2 for n in dims):
+            raise ValueError(f"'resolution' must be at least 2 along each axis, got {dims}.")
+
+    if lower is not None:
+        # The caller owns the domain, so the extent cannot be snapped to whole
+        # cells and only an explicit node count is meaningful.
+        if voxel_size is not None:
+            raise ValueError(
+                "'voxel_size' cannot be combined with explicit domain bounds, since the extent would "
+                "have to grow to fit whole cells. Pass 'resolution' instead."
+            )
+        lower = wp.vec3(*(float(c) for c in lower))
+        upper = wp.vec3(*(float(c) for c in upper))
+        if any(upper[a] <= lower[a] for a in range(3)):
+            raise ValueError(f"'domain_bounds_upper_corner' {upper} must exceed 'domain_bounds_lower_corner' {lower}.")
+        return lower, upper, dims
+
+    tight_lower, tight_upper = _swept_volume_bounds(meshes, transforms, 0.0, device)
+    tight = tuple(tight_upper[a] - tight_lower[a] for a in range(3))
+
+    if voxel_size is not None:
+        # Pad, then grow the extent to a whole number of cells so the spacing is
+        # exactly voxel_size on every axis.
+        padding = (extra_padding + 2.0 * voxel_size,) * 3
+        padded = tuple(tight[a] + 2.0 * padding[a] for a in range(3))
+        dims = tuple(max(2, int(math.ceil(padded[a] / voxel_size)) + 1) for a in range(3))
+        snapped = tuple((dims[a] - 1) * voxel_size for a in range(3))
+        grow = tuple(0.5 * (snapped[a] - tight[a]) for a in range(3))
+    else:
+        # Measure the two cells of slack against the unpadded spacing, which
+        # keeps the padding above extra_padding for any node count.
+        padding = tuple(extra_padding + 2.0 * tight[a] / (dims[a] - 1) for a in range(3))
+        grow = padding
+
+    lower = wp.vec3(*(tight_lower[a] - grow[a] for a in range(3)))
+    upper = wp.vec3(*(tight_upper[a] + grow[a] for a in range(3)))
+    return lower, upper, dims
+
+
 def swept_volume_field(
     meshes,
     transforms,
     voxel_size: float | None = None,
     *,
     resolution: tuple[int, int, int] | None = None,
-    margin: float | None = None,
+    domain_bounds_lower_corner: wp.vec3 | tuple[float, float, float] | None = None,
+    domain_bounds_upper_corner: wp.vec3 | tuple[float, float, float] | None = None,
     sign_mode: SweptVolumeSign = SweptVolumeSign.WINDING_NUMBER,
     device: DeviceLike | None = None,
 ) -> tuple[wp.array, wp.vec3, wp.vec3]:
@@ -923,14 +1013,19 @@ def swept_volume_field(
             ``(num_meshes, num_samples)`` or as an array of shape
             ``(num_meshes, num_samples, 7)`` (translation ``xyz`` followed by
             quaternion ``xyzw``).
-        voxel_size: Edge length of a grid cell in world units. Required unless
-            ``resolution`` is given.
-        resolution: Optional explicit node counts ``(nx, ny, nz)``. Overrides
-            ``voxel_size`` for choosing the grid dimensions.
-        margin: Padding added on every side of the swept bounding box, in world
-            units. Defaults to twice ``voxel_size`` so the surface is not
-            clipped, or to ``0`` when only ``resolution`` is given (pass an
-            explicit ``margin`` to avoid clipping the surface at the boundary).
+        voxel_size: Edge length of a grid cell in world units. The domain is
+            grown to a whole number of cells, so the spacing is exactly this on
+            every axis. Cannot be combined with explicit domain bounds.
+        resolution: Node counts ``(nx, ny, nz)``. Pass this or ``voxel_size``,
+            not both. The spacing follows from the extent, so it is anisotropic
+            unless the node counts match the domain's aspect ratio.
+        domain_bounds_lower_corner: World coordinate that node ``(0, 0, 0)`` maps
+            to, as in :meth:`warp.MarchingCubes.extract_surface_marching_cubes`.
+            Defaults to the swept bounds padded so the surface is not clipped.
+            Pass both corners or neither; see :func:`swept_volume_bounds` to size
+            a domain that several fields share.
+        domain_bounds_upper_corner: World coordinate that node
+            ``(nx-1, ny-1, nz-1)`` maps to.
         sign_mode: Inside/outside classification method; see
             :class:`SweptVolumeSign` for the trade-offs. The default requires
             every mesh to be built with ``support_winding_number=True``.
@@ -945,18 +1040,6 @@ def swept_volume_field(
     """
     if len(meshes) == 0:
         raise ValueError("'meshes' must contain at least one mesh.")
-    if voxel_size is None and resolution is None:
-        raise ValueError("Provide either 'voxel_size' or 'resolution'.")
-    if voxel_size is not None and voxel_size <= 0.0:
-        raise ValueError(f"'voxel_size' must be positive, got {voxel_size}.")
-
-    dims = None
-    if resolution is not None:
-        dims = tuple(int(n) for n in resolution)
-        if len(dims) != 3:
-            raise ValueError(f"'resolution' must have exactly 3 entries, got {dims}.")
-        if any(n < 2 for n in dims):
-            raise ValueError(f"'resolution' must be at least 2 along each axis, got {dims}.")
 
     device = wp.get_device(device) if device is not None else meshes[0].device
 
@@ -980,19 +1063,18 @@ def swept_volume_field(
     if transforms_wp.shape[1] == 0:
         raise ValueError("'transforms' must contain at least one pose sample.")
 
-    if margin is None:
-        margin = 2.0 * voxel_size if voxel_size is not None else 0.0
-
-    lower, upper = _swept_volume_bounds(meshes, transforms_wp, margin, device)
-    extent = (upper[0] - lower[0], upper[1] - lower[1], upper[2] - lower[2])
-
-    if dims is None:
-        # Number of nodes = number of cells + 1; guarantee at least 2 nodes.
-        dims = tuple(max(2, int(math.ceil(extent[a] / voxel_size)) + 1) for a in range(3))
-
-    # Snap the upper corner so the node spacing is exactly (extent / cells).
+    lower, upper, dims = _swept_volume_grid(
+        meshes,
+        transforms_wp,
+        voxel_size,
+        resolution,
+        domain_bounds_lower_corner,
+        domain_bounds_upper_corner,
+        0.0,
+        device,
+    )
+    extent = tuple(upper[a] - lower[a] for a in range(3))
     spacing = tuple(extent[a] / (dims[a] - 1) for a in range(3))
-    upper = wp.vec3(*(lower[a] + spacing[a] * (dims[a] - 1) for a in range(3)))
 
     # Search the whole domain. A tighter bound would make the queries cheaper,
     # but a bounded query returns no sign at all when it finds nothing, so the
@@ -1022,7 +1104,8 @@ def swept_volume(
     voxel_size: float | None = None,
     *,
     resolution: tuple[int, int, int] | None = None,
-    margin: float | None = None,
+    domain_bounds_lower_corner: wp.vec3 | tuple[float, float, float] | None = None,
+    domain_bounds_upper_corner: wp.vec3 | tuple[float, float, float] | None = None,
     iso: float = 0.0,
     sign_mode: SweptVolumeSign = SweptVolumeSign.WINDING_NUMBER,
     device: DeviceLike | None = None,
@@ -1041,12 +1124,16 @@ def swept_volume(
         meshes: Sequence of rest-pose :class:`warp.Mesh` objects.
         transforms: Per-mesh, per-sample rigid poses; see
             :func:`swept_volume_field`.
-        voxel_size: Edge length of a grid cell in world units. Required unless
-            ``resolution`` is given.
-        resolution: Optional explicit node counts ``(nx, ny, nz)``.
-        margin: Padding added on every side of the swept bounding box, in world
-            units. Defaults to twice ``voxel_size`` (or ``0`` when only
-            ``resolution`` is given); see :func:`swept_volume_field`.
+        voxel_size: Edge length of a grid cell in world units; see
+            :func:`swept_volume_field`.
+        resolution: Node counts ``(nx, ny, nz)``; see
+            :func:`swept_volume_field`.
+        domain_bounds_lower_corner: World coordinate that node ``(0, 0, 0)`` maps
+            to. Defaults to the swept bounds padded by ``iso`` plus roughly two
+            cells, so the extracted level stays inside the domain. Supplying the
+            corners makes that padding your responsibility.
+        domain_bounds_upper_corner: World coordinate that node
+            ``(nx-1, ny-1, nz-1)`` maps to.
         iso: Field level to extract. ``0.0`` traces the envelope through the
             sampled poses; a positive value dilates it outward. Marching cubes
             reconstructs the 1-Lipschitz field by linear interpolation, which at
@@ -1092,12 +1179,29 @@ def swept_volume(
             "An unsigned field is positive everywhere, so its zero isosurface is empty."
         )
 
-    field, lower, upper = swept_volume_field(
+    if len(meshes) == 0:
+        raise ValueError("'meshes' must contain at least one mesh.")
+    device = wp.get_device(device) if device is not None else meshes[0].device
+    transforms = _swept_volume_transforms(transforms, device)
+
+    # Pad for the level being extracted, then sample that exact domain.
+    lower, upper, dims = _swept_volume_grid(
         meshes,
         transforms,
         voxel_size,
-        resolution=resolution,
-        margin=margin,
+        resolution,
+        domain_bounds_lower_corner,
+        domain_bounds_upper_corner,
+        max(iso, 0.0),
+        device,
+    )
+
+    field, lower, upper = swept_volume_field(
+        meshes,
+        transforms,
+        resolution=dims,
+        domain_bounds_lower_corner=lower,
+        domain_bounds_upper_corner=upper,
         sign_mode=sign_mode,
         device=device,
     )
