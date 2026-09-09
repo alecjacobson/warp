@@ -45,6 +45,7 @@ callable on an explicit cell set, independent of how the cells were chosen.
 | R5  | Expose the extraction stage on an explicit `(cells, corner_values)` list | Should | Vision/genAI "marked voxels" workflow |
 | R6  | Expose the cell-selection stage (`lipschitz_octree`) on its own | Should | Custom extractors, visualization |
 | R7  | Asymptotically beat the dense grid in time and evaluations as resolution grows | Should | The performance justification |
+| R8  | Support backward-mode autodiff w.r.t. field values, without differentiating cell selection | Should | Matches dense `IsoSurfaceMarchingCubes`; see "Backward-mode autodiff" below |
 
 **Non-goals**: Adaptive/octree *output* meshes (the output is a uniform-resolution
 mesh, like dense marching cubes; the octree is only used to prune work).
@@ -241,6 +242,82 @@ The reconciliation:
 existing cubic/scalar-width signatures: they are documented as general
 low-level primitives (R5/R6), not required to mirror a dense grid.
 
+### Backward-mode autodiff
+
+Dense `IsoSurfaceMarchingCubes.extract` already supports backward-mode
+autodiff (its kernels default to `enable_backward=True`, `verts` is
+allocated with `requires_grad=field.requires_grad`, and the interpolation is
+`wp.lerp`). Every kernel in `sparse_marching_cubes.py` originally had
+`enable_backward=False`. Review feedback (R8) asked for
+`sparse_marching_cubes_from_cells` to support backward-mode autodiff
+w.r.t. `corner_values`, while deliberately *not* differentiating
+`lipschitz_octree` -- cell selection is a discrete, threshold-based search,
+not a smooth function of the field.
+
+**The scatter-write problem.** `sparse_marching_cubes_from_cells` takes
+`corner_values` as one entry per `(cell, corner)` pair, redundant at shared
+corners by design (the "benign race" the old `_scatter_corner_values_kernel`
+relied on: every cell touching a corner writes the same value to the same
+slot). An empirical check of Warp's autodiff on exactly this pattern (`wp.Tape`
+over a 2-writer, 1-slot scatter) showed the backward pass gives the *entire*
+downstream gradient to whichever write happened to run last in program order,
+and *zero* to the others -- correct per forward semantics, but the winning
+write is not guaranteed deterministic across launches on the GPU, so enabling
+backward on it naively would make gradients correct-looking but silently
+non-reproducible.
+
+**Fix: scatter to gather.** `_dedupe_corners` already computes, via
+`radix_sort_pairs` + `is_first`/`unique_scan`, the "first occurrence in sorted
+order" structure needed to pick one canonical `(cell, corner)` source per
+unique corner. A new opt-in step (`compute_unique_source=True`, used only by
+`sparse_marching_cubes_from_cells` -- the octree-driven path never scatters,
+since it evaluates `sdf` directly on already-unique corner positions) records
+`unique_source[unique_id]`, the flat `cell*8+corner` index of that canonical
+source. `_gather_corner_values_kernel` then does a pure 1:1 gather --
+`unique_values[i] = per_cell_values_flat[unique_source[i]]` -- with no
+aliasing in either direction, so it is trivially and deterministically
+differentiable. This is also the mathematically correct choice, not just a
+convenient one: when duplicate corner entries are independent evaluations of
+the same underlying point function, only one gradient path should be counted,
+matching how dense marching cubes evaluates each grid node exactly once
+(rather than summing or splitting gradient across up to 8 redundant cells).
+
+**Which kernels are backward-enabled.** Warp warns whenever a kernel with
+`enable_backward=False` is recorded on a tape whose `.backward()` gets
+called, regardless of whether that specific kernel's own arrays require
+grad -- so every kernel in `sparse_marching_cubes_from_cells`'s call graph
+(corner de-duplication plus `_extract_from_dedup`) has backward enabled, even
+where the actual gradient computation is a no-op (e.g. `_emit_faces_kernel`'s
+discrete triangle indices), mirroring the precedent dense marching cubes
+already set for its own faces kernel. Octree-*construction* kernels
+(`_compute_cell_centers_kernel`, `_mark_active_cells_kernel`,
+`_subdivide_cells_kernel`, `_compact_cells_kernel`, `_cull_out_of_bounds_kernel`,
+`_cell_subscripts_to_origins_kernel` -- used only by `lipschitz_octree`/
+`_build_lipschitz_octree`) stay `enable_backward=False`: they are never
+reached by `sparse_marching_cubes_from_cells`, and by design should not be
+differentiated. `sparse_marching_cubes_via_lipschitz_pruning` reuses the same
+`_extract_from_dedup` core directly on already-deduplicated values, so it
+inherits differentiability w.r.t. whatever `sdf` returns, as a natural side
+effect, with zero changes to the octree machinery -- but calling it inside a
+`wp.Tape()` prints benign warnings for the octree-construction kernels, since
+they're recorded on that same tape even though nothing differentiates through
+them. Callers who want a warning-free tape should call `lipschitz_octree`
+outside it and use `sparse_marching_cubes_from_cells` directly inside.
+
+**Caller responsibility.** As with any Warp kernel output that should carry
+gradient, the caller's `sdf` evaluator (for `sparse_marching_cubes_via_lipschitz_pruning`)
+or `corner_values` array (for `sparse_marching_cubes_from_cells`) must itself
+be allocated with `requires_grad=True` -- this can't be inferred on the
+caller's behalf, and forgetting it fails silently (zero gradient, no error).
+
+**Performance.** `_dedupe_corners`'s `unique_source` computation is opt-in and
+skipped entirely by the octree-driven hot path. The scatter-to-gather
+rework and the `enable_backward` flips on already-cheap discrete-output
+kernels are not expected to change `enable_backward=False` (forward-only)
+performance; see `warp/examples/benchmarks/benchmark_sparse_marching_cubes.py`'s
+dedicated `sparse_marching_cubes_from_cells` timing section for the ongoing
+check.
+
 ## Testing Strategy
 
 Tests live in `warp/tests/geometry/test_sparse_marching_cubes.py` and run across
@@ -285,9 +362,28 @@ Tests live in `warp/tests/geometry/test_sparse_marching_cubes.py` and run across
   (unit tests must not assert on timing, per `AGENTS.md`): if the generalized,
   anisotropic-capable code path ever added overhead for the common isotropic
   case, these exact counts would change.
+- **Backward-mode autodiff** -- `test_sparse_mc_from_cells_differentiable`
+  mirrors `test_marching_cubes_differentiable` in `test_marching_cubes.py`
+  exactly (`d(surface area)/d(sphere radius)` via `wp.Tape`, checked against
+  the analytic value), but with `corner_values` for every cell of a dense
+  grid (no octree, so cell-selection effects can't confound the extraction
+  math). `test_sparse_mc_gradient_matches_dense` runs the identical grid
+  through both `sparse_marching_cubes_from_cells` and
+  `IsoSurfaceMarchingCubes.extract` and asserts the two gradients agree --
+  possible only because of the earlier nx/ny/nz-matching work.
+  `test_sparse_mc_gradient_deterministic` checks two runs with identical
+  inputs match closely (not exactly zero -- ordinary GPU floating-point
+  non-associativity is expected -- but far tighter than the arbitrary-winner
+  divergence the old scatter would have risked).
+  `test_sparse_mc_via_lipschitz_pruning_differentiable` confirms the
+  side-effect differentiability of the octree-driven entry point.
 
 Beyond unit tests, `warp/examples/benchmarks/benchmark_sparse_marching_cubes.py`
 compares sparse vs. dense on both an analytic SDF and the bunny mesh SDF,
 asserting equal triangle counts at each depth before reporting timings, so the
 reported speedups (roughly an order of magnitude by depth 9, with the dense grid
-exhausting memory beyond that) are honest.
+exhausting memory beyond that) are honest. It also has a dedicated,
+forward-only (no `wp.Tape`) timing section for
+`sparse_marching_cubes_from_cells` in isolation from cell selection, as the
+ongoing check that adding backward-mode support did not slow down the
+`enable_backward=False` route.

@@ -217,13 +217,19 @@ def _mark_active_cells_kernel(
     keep[tid] = wp.where(wp.abs(values[tid] - isovalue) <= band, 1, 0)
 
 
-@wp.kernel(enable_backward=False)
+@wp.kernel
 def _cell_subscript_bounds_kernel(
     cells: wp.array(dtype=wp.vec3i),
     lo: wp.array(dtype=wp.int32),
     hi: wp.array(dtype=wp.int32),
 ):
-    """Reduce the per-axis minimum and maximum of the cell subscripts."""
+    """Reduce the per-axis minimum and maximum of the cell subscripts.
+
+    Backward stays enabled, even though this only ever touches the (integer,
+    never grad-requiring) ``cells`` array, purely so Warp doesn't warn when
+    this kernel is recorded on a tape alongside :func:`sparse_marching_cubes_from_cells`'s
+    genuinely differentiable kernels; see ``_mark_active_edges_kernel``.
+    """
     tid = wp.tid()
     c = cells[tid]
     for a in range(3):
@@ -285,7 +291,7 @@ def _subdivide_cells_kernel(
 # =============================================================================
 
 
-@wp.kernel(enable_backward=False)
+@wp.kernel
 def _compute_corner_codes_kernel(
     cells: wp.array(dtype=wp.vec3i),
     offset: wp.vec3i,
@@ -297,6 +303,12 @@ def _compute_corner_codes_kernel(
 
     Codes are packed relative to ``offset`` (the minimum corner subscript) so
     arbitrary, possibly negative, cell subscripts stay within the packing range.
+
+    Backward stays enabled (a no-op -- ``cells``/``codes`` are integer, never
+    grad-requiring) purely to avoid Warp's warning when this corner
+    de-duplication machinery is recorded on a tape alongside
+    :func:`sparse_marching_cubes_from_cells`'s genuinely differentiable
+    kernels; see ``_mark_active_edges_kernel``.
     """
     tid = wp.tid()
     c = cells[tid]
@@ -307,7 +319,7 @@ def _compute_corner_codes_kernel(
         codes[tid * 8 + corner] = wp.int64(ci) * stride_x + wp.int64(cj) * stride_y + wp.int64(ck)
 
 
-@wp.kernel(enable_backward=False)
+@wp.kernel
 def _mark_first_occurrence_kernel(
     sorted_codes: wp.array(dtype=wp.int64),
     is_first: wp.array(dtype=wp.int32),
@@ -320,7 +332,7 @@ def _mark_first_occurrence_kernel(
         is_first[tid] = wp.where(sorted_codes[tid] != sorted_codes[tid - 1], 1, 0)
 
 
-@wp.kernel(enable_backward=False)
+@wp.kernel
 def _scatter_inverse_kernel(
     sorted_perm: wp.array(dtype=wp.int32),
     unique_scan: wp.array(dtype=wp.int32),
@@ -331,7 +343,7 @@ def _scatter_inverse_kernel(
     inverse[sorted_perm[tid]] = unique_scan[tid] - 1
 
 
-@wp.kernel(enable_backward=False)
+@wp.kernel
 def _record_unique_codes_kernel(
     sorted_codes: wp.array(dtype=wp.int64),
     is_first: wp.array(dtype=wp.int32),
@@ -344,7 +356,27 @@ def _record_unique_codes_kernel(
         unique_codes[unique_scan[tid] - 1] = sorted_codes[tid]
 
 
-@wp.kernel(enable_backward=False)
+@wp.kernel
+def _record_unique_source_kernel(
+    sorted_perm: wp.array(dtype=wp.int32),
+    is_first: wp.array(dtype=wp.int32),
+    unique_scan: wp.array(dtype=wp.int32),
+    unique_source: wp.array(dtype=wp.int32),
+):
+    """Record, for each unique corner, the flat ``cell*8+corner`` index of its
+    canonical (first-in-sorted-order) source.
+
+    Only computed when a caller needs to *gather* per-cell values onto unique
+    corners (:func:`sparse_marching_cubes_from_cells`); the octree-driven path
+    never needs it, since it evaluates the implicit function directly on
+    already-unique corner positions.
+    """
+    tid = wp.tid()
+    if is_first[tid] == 1:
+        unique_source[unique_scan[tid] - 1] = sorted_perm[tid]
+
+
+@wp.kernel
 def _decode_corner_positions_kernel(
     unique_codes: wp.array(dtype=wp.int64),
     stride_x: wp.int64,
@@ -373,26 +405,30 @@ def _decode_corner_positions_kernel(
     )
 
 
-@wp.kernel(enable_backward=False)
+@wp.kernel
 def _fill_iota_kernel(out: wp.array(dtype=wp.int32)):
     tid = wp.tid()
     out[tid] = tid
 
 
-@wp.kernel(enable_backward=False)
-def _scatter_corner_values_kernel(
-    cell_corners: wp.array(dtype=wp.int32, ndim=2),
-    per_cell_values: wp.array(dtype=wp.float32, ndim=2),
+@wp.kernel
+def _gather_corner_values_kernel(
+    unique_source: wp.array(dtype=wp.int32),
+    per_cell_values_flat: wp.array(dtype=wp.float32),
     unique_values: wp.array(dtype=wp.float32),
 ):
-    """Scatter per-cell corner values onto the unique corners they de-duplicate to.
+    """Gather each unique corner's value from its one canonical per-cell source.
 
-    Cells that share a corner write the same value to the same slot, so the race
-    is benign (values are expected to agree at shared corners).
+    A corner shared by several cells has several redundant, and expected to
+    agree, entries in ``per_cell_values_flat``; ``unique_source`` (built in
+    :func:`_dedupe_corners`) picks one deterministic representative per unique
+    corner. Unlike a many-to-one scatter, this 1:1 gather has no write races,
+    so it is safe and deterministic to differentiate: gradient flows from each
+    unique corner back to exactly the one per-cell entry that produced it,
+    matching how dense marching cubes evaluates each grid node exactly once.
     """
-    cell = wp.tid()
-    for corner in range(8):
-        unique_values[cell_corners[cell, corner]] = per_cell_values[cell, corner]
+    tid = wp.tid()
+    unique_values[tid] = per_cell_values_flat[unique_source[tid]]
 
 
 # =============================================================================
@@ -415,7 +451,7 @@ def _cell_case_code(
     return case_code
 
 
-@wp.kernel(enable_backward=False)
+@wp.kernel
 def _mark_active_edges_kernel(
     cell_corners: wp.array(dtype=wp.int32, ndim=2),
     corner_values: wp.array(dtype=wp.float32),
@@ -433,6 +469,13 @@ def _mark_active_edges_kernel(
     Each crossing edge is identified canonically by ``owner_corner * 3 + axis``.
     Multiple incident cells write the same values to the same slot, so races are
     benign and the result is deterministic.
+
+    Backward is left enabled (rather than ``enable_backward=False``), even
+    though its ``edge_active``/``edge_upper_corner`` outputs are discrete and
+    have no useful adjoint, purely so Warp doesn't warn about differentiating
+    a kernel that reads a ``requires_grad`` array
+    (``corner_values``) with backward disabled -- the same reasoning as dense
+    marching cubes' ``extract_faces_kernel``.
     """
     cell = wp.tid()
     case_code = _cell_case_code(cell_corners, corner_values, isovalue, cell)
@@ -448,7 +491,7 @@ def _mark_active_edges_kernel(
         edge_upper_corner[slot] = upper_uid
 
 
-@wp.kernel(enable_backward=False)
+@wp.kernel
 def _emit_vertices_kernel(
     edge_active: wp.array(dtype=wp.int32),
     edge_vertex_index: wp.array(dtype=wp.int32),
@@ -458,7 +501,13 @@ def _emit_vertices_kernel(
     isovalue: wp.float32,
     verts_out: wp.array(dtype=wp.vec3),
 ):
-    """Place one interpolated vertex on each active edge."""
+    """Place one interpolated vertex on each active edge.
+
+    This is the differentiable core of sparse marching cubes: ``wp.lerp``
+    between the two corner positions, weighted by ``t``, a smooth function of
+    the two corner values. Gradient flows from ``verts_out`` back to
+    ``corner_values`` through here.
+    """
     slot = wp.tid()
     if edge_active[slot] == 0:
         return
@@ -474,7 +523,7 @@ def _emit_vertices_kernel(
     verts_out[edge_vertex_index[slot] - 1] = wp.lerp(corner_positions[owner_uid], corner_positions[upper_uid], t)
 
 
-@wp.kernel(enable_backward=False)
+@wp.kernel
 def _count_faces_kernel(
     cell_corners: wp.array(dtype=wp.int32, ndim=2),
     corner_values: wp.array(dtype=wp.float32),
@@ -482,13 +531,18 @@ def _count_faces_kernel(
     case_to_tri_range: wp.array(dtype=wp.int32),
     face_count: wp.array(dtype=wp.int32),
 ):
-    """Count the triangles each cell will emit."""
+    """Count the triangles each cell will emit.
+
+    Backward stays enabled (a no-op, since ``face_count`` is discrete) only to
+    avoid Warp's warning about a ``requires_grad`` input on a
+    backward-disabled kernel; see ``_mark_active_edges_kernel``.
+    """
     cell = wp.tid()
     case_code = _cell_case_code(cell_corners, corner_values, isovalue, cell)
     face_count[cell] = (case_to_tri_range[case_code + 1] - case_to_tri_range[case_code]) // 3
 
 
-@wp.kernel(enable_backward=False)
+@wp.kernel
 def _emit_faces_kernel(
     cell_corners: wp.array(dtype=wp.int32, ndim=2),
     corner_values: wp.array(dtype=wp.float32),
@@ -501,7 +555,12 @@ def _emit_faces_kernel(
     face_scan: wp.array(dtype=wp.int32),
     indices_out: wp.array(dtype=wp.int32),
 ):
-    """Emit triangle index triples, referencing the de-duplicated vertices."""
+    """Emit triangle index triples, referencing the de-duplicated vertices.
+
+    Backward stays enabled (a no-op, since ``indices_out`` is discrete) only
+    to avoid Warp's warning about a ``requires_grad`` input on a
+    backward-disabled kernel; see ``_mark_active_edges_kernel``.
+    """
     cell = wp.tid()
     case_code = _cell_case_code(cell_corners, corner_values, isovalue, cell)
     tri_start = case_to_tri_range[case_code]
@@ -669,15 +728,23 @@ def _cull_out_of_bounds(cells, ncells, device):
     return culled, n_cells - n_keep
 
 
-def _dedupe_corners(cells, n_cells, offset, axis_stride, origin, cell_width, device):
+def _dedupe_corners(cells, n_cells, offset, axis_stride, origin, cell_width, device, compute_unique_source=False):
     """De-duplicate cell corners.
 
     ``offset`` is the minimum corner subscript and ``axis_stride`` the number of
     distinct corner nodes per axis; together they pack corner subscripts into a
     unique int64 code. ``cell_width`` is a ``wp.vec3`` of the per-axis leaf cell
-    size. Returns ``(cell_corners, corner_positions, n_unique)`` where
-    ``cell_corners`` is an ``(n_cells, 8)`` int32 array of indices into the
-    ``n_unique`` unique corners, ordered by :data:`MC_CUBE_CORNER_OFFSETS`.
+    size. Returns ``(cell_corners, corner_positions, n_unique, unique_source)``
+    where ``cell_corners`` is an ``(n_cells, 8)`` int32 array of indices into
+    the ``n_unique`` unique corners, ordered by :data:`MC_CUBE_CORNER_OFFSETS`.
+
+    ``unique_source`` is ``None`` unless ``compute_unique_source`` is set: it is
+    an ``(n_unique,)`` int32 array giving, for each unique corner, the flat
+    ``cell*8+corner`` index of its canonical source, for
+    :func:`sparse_marching_cubes_from_cells` to gather per-cell values with.
+    The octree-driven path never needs this (it evaluates the implicit
+    function directly on the already-unique ``corner_positions``), so it's
+    opt-in to avoid adding a kernel launch to that hot path.
     """
     m = 8 * n_cells
     if axis_stride**3 >= 2**63:
@@ -731,6 +798,17 @@ def _dedupe_corners(cells, n_cells, offset, axis_stride, origin, cell_width, dev
         device=device,
     )
 
+    unique_source = None
+    if compute_unique_source:
+        unique_source = wp.empty(n_unique, dtype=wp.int32, device=device)
+        wp.launch(
+            _record_unique_source_kernel,
+            dim=m,
+            inputs=[sorted_perm, is_first, unique_scan],
+            outputs=[unique_source],
+            device=device,
+        )
+
     # Fold the subscript offset into the origin here, in double precision, so the
     # kernel only ever converts small relative subscripts to float32.
     base = wp.vec3(
@@ -749,11 +827,11 @@ def _dedupe_corners(cells, n_cells, offset, axis_stride, origin, cell_width, dev
     )
 
     cell_corners = inverse.reshape((n_cells, 8))
-    return cell_corners, corner_positions, n_unique
+    return cell_corners, corner_positions, n_unique, unique_source
 
 
-def _empty_mesh(device):
-    verts = wp.empty(0, dtype=wp.vec3, device=device)
+def _empty_mesh(device, requires_grad=False):
+    verts = wp.empty(0, dtype=wp.vec3, device=device, requires_grad=requires_grad)
     indices = wp.empty(0, dtype=wp.int32, device=device)
     return verts, indices
 
@@ -765,6 +843,13 @@ def _extract_from_dedup(cell_corners, corner_positions, corner_values, threshold
     indices, the unique corner positions, and the field value at each unique
     corner, it emits a watertight triangle mesh. Both the Lipschitz-octree driver
     and the explicit-cell entry point funnel through here.
+
+    Differentiable w.r.t. ``corner_values``: the output ``verts`` array is
+    allocated with ``requires_grad=corner_values.requires_grad`` (matching
+    dense marching cubes' ``requires_grad=field.requires_grad`` convention),
+    and gradient flows through the ``wp.lerp`` vertex interpolation in
+    ``_emit_vertices_kernel``. ``indices`` (triangle topology) is discrete and
+    carries no gradient, same as dense.
     """
     n_cells = cell_corners.shape[0]
     n_unique = corner_positions.shape[0]
@@ -799,9 +884,9 @@ def _extract_from_dedup(cell_corners, corner_positions, corner_values, threshold
     edge_vertex_index = wp.empty(n_slots, dtype=wp.int32, device=device)
     n_verts = _scan_total(edge_active, edge_vertex_index)
     if n_verts == 0:
-        return _empty_mesh(device)
+        return _empty_mesh(device, requires_grad=corner_values.requires_grad)
 
-    verts_out = wp.empty(n_verts, dtype=wp.vec3, device=device)
+    verts_out = wp.empty(n_verts, dtype=wp.vec3, device=device, requires_grad=corner_values.requires_grad)
     wp.launch(
         _emit_vertices_kernel,
         dim=n_slots,
@@ -940,6 +1025,19 @@ def sparse_marching_cubes_from_cells(
     :func:`sparse_marching_cubes_via_lipschitz_pruning` is a thin wrapper that discovers the cells with
     a :func:`lipschitz_octree` and then calls this function.
 
+    This function supports backward-mode automatic differentiation: if
+    ``corner_values`` has ``requires_grad=True`` and the call is wrapped in a
+    ``wp.Tape()``, gradient flows from the output ``verts`` back to
+    ``corner_values`` through the marching-cubes vertex interpolation. When a
+    corner is shared by several cells, ``corner_values`` is expected to agree
+    at that corner (see above); gradient flows back through exactly one of
+    the agreeing entries (a fixed, deterministic choice, not an arbitrary
+    one), which is the correct behavior when the redundant entries are
+    independent evaluations of the same underlying point function. ``cells``
+    (and any cell-selection step that produced them, such as
+    :func:`lipschitz_octree`) is not differentiated -- it is integer subscript
+    data with no gradient to carry.
+
     .. note::
 
         The subscript convention here differs from the VDB-style one used by
@@ -1007,11 +1105,14 @@ def sparse_marching_cubes_from_cells(
         raise ValueError(f"corner_values must be float32, got {values_wp.dtype}.")
     if values_wp.size != 8 * n_cells:
         raise ValueError(f"corner_values must have {8 * n_cells} entries for {n_cells} cells, got {values_wp.size}.")
-    # reshape() only works on contiguous arrays, and a caller pulling corner
-    # values out of a larger structure can easily hand us a strided view.
+    # The gather below indexes the flat (8*n_cells,) layout directly, but a
+    # caller pulling corner values out of a larger structure can easily hand
+    # us a strided view or a differently-shaped array, so normalize to a flat,
+    # contiguous array before reshaping.
     if not values_wp.is_contiguous:
         values_wp = wp.clone(values_wp)
-    per_cell_values = values_wp.reshape((n_cells, 8))
+    if values_wp.ndim != 1:
+        values_wp = values_wp.reshape((8 * n_cells,))
 
     # Pack corner subscripts relative to their minimum, using a per-axis stride
     # wide enough to cover the whole subscript range (plus the +1 corner).
@@ -1020,15 +1121,15 @@ def sparse_marching_cubes_from_cells(
     axis_stride = int((hi.astype(np.int64) - lo.astype(np.int64)).max()) + 2
 
     cell_width_vec = wp.vec3(float(cell_width), float(cell_width), float(cell_width))
-    cell_corners, corner_positions, n_unique = _dedupe_corners(
-        cells_wp, n_cells, offset, axis_stride, wp.vec3(origin), cell_width_vec, device
+    cell_corners, corner_positions, n_unique, unique_source = _dedupe_corners(
+        cells_wp, n_cells, offset, axis_stride, wp.vec3(origin), cell_width_vec, device, compute_unique_source=True
     )
 
-    unique_values = wp.empty(n_unique, dtype=wp.float32, device=device)
+    unique_values = wp.empty(n_unique, dtype=wp.float32, device=device, requires_grad=values_wp.requires_grad)
     wp.launch(
-        _scatter_corner_values_kernel,
-        dim=n_cells,
-        inputs=[cell_corners, per_cell_values],
+        _gather_corner_values_kernel,
+        dim=n_unique,
+        inputs=[unique_source, values_wp],
         outputs=[unique_values],
         device=device,
     )
@@ -1077,6 +1178,22 @@ def sparse_marching_cubes_via_lipschitz_pruning(
     (NumPy, PyTorch, ...) is equally valid -- it just pays a device/host sync
     on every call, since the values it returns must still land back on the
     query points' device.
+
+    This function supports backward-mode automatic differentiation, as a
+    consequence of :func:`sparse_marching_cubes_from_cells`'s extraction core
+    supporting it: if ``sdf``'s output array has ``requires_grad=True`` (the
+    caller's responsibility -- allocate it that way, the same as any other
+    Warp kernel output that should carry gradient) and the call is wrapped in
+    a ``wp.Tape()``, gradient flows from the output ``verts`` back through the
+    corner values ``sdf`` produced. The Lipschitz octree that selects which
+    cells to evaluate (:func:`lipschitz_octree`) is not differentiated -- it
+    is a discrete, threshold-based search, not a smooth function of ``sdf``'s
+    values. Because its cell-selection kernels have no adjoint, running this
+    function inside a ``wp.Tape()`` prints benign
+    ``enable_backward=False`` warnings from Warp for those kernels; the
+    resulting gradient is still correct. To avoid the warnings entirely, call
+    :func:`lipschitz_octree` outside the tape and pass its cells to
+    :func:`sparse_marching_cubes_from_cells` directly inside the tape.
 
     Args:
         sdf: The implicit function, as a batched callable with the contract
@@ -1190,7 +1307,7 @@ def sparse_marching_cubes_via_lipschitz_pruning(
     # -- Corner de-duplication and field evaluation --------------------------
     # Octree subscripts live in [0, resolution], so pack from a zero offset.
     cell_width = root_width * (1.0 / float(resolution))
-    cell_corners, corner_positions, n_unique = _dedupe_corners(
+    cell_corners, corner_positions, n_unique, _unique_source = _dedupe_corners(
         cells, n_cells, (0, 0, 0), resolution + 1, lower_corner, cell_width, device
     )
     stats["unique_corners"] = n_unique

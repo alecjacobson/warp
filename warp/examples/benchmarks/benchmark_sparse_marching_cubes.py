@@ -214,6 +214,29 @@ def sparse_extract_grid(sdf, nx, ny, nz, origin, root_width, device, return_stat
     )
 
 
+def from_cells_extract_setup(sdf, origin, root_width, depth, device):
+    """Precompute the (cells, corner_values) an octree would find, for timing
+    sparse_marching_cubes_from_cells in isolation from cell selection."""
+    cell_origins, cell_width = wp.geometry.lipschitz_octree(sdf, origin, root_width, depth, device=device)
+    corner_offsets = np.array(wp.geometry.IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS, dtype=np.int32)
+    co = cell_origins.numpy()
+    cells_np = np.round((co - np.array(origin)) / cell_width).astype(np.int32)
+    corner_pos = np.array(origin) + cell_width * (cells_np[:, None, :] + corner_offsets[None, :, :])
+
+    # Evaluate corner values with the same evaluator used for the octree, in one batch.
+    corner_pos_wp = wp.array(corner_pos.reshape(-1, 3), dtype=wp.vec3, device=device)
+    corner_vals_wp = sdf(corner_pos_wp)
+
+    cells = wp.array(cells_np, dtype=wp.vec3i, device=device)
+    return cells, corner_vals_wp, origin, float(cell_width)
+
+
+def from_cells_extract(cells, corner_vals, origin, cell_width, device):
+    return wp.geometry.sparse_marching_cubes_from_cells(
+        cells, corner_vals, origin=origin, cell_width=cell_width, threshold=0.0, device=device
+    )
+
+
 def time_call(fn, device, iters):
     fn()  # warm up (compilation, first allocation) outside the measurement
     wp.synchronize_device(device)
@@ -349,6 +372,38 @@ def main():
             * 1e3
         )
         print(f"{f'{nx}x{ny}x{nz}':>18} {ms:>12.3f} {stats['leaf_cells']:>11,} {stats['culled_cells']:>8,} {tris:>9,}")
+    print()
+
+    # sparse_marching_cubes_from_cells, forward-only (no wp.Tape), timed in
+    # isolation from cell selection (cells/corner_values precomputed once).
+    # This is the regression check for the backward-mode support added to
+    # this function: the enable_backward=False (no-grad) call path here must
+    # not have gotten slower from the scatter->gather rework or from the
+    # kernels that now stay backward-enabled to avoid Warp's differentiation
+    # warnings.
+    print(f"sparse_marching_cubes_from_cells forward-only timing (depths {args.min_depth}-{args.max_depth}):\n")
+    fc_header = f"{'depth':>5} {'res':>6} {'from_cells (ms)':>16} {'cells':>11} {'tris':>9}"
+    print(fc_header)
+    print("-" * len(fc_header))
+    for depth in range(args.min_depth, args.max_depth + 1):
+        resolution = 1 << depth
+        cells, corner_vals, fc_origin, cell_width = from_cells_extract_setup(sdf, origin, root_width, depth, device)
+        wp.synchronize_device(device)
+        verts, indices = from_cells_extract(cells, corner_vals, fc_origin, cell_width, device)
+        wp.synchronize_device(device)
+        tris = len(indices) // 3
+        del verts, indices
+        fc_ms = (
+            time_call(
+                lambda cells=cells, corner_vals=corner_vals, fc_origin=fc_origin, cell_width=cell_width: (
+                    from_cells_extract(cells, corner_vals, fc_origin, cell_width, device)
+                ),
+                device,
+                args.iters,
+            )
+            * 1e3
+        )
+        print(f"{depth:>5} {resolution:>6} {fc_ms:>16.3f} {cells.shape[0]:>11,} {tris:>9,}")
     print()
 
 

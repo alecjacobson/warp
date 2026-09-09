@@ -82,6 +82,95 @@ def sphere_field_kernel_aniso(field: wp.array3d(dtype=float), lower: wp.vec3, de
 
 
 # =============================================================================
+# Differentiable fixtures: parametrized-by-radius sphere, dense (field) and
+# sparse (per-cell corner values), plus a shared surface-area reduction.
+# =============================================================================
+
+_CUBE_CORNER_OFFSETS = wp.geometry.IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS
+
+
+@wp.kernel
+def sphere_field_kernel_grad(
+    field: wp.array3d(dtype=float), lower: wp.vec3, delta: wp.vec3, radius: wp.array(dtype=wp.float32)
+):
+    i, j, k = wp.tid()
+    p = lower + wp.cw_mul(delta, wp.vec3(float(i), float(j), float(k)))
+    field[i, j, k] = wp.length(p) - radius[0]
+
+
+@wp.kernel
+def sphere_corner_values_kernel(
+    cells: wp.array(dtype=wp.vec3i),
+    lower: wp.vec3,
+    delta: wp.vec3,
+    radius: wp.array(dtype=wp.float32),
+    out: wp.array(dtype=wp.float32, ndim=2),
+):
+    """Differentiable per-cell corner values for every cell of a dense grid.
+
+    Corners are ordered per ``IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS``, as
+    ``sparse_marching_cubes_from_cells`` expects.
+    """
+    cell = wp.tid()
+    c = cells[cell]
+    for corner in range(8):
+        di = wp.static(_CUBE_CORNER_OFFSETS[corner][0])
+        dj = wp.static(_CUBE_CORNER_OFFSETS[corner][1])
+        dk = wp.static(_CUBE_CORNER_OFFSETS[corner][2])
+        p = lower + wp.cw_mul(delta, wp.vec3(float(c[0] + di), float(c[1] + dj), float(c[2] + dk)))
+        out[cell, corner] = wp.length(p) - radius[0]
+
+
+@wp.kernel
+def compute_surface_area_kernel(
+    verts: wp.array(dtype=wp.vec3), faces: wp.array(dtype=wp.int32), out_area: wp.array(dtype=wp.float32)
+):
+    """Heron's-formula surface area reduction, matching test_marching_cubes.py's ``compute_surface_area``."""
+    tid = wp.tid()
+    p0 = verts[faces[3 * tid + 0]]
+    p1 = verts[faces[3 * tid + 1]]
+    p2 = verts[faces[3 * tid + 2]]
+    a = wp.length(p1 - p0)
+    b = wp.length(p2 - p0)
+    c = wp.length(p2 - p1)
+    s = (a + b + c) / 2.0
+    area = wp.sqrt(s * (s - a) * (s - b) * (s - c))
+    wp.atomic_add(out_area, 0, area)
+
+
+@wp.kernel
+def sphere_batch_kernel_grad(
+    points: wp.array(dtype=wp.vec3), radius: wp.array(dtype=wp.float32), out: wp.array(dtype=wp.float32)
+):
+    i = wp.tid()
+    out[i] = wp.length(points[i]) - radius[0]
+
+
+def sphere_evaluate_grad(radius_wp):
+    """Batched sphere evaluator parametrized by ``radius_wp``, for testing that gradient
+    flows through sparse_marching_cubes_via_lipschitz_pruning.
+
+    The output array must be allocated with ``requires_grad=True`` for Warp's
+    tape to track it -- the same requirement as any other differentiable Warp
+    kernel output; ``sparse_marching_cubes_via_lipschitz_pruning`` cannot infer
+    this on the caller's behalf.
+    """
+
+    def evaluate(points):
+        out = wp.empty(points.shape[0], dtype=wp.float32, device=points.device, requires_grad=True)
+        wp.launch(
+            sphere_batch_kernel_grad,
+            dim=points.shape[0],
+            inputs=[points, radius_wp],
+            outputs=[out],
+            device=points.device,
+        )
+        return out
+
+    return evaluate
+
+
+# =============================================================================
 # Helpers
 # =============================================================================
 
@@ -586,6 +675,147 @@ def test_sparse_mc_from_cells(test, device):
     np.testing.assert_allclose(np.sort(np.linalg.norm(vs, axis=1)), np.sort(np.linalg.norm(v_ref, axis=1)), atol=1e-4)
 
 
+def _sphere_area_grad_dense(node_dim, radius, device):
+    """d(area)/d(radius) of a sphere via dense marching cubes (for cross-checking)."""
+    lower = wp.vec3(-1.0, -1.0, -1.0)
+    upper = wp.vec3(1.0, 1.0, 1.0)
+    delta = wp.vec3(2.0 / (node_dim - 1), 2.0 / (node_dim - 1), 2.0 / (node_dim - 1))
+    radius_wp = wp.full((1,), value=radius, dtype=wp.float32, device=device, requires_grad=True)
+
+    with wp.Tape() as tape:
+        field = wp.zeros((node_dim, node_dim, node_dim), dtype=float, device=device, requires_grad=True)
+        wp.launch(sphere_field_kernel_grad, dim=field.shape, inputs=[field, lower, delta, radius_wp], device=device)
+        verts, faces = wp.geometry.IsoSurfaceMarchingCubes.extract(
+            field, threshold=0.0, domain_bounds_lower_corner=lower, domain_bounds_upper_corner=upper
+        )
+        area = wp.zeros(1, dtype=float, device=device, requires_grad=True)
+        wp.launch(compute_surface_area_kernel, dim=faces.shape[0] // 3, inputs=[verts, faces, area], device=device)
+
+    tape.backward(area)
+    return float(area.numpy()[0]), float(radius_wp.grad.numpy()[0])
+
+
+def _sphere_area_grad_sparse(node_dim, radius, device):
+    """d(area)/d(radius) of a sphere via sparse_marching_cubes_from_cells, on every cell
+    of the same dense grid (no octree -- lipschitz_octree is not differentiated)."""
+    lower = wp.vec3(-1.0, -1.0, -1.0)
+    upper = wp.vec3(1.0, 1.0, 1.0)
+    ncells = node_dim - 1
+    delta = wp.vec3((upper[0] - lower[0]) / ncells, (upper[1] - lower[1]) / ncells, (upper[2] - lower[2]) / ncells)
+    radius_wp = wp.full((1,), value=radius, dtype=wp.float32, device=device, requires_grad=True)
+
+    grid = np.arange(ncells)
+    cells_np = np.stack(np.meshgrid(grid, grid, grid, indexing="ij"), axis=-1).reshape(-1, 3).astype(np.int32)
+    cells = wp.array(cells_np, dtype=wp.vec3i, device=device)
+    n_cells = cells.shape[0]
+
+    with wp.Tape() as tape:
+        corner_values = wp.empty((n_cells, 8), dtype=wp.float32, device=device, requires_grad=True)
+        wp.launch(
+            sphere_corner_values_kernel,
+            dim=n_cells,
+            inputs=[cells, lower, delta, radius_wp],
+            outputs=[corner_values],
+            device=device,
+        )
+        verts, faces = wp.geometry.sparse_marching_cubes_from_cells(
+            cells, corner_values, origin=lower, cell_width=float(delta[0]), threshold=0.0, device=device
+        )
+        area = wp.zeros(1, dtype=float, device=device, requires_grad=True)
+        wp.launch(compute_surface_area_kernel, dim=faces.shape[0] // 3, inputs=[verts, faces, area], device=device)
+
+    tape.backward(area)
+    return float(area.numpy()[0]), float(radius_wp.grad.numpy()[0])
+
+
+def test_sparse_mc_from_cells_differentiable(test, device):
+    """Check that sparse_marching_cubes_from_cells has reasonable gradients.
+
+    Mirrors ``test_marching_cubes_differentiable`` in test_marching_cubes.py:
+    constructs a sphere via a differentiable per-cell corner-value kernel
+    (every cell of a dense grid -- not an octree, since lipschitz_octree is
+    deliberately not differentiated), extracts a surface, computes its area,
+    and differentiates the area with respect to the sphere's radius.
+    """
+    node_dim = 33
+    radius = 0.5
+    area, grad = _sphere_area_grad_sparse(node_dim, radius, device)
+    test.assertLess(abs(area - 4.0 * np.pi * radius * radius), 5e-2)
+    test.assertLess(abs(grad - 8.0 * np.pi * radius), 5e-1)
+
+
+def test_sparse_mc_gradient_matches_dense(test, device):
+    """Check that sparse and dense marching cubes give matching d(area)/d(radius).
+
+    Now that sparse_marching_cubes_from_cells and IsoSurfaceMarchingCubes.extract
+    agree exactly on the mesh for the same grid (test_sparse_mc_matches_dense),
+    their gradients should agree too -- the direct cross-implementation
+    regression the nx/ny/nz-matching work enables.
+    """
+    node_dim = 33
+    radius = 0.5
+    area_dense, grad_dense = _sphere_area_grad_dense(node_dim, radius, device)
+    area_sparse, grad_sparse = _sphere_area_grad_sparse(node_dim, radius, device)
+    np.testing.assert_allclose(area_sparse, area_dense, rtol=1e-3)
+    np.testing.assert_allclose(grad_sparse, grad_dense, rtol=1e-2)
+
+
+def test_sparse_mc_gradient_deterministic(test, device):
+    """Check that the gather-based corner-value gradient doesn't have an arbitrary-winner problem.
+
+    The scatter this replaced did a plain (non-atomic) many-to-one write; an
+    empirical check showed Warp's generated backward gives the *entire*
+    downstream gradient to whichever write happened to run last, and zero to
+    the others -- correct per forward semantics, but on the GPU the winning
+    write is not guaranteed deterministic across launches, so which corner
+    "wins" (and thus the gradient value itself) could silently vary run to
+    run. The replacement gather picks one deterministic canonical source per
+    unique corner instead, so repeated calls with identical inputs should
+    match closely -- differing only by ordinary GPU floating-point
+    non-associativity (e.g. reduction order), not by an arbitrary duplicate
+    winning.
+    """
+    node_dim = 17  # small; this checks determinism, not gradient accuracy
+    radius = 0.5
+    _, grad1 = _sphere_area_grad_sparse(node_dim, radius, device)
+    _, grad2 = _sphere_area_grad_sparse(node_dim, radius, device)
+    np.testing.assert_allclose(grad1, grad2, rtol=1e-5)
+
+
+def test_sparse_mc_via_lipschitz_pruning_differentiable(test, device):
+    """Check that sparse_marching_cubes_via_lipschitz_pruning inherits differentiability.
+
+    It reuses sparse_marching_cubes_from_cells's extraction core directly on
+    already-deduplicated corner values, so gradient flows through as soon as
+    the caller's ``sdf`` evaluator itself returns a requires_grad array --
+    with no changes needed to the octree machinery. That octree machinery
+    (lipschitz_octree) is still not differentiated, and running this inside a
+    wp.Tape() prints benign 'enable_backward=False' warnings for its
+    kernels, which is expected and does not affect the gradient's
+    correctness.
+    """
+    radius = 0.5
+    radius_wp = wp.full((1,), value=radius, dtype=wp.float32, device=device, requires_grad=True)
+    evaluate = sphere_evaluate_grad(radius_wp)
+
+    with wp.Tape() as tape:
+        verts, indices = wp.geometry.sparse_marching_cubes_via_lipschitz_pruning(
+            evaluate,
+            33,
+            33,
+            33,
+            domain_bounds_lower_corner=(-1.0, -1.0, -1.0),
+            domain_bounds_upper_corner=(1.0, 1.0, 1.0),
+            device=device,
+        )
+        area = wp.zeros(1, dtype=float, device=device, requires_grad=True)
+        wp.launch(compute_surface_area_kernel, dim=indices.shape[0] // 3, inputs=[verts, indices, area], device=device)
+
+    tape.backward(area)
+    grad = float(radius_wp.grad.numpy()[0])
+    test.assertLess(abs(grad - 8.0 * np.pi * radius), 5e-1)
+
+
 def test_sparse_mc_large_subscripts(test, device):
     """Check that subscripts beyond float32's exact-integer range still resolve.
 
@@ -803,6 +1033,30 @@ add_function_test(
 )
 add_function_test(TestSparseMarchingCubes, "test_sparse_mc_watertight", test_sparse_mc_watertight, devices=devices)
 add_function_test(TestSparseMarchingCubes, "test_sparse_mc_from_cells", test_sparse_mc_from_cells, devices=devices)
+add_function_test(
+    TestSparseMarchingCubes,
+    "test_sparse_mc_from_cells_differentiable",
+    test_sparse_mc_from_cells_differentiable,
+    devices=devices,
+)
+add_function_test(
+    TestSparseMarchingCubes,
+    "test_sparse_mc_gradient_matches_dense",
+    test_sparse_mc_gradient_matches_dense,
+    devices=devices,
+)
+add_function_test(
+    TestSparseMarchingCubes,
+    "test_sparse_mc_gradient_deterministic",
+    test_sparse_mc_gradient_deterministic,
+    devices=devices,
+)
+add_function_test(
+    TestSparseMarchingCubes,
+    "test_sparse_mc_via_lipschitz_pruning_differentiable",
+    test_sparse_mc_via_lipschitz_pruning_differentiable,
+    devices=devices,
+)
 add_function_test(
     TestSparseMarchingCubes, "test_sparse_mc_large_subscripts", test_sparse_mc_large_subscripts, devices=devices
 )
