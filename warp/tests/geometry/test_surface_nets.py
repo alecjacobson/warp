@@ -1,5 +1,14 @@
+# Copyright Contributors to the OpenVDB Project
+# SPDX-License-Identifier: Apache-2.0
+#
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# _reference_replica() below ports the cell-sign classification, ambiguity
+# correction, and edge-group vertex placement from the uniform (non-adaptive)
+# meshing path of OpenVDB's volume-to-mesh tool
+# (openvdb/openvdb/tools/VolumeToMesh.h at v13.0.0, Apache-2.0). See
+# licenses/openvdb-LICENSE.txt.
 
 import unittest
 from collections import Counter
