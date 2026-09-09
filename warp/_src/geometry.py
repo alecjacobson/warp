@@ -691,19 +691,23 @@ class SweptVolumeSign(enum.IntEnum):
     """
 
     NORMAL = 0
-    """Sign from the angle-weighted pseudonormal at the closest point, via
-    :func:`warp.mesh_query_point_sign_normal`. Fast; assumes each input mesh is
-    watertight and consistently oriented. Far from a coarse mesh it can still
-    report the wrong sign, because distinct features at nearly equal distance
-    are merged into one pseudonormal (GH-1836). In a swept field that shows up
-    as spurious isosurface components away from the geometry, so prefer
-    ``WINDING_NUMBER`` on coarse or sharply featured input."""
+    """Sign from :func:`warp.mesh_query_point_sign_normal`. Note that it can
+    report the wrong sign far from a coarse mesh, which a swept field samples
+    routinely."""
 
     WINDING_NUMBER = 1
-    """Sign from the solid angle (generalized winding number), via
-    :func:`warp.mesh_query_point_sign_winding_number`. Robust to non-watertight
-    or inconsistently oriented meshes, but slower and requires every input mesh
-    to be built with ``support_winding_number=True``."""
+    """Sign from :func:`warp.mesh_query_point_sign_winding_number`. Requires
+    every input mesh to be built with ``support_winding_number=True``."""
+
+    PARITY = 2
+    """Sign from :func:`warp.mesh_query_point_sign_parity`."""
+
+    NO_SIGN = 3
+    """Unsigned distance, from :func:`warp.mesh_query_point_no_sign`. The field
+    is then positive everywhere, so it is only meaningful for extracting an
+    ``iso > 0`` isosurface, and that isosurface also runs *inside* the solid,
+    at depth ``iso`` from the surface, wherever the swept volume is thicker
+    than ``2 * iso``. Fastest of the four."""
 
 
 @wp.func
@@ -734,14 +738,22 @@ def swept_volume_sdf(
             # map is rigid, so distances are preserved between the two frames.
             p_local = wp.transform_point(wp.transform_inverse(transforms[m, s]), p)
 
+            sign = float(1.0)
             if sign_mode == wp.int32(SweptVolumeSign.WINDING_NUMBER.value):
                 query = wp.mesh_query_point_sign_winding_number(mesh_id, p_local, max_dist)
+                sign = query.sign
+            elif sign_mode == wp.int32(SweptVolumeSign.PARITY.value):
+                query = wp.mesh_query_point_sign_parity(mesh_id, p_local, max_dist)
+                sign = query.sign
+            elif sign_mode == wp.int32(SweptVolumeSign.NO_SIGN.value):
+                query = wp.mesh_query_point_no_sign(mesh_id, p_local, max_dist)
             else:
                 query = wp.mesh_query_point_sign_normal(mesh_id, p_local, max_dist)
+                sign = query.sign
 
             if query.result:
                 closest = wp.mesh_eval_position(mesh_id, query.face, query.u, query.v)
-                dist = query.sign * wp.length(p_local - closest)
+                dist = sign * wp.length(p_local - closest)
                 best = wp.min(best, dist)
 
     return best
@@ -892,6 +904,8 @@ def swept_volume_field(
     by brute force over every (mesh, sample) pair ("dense time stamping"). The
     field is negative inside the swept volume and positive outside, so extracting
     its zero isosurface (see :func:`swept_volume`) yields the motion envelope.
+    With :attr:`SweptVolumeSign.NO_SIGN` the field is unsigned and therefore
+    positive everywhere.
 
     Because the poses are the *provided* samples, the field only accounts for the
     geometry at those instants; motion between consecutive samples is not
@@ -917,11 +931,9 @@ def swept_volume_field(
             farther than this from every posed mesh are left at ``+max_dist``.
             Defaults to the grid's diagonal length so the field is valid
             everywhere.
-        sign_mode: Inside/outside classification method (see
-            :class:`SweptVolumeSign`). The default requires every mesh to be
-            built with ``support_winding_number=True``; pass
-            :attr:`SweptVolumeSign.NORMAL` to use the faster classifier
-            instead.
+        sign_mode: Inside/outside classification method; see
+            :class:`SweptVolumeSign` for the trade-offs. The default requires
+            every mesh to be built with ``support_winding_number=True``.
         device: Device on which to build the field. Defaults to the device of
             the first mesh.
 
@@ -1046,7 +1058,8 @@ def swept_volume(
             voxel_size`` for a cubic cell of the actual spacings ``hx, hy, hz``)
             guarantees every stamped pose stays enclosed.
         sign_mode: Inside/outside classification method; see
-            :func:`swept_volume_field`.
+            :class:`SweptVolumeSign`. :attr:`SweptVolumeSign.NO_SIGN` requires a
+            positive ``iso`` and dilates the envelope by it.
         device: Device on which to run. Defaults to the device of the first mesh.
 
     Returns:
@@ -1074,6 +1087,12 @@ def swept_volume(
         >>> bool(np.all(v.min(axis=0) <= 0.0) and np.all(v.max(axis=0) >= [2.0, 1.0, 1.0]))
         True
     """
+    if sign_mode == SweptVolumeSign.NO_SIGN and iso <= 0.0:
+        raise ValueError(
+            f"'iso' must be positive when sign_mode is SweptVolumeSign.NO_SIGN, got {iso}. "
+            "An unsigned field is positive everywhere, so its zero isosurface is empty."
+        )
+
     field, lower, upper = swept_volume_field(
         meshes,
         transforms,
