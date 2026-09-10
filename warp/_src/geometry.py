@@ -5,7 +5,7 @@
 
 The public entry points are the topology builder :func:`tri_tri_adjacency`,
 its single-pair counterpart :func:`find_triangle_neighbor_edge_index`, and the
-:func:`delaunay_edge_flip` operation, plus :func:`swept_volume`, which extracts
+:func:`delaunay_edge_flip` operation, plus :func:`swept_volume_mesh`, which extracts
 the motion envelope of animated rigid meshes; the predicates :func:`in_circle`
 and :func:`signed_area` are reusable but stay internal until their naming
 settles.
@@ -47,9 +47,9 @@ __all__ = [
     "find_triangle_neighbor_edge_index",
     "in_circle",
     "signed_area",
-    "swept_volume",
     "swept_volume_bounds",
     "swept_volume_field",
+    "swept_volume_mesh",
     "swept_volume_sdf",
     "tri_tri_adjacency",
 ]
@@ -1027,7 +1027,7 @@ def swept_volume_field(
     Every node is evaluated by :func:`swept_volume_sdf`, by brute force over
     every (mesh, sample) pair ("dense time stamping"). The result is negative
     inside the swept volume and positive outside, so extracting its zero
-    isosurface (see :func:`swept_volume`) yields the motion envelope.
+    isosurface (see :func:`swept_volume_mesh`) yields the motion envelope.
     With :attr:`SweptVolumeSignMode.NO_SIGN` the field is unsigned and therefore
     positive everywhere. Autodiff is not supported: the kernels that build the
     field run forward only.
@@ -1130,7 +1130,7 @@ def swept_volume_field(
     return field, lower_v, upper_v
 
 
-def swept_volume(
+def swept_volume_mesh(
     meshes: Sequence[wp.Mesh],
     transforms: wp.array2d[wp.transform] | npt.ArrayLike,
     voxel_size: float | None = None,
@@ -1197,7 +1197,7 @@ def swept_volume(
         >>> xforms[..., 6] = 1.0  # identity quaternions
         >>> xforms[0, :, 0] = np.linspace(0.0, 1.0, 8)  # translate along x
         >>> voxel_size = 0.05
-        >>> vertices, indices = geo.swept_volume(
+        >>> vertices, indices = geo.swept_volume_mesh(
         ...     [tet], xforms, voxel_size=voxel_size, threshold=0.5 * np.sqrt(3.0) * voxel_size
         ... )
         >>> v = vertices.numpy()

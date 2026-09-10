@@ -5,7 +5,7 @@
 # Example Geometry Swept Volume
 #
 # Computes the swept volume (motion envelope) of an animated rigid assembly
-# with warp.geometry.swept_volume: the single closed mesh that encloses the
+# with warp.geometry.swept_volume_mesh: the single closed mesh that encloses the
 # union of every input mesh over every sampled pose.
 #
 # The method samples a dense signed-distance field
@@ -23,7 +23,7 @@
 # such as a UR10 arm.
 #
 # Inside/outside is classified with the generalized winding number, which is
-# what warp.geometry.swept_volume() defaults to. Pass --sign-mode normal for the
+# what warp.geometry.swept_volume_mesh() defaults to. Pass --sign-mode normal for the
 # faster closest-face-normal classifier, which suits watertight input like the
 # procedural arm but is incoherent on the open, non-watertight visual shells
 # that CAD parts like the UR10 are made of (spurious interior pockets, hundreds
@@ -277,7 +277,7 @@ def write_usd(stage_path, verts, indices, up_axis):
     # The geometry is never reoriented, so the output has to declare the same up
     # axis as the source or a viewer shows it lying on its side.
     UsdGeom.SetStageUpAxis(stage, up_axis)
-    mesh = UsdGeom.Mesh.Define(stage, "/swept_volume")
+    mesh = UsdGeom.Mesh.Define(stage, "/swept_volume_mesh")
     # Without this a viewer applies the default Catmull-Clark subdivision, which
     # smooths the marching-cubes triangles and pulls the surface inward.
     mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
@@ -311,14 +311,14 @@ def main(
         f"{num_samples} pose samples over t in [{times[0]:g}, {times[-1]:g}], sign={sign_mode.name}"
     )
 
-    # The grid's covering radius is the level warp.geometry.swept_volume
+    # The grid's covering radius is the level warp.geometry.swept_volume_mesh
     # documents as enclosing every stamped pose; a larger one offsets the
     # envelope outward, e.g. for a clearance margin.
     if threshold is None:
         threshold = 0.5 * math.sqrt(3.0) * voxel_size
 
-    with wp.ScopedTimer("swept_volume"):
-        verts, indices = warp.geometry.swept_volume(
+    with wp.ScopedTimer("swept_volume_mesh"):
+        verts, indices = warp.geometry.swept_volume_mesh(
             meshes,
             transforms,
             voxel_size=voxel_size,
