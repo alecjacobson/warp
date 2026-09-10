@@ -717,21 +717,30 @@ def swept_volume_sdf(
     max_dist: wp.float32,
     sign_mode: wp.int32,
 ) -> wp.float32:
-    # Pseudo signed distance from world-space point ``p`` to the union of every
-    # input mesh over every sampled pose, i.e. ``min_m min_s sdf_m(X[m, s]^-1
-    # p)``.
-    #
-    # The motion is rigid, so instead of transforming the geometry we push the
-    # query point back into each mesh's rest frame. One closest-point query per
-    # (mesh, sample) therefore evaluates one pose, and a single call here folds
-    # the whole space-time union into one scalar. Callable from within user
-    # kernels.
-    #
-    # ``max_dist`` bounds the closest-point search. A query that finds nothing
-    # within it returns no sign either, so this returns ``+max_dist`` for a
-    # point deep inside the union just as it does for one far outside: pass a
-    # bound that spans the region of interest, as the array-level entry points
-    # do.
+    """Evaluate the swept-volume pseudo signed distance at a single point.
+
+    Returns ``min_m min_s sdf_m(X[m, s]^-1 point)``, the minimum over every mesh
+    and every sampled pose. The motion is rigid, so instead of transforming the
+    geometry the query point is pushed back into each mesh's rest frame, and one
+    closest-point query per (mesh, sample) evaluates one pose. Callable from
+    within your own kernels; not differentiable.
+
+    Args:
+        p: Query point, in world space.
+        mesh_ids: Identifiers of the rest-pose meshes.
+        transforms: Per-mesh, per-sample rigid poses, mapping rest space to
+            world space.
+        max_dist: Bound on the closest-point search. A query that finds nothing
+            within it returns no sign either, so this returns ``+max_dist`` for
+            a point deep inside the union just as it does for one far outside;
+            pass a bound that spans the region of interest, as the array-level
+            entry points do.
+        sign_mode: Inside/outside classification method, as the integer value of
+            a :class:`SweptVolumeSign` member.
+
+    Returns:
+        The pseudo signed distance at ``p``.
+    """
     num_meshes = mesh_ids.shape[0]
     num_samples = transforms.shape[1]
 
@@ -764,7 +773,7 @@ def swept_volume_sdf(
     return best
 
 
-@wp.kernel
+@wp.kernel(enable_backward=False)
 def swept_volume_field_kernel(
     mesh_ids: wp.array[wp.uint64],
     transforms: wp.array2d[wp.transform],
@@ -780,8 +789,11 @@ def swept_volume_field_kernel(
 
 
 def _swept_volume_transforms(transforms, device):
-    """Normalize the ``transforms`` argument into a ``(num_meshes, num_samples)``
-    :class:`warp.array2d` of :class:`warp.transform` on ``device``."""
+    """Normalize the ``transforms`` argument into a :class:`warp.array2d`.
+
+    The result has shape ``(num_meshes, num_samples)``, dtype
+    :class:`warp.transform`, and lives on ``device``.
+    """
     if isinstance(transforms, wp.array):
         if transforms.ndim != 2:
             raise ValueError(
@@ -844,7 +856,7 @@ def swept_volume_bounds_kernel(
 
 
 def swept_volume_bounds(meshes, transforms, padding: float = 0.0, device: DeviceLike | None = None):
-    """World-space axis-aligned bounds of every mesh over every sampled pose.
+    """Return the world-space axis-aligned bounds of every mesh over every pose.
 
     Reduces each mesh's rest-pose vertices to an axis-aligned box, then transforms
     the eight box corners by every pose and reduces their union, entirely with
@@ -1008,7 +1020,8 @@ def swept_volume_field(
     field is negative inside the swept volume and positive outside, so extracting
     its zero isosurface (see :func:`swept_volume`) yields the motion envelope.
     With :attr:`SweptVolumeSign.NO_SIGN` the field is unsigned and therefore
-    positive everywhere.
+    positive everywhere. Autodiff is not supported: the kernels that build the
+    field run forward only.
 
     Because the poses are the *provided* samples, the field only accounts for the
     geometry at those instants; motion between consecutive samples is not
@@ -1017,9 +1030,10 @@ def swept_volume_field(
 
     Args:
         meshes: Sequence of rest-pose :class:`warp.Mesh` objects.
-        transforms: Per-mesh, per-sample rigid poses, either as a
-            :class:`warp.array2d` of :class:`warp.transform` with shape
-            ``(num_meshes, num_samples)`` or as an array of shape
+        transforms: Per-mesh, per-sample rigid poses, each mapping its mesh
+            from rest space to world space, with a rotation quaternion of unit
+            length. Either a :class:`warp.array2d` of :class:`warp.transform`
+            with shape ``(num_meshes, num_samples)``, or an array of shape
             ``(num_meshes, num_samples, 7)`` (translation ``xyz`` followed by
             quaternion ``xyzw``).
         voxel_size: Edge length of a grid cell in world units. The domain is
@@ -1162,6 +1176,8 @@ def swept_volume(
         ``(0, 0, 0)`` to ``(2, 1, 1)``, and extracting at the conservative
         ``iso`` guarantees the envelope encloses it.
 
+        >>> import numpy as np
+        >>> import warp as wp
         >>> import warp.geometry as geo
         >>> points = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
         >>> faces = [0, 2, 1, 0, 3, 2, 0, 1, 3, 1, 2, 3]

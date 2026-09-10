@@ -47,7 +47,7 @@ import warp.geometry
 
 
 def box_mesh(size, center=(0.0, 0.0, 0.0)):
-    """Axis-aligned box triangle mesh (outward-oriented), as (points, indices)."""
+    """Build an outward-oriented axis-aligned box, as (points, indices)."""
     sx, sy, sz = (0.5 * s for s in size)
     cx, cy, cz = center
     corners = np.array(
@@ -84,12 +84,16 @@ def box_mesh(size, center=(0.0, 0.0, 0.0)):
 
 
 def quat_pitch(angle):
-    """wp/USD-order (x, y, z, w) quaternion for a rotation about +y (pitch)."""
+    """Build a rotation about +y (pitch) as a quaternion.
+
+    The components are ordered ``(x, y, z, w)``, which is Warp's convention;
+    USD stores the real and imaginary parts separately.
+    """
     return np.array([0.0, np.sin(0.5 * angle), 0.0, np.cos(0.5 * angle)], dtype=np.float32)
 
 
 def compose(a, b):
-    """Compose two transforms given as (7,) arrays: result applies b then a."""
+    """Compose two transforms given as (7,) arrays, applying b then a."""
     ta = wp.transform(wp.vec3(*a[:3]), wp.quat(*a[3:]))
     tb = wp.transform(wp.vec3(*b[:3]), wp.quat(*b[3:]))
     out = wp.transform_multiply(ta, tb)
@@ -97,7 +101,7 @@ def compose(a, b):
 
 
 def procedural_arm(num_samples=24, device=None):
-    """A two-link arm that swings through a pick-and-place-like arc.
+    """Build a two-link arm that swings through a pick-and-place-like arc.
 
     Returns ``(meshes, transforms, times)`` where ``transforms`` has shape
     ``(num_meshes, num_samples, 7)`` (translation xyz + quaternion xyzw).
@@ -268,6 +272,9 @@ def write_usd(stage_path, verts, indices):
     stage = Usd.Stage.CreateNew(stage_path)
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
     mesh = UsdGeom.Mesh.Define(stage, "/swept_volume")
+    # Without this a viewer applies the default Catmull-Clark subdivision, which
+    # smooths the marching-cubes triangles and pulls the surface inward.
+    mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
     v = verts.numpy()
     f = indices.numpy()
     mesh.CreatePointsAttr([Gf.Vec3f(*p) for p in v.tolist()])
@@ -354,8 +361,8 @@ if __name__ == "__main__":
         type=float,
         default=None,
         help=(
-            "Level to extract, offsetting the envelope outward by this much. Defaults to the grid's "
-            "covering radius, the smallest level that provably encloses every stamped pose. Must be "
+            "Level to extract, offsetting the envelope outward by this much. If omitted, uses the "
+            "grid's covering radius, the smallest level that encloses every stamped pose. Must be "
             "positive for --sign-mode no-sign."
         ),
     )
