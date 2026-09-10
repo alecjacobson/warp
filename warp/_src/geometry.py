@@ -717,8 +717,9 @@ def swept_volume_sdf(
     max_dist: wp.float32,
     sign_mode: wp.int32,
 ) -> wp.float32:
-    # Signed distance from world-space point ``p`` to the union of every input
-    # mesh over every sampled pose, i.e. ``min_m min_s sdf_m(X[m, s]^-1 p)``.
+    # Pseudo signed distance from world-space point ``p`` to the union of every
+    # input mesh over every sampled pose, i.e. ``min_m min_s sdf_m(X[m, s]^-1
+    # p)``.
     #
     # The motion is rigid, so instead of transforming the geometry we push the
     # query point back into each mesh's rest frame. One closest-point query per
@@ -998,8 +999,8 @@ def swept_volume_field(
 ) -> tuple[wp.array, wp.vec3, wp.vec3]:
     """Sample the swept-volume signed-distance field on a dense regular grid.
 
-    Computes, at each grid node ``p``, the signed distance to the union of the
-    input meshes over all sampled poses::
+    Computes, at each grid node ``p``, the pseudo signed distance to the union
+    of the input meshes over all sampled poses::
 
         D(p) = min_m min_s  sdf_m( X[m, s]^-1 p )
 
@@ -1140,18 +1141,14 @@ def swept_volume(
             corners makes that padding your responsibility.
         domain_bounds_upper_corner: World coordinate that node
             ``(nx-1, ny-1, nz-1)`` maps to.
-        iso: Field level to extract. ``0.0`` traces the envelope through the
-            sampled poses; a positive value dilates it outward. Marching cubes
-            reconstructs the 1-Lipschitz field by linear interpolation, which at
-            sharp convex features overestimates the field and pulls the surface
-            inside the true one, so a stamped pose can poke through the ``0.0``
-            isosurface by up to the grid's covering radius. Extracting at
-            ``iso = 0.5 * hypot(hx, hy, hz)`` (the covering radius, ``sqrt(3)/2 *
-            voxel_size`` for a cubic cell of the actual spacings ``hx, hy, hz``)
-            guarantees every stamped pose stays enclosed.
+        iso: Field level to extract. ``iso = 0.0`` traces the envelope through
+            the sampled poses; a positive value dilates it outward. Due to grid
+            sampling, the extracted marching cubes mesh is only guaranteed to
+            enclose all sampled poses when ``iso > 0.5 * hypot(hx, hy, hz)``.
         sign_mode: Inside/outside classification method; see
             :class:`SweptVolumeSign`. :attr:`SweptVolumeSign.NO_SIGN` requires a
-            positive ``iso`` and dilates the envelope by it.
+            positive ``iso`` to result in a non-empty surface, since the field
+            is positive everywhere.
         device: Device on which to run. Defaults to the device of the first mesh.
 
     Returns:
