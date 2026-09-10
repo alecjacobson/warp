@@ -149,6 +149,7 @@ def procedural_arm(num_samples=24, device=None):
 
 
 def _triangulate(counts, idx):
+    """Convert USD face counts and flattened indices to triangles using a fan."""
     counts = np.asarray(counts, dtype=np.int64)
     idx = np.asarray(idx, dtype=np.int64)
     if counts.size and (counts == 3).all():

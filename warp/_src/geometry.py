@@ -723,11 +723,12 @@ def swept_volume_sdf(
 ) -> wp.float32:
     """Evaluate the swept-volume pseudo signed distance at a single point.
 
-    Returns ``min_m min_s sdf_m(X[m, s]^-1 point)``, the minimum over every mesh
-    and every sampled pose. The motion is rigid, so instead of transforming the
-    geometry the query point is pushed back into each mesh's rest frame, and one
-    closest-point query per (mesh, sample) evaluates one pose. Callable from
-    within your own kernels; not differentiable.
+    Returns :math:`\\min_m \\min_s \\mathrm{sdf}_m(X_{m,s}^{-1} p)`, the minimum
+    over every mesh :math:`m` and every sampled pose :math:`s`. The motion is
+    rigid, so instead of transforming the geometry the query point is pushed
+    back into each mesh's rest frame, and one closest-point query per
+    (mesh, sample) evaluates one pose. Callable from within your own kernels;
+    not differentiable.
 
     Args:
         point: Query point, in world space.
@@ -743,7 +744,7 @@ def swept_volume_sdf(
             a :class:`SweptVolumeSignMode` member.
 
     Returns:
-        The pseudo signed distance at ``p``.
+        The pseudo signed distance at ``point``.
     """
     num_meshes = mesh_ids.shape[0]
     num_samples = transforms.shape[1]
@@ -1021,16 +1022,12 @@ def swept_volume_field(
     sign_mode: SweptVolumeSignMode = SweptVolumeSignMode.WINDING_NUMBER,
     device: DeviceLike | None = None,
 ) -> tuple[wp.array3d[wp.float32], wp.vec3, wp.vec3]:
-    """Sample the swept-volume signed-distance field on a dense regular grid.
+    """Compute a dense regular-grid discretization of the swept-volume pseudo signed-distance function.
 
-    Computes, at each grid node ``p``, the pseudo signed distance to the union
-    of the input meshes over all sampled poses::
-
-        D(p) = min_m min_s  sdf_m( X[m, s]^-1 p )
-
-    by brute force over every (mesh, sample) pair ("dense time stamping"). The
-    field is negative inside the swept volume and positive outside, so extracting
-    its zero isosurface (see :func:`swept_volume`) yields the motion envelope.
+    Every node is evaluated by :func:`swept_volume_sdf`, by brute force over
+    every (mesh, sample) pair ("dense time stamping"). The result is negative
+    inside the swept volume and positive outside, so extracting its zero
+    isosurface (see :func:`swept_volume`) yields the motion envelope.
     With :attr:`SweptVolumeSignMode.NO_SIGN` the field is unsigned and therefore
     positive everywhere. Autodiff is not supported: the kernels that build the
     field run forward only.
