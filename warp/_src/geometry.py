@@ -1121,11 +1121,12 @@ def swept_volume(
 
     Samples the swept-volume signed-distance field with
     :func:`swept_volume_field` and extracts its ``iso`` isosurface with marching
-    cubes, returning a single triangle mesh in world coordinates that encloses
-    the union of every input mesh over every sampled pose.
+    cubes, returning a single triangle mesh in world coordinates that traces the
+    union of every input mesh over every sampled pose.
 
-    This is the dense-stamping baseline: the field is evaluated by brute force at
-    the provided pose samples, with no root finding or narrow-band acceleration.
+    The field is evaluated by brute force at the provided pose samples. At low
+    temporal sample rates relative to mesh speeds or thicknesses, the extracted
+    swept volume will exhibit known "stroboscopic" defects.
 
     Args:
         meshes: Sequence of rest-pose :class:`warp.Mesh` objects.
