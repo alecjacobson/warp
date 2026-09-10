@@ -1020,15 +1020,19 @@ def sparse_marching_cubes_from_cells(
 
     This is the sparse marching cubes core: it runs marching cubes on a
     caller-provided list of voxels (rather than cells discovered by a Lipschitz
-    octree), sharing vertices between adjacent cells so the output is watertight.
-    It is useful when the occupied cells are already known, such as a marked
-    band of voxels around an object from a vision or generative model, and the
-    implicit field has already been sampled at their corners.
+    octree), sharing vertices between adjacent cells so the output is
+    watertight. It is useful when the occupied cells are already known, such as
+    a marked band of voxels around an object from a vision or generative model,
+    and the implicit field has already been sampled at their corners. ``cells``
+    are expected to be unique (duplicate cells may result in
+    duplicate/intersecting output mesh faces).
 
-    :func:`sparse_marching_cubes` shares this function's cell-deduplication and
-    extraction internals rather than composing :func:`sparse_cells_via_lipschitz_pruning` and this
-    function directly: :func:`sparse_cells_via_lipschitz_pruning` returns the same cell subscripts
-    this function expects, but not sampled corner values, which the caller must still supply.
+    :func:`sparse_marching_cubes` shares this function's corner-merging and
+    extraction internals rather than composing
+    :func:`sparse_cells_via_lipschitz_pruning` and this function directly:
+    :func:`sparse_cells_via_lipschitz_pruning` returns the same cell subscripts
+    this function expects, but not sampled corner values, which the caller must
+    still supply.
 
     This function supports backward-mode automatic differentiation: if
     ``corner_values`` has ``requires_grad=True`` and the call is wrapped in a
