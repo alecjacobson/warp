@@ -137,7 +137,7 @@ warp/examples/geometry
     :widths: 25 25 25 25
     :class: gallery
 
-    * - .. image:: ./img/examples/geometry_swept_volume.gif
+    * - .. image:: ./img/examples/geometry_swept_volume.png
            :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_swept_volume.py
       -
       -

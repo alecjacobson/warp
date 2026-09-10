@@ -19,7 +19,7 @@ Usage:
 
 # isort: skip_file
 
-from warp._src.geometry import SweptVolumeSign as SweptVolumeSign
+from warp._src.geometry import SweptVolumeSignMode as SweptVolumeSignMode
 from warp._src.geometry import delaunay_edge_flip as delaunay_edge_flip
 from warp._src.geometry import find_triangle_neighbor_edge_index as find_triangle_neighbor_edge_index
 from warp._src.geometry import swept_volume as swept_volume

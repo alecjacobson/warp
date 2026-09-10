@@ -13,7 +13,7 @@ API
    :nosignatures:
    :toctree: _generated
 
-   SweptVolumeSign
+   SweptVolumeSignMode
    delaunay_edge_flip
    find_triangle_neighbor_edge_index
    swept_volume

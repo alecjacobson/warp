@@ -166,7 +166,7 @@ def test_conservative_encloses_all_poses(test, device):
 
     Every input vertex, at every sampled pose, must lie inside the field's zero
     level (within the nearest-node rounding error), and inside the mesh
-    extracted at the documented conservative ``iso``.
+    extracted at the documented conservative ``threshold``.
     """
     radius = 0.5
     mesh = _sphere_mesh(device, radius=radius)
@@ -194,7 +194,7 @@ def test_conservative_encloses_all_poses(test, device):
 
     # The documented conservative level must enclose the poses in the extracted
     # mesh too, not just in the sampled field.
-    verts, indices = geo.swept_volume([mesh], tr, voxel_size=voxel, iso=covering_radius, device=device)
+    verts, indices = geo.swept_volume([mesh], tr, voxel_size=voxel, threshold=covering_radius, device=device)
     test.assertGreater(len(verts.numpy()), 0)
     signed = _signed_distance_to_mesh(verts, indices, posed, device)
     test.assertLessEqual(float(signed.max()), 0.0)
@@ -237,9 +237,9 @@ def test_sign_modes_agree_on_watertight_mesh(test, device):
     tr = _translation_transforms([[[x, 0.0, 0.0] for x in np.linspace(-1.0, 1.0, 21)]])
 
     for sign_mode in (
-        geo.SweptVolumeSign.WINDING_NUMBER,
-        geo.SweptVolumeSign.NORMAL,
-        geo.SweptVolumeSign.PARITY,
+        geo.SweptVolumeSignMode.WINDING_NUMBER,
+        geo.SweptVolumeSignMode.NORMAL,
+        geo.SweptVolumeSignMode.PARITY,
     ):
         verts, _ = geo.swept_volume([mesh], tr, voxel_size=0.05, sign_mode=sign_mode, device=device)
         v = verts.numpy()
@@ -248,10 +248,10 @@ def test_sign_modes_agree_on_watertight_mesh(test, device):
 
 
 def test_unsigned_dilates_the_envelope(test, device):
-    """Check that NO_SIGN gives a positive field whose iso surface is an outward offset.
+    """Check that NO_SIGN gives a positive field whose threshold surface is an outward offset.
 
-    The unsigned field cannot be negative anywhere, and extracting it at ``iso``
-    should push the surface out by that much. A sphere thicker than ``2 * iso``
+    The unsigned field cannot be negative anywhere, and extracting it at ``threshold``
+    should push the surface out by that much. A sphere thicker than ``2 * threshold``
     also picks up the documented inward shell, so the extracted mesh spans the
     dilated bounds while the field stays non-negative.
     """
@@ -260,23 +260,23 @@ def test_unsigned_dilates_the_envelope(test, device):
     tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
 
     field, _, _ = geo.swept_volume_field(
-        [mesh], tr, voxel_size=0.05, sign_mode=geo.SweptVolumeSign.NO_SIGN, device=device
+        [mesh], tr, voxel_size=0.05, sign_mode=geo.SweptVolumeSignMode.NO_SIGN, device=device
     )
     test.assertGreaterEqual(float(field.numpy().min()), 0.0)
 
-    iso = 0.2
+    threshold = 0.2
     verts, _ = geo.swept_volume(
-        [mesh], tr, voxel_size=0.05, iso=iso, sign_mode=geo.SweptVolumeSign.NO_SIGN, device=device
+        [mesh], tr, voxel_size=0.05, threshold=threshold, sign_mode=geo.SweptVolumeSignMode.NO_SIGN, device=device
     )
     v = verts.numpy()
-    np.testing.assert_allclose(v.max(axis=0), [radius + iso] * 3, atol=0.06)
-    np.testing.assert_allclose(v.min(axis=0), [-radius - iso] * 3, atol=0.06)
+    np.testing.assert_allclose(v.max(axis=0), [radius + threshold] * 3, atol=0.06)
+    np.testing.assert_allclose(v.min(axis=0), [-radius - threshold] * 3, atol=0.06)
 
-    # The documented inward shell: the sphere is thicker than 2 * iso, so the
-    # isosurface also runs at radius - iso.
+    # The documented inward shell: the sphere is thicker than 2 * threshold, so the
+    # isosurface also runs at radius - threshold.
     r = np.linalg.norm(v, axis=1)
-    test.assertGreater(int(np.count_nonzero(np.abs(r - (radius - iso)) < 0.05)), 0)
-    test.assertGreater(int(np.count_nonzero(np.abs(r - (radius + iso)) < 0.05)), 0)
+    test.assertGreater(int(np.count_nonzero(np.abs(r - (radius - threshold)) < 0.05)), 0)
+    test.assertGreater(int(np.count_nonzero(np.abs(r - (radius + threshold)) < 0.05)), 0)
 
 
 def test_unsigned_requires_positive_iso(test, device):
@@ -284,7 +284,7 @@ def test_unsigned_requires_positive_iso(test, device):
     mesh = _sphere_mesh(device, radius=0.5)
     tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
     with test.assertRaises(ValueError):
-        geo.swept_volume([mesh], tr, voxel_size=0.05, sign_mode=geo.SweptVolumeSign.NO_SIGN, device=device)
+        geo.swept_volume([mesh], tr, voxel_size=0.05, sign_mode=geo.SweptVolumeSignMode.NO_SIGN, device=device)
 
 
 def _open_box_mesh(device, half=0.5, support_winding_number=True):
@@ -380,16 +380,16 @@ def test_voxel_size_gives_cubic_cells(test, device):
 
 
 def test_positive_iso_is_not_clipped(test, device):
-    """Check that the domain grows with iso instead of clipping the dilated envelope."""
+    """Check that the domain grows with threshold instead of clipping the dilated envelope."""
     radius = 0.5
     mesh = _sphere_mesh(device, radius=radius)
     tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
 
-    for iso in (0.25, 0.7):
-        verts, _ = geo.swept_volume([mesh], tr, voxel_size=0.05, iso=iso, device=device)
+    for threshold in (0.25, 0.7):
+        verts, _ = geo.swept_volume([mesh], tr, voxel_size=0.05, threshold=threshold, device=device)
         v = verts.numpy()
-        np.testing.assert_allclose(v.max(axis=0), [radius + iso] * 3, atol=0.06)
-        np.testing.assert_allclose(v.min(axis=0), [-radius - iso] * 3, atol=0.06)
+        np.testing.assert_allclose(v.max(axis=0), [radius + threshold] * 3, atol=0.06)
+        np.testing.assert_allclose(v.min(axis=0), [-radius - threshold] * 3, atol=0.06)
 
 
 def test_explicit_domain_is_used_verbatim(test, device):
@@ -402,8 +402,8 @@ def test_explicit_domain_is_used_verbatim(test, device):
         [mesh],
         tr,
         resolution=(24, 24, 24),
-        domain_bounds_lower_corner=lower,
-        domain_bounds_upper_corner=upper,
+        lower=lower,
+        upper=upper,
         device=device,
     )
     test.assertEqual(field.shape, (24, 24, 24))
@@ -452,14 +452,12 @@ def test_invalid_arguments(test, device):
             [mesh],
             tr,
             voxel_size=0.05,
-            domain_bounds_lower_corner=(-1.0, -1.0, -1.0),
-            domain_bounds_upper_corner=(1.0, 1.0, 1.0),
+            lower=(-1.0, -1.0, -1.0),
+            upper=(1.0, 1.0, 1.0),
             device=device,
         )
     with test.assertRaises(ValueError):
-        geo.swept_volume_field(
-            [mesh], tr, resolution=(16, 16, 16), domain_bounds_lower_corner=(-1.0, -1.0, -1.0), device=device
-        )
+        geo.swept_volume_field([mesh], tr, resolution=(16, 16, 16), lower=(-1.0, -1.0, -1.0), device=device)
     with test.assertRaises(ValueError):
         # The default classifier needs a mesh built with support_winding_number=True.
         plain = _sphere_mesh(device, radius=0.5, support_winding_number=False)

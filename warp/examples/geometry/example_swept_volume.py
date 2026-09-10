@@ -29,12 +29,12 @@
 # that CAD parts like the UR10 are made of (spurious interior pockets, hundreds
 # of disconnected junk shells).
 #
-# --iso offsets the envelope outward, which is what makes --sign-mode no-sign
+# --threshold offsets the envelope outward, which is what makes --sign-mode no-sign
 # usable: an unsigned field has no zero level to extract.
 #
 #   uv run --with usd-core warp/examples/geometry/example_swept_volume.py
 #   uv run --with usd-core warp/examples/geometry/example_swept_volume.py --usd-path ur10_animated.usda
-#   uv run --with usd-core warp/examples/geometry/example_swept_volume.py --sign-mode no-sign --iso 0.1
+#   uv run --with usd-core warp/examples/geometry/example_swept_volume.py --sign-mode no-sign --threshold 0.1
 ###########################################################################
 
 import math
@@ -166,7 +166,9 @@ def load_usd_assembly(path, num_samples=24, device=None):
 
     Every ``UsdGeomMesh`` (including through instance proxies) becomes one
     :class:`warp.Mesh`; its per-sample world transform is read from the stage's
-    xform cache. Returns ``(meshes, transforms, times)``.
+    xform cache. Returns ``(meshes, transforms, times, up_axis)``, where
+    ``up_axis`` is the stage's up axis, so the output can be written in the same
+    coordinate system.
 
     The swept volume assumes rigid motion, so a prim's local-to-world transform
     must be a fixed scale followed by an animated rotation and translation. A
@@ -179,7 +181,7 @@ def load_usd_assembly(path, num_samples=24, device=None):
     non-watertight visual shells, for which closest-face-normal sign
     classification is unreliable and produces an incoherent field (spurious
     interior pockets, hundreds of junk shells), so the winding number matters
-    here (see :class:`warp.geometry.SweptVolumeSign`).
+    here (see :class:`warp.geometry.SweptVolumeSignMode`).
     """
     stage = Usd.Stage.Open(path, Usd.Stage.LoadAll)
     pred = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
@@ -265,12 +267,15 @@ def load_usd_assembly(path, num_samples=24, device=None):
             )
         )
 
-    return meshes, transforms, times
+    return meshes, transforms, times, UsdGeom.GetStageUpAxis(stage)
 
 
-def write_usd(stage_path, verts, indices):
+def write_usd(stage_path, verts, indices, up_axis):
+    """Write the envelope to a USD stage with the given up axis."""
     stage = Usd.Stage.CreateNew(stage_path)
-    UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+    # The geometry is never reoriented, so the output has to declare the same up
+    # axis as the source or a viewer shows it lying on its side.
+    UsdGeom.SetStageUpAxis(stage, up_axis)
     mesh = UsdGeom.Mesh.Define(stage, "/swept_volume")
     # Without this a viewer applies the default Catmull-Clark subdivision, which
     # smooths the marching-cubes triangles and pulls the surface inward.
@@ -287,15 +292,16 @@ def main(
     usd_path=None,
     num_samples=24,
     voxel_size=0.08,
-    iso=None,
-    sign_mode=warp.geometry.SweptVolumeSign.WINDING_NUMBER,
+    threshold=None,
+    sign_mode=warp.geometry.SweptVolumeSignMode.WINDING_NUMBER,
     stage_path="example_swept_volume.usd",
 ):
     if usd_path is not None:
-        meshes, transforms, times = load_usd_assembly(usd_path, num_samples=num_samples)
+        meshes, transforms, times, up_axis = load_usd_assembly(usd_path, num_samples=num_samples)
         label = usd_path
     else:
         meshes, transforms, times = procedural_arm(num_samples=num_samples)
+        up_axis = UsdGeom.Tokens.z
         label = "procedural two-link arm"
 
     total_tris = sum(len(m.indices.numpy()) // 3 for m in meshes)
@@ -307,15 +313,15 @@ def main(
     # The grid's covering radius is the level warp.geometry.swept_volume
     # documents as enclosing every stamped pose; a larger one offsets the
     # envelope outward, e.g. for a clearance margin.
-    if iso is None:
-        iso = 0.5 * math.sqrt(3.0) * voxel_size
+    if threshold is None:
+        threshold = 0.5 * math.sqrt(3.0) * voxel_size
 
     with wp.ScopedTimer("swept_volume"):
         verts, indices = warp.geometry.swept_volume(
             meshes,
             transforms,
             voxel_size=voxel_size,
-            iso=iso,
+            threshold=threshold,
             sign_mode=sign_mode,
         )
         wp.synchronize_device()
@@ -325,7 +331,7 @@ def main(
     print(f"envelope AABB: min {np.round(v.min(axis=0), 3)}  max {np.round(v.max(axis=0), 3)}")
 
     if stage_path:
-        write_usd(stage_path, verts, indices)
+        write_usd(stage_path, verts, indices, up_axis)
         print(f"wrote {stage_path}")
 
 
@@ -357,7 +363,7 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
-        "--iso",
+        "--threshold",
         type=float,
         default=None,
         help=(
@@ -375,17 +381,17 @@ if __name__ == "__main__":
     args = parser.parse_known_args()[0]
 
     sign_mode = {
-        "normal": warp.geometry.SweptVolumeSign.NORMAL,
-        "winding-number": warp.geometry.SweptVolumeSign.WINDING_NUMBER,
-        "parity": warp.geometry.SweptVolumeSign.PARITY,
-        "no-sign": warp.geometry.SweptVolumeSign.NO_SIGN,
+        "normal": warp.geometry.SweptVolumeSignMode.NORMAL,
+        "winding-number": warp.geometry.SweptVolumeSignMode.WINDING_NUMBER,
+        "parity": warp.geometry.SweptVolumeSignMode.PARITY,
+        "no-sign": warp.geometry.SweptVolumeSignMode.NO_SIGN,
     }[args.sign_mode]
     with wp.ScopedDevice(args.device):
         main(
             usd_path=args.usd_path,
             num_samples=args.num_samples,
             voxel_size=args.voxel_size,
-            iso=args.iso,
+            threshold=args.threshold,
             sign_mode=sign_mode,
             stage_path=args.stage_path,
         )
