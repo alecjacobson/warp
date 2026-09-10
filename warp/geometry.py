@@ -10,8 +10,7 @@ isosurface extraction.
 Dense-grid isosurface backends take a 3-D ``wp.float32`` field sampled at grid
 nodes and share the :class:`IsoSurfaceBase` interface, so they can be swapped
 without changing calling code: :class:`IsoSurfaceMarchingCubes` produces
-triangles, and :class:`IsoSurfaceNets` produces triangles or quads with
-better-shaped elements.
+triangles.
 
 Sparse extraction skips the dense grid entirely. :func:`sparse_marching_cubes`
 takes an implicit function and builds a Lipschitz octree around the level set,
@@ -28,7 +27,6 @@ Usage:
 
 from warp._src.geometry.iso_surface import IsoSurfaceBase as IsoSurfaceBase
 from warp._src.geometry.marching_cubes import IsoSurfaceMarchingCubes as IsoSurfaceMarchingCubes
-from warp._src.geometry.surface_nets import IsoSurfaceNets as IsoSurfaceNets
 from warp._src.geometry.sparse_marching_cubes import (
     sparse_cells_via_lipschitz_pruning as sparse_cells_via_lipschitz_pruning,
     sparse_marching_cubes as sparse_marching_cubes,

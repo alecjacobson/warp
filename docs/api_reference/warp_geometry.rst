@@ -15,7 +15,6 @@ API
 
    IsoSurfaceBase
    IsoSurfaceMarchingCubes
-   IsoSurfaceNets
    delaunay_edge_flip
    find_triangle_neighbor_edge_index
    sparse_cells_via_lipschitz_pruning
