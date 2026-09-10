@@ -35,6 +35,7 @@ from warp._src.module_registry import register_module_source as _register_module
 # stubs. ``# fmt: off`` stops the formatter from wrapping the longer lines.
 # fmt: off
 _register_module_source("warp.autograd", "warp._src.autograd")
+_register_module_source("warp.geometry", "warp._src.geometry.delaunay")
 _register_module_source("warp.geometry.marching_cubes", "warp._src.geometry.marching_cubes")
 _register_module_source("warp.geometry.sparse_marching_cubes", "warp._src.geometry.sparse_marching_cubes")
 _register_module_source("warp.geometry.surface_nets", "warp._src.geometry.surface_nets")
@@ -265,7 +266,9 @@ from warp._src.types import Volume as Volume
 from warp._src.types import BvhQuery as BvhQuery
 from warp._src.types import BvhQueryTiled as BvhQueryTiled
 from warp._src.types import HashGridQuery as HashGridQuery
+from warp._src.types import MeshQuery as MeshQuery
 from warp._src.types import MeshQueryAABB as MeshQueryAABB
+
 from warp._src.types import MeshQueryAABBTiled as MeshQueryAABBTiled
 from warp._src.types import MeshQueryPoint as MeshQueryPoint
 from warp._src.types import MeshQueryRay as MeshQueryRay
@@ -305,7 +308,6 @@ from warp._src.codegen import WarpCodegenIndexError as WarpCodegenIndexError
 from warp._src.codegen import WarpCodegenKeyError as WarpCodegenKeyError
 from warp._src.codegen import WarpCodegenTypeError as WarpCodegenTypeError
 from warp._src.codegen import WarpCodegenValueError as WarpCodegenValueError
-
 from warp._src.context import func as func
 from warp._src.context import func_grad as func_grad
 from warp._src.context import func_replay as func_replay
@@ -326,9 +328,11 @@ from warp._src.context import Kernel as Kernel
 from warp._src.context import Function as Function
 from warp._src.context import Launch as Launch
 from warp._src.context import Module as Module
+from warp._src.context import ModuleBuildOptions as ModuleBuildOptions
 
 from warp._src.context import launch as launch
 from warp._src.context import launch_tiled as launch_tiled
+from warp._src.context import get_cuda_kernel_properties as get_cuda_kernel_properties
 from warp._src.context import get_suggested_block_size as get_suggested_block_size
 from warp._src.context import synchronize as synchronize
 
@@ -579,6 +583,7 @@ from warp._src.constants import *
 
 # category: Submodules
 
+from . import build_experimental as build_experimental
 from . import config as config
 from . import types as types
 from . import utils as utils

@@ -69,22 +69,6 @@ At ``wp.LOG_DEBUG``, additional messages are printed to standard output
 regarding program progress and code generation, such as when operations may be
 non-differentiable.
 
-.. note::
-    The legacy ``wp.config.verbose`` and ``wp.config.quiet`` flags are
-    deprecated. Migrate to ``wp.config.log_level``:
-
-    - ``wp.config.verbose = True`` → ``wp.config.log_level = wp.LOG_DEBUG``
-    - ``wp.config.quiet = True`` → ``wp.config.log_level = wp.LOG_WARNING``
-
-    Reading or setting either deprecated flag emits a one-time
-    ``DeprecationWarning``. During the deprecation window the flag is still
-    honored alongside ``log_level``, so existing code keeps working. Remove the
-    flag once your code sets ``log_level`` directly.
-
-    ``wp.config.verbose_warnings`` is not deprecated. It is an orthogonal
-    formatting flag that controls whether warning messages include the source
-    location and has no ``log_level`` equivalent.
-
 Verbose Warnings
 ^^^^^^^^^^^^^^^^
 
@@ -167,7 +151,6 @@ Debug Mode Compilation
 In debug mode, Warp kernels will perform the following additional checks:
 
 * Raise an assertion if there is an array access outside the defined shape.
-* Warn if :func:`wp.tid() <warp.tid>` will return an overflowed value on large grids.
 * (GPU-only) Warn if the CUDA grid dimensions have been capped due to an overflowed number of blocks.
 * (GPU-only) Generate line-number information for device code.
 

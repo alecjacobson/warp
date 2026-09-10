@@ -3,13 +3,15 @@
 
 """Geometry processing operations.
 
-This module provides GPU-accelerated geometry operations. It currently covers
-isosurface extraction, in two flavors.
+This module provides functions to process 2D and 3D geometry and their
+associated topological data structures (e.g., meshes), and GPU-accelerated
+isosurface extraction.
 
-Dense-grid backends take a 3-D ``wp.float32`` field sampled at grid nodes and
-share the :class:`IsoSurfaceBase` interface, so they can be swapped without
-changing calling code: :class:`IsoSurfaceMarchingCubes` produces triangles, and
-:class:`IsoSurfaceNets` produces triangles or quads with better-shaped elements.
+Dense-grid isosurface backends take a 3-D ``wp.float32`` field sampled at grid
+nodes and share the :class:`IsoSurfaceBase` interface, so they can be swapped
+without changing calling code: :class:`IsoSurfaceMarchingCubes` produces
+triangles, and :class:`IsoSurfaceNets` produces triangles or quads with
+better-shaped elements.
 
 Sparse extraction skips the dense grid entirely. :func:`sparse_marching_cubes`
 takes an implicit function and builds a Lipschitz octree around the level set,
@@ -32,3 +34,10 @@ from warp._src.geometry.sparse_marching_cubes import (
     sparse_marching_cubes as sparse_marching_cubes,
     sparse_marching_cubes_from_cells as sparse_marching_cubes_from_cells,
 )
+from warp._src.geometry import delaunay_edge_flip as delaunay_edge_flip
+from warp._src.geometry import find_triangle_neighbor_edge_index as find_triangle_neighbor_edge_index
+
+# Don't expose these quite yet in case we want to change the naming conventions.
+# from warp._src.geometry import in_circle as in_circle
+# from warp._src.geometry import signed_area as signed_area
+from warp._src.geometry import tri_tri_adjacency as tri_tri_adjacency

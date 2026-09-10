@@ -98,10 +98,12 @@ CUDA_CALLABLE half float_to_half(float x);
 CUDA_CALLABLE float half_to_float(half x);
 
 struct half {
-    CUDA_CALLABLE inline half()
-        : u(0)
-    {
-    }
+    // Keep the payload uninitialized so half remains trivially default
+    // constructible. Value initialization, e.g. half{}, still produces zero.
+    // Keep this unannotated: NVCC ignores CUDA annotations on explicitly
+    // defaulted constructors and emits warning #20012.
+    // cppcheck-suppress uninitMemberVar
+    half() = default;
 
     CUDA_CALLABLE inline half(float f) { *this = float_to_half(f); }
 
@@ -176,10 +178,13 @@ CUDA_CALLABLE wp_bfloat16 float_to_bfloat16(float x);
 CUDA_CALLABLE float bfloat16_to_float(wp_bfloat16 x);
 
 struct wp_bfloat16 {
-    CUDA_CALLABLE inline wp_bfloat16()
-        : u(0)
-    {
-    }
+    // Keep the payload uninitialized so wp_bfloat16 remains trivially default
+    // constructible. Value initialization, e.g. wp_bfloat16{}, still produces zero.
+    // Keep this unannotated: NVCC ignores CUDA annotations on explicitly
+    // defaulted constructors and emits warning #20012.
+    // cppcheck-suppress uninitMemberVar
+    wp_bfloat16() = default;
+
     CUDA_CALLABLE inline wp_bfloat16(float f) { *this = float_to_bfloat16(f); }
 
     unsigned short u;
@@ -582,7 +587,6 @@ inline CUDA_CALLABLE T mod(T a, T b) { return a%b; } \
 inline CUDA_CALLABLE T min(T a, T b) { return a<b?a:b; } \
 inline CUDA_CALLABLE T max(T a, T b) { return a>b?a:b; } \
 inline CUDA_CALLABLE T clamp(T x, T a, T b) { return min(max(a, x), b); } \
-inline CUDA_CALLABLE T floordiv(T a, T b) { return a/b; } \
 inline CUDA_CALLABLE T nonzero(T x) { return x == T(0) ? T(0) : T(1); } \
 inline CUDA_CALLABLE T bit_and(T a, T b) { return a&b; } \
 inline CUDA_CALLABLE T bit_or(T a, T b) { return a|b; } \
@@ -628,6 +632,37 @@ DECLARE_INT_OPS(uint8)
 DECLARE_INT_OPS(uint16)
 DECLARE_INT_OPS(uint32)
 DECLARE_INT_OPS(uint64)
+
+/* C++ integer division truncates toward zero; adjust signed, non-exact
+   results with opposite signs to round toward negative infinity. */
+template <typename T> inline CUDA_CALLABLE T floordiv_signed(T a, T b)
+{
+    T q = a / b;
+
+#if !defined(__CUDA_ARCH__) && (defined(__clang__) || defined(__GNUC__))
+    // Keep the quotient/remainder form below for constant divisors so the
+    // compiler can strength-reduce both operations. For runtime divisors,
+    // checking the operand signs first avoids unnecessary correction work.
+    if (!__builtin_constant_p(b)) {
+        if ((a < T(0)) != (b < T(0)) && a % b != T(0))
+            q -= T(1);
+        return q;
+    }
+#endif
+
+    T r = a % b;
+    if (r != T(0) && ((r < T(0)) != (b < T(0))))
+        q -= T(1);
+    return q;
+}
+inline CUDA_CALLABLE int8 floordiv(int8 a, int8 b) { return floordiv_signed(a, b); }
+inline CUDA_CALLABLE int16 floordiv(int16 a, int16 b) { return floordiv_signed(a, b); }
+inline CUDA_CALLABLE int32 floordiv(int32 a, int32 b) { return floordiv_signed(a, b); }
+inline CUDA_CALLABLE int64 floordiv(int64 a, int64 b) { return floordiv_signed(a, b); }
+inline CUDA_CALLABLE uint8 floordiv(uint8 a, uint8 b) { return a / b; }
+inline CUDA_CALLABLE uint16 floordiv(uint16 a, uint16 b) { return a / b; }
+inline CUDA_CALLABLE uint32 floordiv(uint32 a, uint32 b) { return a / b; }
+inline CUDA_CALLABLE uint64 floordiv(uint64 a, uint64 b) { return a / b; }
 
 
 inline CUDA_CALLABLE int8 step(int8 x) { return x < 0 ? 1 : 0; }
@@ -1946,14 +1981,6 @@ inline CUDA_CALLABLE int block_dim()
 
 template <int N> inline CUDA_CALLABLE int tid(size_t index, const launch_bounds_t<N>& bounds)
 {
-    // For the 1-D tid() we need to warn the user if we're about to provide a truncated index
-    // Only do this in _DEBUG when called from device to avoid excessive register allocation
-#if defined(_DEBUG) || !defined(__CUDA_ARCH__)
-    if (index > 2147483647) {
-        printf("Warp warning: tid() is returning an overflowed int\n");
-    }
-#endif
-
     launch_coord_t coord = launch_coord(index, bounds);
     return static_cast<int>(coord.i);
 }

@@ -34,6 +34,12 @@ import warp
 import warp.config
 from warp._src.logger import log_warning
 
+# NumPy versions before 2.4 incorrectly take an undocumented scalar path when
+# ``__array_interface__`` exposes a NULL data pointer. Keep a valid byte alive
+# for empty arrays so those versions can consume the interface.
+# https://github.com/numpy/numpy/issues/26037
+_ARRAY_INTERFACE_EMPTY_DATA = ctypes.c_byte()
+
 # type hints
 T = TypeVar("T")
 Length = TypeVar("Length", bound=int)
@@ -1692,27 +1698,63 @@ def transformation(dtype=Any):
 
         def __init__(self, *args, **kwargs):
             arg_len = len(args)
-            if arg_len == 1:
-                if len(kwargs) == 0:
-                    if is_float(args[0]) or is_int(args[0]):
-                        # Initialize from a single scalar.
-                        super().__init__(args[0])
-                        return
-                    if getattr(args[0], "_wp_generic_type_str_", None) == self._wp_generic_type_str_:
-                        # Copy constructor.
-                        super().__init__(*args[0])
-                        return
+            if kwargs:
+                # Only the keyword forms need the original "from components"
+                # signature to be resolved, which is also what reports
+                # unexpected keyword arguments.
+                if arg_len > 2:
+                    # Binding everything at once would report the positional
+                    # count first and hide an unexpected keyword behind it, so
+                    # the keywords are checked on their own.
+                    self._wp_init_from_components_sig_.bind_partial(**kwargs)
+                bound_args = self._wp_init_from_components_sig_.bind(*args, **kwargs)
+                bound_args.apply_defaults()
+                p, q = bound_args.args
             elif arg_len > 2:
                 # Fallback to the vector's constructor.
                 super().__init__(*args)
                 return
+            elif arg_len == 0:
+                # Initialize to the identity.
+                super().__init__()
+                self[6] = 1.0
+                return
+            elif arg_len == 1:
+                value = args[0]
+                if is_float(value) or is_int(value):
+                    # Initialize from a single scalar.
+                    super().__init__(value)
+                    return
+                if getattr(value, "_wp_generic_type_str_", None) == self._wp_generic_type_str_:
+                    # Copy constructor.
+                    if type(value) is type(self):
+                        # Identical types on both sides, so the storage can be
+                        # copied as-is.
+                        ctypes.memmove(self, value, ctypes.sizeof(self))
+                    else:
+                        # Anything else, such as another dtype, goes through the
+                        # vector's constructor to convert each component.
+                        super().__init__(*value)
+                    return
+                if not hasattr(value, "__len__"):
+                    # Fallback to the vector's constructor to fill all the
+                    # components with a single value, like the other vector
+                    # types do.
+                    try:
+                        super().__init__(value)
+                    except (TypeError, ctypes.ArgumentError):
+                        raise TypeError(
+                            "Invalid argument in transformation constructor: "
+                            f"expected a scalar value, got {type(value).__name__}"
+                        ) from None
+                    return
 
-            # For backward compatibility, try to check if the arguments
-            # match the original signature that'd allow initializing
-            # the `p` and `q` components separately.
-            bound_args = self._wp_init_from_components_sig_.bind(*args, **kwargs)
-            bound_args.apply_defaults()
-            p, q = bound_args.args
+                # A lone sequence initializes `p`, leaving `q` to its default.
+                p, q = value, self._wp_init_from_components_sig_.parameters["q"].default
+            else:
+                # For backward compatibility, the two positional arguments
+                # initialize the `p` and `q` components separately.
+                p, q = args
 
             # Even if the arguments match the original "from components"
             # signature, we still need to make sure that they represent
@@ -1723,6 +1765,14 @@ def transformation(dtype=Any):
                 self[0:3] = p
                 self[3:7] = q
                 return
+
+            # The `p`/`q` components were explicitly given but at least one of
+            # them isn't a sequence that can be unpacked.
+            name, value = ("p", p) if not hasattr(p, "__len__") else ("q", q)
+            raise TypeError(
+                f"Invalid argument '{name}' in transformation constructor: "
+                f"expected a sequence, got {type(value).__name__}"
+            )
 
         def __getattr__(self, name):
             if name == "p":
@@ -2136,9 +2186,39 @@ class range_t:
 
 # definition just for kernel type (cannot be a parameter), see bvh.h
 class BvhQuery:
-    """Object used to track state during BVH traversal."""
+    """Object used to track state during BVH traversal.
+
+    Erased parent of the concrete query-kind tags: codegen produces this type only
+    when the concrete kind is lost (a branch merging two kinds, or a function
+    parameter annotated with the parent). Iteration then dispatches on the kind
+    stored in the query at construction.
+    """
 
     _wp_native_name_ = "bvh_query_t"
+
+
+class _BvhQueryAabb(BvhQuery):
+    """Internal dispatch type for AABB queries. Users see BvhQuery."""
+
+    _wp_erase_to_ = BvhQuery
+
+
+class _BvhQueryRay(BvhQuery):
+    """Internal dispatch type for ray queries. Users see BvhQuery."""
+
+    _wp_erase_to_ = BvhQuery
+
+
+class _BvhQueryCapsule(BvhQuery):
+    """Internal dispatch type for capsule queries. Users see BvhQuery."""
+
+    _wp_erase_to_ = BvhQuery
+
+
+class _BvhQuerySphere(BvhQuery):
+    """Internal dispatch type for sphere queries. Users see BvhQuery."""
+
+    _wp_erase_to_ = BvhQuery
 
 
 class BvhQueryTiled:
@@ -2148,10 +2228,32 @@ class BvhQueryTiled:
 
 
 # definition just for kernel type (cannot be a parameter), see mesh.h
-class MeshQueryAABB:
-    """Object used to track state during mesh traversal."""
+class MeshQuery:
+    """Object used to track state during mesh traversal.
+
+    Erased parent of the concrete query-kind tags: codegen produces this type only
+    when the concrete kind is lost (a branch merging two kinds, or a function
+    parameter annotated with the parent). Iteration then dispatches on the kind
+    stored in the query at construction.
+    """
 
     _wp_native_name_ = "mesh_query_aabb_t"
+
+
+class MeshQueryAABB(MeshQuery):
+    """Object used to track state during a mesh AABB query.
+
+    The concrete AABB query kind; public for backward compatibility with code
+    annotated against the pre-1.17 type name.
+    """
+
+    _wp_erase_to_ = MeshQuery
+
+
+class _MeshQuerySphere(MeshQuery):
+    """Internal dispatch type for sphere mesh queries. Users see MeshQuery."""
+
+    _wp_erase_to_ = MeshQuery
 
 
 class MeshQueryAABBTiled:
@@ -2488,7 +2590,9 @@ def type_size_in_bytes(dtype: type) -> int:
     size = _type_size_cache.get(dtype)
 
     if size is None:
-        if dtype.__module__ == "ctypes":
+        if is_native_type(dtype):
+            size = ctypes.sizeof(dtype)
+        elif dtype.__module__ == "ctypes":
             size = ctypes.sizeof(dtype)
         elif hasattr(dtype, "_type_"):
             size = getattr(dtype, "_length_", 1) * ctypes.sizeof(dtype._type_)
@@ -2548,6 +2652,8 @@ def type_typestr(dtype: type) -> str:
         return "<u8"
     elif isinstance(dtype, warp._src.codegen.Struct):
         return f"|V{ctypes.sizeof(dtype.ctype)}"
+    elif is_native_type(dtype):
+        return f"|V{ctypes.sizeof(dtype)}"
     elif hasattr(dtype, "_wp_ctype_"):
         # texture types (Texture2D, Texture3D) have _wp_ctype_ pointing to their ctypes struct
         return f"|V{ctypes.sizeof(dtype._wp_ctype_)}"
@@ -2690,6 +2796,12 @@ def type_is_composite(t):
 
 
 value_types = (int, float, builtins.bool, *scalar_and_bool_types)
+_native_value_types: set[type] = set()
+
+
+def is_native_type(t: Any) -> builtins.bool:
+    """Return whether ``t`` is a native value type registered through ``warp.build_experimental``."""
+    return isinstance(t, type) and t in _native_value_types
 
 
 def type_is_value(t: Any) -> builtins.bool:
@@ -2759,7 +2871,7 @@ def is_composite(x):
 
 def is_value(x: Any) -> builtins.bool:
     """Return ``True`` if the value is a value type instance (scalar, vector, matrix, quaternion, or transformation)."""
-    return isinstance(x, value_types) or is_composite(x)
+    return isinstance(x, value_types) or is_composite(x) or type(x) in _native_value_types
 
 
 def is_struct(x) -> builtins.bool:
@@ -2957,6 +3069,30 @@ def types_equal(a, b):
     if a is b:
         return True
     return types_equal_generic(a, b, match_generic=False)
+
+
+def type_erased_parent(t):
+    """Return the public erased parent of a query-kind dispatch type, or ``None``.
+
+    Concrete query-kind types (e.g. the internal subclasses of ``BvhQuery`` and
+    ``MeshQuery``) carry a ``_wp_erase_to_`` class attribute naming the public
+    parent they decay to when the concrete kind cannot be tracked statically.
+    """
+    if isinstance(t, type):
+        return getattr(t, "_wp_erase_to_", None)
+    return None
+
+
+def type_erasure_join(a, b):
+    """Return the common erased parent of two query-kind types, or ``None``.
+
+    Used by codegen to merge values whose types are sibling query-kind types (or a
+    concrete kind and its erased parent): the merged value decays to the parent,
+    whose iterator dispatches on the kind stored in the query object at runtime.
+    """
+    parent_a = type_erased_parent(a) or a
+    parent_b = type_erased_parent(b) or b
+    return parent_a if parent_a is parent_b else None
 
 
 def strides_from_shape(shape: tuple, dtype):
@@ -3260,6 +3396,9 @@ class array(Array[DType, NDim]):
         elif dtype is builtins.bool:
             dtype = bool
 
+        if is_native_type(dtype) and (requires_grad or grad is not None or retain_grad):
+            raise ValueError("Native value-type arrays do not support automatic differentiation")
+
         # convert shape to tuple (or leave shape=None if neither shape nor length were specified)
         if shape is not None:
             if isinstance(shape, int):
@@ -3479,6 +3618,38 @@ class array(Array[DType, NDim]):
                     arr = arr.view(np.uint16)
                 else:
                     raise RuntimeError(f"Unsupported input data dtype: {arr.dtype}")
+        elif is_native_type(dtype):
+            npdtype = np.dtype(dtype)
+            if isinstance(data, np.ndarray):
+                if dtype._wp_native_type_.fields is None:
+                    valid_source_dtype = (
+                        data.dtype.kind == "V"
+                        and data.dtype.fields is None
+                        and data.dtype.itemsize == ctypes.sizeof(dtype)
+                    )
+                else:
+                    valid_source_dtype = data.dtype == npdtype or data.dtype == np.dtype(npdtype.descr)
+                if not valid_source_dtype:
+                    expected_dtype = (
+                        np.dtype(f"V{ctypes.sizeof(dtype)}") if dtype._wp_native_type_.fields is None else npdtype
+                    )
+                    raise RuntimeError(
+                        f"Invalid source data type for native array, expected {expected_dtype}, got {data.dtype}"
+                    )
+                arr = data
+            elif isinstance(data, (list, tuple)):
+                try:
+                    ctype_arr = (dtype * len(data))(*data)
+                    arr = np.frombuffer(ctype_arr, dtype=npdtype)
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Error while trying to construct Warp array from a sequence of {dtype.__name__} values: {e}"
+                    ) from e
+            else:
+                raise RuntimeError(
+                    "Invalid data argument for a native array, expected a sequence of ctypes values "
+                    "or a NumPy structured array"
+                )
         elif isinstance(dtype, warp._src.codegen.Struct):
             if isinstance(data, np.ndarray):
                 # construct from numpy structured array
@@ -3807,6 +3978,10 @@ class array(Array[DType, NDim]):
                 arr_shape = self.shape
                 arr_strides = self.strides
                 descr = self.dtype.numpy_dtype()
+            elif is_native_type(self.dtype):
+                arr_shape = self.shape
+                arr_strides = self.strides
+                descr = np.dtype(self.dtype).descr if self.dtype._wp_native_type_.fields is not None else None
             elif issubclass(self.dtype, ctypes.Array):
                 # vector type, flatten the dimensions into one tuple
                 arr_shape = (*self.shape, *self.dtype._shape_)
@@ -3819,8 +3994,15 @@ class array(Array[DType, NDim]):
                 arr_strides = self.strides
                 descr = None
 
+            if self.ptr:
+                data_ptr = self.ptr
+            elif self.size == 0:
+                data_ptr = ctypes.addressof(_ARRAY_INTERFACE_EMPTY_DATA)
+            else:
+                data_ptr = 0
+
             self._array_interface = {
-                "data": (self.ptr if self.ptr is not None else 0, False),
+                "data": (data_ptr, False),
                 "shape": tuple(arr_shape),
                 "strides": tuple(arr_strides),
                 "typestr": type_typestr(self.dtype),
@@ -4074,6 +4256,8 @@ class array(Array[DType, NDim]):
             self._grad = None
             self._requires_grad = False
         else:
+            if is_native_type(self.dtype):
+                raise ValueError("Native value-type arrays do not support automatic differentiation")
             # make sure the given gradient array is compatible
             if grad.dtype != self.dtype:
                 raise ValueError(
@@ -4103,6 +4287,8 @@ class array(Array[DType, NDim]):
 
     @requires_grad.setter
     def requires_grad(self, value: builtins.bool):
+        if value and is_native_type(self.dtype):
+            raise ValueError("Native value-type arrays do not support automatic differentiation")
         if value and self._grad is None:
             self._alloc_grad()
         elif not value:
@@ -4185,6 +4371,13 @@ class array(Array[DType, NDim]):
 
     def zero_(self):
         """Zero out the array entries."""
+        if self.size == 0:
+            # Skip the zero-byte memset, but still record the initialization:
+            # otherwise verify_autograd_array_access keeps a stale "read" mark
+            # on the empty array and a later guarded write reports a false
+            # write-after-read.
+            self.mark_init()
+            return
         self._apic_ensure_tracked()
         if self.is_contiguous:
             # simple memset is usually faster than generic fill
@@ -4236,6 +4429,16 @@ class array(Array[DType, NDim]):
                 else:
                     raise ValueError(
                         f"Invalid initializer value for struct {self.dtype.cls.__name__}, expected struct instance or 0"
+                    )
+            elif is_native_type(self.dtype):
+                if isinstance(value, self.dtype):
+                    cvalue = value
+                elif value == 0:
+                    cvalue = self.dtype()
+                else:
+                    raise ValueError(
+                        f"Invalid initializer value for native type {self.dtype.__name__}, "
+                        f"expected {self.dtype.__name__} instance or 0"
                     )
             elif issubclass(self.dtype, ctypes.Array):
                 # vector/matrix
@@ -4341,6 +4544,12 @@ class array(Array[DType, NDim]):
             if isinstance(self.dtype, warp._src.codegen.Struct):
                 npdtype = self.dtype.numpy_dtype()
                 npshape = self.shape
+            elif is_native_type(self.dtype):
+                if self.dtype._wp_native_type_.fields is None:
+                    npdtype = np.dtype(f"V{ctypes.sizeof(self.dtype)}")
+                else:
+                    npdtype = np.dtype(self.dtype)
+                npshape = self.shape
             elif issubclass(self.dtype, ctypes.Array):
                 npdtype = warp_type_to_np_dtype[self.dtype._wp_scalar_type_]
                 npshape = (*self.shape, *self.dtype._shape_)
@@ -4377,6 +4586,8 @@ class array(Array[DType, NDim]):
 
         if isinstance(self.dtype, warp._src.codegen.Struct):
             p = ctypes.cast(self.ptr, ctypes.POINTER(self.dtype.ctype))
+        elif is_native_type(self.dtype):
+            p = ctypes.cast(self.ptr, ctypes.POINTER(self.dtype))
         else:
             p = ctypes.cast(self.ptr, ctypes.POINTER(self.dtype._type_))
 
@@ -4395,6 +4606,10 @@ class array(Array[DType, NDim]):
             data = a.ctypes.data
             stride = a.strides[0]
             return [self.dtype.from_ptr(data + i * stride) for i in range(self.size)]
+        elif is_native_type(self.dtype):
+            a = a.flatten()
+            stride = a.strides[0]
+            return [self.dtype.from_buffer_copy(a, i * stride) for i in range(self.size)]
         elif issubclass(self.dtype, ctypes.Array):
             # vector/matrix - flatten, but preserve inner vector/matrix dimensions
             a = a.reshape((self.size, *self.dtype._shape_))
@@ -6108,6 +6323,11 @@ class Mesh:
             self.runtime.verify_cuda_device(self.device)
 
 
+# Must match wp_volume_validation_result in warp/native/warp.h.
+_VOLUME_VALIDATION_SUCCESS = 1
+_VOLUME_VALIDATION_UNSUPPORTED_LAYOUT = 2
+
+
 class Volume:
     """Sparse volumetric data structure based on NanoVDB for efficient 3D sampling."""
 
@@ -6116,6 +6336,7 @@ class Volume:
     LINEAR = constant(1)
     """Enum value to specify trilinear interpolation during sampling"""
     _NANOVDB_LEAF_TABLE_COUNT: ClassVar[int] = 512
+    _NANOVDB_NAME_SIZE: ClassVar[int] = 256
 
     class RebuildInfo(NamedTuple):
         """Capacity metadata for a :class:`Volume` allocated with rebuild support.
@@ -6344,6 +6565,15 @@ class Volume:
         transform_matrix: mat33f
         """Linear part of the index-to-world transform"""
 
+    @staticmethod
+    def _decode_nvdb_name(name_ptr: int) -> str:
+        """Decode a fixed-size NanoVDB name field."""
+        name = ctypes.string_at(name_ptr, Volume._NANOVDB_NAME_SIZE)
+        terminator = name.find(b"\0")
+        if terminator < 0:
+            raise RuntimeError("Invalid NanoVDB name")
+        return name[:terminator].decode("ascii")
+
     def get_grid_info(self) -> Volume.GridInfo:
         """Return the metadata associated with this Volume."""
 
@@ -6368,7 +6598,7 @@ class Volume:
             raise RuntimeError("Invalid volume")
 
         return Volume.GridInfo(
-            name.decode("ascii"),
+            Volume._decode_nvdb_name(name),
             grid_size.value,
             grid_index.value,
             grid_count.value,
@@ -6470,11 +6700,11 @@ class Volume:
             type_str_buffer,
         )
 
-        if buf.value is None:
+        if buf.value is None or name is None:
             raise RuntimeError("Invalid feature array")
 
         return Volume.FeatureArrayInfo(
-            name.decode("ascii"),
+            Volume._decode_nvdb_name(name),
             buf.value,
             value_size.value,
             value_count.value,
@@ -6576,7 +6806,17 @@ class Volume:
         if magic not in (0x304244566F6E614E, 0x314244566F6E614E):  # NanoVDB0 or NanoVDB1 in hex, little-endian
             raise RuntimeError("NanoVDB signature not found on grid!")
 
-        data_array = array(np.frombuffer(grid_data, dtype=np.byte), device=device)
+        grid_array = np.frombuffer(grid_data, dtype=np.byte)
+        warp.init()
+        validation_result = warp._src.context.runtime.core.wp_volume_validate_host(
+            grid_array.ctypes.data, grid_array.size
+        )
+        if validation_result == _VOLUME_VALIDATION_UNSUPPORTED_LAYOUT:
+            raise RuntimeError("Unsupported NanoVDB tree layout")
+        if validation_result != _VOLUME_VALIDATION_SUCCESS:
+            raise RuntimeError("Invalid NanoVDB grid structure")
+
+        data_array = array(grid_array, device=device)
         return cls(data_array)
 
     def save_to_nvdb(self, path, codec: Literal["none", "zip", "blosc"] = "none"):
@@ -6793,15 +7033,15 @@ class Volume:
     ) -> Volume:
         """Create a :class:`Volume` object from a dense 3D NumPy array.
 
-        This function is only supported for CUDA devices.
-
         Args:
             min_world: The 3D coordinate of the lower corner of the volume.
             voxel_size: The size of each voxel in spatial
                 coordinates. Can be a scalar for isotropic voxels or a 3-element
                 sequence ``(sx, sy, sz)`` for anisotropic voxels.
-            bg_value: Background value
-            device: The CUDA device to create the volume on, e.g.: ``"cuda"`` or ``"cuda:0"``.
+            bg_value: Value of unallocated voxels of the volume. A four-dimensional ``ndarray`` with a
+                length-three last axis makes a ``vec3f`` volume. For scalar data, a Python ``int``
+                ``bg_value`` makes an ``int32`` volume; other values make a ``float32`` volume.
+            device: The device to create the volume on.
 
         Returns:
             A ``warp.Volume`` object.
@@ -6888,8 +7128,6 @@ class Volume:
     ) -> Volume:
         """Allocate a new Volume based on the bounding box defined by min and max.
 
-        This function is only supported for CUDA devices.
-
         Allocate a volume that is large enough to contain voxels [min[0], min[1], min[2]] - [max[0], max[1], max[2]], inclusive.
         If points_in_world_space is true, then min and max are first converted to index space using the given voxel size
         (per-axis for anisotropic volumes) and translation, and the volume is allocated with those.
@@ -6902,10 +7140,14 @@ class Volume:
             max: Upper 3D coordinates of the bounding box in index space or world space, inclusive.
             voxel_size: Voxel size(s) of the new volume. Can be a scalar for isotropic
                 voxels or a 3-element sequence ``(sx, sy, sz)`` for anisotropic voxels.
-            bg_value: Value of unallocated voxels of the volume, also defines the volume's type,
-              a :class:`warp.vec3` volume is created if this is `array-like`, otherwise a float volume is created
+            bg_value: Value of unallocated voxels of the volume, also defines the volume's type.
+              An index volume will be created if ``bg_value`` is ``None``.
+              Other supported grid types are ``int32``, ``uint32``, ``int64``, ``float32``, ``float64``,
+              ``vec3f``, ``vec3d``, ``vec4f``, and ``vec4d``. A plain list or NumPy array always makes a
+              single-precision grid: ``vec3f`` for three values, ``vec4f`` for four. To get a
+              double-precision grid, pass a Warp vector such as ``vec3d``.
             translation: Translation between the index and world spaces.
-            device: The CUDA device to create the volume on, e.g.: ``"cuda"`` or ``"cuda:0"``.
+            device: The device to create the volume on.
         """
         voxel_size = cls._normalize_voxel_size(voxel_size)
 
@@ -6987,7 +7229,17 @@ class Volume:
 
     # nanovdb types for which we instantiate the grid builder
     # Should be in sync with WP_VOLUME_BUILDER_INSTANTIATE_TYPES in volume_builder.h
-    _supported_allocation_types = ("int32", "uint32", "int64", "float", "double", "Vec3f", "Vec3d", "Vec4f")
+    _supported_allocation_types = (
+        "int32",
+        "uint32",
+        "int64",
+        "float",
+        "double",
+        "Vec3f",
+        "Vec3d",
+        "Vec4f",
+        "Vec4d",
+    )
 
     REBUILD_SUCCESS: ClassVar[int] = 0
     """Rebuild completed without setting a status flag."""
@@ -7025,8 +7277,6 @@ class Volume:
     ) -> Volume:
         """Allocate a new :class:`Volume` with active tiles for each point ``tile_points``.
 
-        This function is supported on CPU and CUDA devices.
-
         The smallest unit of allocation is a dense tile of 8x8x8 voxels.
         This is the primary method for allocating sparse volumes.
         It uses an array of points indicating the tiles that must be allocated.
@@ -7053,7 +7303,10 @@ class Volume:
             voxel_size: Voxel size(s) of the new volume. Ignored if ``transform`` is given.
             bg_value: Value of unallocated voxels of the volume, also defines the volume's type.
               An index volume will be created if ``bg_value`` is ``None``.
-              Other supported grid types are ``int``, ``float``, ``vec3f``, and ``vec4f``.
+              Other supported grid types are ``int32``, ``uint32``, ``int64``, ``float32``, ``float64``,
+              ``vec3f``, ``vec3d``, ``vec4f``, and ``vec4d``. A plain list or NumPy array always makes a
+              single-precision grid: ``vec3f`` for three values, ``vec4f`` for four. To get a
+              double-precision grid, pass a Warp vector such as ``vec3d``.
             translation: Translation between the index and world spaces.
             transform: Linear transform between the index and world spaces.
               If ``None``, deduced from ``voxel_size``.
@@ -7067,7 +7320,7 @@ class Volume:
             status: Optional one-element ``uint32`` array receiving ``Volume.REBUILD_*`` status flags from the
               initial build. ``Volume.REBUILD_SUCCESS`` means the requested topology fit in the reserved capacity.
             point_mask: Optional ``int32`` array with one entry per point. Points with a zero mask value are ignored.
-            device: The device to create the volume on, e.g. ``"cpu"``, ``"cuda"``, or ``"cuda:0"``.
+            device: The device to create the volume on.
 
         Raises:
             RuntimeError: If ``tile_points``, ``point_mask``, or ``status`` is not a contiguous array of the
@@ -7277,7 +7530,7 @@ class Volume:
             status: Optional one-element ``uint32`` array receiving ``Volume.REBUILD_*`` status flags from the
                 initial build. ``Volume.REBUILD_SUCCESS`` means the requested topology fit in the reserved capacity.
             point_mask: Optional ``int32`` array with one entry per point. Points with a zero mask value are ignored.
-            device: The device to create the volume on, e.g. ``"cpu"``, ``"cuda"``, or ``"cuda:0"``.
+            device: The device to create the volume on.
 
         Raises:
             RuntimeError: If ``voxel_points``, ``point_mask``, or ``status`` is not a contiguous array of the
@@ -8002,6 +8255,8 @@ def infer_argument_types(args: list[Any], template_types, arg_names: list[str] |
         elif issubclass(arg_type, warp._src.codegen.StructInstance):
             # a struct
             arg_types.append(arg._cls)
+        elif is_native_type(arg_type):
+            arg_types.append(arg_type)
         elif arg is None:
             # allow passing None for arrays
             t = template_types[i]
@@ -8041,10 +8296,16 @@ simple_type_codes = {
     hash_grid_query_type(float16): "hgqh",
     hash_grid_query_type(float32): "hgq",
     hash_grid_query_type(float64): "hgqd",
-    MeshQueryAABB: "mqa",
+    MeshQuery: "mqa",
+    MeshQueryAABB: "mqab",
+    _MeshQuerySphere: "mqs",
     MeshQueryPoint: "mqp",
     MeshQueryRay: "mqr",
     BvhQuery: "bvhq",
+    _BvhQueryAabb: "bvhqa",
+    _BvhQueryRay: "bvhqr",
+    _BvhQueryCapsule: "bvhqc",
+    _BvhQuerySphere: "bvhqs",
     # Textures are added at the end of the file to avoid circular imports
 }
 
@@ -8089,7 +8350,9 @@ def get_type_code(arg_type) -> str:
             "Union type annotations are only supported at Python scope and are invalid in Warp kernels/functions"
         )
     elif isinstance(arg_type, type):
-        if hasattr(arg_type, "_wp_scalar_type_"):
+        if is_native_type(arg_type):
+            return f"nt{arg_type._wp_native_type_.type_code}"
+        elif hasattr(arg_type, "_wp_scalar_type_"):
             # vector/matrix type
             dtype_code = get_type_code(arg_type._wp_scalar_type_)
             # check for "special" vector/matrix subtypes

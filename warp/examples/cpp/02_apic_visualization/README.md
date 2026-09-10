@@ -82,7 +82,13 @@ make              # Build everything (auto-captures graph if needed)
 python capture_wave.py                        # Step 1: Capture the graph
 cmake -B build -DCMAKE_BUILD_TYPE=Release     # Step 2: Configure
 cmake --build build --config Release          # Step 3: Build
-./build/02_apic_visualization                 # Step 4: Run
+./build/02_apic_visualization                 # Step 4: Run (Ninja / Unix Makefiles)
+```
+
+If using the Visual Studio generator on Windows, run:
+
+```powershell
+.\build\Release\02_apic_visualization.exe
 ```
 
 **Headless smoke mode**:
@@ -93,8 +99,22 @@ graph 10 times without opening a GLFW window. CTest registers this mode
 as `apic_visualization_smoke` so the example runs in CI on hosts without
 a display server.
 
+**Using Make (Unix/Linux)**:
+
 ```bash
 ./02_apic_visualization --smoke    # exits 0 with "smoke OK (10 graph launches)"
+```
+
+**Using CMake (Ninja / Unix Makefiles)**:
+
+```bash
+./build/02_apic_visualization --smoke
+```
+
+**Using CMake (Visual Studio on Windows)**:
+
+```powershell
+.\build\Release\02_apic_visualization.exe --smoke
 ```
 
 ## How It Works
@@ -115,12 +135,10 @@ wp.capture_begin(device=device, apic=True)
 for s in range(substeps):  # e.g., 16 iterations
     if s == 0:
         # First substep: apply mouse displacement
-        wp.launch(wave_displace, dim=width * height,
-                  inputs=[grid0, grid1, mouse_pos, ...])
+        wp.launch(wave_displace, dim=width * height, inputs=[grid0, grid1, mouse_pos, ...])
 
     # Every substep: integrate wave equation
-    wp.launch(wave_solve, dim=width * height,
-              inputs=[grid0, grid1, ...])
+    wp.launch(wave_solve, dim=width * height, inputs=[grid0, grid1, ...])
 
     # Swap buffers
     grid0, grid1 = grid1, grid0
@@ -128,12 +146,12 @@ for s in range(substeps):  # e.g., 16 iterations
 graph = wp.capture_end(device=device)
 
 # Save with named bindings
-wp.capture_save(graph, "generated/wave_sim",
-                inputs={"heights": grid1,
-                        "heights_prev": grid0,
-                        "mouse_pos": mouse_pos},
-                outputs={"heights_out": grid1,
-                         "heights_prev_out": grid0})
+wp.capture_save(
+    graph,
+    "generated/wave_sim",
+    inputs={"heights": grid1, "heights_prev": grid0, "mouse_pos": mouse_pos},
+    outputs={"heights_out": grid1, "heights_prev_out": grid0},
+)
 ```
 
 This creates an APIC operation stream describing 17 kernel launches (1 displacement + 16 solves). The stream and module files are later used to construct a fresh CUDA graph.
