@@ -950,7 +950,8 @@ def _swept_volume_bounds(meshes, transforms, margin, device):
 def _swept_volume_grid(meshes, transforms, voxel_size, resolution, lower, upper, extra_padding, device):
     """Resolve the sampling domain and node counts.
 
-    Returns ``(lower, upper, dims)``. When the corners are supplied the domain is
+    Returns ``(lower, upper, dims, tight_lower, tight_upper)``, where the last
+    two are the unpadded bounds of the posed geometry. When the corners are supplied the domain is
     used verbatim and ``resolution`` sets the node counts. Otherwise the swept
     bounds are padded by ``extra_padding`` plus roughly two cells, so the level
     being extracted stays strictly inside the domain, and ``voxel_size`` snaps
@@ -973,6 +974,9 @@ def _swept_volume_grid(meshes, transforms, voxel_size, resolution, lower, upper,
         if any(n < 2 for n in dims):
             raise ValueError(f"'resolution' must be at least 2 along each axis, got {dims}.")
 
+    tight_lower, tight_upper = _swept_volume_bounds(meshes, transforms, 0.0, device)
+    tight = tuple(tight_upper[a] - tight_lower[a] for a in range(3))
+
     if lower is not None:
         # The caller owns the domain, so the extent cannot be snapped to whole
         # cells and only an explicit node count is meaningful.
@@ -985,10 +989,7 @@ def _swept_volume_grid(meshes, transforms, voxel_size, resolution, lower, upper,
         upper = wp.vec3(*(float(c) for c in upper))
         if any(upper[a] <= lower[a] for a in range(3)):
             raise ValueError(f"'upper' {upper} must exceed 'lower' {lower}.")
-        return lower, upper, dims
-
-    tight_lower, tight_upper = _swept_volume_bounds(meshes, transforms, 0.0, device)
-    tight = tuple(tight_upper[a] - tight_lower[a] for a in range(3))
+        return lower, upper, dims, tight_lower, tight_upper
 
     if voxel_size is not None:
         # Pad, then grow the extent to a whole number of cells so the spacing is
@@ -1006,7 +1007,7 @@ def _swept_volume_grid(meshes, transforms, voxel_size, resolution, lower, upper,
 
     lower = wp.vec3(*(tight_lower[a] - grow[a] for a in range(3)))
     upper = wp.vec3(*(tight_upper[a] + grow[a] for a in range(3)))
-    return lower, upper, dims
+    return lower, upper, dims, tight_lower, tight_upper
 
 
 def swept_volume_field(
@@ -1095,7 +1096,7 @@ def swept_volume_field(
     transforms_wp = _swept_volume_transforms(transforms, device)
     _check_transforms(meshes, transforms_wp)
 
-    lower, upper, dims = _swept_volume_grid(
+    lower, upper, dims, tight_lower, tight_upper = _swept_volume_grid(
         meshes,
         transforms_wp,
         voxel_size,
@@ -1108,10 +1109,12 @@ def swept_volume_field(
     extent = tuple(upper[a] - lower[a] for a in range(3))
     spacing = tuple(extent[a] / (dims[a] - 1) for a in range(3))
 
-    # Search the whole domain. A tighter bound would make the queries cheaper,
-    # but a bounded query returns no sign at all when it finds nothing, so the
-    # field could not tell a deep interior node from a far exterior one.
-    max_dist = math.sqrt(extent[0] * extent[0] + extent[1] * extent[1] + extent[2] * extent[2])
+    # A bounded query returns no sign at all when it finds nothing, so the bound
+    # has to let every node reach the surface. The domain alone is not enough:
+    # an explicit one can sit inside the solid, or away from it entirely, and
+    # then its diagonal falls short. Span the domain together with the geometry.
+    span = tuple(max(upper[a], tight_upper[a]) - min(lower[a], tight_lower[a]) for a in range(3))
+    max_dist = math.sqrt(span[0] * span[0] + span[1] * span[1] + span[2] * span[2])
 
     origin = lower
     spacing_v = wp.vec3(*spacing)
@@ -1217,7 +1220,7 @@ def swept_volume(
     _check_transforms(meshes, transforms)
 
     # Pad for the level being extracted, then sample that exact domain.
-    lower, upper, dims = _swept_volume_grid(
+    lower, upper, dims, _, _ = _swept_volume_grid(
         meshes,
         transforms,
         voxel_size,

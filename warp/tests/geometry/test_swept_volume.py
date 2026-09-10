@@ -415,6 +415,31 @@ def test_explicit_domain_is_used_verbatim(test, device):
     wp.synchronize_device(device)
 
 
+def test_domain_inside_the_solid_keeps_its_sign(test, device):
+    """Check that an explicit domain enclosed by the geometry still reads as inside.
+
+    The closest-point search has to reach the surface from every node. A domain
+    the caller supplies need not contain the geometry, so its own diagonal is
+    not a sufficient bound.
+    """
+    radius = 10.0
+    points, indices = U.icosphere(subdivisions=3, radius=radius)
+    mesh = wp.Mesh(
+        wp.array(points, dtype=wp.vec3, device=device),
+        wp.array(indices, dtype=wp.int32, device=device),
+        support_winding_number=True,
+    )
+    tr = _translation_transforms([[[0.0, 0.0, 0.0]]])
+
+    # Every node of this domain lies about `radius` deep inside the sphere.
+    field, _, _ = geo.swept_volume_field(
+        [mesh], tr, resolution=(9, 9, 9), lower=(-1.0, -1.0, -1.0), upper=(1.0, 1.0, 1.0), device=device
+    )
+    f = field.numpy()
+    test.assertEqual(int((f >= 0.0).sum()), 0)
+    np.testing.assert_allclose(f[4, 4, 4], -radius, atol=0.1)
+
+
 def test_invalid_arguments(test, device):
     """Check that malformed arguments raise ``ValueError``."""
     mesh = _sphere_mesh(device, radius=0.5)
@@ -511,6 +536,12 @@ add_function_test(
     TestSweptVolume, "test_explicit_domain_is_used_verbatim", test_explicit_domain_is_used_verbatim, devices=devices
 )
 add_function_test(TestSweptVolume, "test_resolution_argument", test_resolution_argument, devices=devices)
+add_function_test(
+    TestSweptVolume,
+    "test_domain_inside_the_solid_keeps_its_sign",
+    test_domain_inside_the_solid_keeps_its_sign,
+    devices=devices,
+)
 add_function_test(TestSweptVolume, "test_invalid_arguments", test_invalid_arguments, devices=devices)
 
 
