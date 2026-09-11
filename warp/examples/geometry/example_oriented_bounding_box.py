@@ -48,6 +48,15 @@ def box_corners(xform: wp.transform, extents: wp.vec3) -> np.ndarray:
     return np.array([wp.transform_point(xform, wp.vec3(*p)) for p in local])
 
 
+def host_obb(result):
+    """Read the length-1 device arrays from ``oriented_bounding_box`` into host scalars."""
+    xform_arr, extents_arr, measure_arr = result
+    row = xform_arr.numpy()[0]
+    xform = wp.transform(wp.vec3(*row[:3]), wp.quat(*row[3:]))
+    extents = wp.vec3(*extents_arr.numpy()[0])
+    return xform, extents, float(measure_arr.numpy()[0])
+
+
 def main(stage_path="example_geometry_oriented_bounding_box.usd", show_polyscope=False):
     usd_stage = Usd.Stage.Open(os.path.join(warp.examples.get_asset_directory(), "bunny.usd"))
     usd_geom = UsdGeom.Mesh(usd_stage.GetPrimAtPath("/root/bunny"))
@@ -73,11 +82,14 @@ def main(stage_path="example_geometry_oriented_bounding_box.usd", show_polyscope
     wp.geometry.oriented_bounding_box(points, Measure.VOLUME)
 
     with wp.ScopedTimer("oriented_bounding_box (volume)", print=False) as timer_vol:
-        vol_xform, vol_extents, vol_measure = wp.geometry.oriented_bounding_box(points, Measure.VOLUME)
+        vol_result = wp.geometry.oriented_bounding_box(points, Measure.VOLUME)
         wp.synchronize_device()
     with wp.ScopedTimer("oriented_bounding_box (area)", print=False) as timer_area:
-        area_xform, area_extents, area_measure = wp.geometry.oriented_bounding_box(points, Measure.SURFACE_AREA)
+        area_result = wp.geometry.oriented_bounding_box(points, Measure.SURFACE_AREA)
         wp.synchronize_device()
+
+    vol_xform, vol_extents, vol_measure = host_obb(vol_result)
+    area_xform, area_extents, area_measure = host_obb(area_result)
 
     # Surface area of the volume-minimizing box, and vice versa, to show that each
     # objective wins on its own measure.
@@ -121,7 +133,7 @@ def main(stage_path="example_geometry_oriented_bounding_box.usd", show_polyscope
         ("spiral + PCA", {"include_axis_aligned": False, "include_pca": True}),
         ("all three (default)", {}),
     ):
-        _, _, measure = wp.geometry.oriented_bounding_box(flat, Measure.VOLUME, **kwargs)
+        _, _, measure = host_obb(wp.geometry.oriented_bounding_box(flat, Measure.VOLUME, **kwargs))
         print(
             f"  {label:<24} volume {measure:.6f}   ({measure / flat_aabb_volume:6.1%} of AABB, "
             f"{measure / best_known:.2f}x the best achievable)"
@@ -133,7 +145,7 @@ def main(stage_path="example_geometry_oriented_bounding_box.usd", show_polyscope
     # slightly between neighboring sizes even though the trend is downward.
     print("\nvolume vs. number of sampled orientations:")
     for num_samples in (16, 64, 256, 1024, 4096, 16384):
-        _, _, measure = wp.geometry.oriented_bounding_box(points, Measure.VOLUME, num_samples=num_samples)
+        _, _, measure = host_obb(wp.geometry.oriented_bounding_box(points, Measure.VOLUME, num_samples=num_samples))
         marker = "   <- default" if num_samples == 4096 else ""
         print(f"  {num_samples:>6} samples   volume {measure:.5f}   ({measure / aabb_volume:.1%} of AABB){marker}")
 
