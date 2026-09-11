@@ -14,6 +14,12 @@ from warp.tests.geometry import utils as U
 from warp.tests.unittest_utils import *
 
 
+def _host(result):
+    """Read the length-1 device arrays returned by ``oriented_bounding_box`` to host."""
+    transform, extents, measure = result
+    return transform.numpy()[0], extents.numpy()[0], float(measure.numpy()[0])
+
+
 def _rotation(axis, theta):
     axis = np.asarray(axis, dtype=np.float64)
     axis = axis / np.linalg.norm(axis)
@@ -71,7 +77,9 @@ def test_obb_contains_all_points(test, device):
         points = wp.array(p_np, dtype=wp.vec3, device=device)
         for measure_type in geo.OBBMeasureType:
             with test.subTest(shape=name, measure=measure_type.name):
-                transform, extents, _ = geo.oriented_bounding_box(points, measure_type=measure_type, num_samples=256)
+                transform, extents, _ = _host(
+                    geo.oriented_bounding_box(points, measure_type=measure_type, num_samples=256)
+                )
                 overhang = _to_local(p_np, transform, extents).max()
                 scale = float(np.max(np.asarray(extents, dtype=np.float64)))
                 test.assertLess(overhang, 1e-5 * max(scale, 1.0))
@@ -81,12 +89,12 @@ def test_obb_measure_matches_extents(test, device):
     rng = np.random.default_rng(61)
     points = wp.array(_shapes(rng)["cloud"], dtype=wp.vec3, device=device)
 
-    _, extents, measure = geo.oriented_bounding_box(points, num_samples=128)
+    _, extents, measure = _host(geo.oriented_bounding_box(points, num_samples=128))
     e = np.asarray(extents, dtype=np.float64)
     test.assertAlmostEqual(measure / float(np.prod(e)), 1.0, places=4)
 
-    _, extents, measure = geo.oriented_bounding_box(
-        points, measure_type=geo.OBBMeasureType.SURFACE_AREA, num_samples=128
+    _, extents, measure = _host(
+        geo.oriented_bounding_box(points, measure_type=geo.OBBMeasureType.SURFACE_AREA, num_samples=128)
     )
     e = np.asarray(extents, dtype=np.float64)
     expected = 2.0 * (e[0] * e[1] + e[1] * e[2] + e[0] * e[2])
@@ -101,8 +109,10 @@ def test_obb_never_worse_than_aabb(test, device):
         points = wp.array(p_np, dtype=wp.vec3, device=device)
         for measure_type in geo.OBBMeasureType:
             with test.subTest(shape=name, measure=measure_type.name):
-                _, _, measure = geo.oriented_bounding_box(
-                    points, measure_type=measure_type, num_samples=64, include_axis_aligned=True
+                _, _, measure = _host(
+                    geo.oriented_bounding_box(
+                        points, measure_type=measure_type, num_samples=64, include_axis_aligned=True
+                    )
                 )
                 test.assertLessEqual(measure, _aabb_measure(p_np, measure_type) * (1.0 + 1e-5))
 
@@ -113,7 +123,7 @@ def test_obb_recovers_rotated_box(test, device):
     p_np, extents = _rod(rng)
     points = wp.array(p_np, dtype=wp.vec3, device=device)
 
-    _, got_extents, measure = geo.oriented_bounding_box(points, num_samples=4096)
+    _, got_extents, measure = _host(geo.oriented_bounding_box(points, num_samples=4096))
 
     true_volume = float(np.prod(extents))
     test.assertGreaterEqual(measure, true_volume * (1.0 - 1e-4))
@@ -131,8 +141,8 @@ def test_obb_pca_helps_elongated_shapes(test, device):
     p_np, extents = _rod(rng)
     points = wp.array(p_np, dtype=wp.vec3, device=device)
 
-    _, _, without_pca = geo.oriented_bounding_box(points, num_samples=32, include_pca=False)
-    _, _, with_pca = geo.oriented_bounding_box(points, num_samples=32, include_pca=True)
+    _, _, without_pca = _host(geo.oriented_bounding_box(points, num_samples=32, include_pca=False))
+    _, _, with_pca = _host(geo.oriented_bounding_box(points, num_samples=32, include_pca=True))
 
     test.assertLess(with_pca, without_pca)
     test.assertLess(with_pca, float(np.prod(extents)) * 2.0)
@@ -144,7 +154,7 @@ def test_obb_reproducible_without_pca(test, device):
     rng = np.random.default_rng(79)
     points = wp.array(_shapes(rng)["cloud"], dtype=wp.vec3, device=device)
 
-    results = [geo.oriented_bounding_box(points, num_samples=128, include_pca=False) for _ in range(3)]
+    results = [_host(geo.oriented_bounding_box(points, num_samples=128, include_pca=False)) for _ in range(3)]
     for transform, extents, measure in results[1:]:
         test.assertEqual(measure, results[0][2])
         test.assertEqual(tuple(extents), tuple(results[0][1]))
@@ -153,7 +163,7 @@ def test_obb_reproducible_without_pca(test, device):
 
 def test_obb_single_point(test, device):
     points = wp.array(np.array([[1.0, 2.0, 3.0]], dtype=np.float32), dtype=wp.vec3, device=device)
-    transform, extents, measure = geo.oriented_bounding_box(points, num_samples=8)
+    transform, extents, measure = _host(geo.oriented_bounding_box(points, num_samples=8))
 
     np.testing.assert_allclose(np.asarray(extents, dtype=np.float64), np.zeros(3), atol=1e-5)
     test.assertAlmostEqual(measure, 0.0, places=6)
@@ -173,15 +183,21 @@ def test_obb_invalid_arguments(test, device):
         geo.oriented_bounding_box(empty, num_samples=8)
 
 
-def test_obb_rejects_graph_capture(test, device):
-    # Documented limitation: the argmin runs on the host, so the function
-    # synchronizes and cannot be captured.
+def test_obb_graph_capturable(test, device):
+    # The whole search -- including the argmin -- runs on the device, so it can be
+    # captured into a CUDA graph and replayed without a host synchronization.
     points = wp.array(U.unit_cube()[0], dtype=wp.vec3, device=device)
     wp.load_module(geo, device=device)
 
-    with test.assertRaises(RuntimeError):
-        with wp.ScopedCapture(device=device):
-            geo.oriented_bounding_box(points, num_samples=16)
+    with wp.ScopedCapture(device=device) as capture:
+        result = geo.oriented_bounding_box(points, num_samples=16)
+    wp.capture_launch(capture.graph)
+    wp.synchronize_device(device)
+
+    # The unit cube is already axis-aligned, so its minimal box is the cube itself.
+    _, extents, measure = _host(result)
+    np.testing.assert_allclose(np.asarray(extents, dtype=np.float64), np.ones(3), atol=1e-5)
+    test.assertAlmostEqual(measure, 1.0, places=5)
 
 
 devices = get_test_devices()
@@ -206,9 +222,7 @@ add_function_test(
 )
 add_function_test(TestGeometryOBB, "test_obb_single_point", test_obb_single_point, devices=devices)
 add_function_test(TestGeometryOBB, "test_obb_invalid_arguments", test_obb_invalid_arguments, devices=devices)
-add_function_test(
-    TestGeometryOBB, "test_obb_rejects_graph_capture", test_obb_rejects_graph_capture, devices=cuda_devices
-)
+add_function_test(TestGeometryOBB, "test_obb_graph_capturable", test_obb_graph_capturable, devices=cuda_devices)
 
 
 if __name__ == "__main__":

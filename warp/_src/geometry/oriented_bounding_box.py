@@ -7,8 +7,6 @@ import enum
 import math
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 import warp as wp
 
 if TYPE_CHECKING:
@@ -63,7 +61,7 @@ _OBB_POINT_CHUNKS = 256
 
 
 @wp.kernel(enable_backward=False)
-def oriented_bounding_box_samples_kernel(num_samples: int, rotations: wp.array(dtype=wp.quat)):
+def oriented_bounding_box_samples_kernel(num_samples: int, rotations: wp.array[wp.quat]):
     # Fill the spiral portion of the candidate list. Any extra candidates are
     # written into the slots past ``num_samples`` by the kernels below.
     i = wp.tid()
@@ -71,23 +69,23 @@ def oriented_bounding_box_samples_kernel(num_samples: int, rotations: wp.array(d
 
 
 @wp.kernel(enable_backward=False)
-def oriented_bounding_box_identity_kernel(slot: int, rotations: wp.array(dtype=wp.quat)):
+def oriented_bounding_box_identity_kernel(slot: int, rotations: wp.array[wp.quat]):
     # The spiral never contains the identity exactly, so the axis-aligned box is
     # not otherwise among the candidates.
     rotations[slot] = wp.quat_identity()
 
 
 @wp.kernel(enable_backward=False)
-def point_sum_kernel(points: wp.array(dtype=wp.vec3), out_sum: wp.array(dtype=wp.vec3)):
+def point_sum_kernel(points: wp.array[wp.vec3], out_sum: wp.array[wp.vec3]):
     i = wp.tid()
     wp.atomic_add(out_sum, 0, points[i])
 
 
 @wp.kernel(enable_backward=False)
 def point_covariance_kernel(
-    points: wp.array(dtype=wp.vec3),
-    point_sum: wp.array(dtype=wp.vec3),
-    out_covariance: wp.array(dtype=wp.mat33),
+    points: wp.array[wp.vec3],
+    point_sum: wp.array[wp.vec3],
+    out_covariance: wp.array[wp.mat33],
 ):
     # Scatter matrix about the centroid. Left unnormalized: scaling by 1/n does
     # not change the eigenvectors, which is all the caller wants.
@@ -99,9 +97,9 @@ def point_covariance_kernel(
 
 @wp.kernel(enable_backward=False)
 def oriented_bounding_box_pca_kernel(
-    covariance: wp.array(dtype=wp.mat33),
+    covariance: wp.array[wp.mat33],
     slot: int,
-    rotations: wp.array(dtype=wp.quat),
+    rotations: wp.array[wp.quat],
 ):
     # The principal axes of the point set are the eigenvectors of its covariance
     # matrix, which is a good starting guess for elongated shapes: the spiral
@@ -126,11 +124,11 @@ def oriented_bounding_box_pca_kernel(
 
 @wp.kernel(enable_backward=False)
 def oriented_bounding_box_bounds_kernel(
-    points: wp.array(dtype=wp.vec3),
-    rotations: wp.array(dtype=wp.quat),
+    points: wp.array[wp.vec3],
+    rotations: wp.array[wp.quat],
     num_chunks: int,
-    min_bounds: wp.array(dtype=wp.vec3),
-    max_bounds: wp.array(dtype=wp.vec3),
+    min_bounds: wp.array[wp.vec3],
+    max_bounds: wp.array[wp.vec3],
 ):
     # Parallel over (orientation, point chunk). Parallelizing over orientations
     # alone caps the launch at one thread per candidate no matter how many points
@@ -161,13 +159,13 @@ def oriented_bounding_box_bounds_kernel(
 
 @wp.kernel(enable_backward=False)
 def oriented_bounding_box_measure_kernel(
-    rotations: wp.array(dtype=wp.quat),
-    min_bounds: wp.array(dtype=wp.vec3),
-    max_bounds: wp.array(dtype=wp.vec3),
+    rotations: wp.array[wp.quat],
+    min_bounds: wp.array[wp.vec3],
+    max_bounds: wp.array[wp.vec3],
     measure_type: int,
-    measures: wp.array(dtype=wp.float32),
-    transforms: wp.array(dtype=wp.transform),
-    extents: wp.array(dtype=wp.vec3),
+    measures: wp.array[wp.float32],
+    transforms: wp.array[wp.transform],
+    extents: wp.array[wp.vec3],
 ):
     # One thread per candidate orientation, scoring the box found above.
     i = wp.tid()
@@ -194,15 +192,39 @@ def oriented_bounding_box_measure_kernel(
     transforms[i] = wp.transform(world_center, wp.quat_inverse(rot))
 
 
+@wp.kernel(enable_backward=False)
+def oriented_bounding_box_select_kernel(
+    measures: wp.array[wp.float32],
+    transforms: wp.array[wp.transform],
+    extents: wp.array[wp.vec3],
+    out_transform: wp.array[wp.transform],
+    out_extents: wp.array[wp.vec3],
+    out_measure: wp.array[wp.float32],
+):
+    # Single-threaded argmin over the small candidate list, kept on device so the
+    # whole search stays capturable in a CUDA graph. A strict ``<`` resolves ties
+    # to the lowest-index candidate, matching a host ``argmin``.
+    best = int(0)
+    best_measure = measures[0]
+    for i in range(1, measures.shape[0]):
+        if measures[i] < best_measure:
+            best_measure = measures[i]
+            best = i
+
+    out_transform[0] = transforms[best]
+    out_extents[0] = extents[best]
+    out_measure[0] = best_measure
+
+
 def oriented_bounding_box(
-    points: wp.array(dtype=wp.vec3),
+    points: wp.array[wp.vec3],
     measure_type: OBBMeasureType = OBBMeasureType.VOLUME,
     num_samples: int = 4096,
     *,
     include_axis_aligned: bool = True,
     include_pca: bool = True,
     device: DeviceLike | None = None,
-) -> tuple[wp.transform, wp.vec3, float]:
+) -> tuple[wp.array, wp.array, wp.array]:
     """Approximate an oriented bounding box (OBB) of a point set by sampling orientations.
 
     Candidate orientations are drawn from a Super-Fibonacci spiral, which spreads
@@ -237,15 +259,18 @@ def oriented_bounding_box(
         device: Device on which to run. Defaults to the device of ``points``.
 
     Returns:
-        A tuple ``(transform, extents, measure)`` where ``transform`` is a
-        :class:`warp.transform` mapping the box's local frame (axis-aligned and
-        centered at the origin) into world space, ``extents`` is a :class:`warp.vec3`
-        of the box's full side lengths, and ``measure`` is the achieved value of
-        ``measure_type``.
+        A tuple ``(transform, extents, measure)`` of length-1 device arrays, left on
+        the device so the whole search is capturable in a CUDA graph. ``transform`` is
+        a :class:`warp.array` of :class:`warp.transform` mapping the box's local frame
+        (axis-aligned and centered at the origin) into world space, ``extents`` is a
+        :class:`warp.array` of :class:`warp.vec3` of the box's full side lengths, and
+        ``measure`` is a :class:`warp.array` of ``float32`` holding the achieved value
+        of ``measure_type``. Read an element with ``transform.numpy()[0]`` (which
+        synchronizes) when a host-side value is needed.
 
     Note:
-        This function synchronizes with the device to select the winning
-        orientation, so it cannot be captured in a CUDA graph.
+        The winning orientation is selected on the device, so this function does not
+        synchronize and can be captured in a CUDA graph.
 
         With ``include_pca`` enabled the covariance matrix is accumulated with
         floating-point atomics, so the principal axes -- and therefore the result,
@@ -325,18 +350,19 @@ def oriented_bounding_box(
         device=device,
     )
 
-    # Select the sampled orientation whose box minimizes the measure. The candidate
-    # count is small, so the argmin runs on the host.
-    measures_np = measures.numpy()
-    best = int(np.argmin(measures_np))
+    # Select the candidate whose box minimizes the measure. The argmin runs in a
+    # single-threaded kernel so the winning box stays on the device and the whole
+    # search can be captured in a CUDA graph.
+    best_transform = wp.empty(1, dtype=wp.transform, device=device)
+    best_extents = wp.empty(1, dtype=wp.vec3, device=device)
+    best_measure = wp.empty(1, dtype=wp.float32, device=device)
 
-    row = transforms.numpy()[best]
-    best_transform = wp.transform(
-        wp.vec3(float(row[0]), float(row[1]), float(row[2])),
-        wp.quat(float(row[3]), float(row[4]), float(row[5]), float(row[6])),
+    wp.launch(
+        oriented_bounding_box_select_kernel,
+        dim=1,
+        inputs=[measures, transforms, extents],
+        outputs=[best_transform, best_extents, best_measure],
+        device=device,
     )
-    ext = extents.numpy()[best]
-    best_extents = wp.vec3(float(ext[0]), float(ext[1]), float(ext[2]))
-    best_measure = float(measures_np[best])
 
     return best_transform, best_extents, best_measure
