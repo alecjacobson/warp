@@ -92,6 +92,8 @@ nitpicky = True
 nitpick_ignore_regex = [
     # Public type aliases indexed as py:data but referenced as py:class (Sphinx limitation)
     (r"py:class", r"(warp\.|wp\.)?(Scalar|Int|Float|DeviceLike)"),
+    # numpy.typing aliases used in annotations but imported only under TYPE_CHECKING
+    (r"py:class", r"npt\.ArrayLike"),
     # Internal meta-types used in builtin function signatures (not exported)
     (
         r"py:class",
@@ -504,6 +506,12 @@ _intersphinx_mapping = {
 # Fail fast on unreachable inventories instead of hanging on the default socket
 # timeout (seconds).
 intersphinx_timeout = 2
+
+# PyTorch's ``stable`` documentation URLs are client-side redirect stubs that
+# preserve fragments in browsers. The linkcheck builder cannot follow those
+# redirects before validating anchors, so only skip anchor checks for them;
+# URL availability is still checked.
+linkcheck_anchors_ignore_for_url = [r"https://docs\.pytorch\.org/docs/stable/.*"]
 
 _sphinx_logger = sphinx.util.logging.getLogger(__name__)
 # WARP_DOCS_OFFLINE=1 skips external resolution entirely for known-offline builds.

@@ -17,6 +17,11 @@ takes an implicit function and builds a Lipschitz octree around the level set,
 so cost scales with surface area rather than volume. :func:`lipschitz_octree`
 and :func:`sparse_marching_cubes_from_cells` expose its two stages separately.
 
+Array-level functions such as :func:`swept_volume_mesh` launch kernels over a whole
+mesh or grid. Device functions such as :func:`swept_volume_sdf` evaluate a
+single point and may be called from within your own :func:`warp.kernel`
+definitions.
+
 Usage:
     This module must be explicitly imported::
 
@@ -32,8 +37,13 @@ from warp._src.geometry.sparse_marching_cubes import (
     sparse_marching_cubes as sparse_marching_cubes,
     sparse_marching_cubes_from_cells as sparse_marching_cubes_from_cells,
 )
+from warp._src.geometry import SweptVolumeSignMode as SweptVolumeSignMode
 from warp._src.geometry import delaunay_edge_flip as delaunay_edge_flip
 from warp._src.geometry import find_triangle_neighbor_edge_index as find_triangle_neighbor_edge_index
+from warp._src.geometry import swept_volume_bounds as swept_volume_bounds
+from warp._src.geometry import swept_volume_field as swept_volume_field
+from warp._src.geometry import swept_volume_mesh as swept_volume_mesh
+from warp._src.geometry import swept_volume_sdf as swept_volume_sdf
 
 # Don't expose these quite yet in case we want to change the naming conventions.
 # from warp._src.geometry import in_circle as in_circle

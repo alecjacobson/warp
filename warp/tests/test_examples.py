@@ -283,6 +283,12 @@ add_example_test(
     devices=cuda_test_devices,
     test_options={"num_frames": 3, "usd_required": True},
 )
+add_example_test(
+    TestGeometryExamples,
+    name="geometry.example_swept_volume",
+    devices=test_devices,
+    test_options={"usd_required": True},
+)
 
 
 class TestOptimExamples(unittest.TestCase):

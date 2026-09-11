@@ -944,9 +944,6 @@ def call_builtin_from_desc(
     this packs the given parameters to their corresponding C types, and calls
     the underlying C function.
     """
-    # Each `arg_types` item should have a corresponding `param_kinds` item.
-    assert len(builtin_desc.arg_types) == len(builtin_desc.param_kinds)
-
     # Try gathering the parameters that the function expects and pack them
     # into their corresponding C types.
     c_params = []
@@ -962,7 +959,7 @@ def call_builtin_from_desc(
         elif param_kind == BuiltinParamKind.SCALAR_BFLOAT_16:
             c_params.append(arg_type._type_(warp._src.types.float_to_bfloat16_bits(param)))
         else:
-            raise AssertionError(f"Unexpected parameter kind value `{param_kind}`")
+            raise RuntimeError(f"Unexpected parameter kind value `{param_kind}`")
 
     value_type = builtin_desc.value_type
     if value_type is None:
@@ -1318,27 +1315,33 @@ class Kernel:
         return self._hash
 
     @hash.setter
+    @synchronized(_codegen_lock)
     def hash(self, value: bytes | None) -> None:
         self._hash = value
         # The mangled name includes the hash, so invalidate the derived cache.
         self._mangled_name = None
 
-    def get_mangled_name(self) -> str:
-        if self._mangled_name is not None:
+    @synchronized(_codegen_lock)
+    def get_mangled_name(self, *, kernel_hash: bytes | None = None) -> str:
+        # An explicit hash can belong to a different variant than self.hash,
+        # so it must neither read nor update the shared mangled-name cache.
+        if kernel_hash is None and self._mangled_name is not None:
             return self._mangled_name
 
         if self.module.options["strip_hash"]:
             name = self.key
         else:
-            if self.hash is None:
+            active_hash = self.hash if kernel_hash is None else kernel_hash
+            if active_hash is None:
                 raise RuntimeError(f"Missing hash for kernel {self.key} in module {self.module.name}")
 
             # TODO: allow customizing the number of hash characters used
-            hash_suffix = self.hash.hex()[:8]
+            hash_suffix = active_hash.hex()[:8]
 
             name = f"{self.key}_{hash_suffix}"
 
-        self._mangled_name = name
+        if kernel_hash is None:
+            self._mangled_name = name
         return name
 
     def __call__(self, *args, **kwargs):
@@ -2211,8 +2214,11 @@ def overload(kernel: Kernel | Callable, arg_types: dict[str, Any] | list[Any] | 
         # TODO: show we allow defining a new body for kernel overloads?
         source = textwrap.dedent(inspect.getsource(fn))
         tree = ast.parse(source)
-        assert isinstance(tree, ast.Module)
-        assert isinstance(tree.body[0], ast.FunctionDef)
+        if not tree.body or not isinstance(tree.body[0], ast.FunctionDef):
+            node_type = type(tree.body[0]).__name__ if tree.body else "no statements"
+            raise WarpCodegenError(
+                f"Kernel overload '{fn.__name__}' must begin with a function definition, got {node_type}"
+            )
         func_body = tree.body[0].body
         for node in func_body:
             if isinstance(node, ast.Pass):
@@ -2928,6 +2934,12 @@ def _verify_library_version(lib, library_name: str, version_symbol: str, expecte
 # duplicate kernels for codegen (see get_unique_kernels()).
 class ModuleHasher:
     def __init__(self, kernels, options):
+        # Hashing another block-size variant can change the shared Kernel.hash
+        # (e.g. when deferred statics depend on tile lengths). Preserve this
+        # variant's hashes so executables can resolve their own compiled symbols.
+        # Weak keys avoid keeping otherwise-unused duplicate kernels alive.
+        self.kernel_hashes = weakref.WeakKeyDictionary()
+
         # cache function hashes to avoid hashing multiple times
         self.function_hashes = {}  # (function: hash)
 
@@ -2950,6 +2962,7 @@ class ModuleHasher:
                 for ovl in kernel.overloads.values():
                     old_hash = ovl.hash
                     ovl.hash = self.hash_kernel(ovl, default_grid_stride)
+                    self.kernel_hashes[ovl] = ovl.hash
                     # Only log hash changes when old hash was not None (unexpected changes)
                     if warp.config.log_level <= warp.LOG_DEBUG and old_hash is not None and old_hash != ovl.hash:
                         old_str = old_hash.hex()[:8]
@@ -2958,6 +2971,7 @@ class ModuleHasher:
             else:
                 old_hash = kernel.hash
                 kernel.hash = self.hash_kernel(kernel, default_grid_stride)
+                self.kernel_hashes[kernel] = kernel.hash
                 # Only log hash changes when old hash was not None (unexpected changes)
                 if warp.config.log_level <= warp.LOG_DEBUG and old_hash is not None and old_hash != kernel.hash:
                     old_str = old_hash.hex()[:8]
@@ -3215,6 +3229,11 @@ class ModuleBuilder:
 
         if hasher is None:
             hasher = ModuleHasher(module._get_live_kernels(), options)
+
+        # A different block-size variant may have changed the shared
+        # Kernel.hash since this hasher was cached. Emit this variant's symbols.
+        for kernel_hash, kernel in hasher.unique_kernels.items():
+            kernel.hash = kernel_hash
 
         # build all unique kernels
         self.kernels = hasher.get_unique_kernels()
@@ -3657,11 +3676,16 @@ class ModuleExec:
         block_dim: int,
         compile_arch: int | None = None,
         det_launch_meta_map: dict[str, DeterministicMeta] | None = None,
+        kernel_hashes: Mapping[Kernel, bytes] | None = None,
     ):
         self.handle = handle
         self.module_hash = module_hash
         self.device = device
         self.kernel_hooks = {}
+        self.kernel_names = weakref.WeakKeyDictionary(
+            (kernel, kernel.get_mangled_name(kernel_hash=kernel_hash))
+            for kernel, kernel_hash in (kernel_hashes.items() if kernel_hashes is not None else ())
+        )
         self.meta = meta
         self.block_dim = block_dim
         self.det_launch_meta_map = det_launch_meta_map if det_launch_meta_map is not None else {}
@@ -3684,6 +3708,19 @@ class ModuleExec:
                 # Suppress TypeError and AttributeError when callables become None during shutdown
                 pass
 
+    def get_kernel_mangled_name(self, kernel: Kernel) -> str:
+        """Return the kernel's symbol identity in this executable's variant."""
+        name = self.kernel_names.get(kernel)
+        if name is None:
+            # An equivalent kernel can be registered after this executable was
+            # loaded, invalidating module hashers. Resolve this variant's hash;
+            # the kernel's current hash may belong to another block size.
+            kernel.module.get_module_hash(self.block_dim)
+            kernel_hash = kernel.module.hashers[self.block_dim].kernel_hashes[kernel]
+            name = kernel.get_mangled_name(kernel_hash=kernel_hash)
+            self.kernel_names[kernel] = name
+        return name
+
     def _get_forward_cuda_kernel(self, kernel):
         """Return the forward CUDA function without initializing launch hooks.
 
@@ -3691,25 +3728,22 @@ class ModuleExec:
         configure dynamic shared-memory or thread-block cluster attributes. The caller must retain this ``ModuleExec``
         while using the returned raw CUDA function handle.
         """
-        name = kernel._mangled_name
-        if name is None:
-            name = kernel.get_mangled_name()
+        name = self.get_kernel_mangled_name(kernel)
 
         hooks = self.kernel_hooks.get(name)
         if hooks is not None:
             return hooks.forward
 
-        forward_name = warp._src.codegen.cuda_kernel_forward_name(kernel)
+        forward_name = warp._src.codegen.cuda_kernel_forward_name(kernel, name=name)
         return runtime.core.wp_cuda_get_kernel(self.device.context, self.handle, forward_name.encode("utf-8"))
 
     # lookup and cache kernel entry points
     def get_kernel_hooks(self, kernel) -> KernelHooks:
         # Key by the mangled name (compiled-symbol identity), not kernel.adj, which pinned one
         # Adjoint per closure-recreated kernel -- a leak the live-kernel WeakSet can't reclaim.
-        # Read the cached name directly to avoid Python method-call overhead on every launch.
-        name = kernel._mangled_name
-        if name is None:
-            name = kernel.get_mangled_name()
+        # Keep symbol identity tied to this executable, even if another variant
+        # has changed the shared Kernel.hash. New equivalent kernels can reuse it.
+        name = self.get_kernel_mangled_name(kernel)
 
         hooks = self.kernel_hooks.get(name)
         if hooks is not None:
@@ -3723,13 +3757,13 @@ class ModuleExec:
                     f"Kernel '{kernel.key}' uses entry_point_abi='{options['entry_point_abi']}' and cannot be launched with wp.launch()."
                 )
 
-            forward_name = warp._src.codegen.cuda_kernel_forward_name(kernel)
+            forward_name = warp._src.codegen.cuda_kernel_forward_name(kernel, name=name)
             forward_kernel = runtime.core.wp_cuda_get_kernel(
                 self.device.context, self.handle, forward_name.encode("utf-8")
             )
 
             if options["enable_backward"]:
-                backward_name = warp._src.codegen.cuda_kernel_backward_name(kernel)
+                backward_name = warp._src.codegen.cuda_kernel_backward_name(kernel, name=name)
                 backward_kernel = runtime.core.wp_cuda_get_kernel(
                     self.device.context, self.handle, backward_name.encode("utf-8")
                 )
@@ -3820,7 +3854,6 @@ class ModuleExec:
             )
 
         else:
-            name = kernel.get_mangled_name()
             func = ctypes.CFUNCTYPE(None)
             forward = (
                 func(runtime.llvm.wp_lookup(self.handle.encode("utf-8"), (name + "_cpu_forward").encode("utf-8")))
@@ -4312,6 +4345,7 @@ class Module:
             block_dim = self.options["block_dim"]
 
         self.get_module_hash(block_dim)
+        kernel.hash = self.hashers[block_dim].kernel_hashes[kernel]
         cache_key = (block_dim, kernel.hash)
 
         if cache_key not in self._scalar_tid_extent_limits:
@@ -4339,10 +4373,10 @@ class Module:
         builder_options = options | {"output_arch": None}
         snapshot = {}
         with _codegen_lock:
-            for kernel in hasher.get_unique_kernels():
+            for kernel_hash, kernel in hasher.unique_kernels.items():
                 if rebuild:
                     kernel.adj.build(None, builder_options)
-                snapshot[kernel.get_mangled_name()] = kernel.adj.det_meta
+                snapshot[kernel.get_mangled_name(kernel_hash=kernel_hash)] = kernel.adj.det_meta
         return snapshot
 
     def _use_ptx(self, device) -> bool:
@@ -4617,6 +4651,19 @@ class Module:
         if opt != 3 and not is_cpu and runtime.toolkit_version is not None and runtime.toolkit_version < (12, 9):
             log_warning("Optimization level other than 3 has no effect on CUDA versions prior to 12.9.", once=True)
 
+        if (
+            opt == 0
+            and not is_cpu
+            and not options["llvm_cuda"]
+            and runtime.toolkit_version is not None
+            and runtime.toolkit_version >= (13, 1)
+        ):
+            log_warning(
+                "CUDA Toolkit 13.1 and newer have an NVRTC compiler issue that makes Warp optimization level 0 "
+                "unsafe; using optimization level 1 instead.",
+                once=True,
+            )
+
         source_code_path = os.path.join(build_dir, f"{module_name_short}.{source_code_ext}")
         try:
             with open(source_code_path, "w") as source_file:
@@ -4864,7 +4911,14 @@ class Module:
                 ):
                     raise Exception(f"Failed to load CPU module '{self.name}' ({module_load_diagnostics})")
                 module_exec = ModuleExec(
-                    module_handle, module_hash, device, meta, active_block_dim, output_arch, det_launch_meta_map
+                    module_handle,
+                    module_hash,
+                    device,
+                    meta,
+                    active_block_dim,
+                    output_arch,
+                    det_launch_meta_map,
+                    self.hashers[active_block_dim].kernel_hashes,
                 )
                 self.execs[(None, active_block_dim)] = module_exec
 
@@ -4872,7 +4926,14 @@ class Module:
                 cuda_module = warp._src.build.load_cuda(binary_path, device)
                 if cuda_module is not None:
                     module_exec = ModuleExec(
-                        cuda_module, module_hash, device, meta, active_block_dim, output_arch, det_launch_meta_map
+                        cuda_module,
+                        module_hash,
+                        device,
+                        meta,
+                        active_block_dim,
+                        output_arch,
+                        det_launch_meta_map,
+                        self.hashers[active_block_dim].kernel_hashes,
                     )
                     self.execs[(device.context, active_block_dim)] = module_exec
                 else:
@@ -5587,7 +5648,10 @@ class Device:
 
         # if the device context is not primary, it cannot be None
         if ordinal != -1 and not is_primary:
-            assert context is not None
+            if context is None:
+                raise RuntimeError(
+                    f"A non-primary CUDA device requires a valid context, got context=None for device ordinal {ordinal}"
+                )
 
         # streams will be created when context is acquired
         self._stream = None
@@ -10465,7 +10529,10 @@ def pack_arg(kernel, arg_type, arg_name, value, device, adjoint=False):
         )
 
     elif isinstance(arg_type, warp._src.codegen.Struct):
-        assert value is not None
+        if value is None:
+            raise RuntimeError(
+                f"Error launching kernel '{kernel.key}', argument '{arg_name}' expects {arg_type.key} but got None"
+            )
         return value.__ctype__()
 
     # try to convert to a value type (vec3, mat33, etc)
