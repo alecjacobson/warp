@@ -170,6 +170,74 @@ def test_obb_single_point(test, device):
     np.testing.assert_allclose(np.array([transform[0], transform[1], transform[2]]), [1.0, 2.0, 3.0], rtol=1e-5)
 
 
+def test_obb_refinement_never_worse(test, device):
+    # Refinement is a local search that only commits improvements, so the refined box is
+    # never worse than the unrefined one on the same input, for either objective.
+    rng = np.random.default_rng(83)
+    for name, p_np in _shapes(rng).items():
+        points = wp.array(p_np, dtype=wp.vec3, device=device)
+        for measure_type in geo.OBBMeasureType:
+            with test.subTest(shape=name, measure=measure_type.name):
+                _, _, base = _host(
+                    geo.oriented_bounding_box(points, measure_type=measure_type, num_samples=128, refine_iters=0)
+                )
+                _, _, refined = _host(
+                    geo.oriented_bounding_box(points, measure_type=measure_type, num_samples=128, refine_iters=6)
+                )
+                test.assertLessEqual(refined, base * (1.0 + 1e-5))
+
+
+def test_obb_refinement_reaches_higher_sample_quality(test, device):
+    # Coarse-to-fine refinement lets a small sample count reach the quality of a much larger
+    # one on an elongated shape, where the spiral's angular spacing is the limiting factor.
+    rng = np.random.default_rng(89)
+    p_np, extents = _rod(rng)
+    points = wp.array(p_np, dtype=wp.vec3, device=device)
+
+    _, _, coarse = _host(geo.oriented_bounding_box(points, num_samples=64, refine_iters=0))
+    _, _, refined = _host(geo.oriented_bounding_box(points, num_samples=64, refine_iters=8))
+
+    test.assertLess(refined, coarse)
+    test.assertLess(refined, float(np.prod(extents)) * 1.2)
+
+
+def test_obb_subsample_stays_exact(test, device):
+    # The winner's box is re-measured over the full cloud, so scoring orientations on a
+    # strided subsample still returns a box that encloses every point.
+    rng = np.random.default_rng(97)
+    p_np, extents = _rod(rng, num_points=20000)
+    points = wp.array(p_np, dtype=wp.vec3, device=device)
+
+    transform, got_extents, measure = _host(geo.oriented_bounding_box(points, num_samples=256, max_search_points=2000))
+    overhang = _to_local(p_np, transform, got_extents).max()
+    test.assertLess(overhang, 1e-4 * max(float(np.max(np.asarray(got_extents, dtype=np.float64))), 1.0))
+    test.assertLess(measure, float(np.prod(extents)) * 2.0)
+
+
+def test_obb_subsample_boundary(test, device):
+    # Point counts just above the cap (stride > 1, uneven division): must not read out of
+    # bounds and must still enclose every point.
+    rng = np.random.default_rng(101)
+    for n, cap in ((201, 100), (1000, 999), (1000, 7)):
+        with test.subTest(n=n, cap=cap):
+            p_np = rng.standard_normal((n, 3)).astype(np.float32)
+            points = wp.array(p_np, dtype=wp.vec3, device=device)
+            transform, extents, _ = _host(geo.oriented_bounding_box(points, num_samples=32, max_search_points=cap))
+            overhang = _to_local(p_np, transform, extents).max()
+            test.assertLess(overhang, 1e-4 * max(float(np.max(np.asarray(extents, dtype=np.float64))), 1.0))
+
+
+def test_obb_refine_tiny_cloud(test, device):
+    # Fewer points than a refine batch or a chunk count: must not crash and must enclose all.
+    rng = np.random.default_rng(103)
+    p_np = rng.standard_normal((3, 3)).astype(np.float32)
+    points = wp.array(p_np, dtype=wp.vec3, device=device)
+
+    transform, extents, _ = _host(geo.oriented_bounding_box(points, num_samples=16, refine_iters=4, refine_batch=8))
+    overhang = _to_local(p_np, transform, extents).max()
+    test.assertLess(overhang, 1e-4 * max(float(np.max(np.asarray(extents, dtype=np.float64))), 1.0))
+
+
 def test_obb_invalid_arguments(test, device):
     points = wp.array(U.unit_cube()[0], dtype=wp.vec3, device=device)
 
@@ -177,6 +245,12 @@ def test_obb_invalid_arguments(test, device):
         geo.oriented_bounding_box(points, num_samples=0)
     with test.assertRaisesRegex(ValueError, "num_samples"):
         geo.oriented_bounding_box(points, num_samples=-5)
+    with test.assertRaisesRegex(ValueError, "refine_iters"):
+        geo.oriented_bounding_box(points, refine_iters=-1)
+    with test.assertRaisesRegex(ValueError, "refine_batch"):
+        geo.oriented_bounding_box(points, refine_batch=0)
+    with test.assertRaisesRegex(ValueError, "max_search_points"):
+        geo.oriented_bounding_box(points, max_search_points=0)
 
     empty = wp.zeros(0, dtype=wp.vec3, device=device)
     with test.assertRaisesRegex(ValueError, "at least one point"):
@@ -221,6 +295,16 @@ add_function_test(
     TestGeometryOBB, "test_obb_reproducible_without_pca", test_obb_reproducible_without_pca, devices=devices
 )
 add_function_test(TestGeometryOBB, "test_obb_single_point", test_obb_single_point, devices=devices)
+add_function_test(TestGeometryOBB, "test_obb_refinement_never_worse", test_obb_refinement_never_worse, devices=devices)
+add_function_test(
+    TestGeometryOBB,
+    "test_obb_refinement_reaches_higher_sample_quality",
+    test_obb_refinement_reaches_higher_sample_quality,
+    devices=devices,
+)
+add_function_test(TestGeometryOBB, "test_obb_subsample_stays_exact", test_obb_subsample_stays_exact, devices=devices)
+add_function_test(TestGeometryOBB, "test_obb_subsample_boundary", test_obb_subsample_boundary, devices=devices)
+add_function_test(TestGeometryOBB, "test_obb_refine_tiny_cloud", test_obb_refine_tiny_cloud, devices=devices)
 add_function_test(TestGeometryOBB, "test_obb_invalid_arguments", test_obb_invalid_arguments, devices=devices)
 add_function_test(TestGeometryOBB, "test_obb_graph_capturable", test_obb_graph_capturable, devices=cuda_devices)
 
