@@ -13,8 +13,10 @@ from warp.tests.unittest_utils import *
 
 
 def _two_triangles():
-    """Two disjoint triangles with areas 1 and 3 (total 4), so face 1 is drawn
-    three times as often as face 0."""
+    """Build two disjoint triangles with areas 1 and 3.
+
+    Total area is 4, so face 1 is drawn three times as often as face 0.
+    """
     points = np.array(
         [
             [0.0, 0.0, 0.0],
@@ -31,7 +33,7 @@ def _two_triangles():
 
 
 def _icosahedron():
-    """A unit icosahedron: 12 vertices, 20 equal-area triangles."""
+    """Build a unit icosahedron: 12 vertices, 20 equal-area triangles."""
     t = (1.0 + np.sqrt(5.0)) / 2.0
     verts = np.array(
         [

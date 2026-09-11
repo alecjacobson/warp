@@ -61,8 +61,10 @@ def farthest_point_sampling_warp_sequential(points, k, B=1, return_time=False):
 
 
 def farthest_point_sampling_warp_batchsort(points, k, B=1, return_time=False):
-    assert k >= 0, f"k must be non-negative, got {k}"
-    assert k <= points.shape[0], f"k must be <= N={points.shape[0]}, got {k}"
+    if k < 0:
+        raise ValueError(f"k must be non-negative, got {k}")
+    if k > points.shape[0]:
+        raise ValueError(f"k must be <= N={points.shape[0]}, got {k}")
 
     N = points.shape[0]
     N_PADDED = max(N, M_TOP_PROCESS)
