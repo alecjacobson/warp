@@ -132,8 +132,9 @@ thin feature -- close in 3-D but far along the surface -- do not over-separate.
 It has two independent parts, and **we evaluated both and kept only the first**:
 
 1. **A geodesic distance in the conflict test.** The metric is Bowers et al.'s
-   fast normal-based approximation `warp.geometry.geodesic_distance(p1, n1, p2,
-   n2)`: integrate the arc length of a curve whose normal turns linearly from
+   fast normal-based approximation (the internal
+   `warp._src.geometry.sampling.curvature_corrected_distance(p1, n1, p2, n2)`):
+   integrate the arc length of a curve whose normal turns linearly from
    `n1` to `n2` along the connecting direction, giving
    `dg = de * (asin c1 - asin c2) / (c1 - c2)` with `ci = ni . (p2-p1)/de`. It
    needs only points and normals (no connectivity), satisfies `dg >= de`, equals

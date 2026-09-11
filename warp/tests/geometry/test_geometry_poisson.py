@@ -9,11 +9,12 @@ import numpy as np
 
 import warp as wp
 import warp.geometry as geo
+from warp._src.geometry.sampling import curvature_corrected_distance
 from warp.tests.unittest_utils import *
 
 
 def _plane(n=64, size=2.0):
-    """A flat square mesh of ``size x size`` in the z=0 plane."""
+    """Build a flat square mesh of ``size x size`` in the z=0 plane."""
     xs = np.linspace(0.0, size, n)
     xv, yv = np.meshgrid(xs, xs, indexing="ij")
     points = np.stack([xv, yv, np.zeros_like(xv)], axis=-1).reshape(-1, 3).astype(np.float32)
@@ -29,7 +30,7 @@ def _plane(n=64, size=2.0):
 
 
 def _icosphere(subdiv=3, radius=2.0):
-    """A subdivided icosphere of the given radius, centered at the origin."""
+    """Build a subdivided icosphere of the given radius, centered at the origin."""
     t = (1.0 + np.sqrt(5.0)) / 2.0
     verts = [
         [-1, t, 0],
@@ -72,7 +73,7 @@ def _icosphere(subdiv=3, radius=2.0):
         mid: dict = {}
         new_faces = []
 
-        def midpoint(a, b):
+        def midpoint(a, b, mid=mid):
             key = (min(a, b), max(a, b))
             if key not in mid:
                 mid[key] = len(verts)
@@ -89,8 +90,10 @@ def _icosphere(subdiv=3, radius=2.0):
 
 
 def _two_sheets(n=40, size=1.0, gap=0.065):
-    """Two disjoint parallel unit sheets a distance ``gap`` apart (a thin slab),
-    with opposite winding so their normals point apart."""
+    """Two disjoint parallel unit sheets a distance ``gap`` apart (a thin slab).
+
+    They have opposite winding so their normals point apart.
+    """
 
     def sheet(z, flip):
         xs = np.linspace(0.0, size, n)
@@ -118,12 +121,14 @@ def _geodesic_distance_kernel(
     out: wp.array(dtype=wp.float32),
 ):
     i = wp.tid()
-    out[i] = geo.geodesic_distance(p1[i], n1[i], p2[i], n2[i])
+    out[i] = curvature_corrected_distance(p1[i], n1[i], p2[i], n2[i])
 
 
 def _min_pairwise_distance(pts: np.ndarray) -> float:
-    """Smallest distance between any two distinct points, via a uniform cell hash
-    so it stays cheap for large point sets."""
+    """Return the smallest distance between any two distinct points.
+
+    Uses a uniform cell hash so it stays cheap for large point sets.
+    """
     if len(pts) < 2:
         return np.inf
     # Cell size = a rough spacing estimate; a point's nearest neighbor is in its

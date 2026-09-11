@@ -75,15 +75,20 @@ def sample_barycentrics(rng: wp.uint32) -> wp.vec2:
 
 
 @wp.func
-def geodesic_distance(p1: wp.vec3, n1: wp.vec3, p2: wp.vec3, n2: wp.vec3) -> wp.float32:
+def curvature_corrected_distance(p1: wp.vec3, n1: wp.vec3, p2: wp.vec3, n2: wp.vec3) -> wp.float32:
     """Approximate the geodesic (on-surface) distance between two surface points.
 
-    Uses the fast normal-based estimate of Bowers et al. (SIGGRAPH Asia 2010),
-    which needs only the two points and their unit surface normals -- no mesh
-    connectivity or parametrization. It integrates the differential arc length of
-    a curve whose normal turns linearly from ``n1`` to ``n2`` along the connecting
-    direction. The estimate is never smaller than the Euclidean distance, equals
-    it on a flat region (``n1 == n2``), and is *exact* on a sphere.
+    This is *not* a true geodesic (no mesh connectivity or shortest-path solve);
+    it corrects the Euclidean chord by the amount the surface normal turns between
+    the two points, using the fast normal-based estimate of Bowers et al.
+    (SIGGRAPH Asia 2010). It needs only the two points and their unit surface
+    normals, and integrates the differential arc length of a curve whose normal
+    turns linearly from ``n1`` to ``n2`` along the connecting direction. The
+    estimate is never smaller than the Euclidean distance, equals it on a flat
+    region (``n1 == n2``), and is *exact* on a sphere -- but it models the surface
+    between the points as a single constant-curvature arc, so it is only reliable
+    when the points are close relative to the surface's curvature (the regime the
+    Poisson-disk conflict test uses it in).
 
     Args:
         p1: First surface point.
@@ -740,7 +745,7 @@ def _cell_free_geodesic(
                                 if s >= 0:
                                     d = points[s] - pos
                                     if wp.dot(d, d) < r_sq:
-                                        if geodesic_distance(pos, normal, points[s], normals[s]) < radius:
+                                        if curvature_corrected_distance(pos, normal, points[s], normals[s]) < radius:
                                             return False
     return True
 
@@ -872,7 +877,7 @@ class PoissonDiskSampler:
     By default the minimum distance is Euclidean, the standard approximation to
     geodesic distance, accurate when ``radius`` is small relative to the surface's
     curvature. Set ``geodesic`` to instead measure the approximate on-surface
-    distance (:func:`geodesic_distance`): this stops samples on opposite sides of
+    distance (:func:`curvature_corrected_distance`): this stops samples on opposite sides of
     a thin feature -- close in 3D but far along the surface -- from over-separating,
     at the cost of a normal per candidate and a slightly heavier conflict test.
     The geodesic path is a strict addition; the Euclidean path is unchanged.
@@ -893,7 +898,7 @@ class PoissonDiskSampler:
         seed: Seed for candidate generation and priorities. Fixing it makes the
             result deterministic.
         geodesic: If set, use Bowers et al.'s approximate geodesic metric
-            (:func:`geodesic_distance`) for the minimum distance instead of the
+            (:func:`curvature_corrected_distance`) for the minimum distance instead of the
             Euclidean one. Keeps a single sample per grid cell: the paper's
             multiple-samples-per-cell extension is intentionally omitted -- it was
             implemented and measured to add nothing under this approximation (see
@@ -1230,7 +1235,7 @@ def poisson_disk_sample(
             ``None``.
         seed: Seed for candidate generation and priorities.
         geodesic: If set, measure the minimum distance with the approximate
-            geodesic (on-surface) metric of :func:`geodesic_distance` instead of
+            geodesic (on-surface) metric of :func:`curvature_corrected_distance` instead of
             the Euclidean one, which avoids over-separating samples across thin
             features. See :class:`PoissonDiskSampler`.
         face_areas: Optional precomputed per-triangle areas, forwarded to

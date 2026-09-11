@@ -30,8 +30,8 @@ Surface sampling draws points on triangle meshes:
   own :func:`warp.kernel` definitions.
 * **Poisson-disk sampling** (:func:`poisson_disk_sample`,
   :class:`PoissonDiskSampler`) draws blue-noise point sets in which no two
-  samples are closer than a given radius, with an optional geodesic metric
-  (:func:`geodesic_distance`). :func:`pair_correlation` measures the resulting
+  samples are closer than a given radius, with an optional on-surface distance
+  metric (``geodesic=True``). :func:`pair_correlation` measures the resulting
   blue-noise spectrum on the surface.
 
 The Poisson-disk sampler and its spectrum analysis implement Bowers, Wang, Wei
@@ -71,7 +71,6 @@ from warp._src.geometry import PoissonDiskSampler as PoissonDiskSampler
 from warp._src.geometry import UniformSampler as UniformSampler
 from warp._src.geometry import UniformSamplerState as UniformSamplerState
 from warp._src.geometry import draw as draw
-from warp._src.geometry import geodesic_distance as geodesic_distance
 from warp._src.geometry import pair_correlation as pair_correlation
 from warp._src.geometry import poisson_disk_sample as poisson_disk_sample
 from warp._src.geometry import sample_barycentrics as sample_barycentrics
