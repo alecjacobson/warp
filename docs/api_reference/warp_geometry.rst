@@ -15,6 +15,7 @@ API
 
    IsoSurfaceBase
    IsoSurfaceMarchingCubes
+   IsoSurfaceNets
    SweptVolumeSignMode
    delaunay_edge_flip
    find_triangle_neighbor_edge_index
