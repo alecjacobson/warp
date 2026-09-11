@@ -3,11 +3,10 @@
 
 .. function:: warp._src.lang.max(a: Scalar, b: Scalar) -> Scalar
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Compute the maximum value.
    
@@ -18,11 +17,10 @@
 .. function:: warp._src.lang.max(a: Vector[Scalar, Any], b: Vector[Scalar, Any]) -> Vector[Scalar, Any]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Compute the maximum value.
    
@@ -32,11 +30,10 @@
 .. function:: warp._src.lang.max(a: Vector[Scalar, Any]) -> Scalar
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Compute the maximum value.
    

@@ -3,22 +3,20 @@
 
 .. function:: warp._src.lang.mul(a: Scalar, b: Scalar) -> Scalar
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
 
 .. function:: warp._src.lang.mul(a: Vector[Scalar, Any], b: Scalar) -> Vector[Scalar, Any]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
    
@@ -27,11 +25,10 @@
 .. function:: warp._src.lang.mul(a: Scalar, b: Vector[Scalar, Any]) -> Vector[Scalar, Any]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
    
@@ -40,11 +37,10 @@
 .. function:: warp._src.lang.mul(a: Quaternion[Float], b: Scalar) -> Quaternion[Float]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
    
@@ -53,11 +49,10 @@
 .. function:: warp._src.lang.mul(a: Scalar, b: Quaternion[Float]) -> Quaternion[Float]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
    
@@ -66,11 +61,10 @@
 .. function:: warp._src.lang.mul(a: Quaternion[Float], b: Quaternion[Float]) -> Quaternion[Float]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
    
@@ -79,11 +73,10 @@
 .. function:: warp._src.lang.mul(a: Scalar, b: Matrix[Scalar, Any, Any]) -> Matrix[Scalar, Any, Any]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
    
@@ -92,11 +85,10 @@
 .. function:: warp._src.lang.mul(a: Matrix[Scalar, Any, Any], b: Scalar) -> Matrix[Scalar, Any, Any]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
    
@@ -105,11 +97,10 @@
 .. function:: warp._src.lang.mul(a: Matrix[Scalar, Any, Any], b: Vector[Scalar, Any]) -> Vector[Scalar, Any]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
    
@@ -118,11 +109,10 @@
 .. function:: warp._src.lang.mul(a: Vector[Scalar, Any], b: Matrix[Scalar, Any, Any]) -> Vector[Scalar, Any]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
    
@@ -131,11 +121,10 @@
 .. function:: warp._src.lang.mul(a: Matrix[Scalar, Any, Any], b: Matrix[Scalar, Any, Any]) -> Matrix[Scalar, Any, Any]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
    
@@ -144,11 +133,10 @@
 .. function:: warp._src.lang.mul(a: Transformation[Float], b: Transformation[Float]) -> Transformation[Float]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
    
@@ -157,11 +145,10 @@
 .. function:: warp._src.lang.mul(a: Scalar, b: Transformation[Float]) -> Transformation[Float]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
    
@@ -172,11 +159,10 @@
 .. function:: warp._src.lang.mul(a: Transformation[Float], b: Scalar) -> Transformation[Float]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: true
+      :differentiable: true
 
    Multiply two values.
    
@@ -187,22 +173,20 @@
 .. function:: warp._src.lang.mul(a: Tile[Any, tuple[int, ...]], b: Tile[Any, tuple[int, ...]]) -> Tile[Any, tuple[int, ...]]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: false
+      :differentiable: true
 
    Element-wise multiplication of tiles.
 
 .. function:: warp._src.lang.mul(a: Tile[Any, tuple[int, ...]], b: Any) -> Tile[Any, tuple[int, ...]]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: false
+      :differentiable: true
 
    Multiply two values.
    
@@ -214,11 +198,10 @@
 .. function:: warp._src.lang.mul(a: Any, b: Tile[Any, tuple[int, ...]]) -> Tile[Any, tuple[int, ...]]
    :noindex:
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: false
+      :differentiable: true
 
    Multiply two values.
    

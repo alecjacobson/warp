@@ -1,13 +1,12 @@
 ﻿warp.tile\_assign
 =================
 
-.. function:: warp._src.lang.tile_assign(dst: Tile[Any, tuple[int, ...]], src: Tile[Any, tuple[int, ...]], offset: tuple[int, ...]) -> None
+.. function:: warp._src.lang.tile_assign(dst: Tile[Any, tuple[int, ...]], src: Tile[Any, tuple[int, ...]], offset: tuple[int, ...] = ...) -> None
 
-   .. hlist::
-      :columns: 8
-
-      * Kernel
-      * Differentiable
+   .. wp-builtin-tags::
+      :kernel: true
+      :python: false
+      :differentiable: true
 
    Assign a tile to a subrange of a destination tile.
    
