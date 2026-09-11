@@ -8,8 +8,8 @@ precomputed ``swept_volume_demo.npz`` (see ``generate_demo_data.py``):
     python demo/swept_volume_demo.py path/to/swept_volume_demo.npz
 
 Controls (left panel): a **frame** slider (and a **play** toggle) scrub the arm
-through its trajectory; a **show robot at n time samples** checkbox overlays the
-arm at ``n`` uniformly spaced instants along the trajectory; a transparency
+through its trajectory; a **skip** button jumps forward by ``N / n`` frames (with
+``n`` choosable) to step through the trajectory in ``n`` even hops; a transparency
 slider controls the envelope opacity. Toggle the two envelope surfaces (the
 conservative covering-radius iso and the ``iso = 0`` iso, where sharp features
 can poke through the marching-cubes reconstruction) with polyscope's built-in
@@ -75,23 +75,7 @@ def set_frame(f):
         s.set_transform(mat4(x[:3], x[3:]))
 
 
-def build_time_samples(n):
-    """Register one merged mesh of the arm posed at ``n`` uniform instants."""
-    frames = np.unique(np.linspace(0, N - 1, max(n, 1)).round().astype(int))
-    verts, faces, offset = [], [], 0
-    for f in frames:
-        for i in range(num_links):
-            x = xforms[f, i]
-            M = mat4(x[:3], x[3:])
-            verts.append(link_V[i] @ M[:3, :3].T + M[:3, 3])
-            faces.append(link_F[i] + offset)
-            offset += len(link_V[i])
-    g = ps.register_surface_mesh("time samples", np.vstack(verts), np.vstack(faces), color=LINK_COLOR, material="clay", smooth_shade=True)
-    g.set_transparency(0.5)
-    return g
-
-
-state = {"frame": 0, "playing": False, "alpha": 0.5, "samples": False, "n": 10, "built_n": None}
+state = {"frame": 0, "playing": False, "alpha": 0.5, "n": 10}
 set_frame(0)
 env_c.set_transparency(state["alpha"])
 env_0.set_transparency(state["alpha"])
@@ -107,16 +91,12 @@ def callback():
         set_frame(state["frame"])
 
     psim.Separator()
-    _, state["samples"] = psim.Checkbox("show robot at n time samples", state["samples"])
-    n_changed, state["n"] = psim.InputInt("n", state["n"])
+    _, state["n"] = psim.InputInt("n", state["n"])
     state["n"] = max(1, state["n"])
-    if state["samples"]:
-        if state["built_n"] != state["n"] or n_changed:
-            build_time_samples(state["n"])
-            state["built_n"] = state["n"]
-        ps.get_surface_mesh("time samples").set_enabled(True)
-    elif ps.has_surface_mesh("time samples"):
-        ps.get_surface_mesh("time samples").set_enabled(False)
+    step = max(1, round(N / state["n"]))
+    if psim.Button(f"skip forward N/n ({step} frames)"):
+        state["frame"] = (state["frame"] + step) % N
+        set_frame(state["frame"])
 
     psim.Separator()
     ch, state["alpha"] = psim.SliderFloat("envelope transparency", state["alpha"], 0.0, 1.0)

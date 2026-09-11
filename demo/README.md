@@ -23,8 +23,8 @@ python swept_volume_demo.py                     # expects the .npz alongside
 ### Controls (left panel)
 
 - **frame** slider (and **play** toggle) — scrub the arm through its trajectory.
-- **show robot at n time samples** checkbox (with an **n** input, default 10) —
-  overlay the arm at `n` uniformly spaced instants along the trajectory.
+- **n** input (default 10) and a **skip forward N/n** button — jump forward by
+  `N / n` frames to step through the trajectory in `n` even hops.
 - **envelope transparency** slider.
 - Toggle the **envelope (conservative iso)** (green) and **envelope (iso = 0)**
   (blue) surfaces with polyscope's built-in per-structure checkboxes in the
