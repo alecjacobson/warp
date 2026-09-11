@@ -215,7 +215,7 @@ def sparse_extract_grid(sdf, nx, ny, nz, origin, root_width, device, return_stat
 def from_cells_extract_setup(sdf, origin, root_width, depth, device):
     """Precompute the (cells, corner_values) an octree would find, for timing
     sparse_marching_cubes_from_cells in isolation from cell selection."""
-    cells, cell_width = wp.geometry.sparse_cells_via_lipschitz_pruning(sdf, origin, root_width, depth, device=device)
+    cells, cell_width = wp.geometry.lipschitz_octree(sdf, origin, root_width, depth, device=device)
     corner_offsets = np.array(wp.geometry.IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS, dtype=np.int32)
     cells_np = cells.numpy()
     corner_pos = np.array(origin) + cell_width * (cells_np[:, None, :] + corner_offsets[None, :, :])

@@ -22,6 +22,7 @@ For a dense field already resident in memory, use
 from collections.abc import Callable
 
 import numpy as np
+import numpy.typing as npt
 
 import warp as wp
 from warp._src import utils as _wp_utils
@@ -936,15 +937,15 @@ def _extract_from_dedup(cell_corners, corner_positions, corner_values, threshold
     return verts_out, indices_out
 
 
-def sparse_cells_via_lipschitz_pruning(
-    field,
+def lipschitz_octree(
+    field: Callable[[wp.array], wp.array],
     origin: wp.vec3 | tuple[float, float, float],
     root_width: float,
     max_depth: int,
     threshold: float = 0.0,
     lipschitz_bound: float = 1.0,
     device: wp.DeviceLike = None,
-):
+) -> tuple[wp.array, float]:
     """Return max-depth octree cells that may intersect a level set of a Lipschitz-bounded implicit field.
 
     Builds a sparse octree top-down, keeping only cells whose subtree can still
@@ -959,9 +960,8 @@ def sparse_cells_via_lipschitz_pruning(
     This function does not support backward-mode automatic differentiation,
     by design: cell selection is a discrete, threshold-based search, not a
     smooth function of ``field``'s values, so there is no gradient to carry
-    from ``field`` to the output ``cells``. Its kernels are launched with
-    ``record_tape=False`` and never appear on a ``wp.Tape()``, so calling
-    this function inside one is silent; see
+    from ``field`` to the output ``cells``. Recording this function on a
+    ``wp.Tape()`` is silent -- no warning, no gradient; see
     :func:`sparse_marching_cubes_from_cells` for the differentiable
     extraction stage.
 
@@ -1009,13 +1009,13 @@ def sparse_cells_via_lipschitz_pruning(
 
 
 def sparse_marching_cubes_from_cells(
-    cells,
-    corner_values,
+    cells: wp.array | npt.ArrayLike,
+    corner_values: wp.array | npt.ArrayLike,
     origin: wp.vec3 | tuple[float, float, float] = (0.0, 0.0, 0.0),
     cell_width: float = 1.0,
     threshold: float = 0.0,
     device: wp.DeviceLike = None,
-):
+) -> tuple[wp.array, wp.array]:
     """Extract an isosurface from an explicit set of occupied cells and corner values.
 
     This is the sparse marching cubes core: it runs marching cubes on a
@@ -1027,12 +1027,8 @@ def sparse_marching_cubes_from_cells(
     are expected to be unique (duplicate cells may result in
     duplicate/intersecting output mesh faces).
 
-    :func:`sparse_marching_cubes` shares this function's corner-merging and
-    extraction internals rather than composing
-    :func:`sparse_cells_via_lipschitz_pruning` and this function directly:
-    :func:`sparse_cells_via_lipschitz_pruning` returns the same cell subscripts
-    this function expects, but not sampled corner values, which the caller must
-    still supply.
+    :func:`lipschitz_octree` returns cell subscripts in this function's
+    convention, but not sampled corner values, which the caller must supply.
 
     This function supports backward-mode automatic differentiation: if
     ``corner_values`` has ``requires_grad=True`` and the call is wrapped in a
@@ -1044,7 +1040,7 @@ def sparse_marching_cubes_from_cells(
     one), which is the correct behavior when the redundant entries are
     independent evaluations of the same underlying point function. ``cells``
     (and any cell-selection step that produced them, such as
-    :func:`sparse_cells_via_lipschitz_pruning`) is not differentiated -- it is
+    :func:`lipschitz_octree`) is not differentiated -- it is
     integer subscript data with no gradient to carry.
 
     .. note::
@@ -1148,7 +1144,7 @@ def sparse_marching_cubes_from_cells(
 
 
 def sparse_marching_cubes(
-    field,
+    field: Callable[[wp.array], wp.array],
     nx: int,
     ny: int,
     nz: int,
@@ -1159,7 +1155,7 @@ def sparse_marching_cubes(
     lipschitz_bound: float = 1.0,
     device: wp.DeviceLike = None,
     return_stats: bool = False,
-):
+) -> tuple[wp.array, wp.array] | tuple[wp.array, wp.array, dict]:
     """Extract an isosurface from an implicit function using a Lipschitz octree.
 
     Rather than sampling a dense grid, this routine builds a sparse octree that
@@ -1172,12 +1168,7 @@ def sparse_marching_cubes(
     nodes over the box ``[lower, upper]``, which may be anisotropic. Calling
     this function and
     :meth:`~warp.geometry.IsoSurfaceMarchingCubes.extract` with the same
-    ``nx, ny, nz`` and bounds produces the same surface. Internally, the octree
-    depth is derived as the smallest ``max_depth`` such that
-    ``2**max_depth >= max(nx - 1, ny - 1, nz - 1)``, and cells that fall outside
-    the requested ``(nx - 1, ny - 1, nz - 1)`` grid -- which exist only because
-    the octree's per-axis cell count must share a single power-of-two depth --
-    are discarded before extraction.
+    ``nx, ny, nz`` and bounds produces the same surface.
 
     Both the pruning pass (at cell centers) and the extraction pass (at cell
     corners) query ``field`` in batches, never one point at a time. If ``field`` is
@@ -1189,18 +1180,13 @@ def sparse_marching_cubes(
     on every call, since the values it returns must still land back on the
     query points' device.
 
-    This function supports backward-mode automatic differentiation, as a
-    consequence of :func:`sparse_marching_cubes_from_cells`'s extraction core
-    supporting it: if ``field``'s output array has ``requires_grad=True`` (the
-    caller's responsibility -- allocate it that way, the same as any other
-    Warp kernel output that should carry gradient) and the call is wrapped in
-    a ``wp.Tape()``, gradient flows from the output ``verts`` back through the
-    corner values ``field`` produced. The Lipschitz octree that selects which
-    cells to evaluate (:func:`sparse_cells_via_lipschitz_pruning`) is not
-    differentiated -- it is a discrete, threshold-based search, not a smooth
-    function of ``field``'s values -- and its cell-selection kernels are
-    launched with ``record_tape=False`` so they never appear on the tape at
-    all, rather than being recorded and skipped.
+    This function supports backward-mode automatic differentiation: if
+    ``field``'s output array has ``requires_grad=True`` (the caller's
+    responsibility to allocate) and the call is wrapped in a ``wp.Tape()``,
+    gradient flows from the output ``verts`` back through the corner values
+    ``field`` produced. Cell selection (:func:`lipschitz_octree`) is not
+    differentiated -- it is a discrete, threshold-based search -- and does
+    not print tape warnings either.
 
     Args:
         field: The implicit function, as a batched callable with the contract

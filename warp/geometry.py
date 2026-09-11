@@ -14,7 +14,7 @@ triangles.
 
 Sparse extraction skips the dense grid entirely. :func:`sparse_marching_cubes`
 takes an implicit function and builds a Lipschitz octree around the level set,
-so cost scales with surface area rather than volume. :func:`sparse_cells_via_lipschitz_pruning`
+so cost scales with surface area rather than volume. :func:`lipschitz_octree`
 and :func:`sparse_marching_cubes_from_cells` expose its two stages separately.
 
 Usage:
@@ -28,7 +28,7 @@ Usage:
 from warp._src.geometry.iso_surface import IsoSurfaceBase as IsoSurfaceBase
 from warp._src.geometry.marching_cubes import IsoSurfaceMarchingCubes as IsoSurfaceMarchingCubes
 from warp._src.geometry.sparse_marching_cubes import (
-    sparse_cells_via_lipschitz_pruning as sparse_cells_via_lipschitz_pruning,
+    lipschitz_octree as lipschitz_octree,
     sparse_marching_cubes as sparse_marching_cubes,
     sparse_marching_cubes_from_cells as sparse_marching_cubes_from_cells,
 )

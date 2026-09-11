@@ -265,6 +265,7 @@ from . import utils as utils
 from warp.config import DeterministicMode as DeterministicMode
 from warp._src.math import *
 from warp._src.context import RegisteredGLBuffer as RegisteredGLBuffer
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 Length = TypeVar("Length", bound=int)
 Rows = TypeVar("Rows", bound=int)
 Cols = TypeVar("Cols", bound=int)
@@ -305,39 +306,10 @@ element methods, and :mod:`warp.sparse` for sparse linear algebra.
 
 # Skipped: from warp._src.context import zeros as zeros (merged stubs generated below)
 
-def __getattr__(name):
-    # Deprecated alias of `warp.geometry.IsoSurfaceMarchingCubes`, resolved lazily
-    # so that `wp.MarchingCubes` *is* the new class rather than a subclass of it.
-    # The isosurface API itself lives in `warp.geometry`, imported explicitly.
-    if name == "MarchingCubes":
-        from warp._src.geometry.marching_cubes import IsoSurfaceMarchingCubes  # noqa: PLC0415
-        from warp._src.logger import log_warning  # noqa: PLC0415
+if _TYPE_CHECKING:
+    from warp._src.geometry.marching_cubes import IsoSurfaceMarchingCubes as _IsoSurfaceMarchingCubes
 
-        log_warning(
-            "wp.MarchingCubes is deprecated and will be removed in a future version of Warp. "
-            "Use wp.geometry.IsoSurfaceMarchingCubes instead.",
-            category=DeprecationWarning,
-            stacklevel=2,
-        )
-        return IsoSurfaceMarchingCubes
-
-    if name == "HashGridQueryH":
-        dtype = float16
-    elif name == "HashGridQueryD":
-        dtype = float64
-    else:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-    from warp._src.logger import log_warning  # noqa: PLC0415
-    from warp._src.types import hash_grid_query_type  # noqa: PLC0415
-
-    log_warning(
-        f"warp.{name} is deprecated and will be removed in a future release. "
-        "Use warp.HashGridQuery in public type references; query objects are returned by warp.hash_grid_query().",
-        category=DeprecationWarning,
-        stacklevel=2,
-    )
-    return hash_grid_query_type(dtype)
+    MarchingCubes = _IsoSurfaceMarchingCubes
 
 __version__ = config.version
 

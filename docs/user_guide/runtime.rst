@@ -3048,7 +3048,7 @@ per call.
     extracted 77094 vertices and 154184 triangles
 
 The pruning and extraction stages are also exposed separately:
-:func:`wp.geometry.sparse_cells_via_lipschitz_pruning <warp.geometry.sparse_cells_via_lipschitz_pruning>`
+:func:`wp.geometry.lipschitz_octree <warp.geometry.lipschitz_octree>`
 returns the leaf cells, and :func:`wp.geometry.sparse_marching_cubes_from_cells
 <warp.geometry.sparse_marching_cubes_from_cells>` runs marching cubes on an
 explicit list of occupied cells and their sampled corner values --

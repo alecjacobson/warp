@@ -216,7 +216,7 @@ class Example:
             self.indices = indices
 
             if self.show_cells:
-                cells, cell_width = wp.geometry.sparse_cells_via_lipschitz_pruning(
+                cells, cell_width = wp.geometry.lipschitz_octree(
                     self._make_evaluator(angle), self.origin, self.root_width, self.cell_depth
                 )
                 cell_origins = np.array(self.origin) + cell_width * cells.numpy()

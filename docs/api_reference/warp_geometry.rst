@@ -17,7 +17,7 @@ API
    IsoSurfaceMarchingCubes
    delaunay_edge_flip
    find_triangle_neighbor_edge_index
-   sparse_cells_via_lipschitz_pruning
+   lipschitz_octree
    sparse_marching_cubes
    sparse_marching_cubes_from_cells
    tri_tri_adjacency
