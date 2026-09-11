@@ -35,7 +35,7 @@ MC_EDGE_TO_CORNERS: Final[tuple[tuple[int, int], ...]] = (
 
 
 def marching_cubes_extract_vertices(
-    field: wp.array3d(dtype=wp.float32),
+    field: wp.array3d[wp.float32],
     threshold: float,
     lower: wp.vec3,
     grid_pos_delta: wp.vec3,
@@ -103,16 +103,16 @@ def marching_cubes_extract_vertices(
 
 @wp.kernel
 def extract_vertices_kernel(
-    values: wp.array3d(dtype=wp.float32),
+    values: wp.array3d[wp.float32],
     threshold: wp.float32,
     lower: wp.vec3,
     grid_pos_delta: wp.vec3,
-    vertex_result_ind: wp.array(dtype=wp.int32),
+    vertex_result_ind: wp.array[wp.int32],
     count_only: bool,
-    thread_output_count: wp.array(dtype=wp.int32),
-    verts_pos_out: wp.array(dtype=wp.vec3),
-    verts_is_boundary_out: wp.array(dtype=wp.bool),
-    edge_generated_vert_ind: wp.array(dtype=wp.int32, ndim=4),
+    thread_output_count: wp.array[wp.int32],
+    verts_pos_out: wp.array[wp.vec3],
+    verts_is_boundary_out: wp.array[wp.bool],
+    edge_generated_vert_ind: wp.array4d[wp.int32],
 ):
     """Kernel for vertex extraction.
 
@@ -186,9 +186,9 @@ def extract_vertices_kernel(
 
 
 def marching_cubes_extract_faces(
-    values: wp.array3d(dtype=wp.float32),
+    values: wp.array3d[wp.float32],
     threshold: wp.float32,
-    edge_generated_vert_ind: wp.array(dtype=wp.int32, ndim=4),
+    edge_generated_vert_ind: wp.array4d[wp.int32],
 ):
     """Invoke kernels to extract faces and index the appropriate vertices."""
     device = values.device
@@ -255,16 +255,16 @@ def marching_cubes_extract_faces(
 # Warp issues warnings if we set enable_backward=False
 @wp.kernel
 def extract_faces_kernel(
-    values: wp.array3d(dtype=wp.float32),
+    values: wp.array3d[wp.float32],
     threshold: wp.float32,
-    edge_generated_vert_ind: wp.array(dtype=wp.int32, ndim=4),
-    face_result_ind: wp.array(dtype=wp.int32),
-    mc_case_to_tri_range_table: wp.array(dtype=wp.int32),
-    mc_tri_local_inds_table: wp.array(dtype=wp.int32),
-    mc_edge_offset_table: wp.array(dtype=wp.int32, ndim=2),
+    edge_generated_vert_ind: wp.array4d[wp.int32],
+    face_result_ind: wp.array[wp.int32],
+    mc_case_to_tri_range_table: wp.array[wp.int32],
+    mc_tri_local_inds_table: wp.array[wp.int32],
+    mc_edge_offset_table: wp.array2d[wp.int32],
     count_only: bool,
-    thread_output_count: wp.array(dtype=wp.int32),
-    faces_out: wp.array(dtype=wp.int32),
+    thread_output_count: wp.array[wp.int32],
+    faces_out: wp.array[wp.int32],
 ):
     """
     Kernel for face extraction
@@ -775,7 +775,7 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
 
         super().resize(nx, ny, nz)
 
-    def surface(self, field: wp.array(dtype=float, ndim=3), threshold: float) -> None:
+    def surface(self, field: wp.array3d[float], threshold: float) -> None:
         """Compute a 2D surface mesh of a given isosurface from a 3D scalar field.
 
         This method is a convenience wrapper that calls the :meth:`~.extract`
@@ -806,12 +806,12 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
     @classmethod
     def extract(
         cls,
-        field: wp.array3d(dtype=wp.float32),
+        field: wp.array3d[wp.float32],
         threshold: float = 0.0,
         *,
         lower: wp.vec3 | tuple[float, float, float] | None = None,
         upper: wp.vec3 | tuple[float, float, float] | None = None,
-    ) -> tuple[wp.array(dtype=wp.vec3), wp.array(dtype=wp.int32)]:
+    ) -> tuple[wp.array[wp.vec3], wp.array[wp.int32]]:
         """Extract a triangular mesh from a 3D scalar field.
 
         This function generates an isosurface by processing the entire input ``field``.
@@ -867,11 +867,11 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
 
     @staticmethod
     def extract_surface_marching_cubes(
-        field: wp.array3d(dtype=wp.float32),
+        field: wp.array3d[wp.float32],
         threshold: float = 0.0,
         domain_bounds_lower_corner: wp.vec3 | tuple[float, float, float] | None = None,
         domain_bounds_upper_corner: wp.vec3 | tuple[float, float, float] | None = None,
-    ) -> tuple[wp.array(dtype=wp.vec3), wp.array(dtype=wp.int32)]:
+    ) -> tuple[wp.array[wp.vec3], wp.array[wp.int32]]:
         """Extract a triangular mesh from a 3D scalar field.
 
         .. deprecated:: 1.17

@@ -78,8 +78,8 @@ class IsoSurfaceBase(ABC):
     """Abstract base class for isosurface extraction from dense 3D scalar fields.
 
     Concrete backends such as :class:`warp.geometry.IsoSurfaceMarchingCubes`
-    implement this interface so that extraction
-    algorithms can be swapped behind a single API: construct an instance with
+    implement this interface so that extraction algorithms can be swapped
+    behind a single API: construct an instance with
     the grid dimensions, then call :meth:`~.surface` repeatedly to extract
     meshes from fields of that size, reading the results from the
     :attr:`verts` and :attr:`indices` attributes. For a stateless one-shot
@@ -176,7 +176,7 @@ class IsoSurfaceBase(ABC):
             )
 
     @abstractmethod
-    def surface(self, field: wp.array(dtype=float, ndim=3), threshold: float) -> None:
+    def surface(self, field: wp.array3d[float], threshold: float) -> None:
         """Compute a 2D surface mesh of a given isosurface from a 3D scalar field.
 
         The resulting mesh data is stored in the :attr:`verts` and
@@ -196,12 +196,12 @@ class IsoSurfaceBase(ABC):
     @abstractmethod
     def extract(
         cls,
-        field: wp.array3d(dtype=wp.float32),
+        field: wp.array3d[wp.float32],
         threshold: float = 0.0,
         *,
         lower: wp.vec3 | tuple[float, float, float] | None = None,
         upper: wp.vec3 | tuple[float, float, float] | None = None,
-    ) -> tuple[wp.array(dtype=wp.vec3), wp.array(dtype=wp.int32)]:
+    ) -> tuple[wp.array[wp.vec3], wp.array[wp.int32]]:
         """Extract a mesh from a 3D scalar field in a single stateless call.
 
         Args:

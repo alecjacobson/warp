@@ -61,14 +61,14 @@ def torus_evaluate(points):
 
 
 @wp.kernel(enable_backward=False)
-def sphere_field_kernel(field: wp.array3d(dtype=float), origin: wp.vec3, h: float):
+def sphere_field_kernel(field: wp.array3d[float], origin: wp.vec3, h: float):
     i, j, k = wp.tid()
     p = origin + h * wp.vec3(float(i), float(j), float(k))
     field[i, j, k] = wp.length(p) - 0.5
 
 
 @wp.kernel(enable_backward=False)
-def torus_field_kernel(field: wp.array3d(dtype=float), origin: wp.vec3, h: float):
+def torus_field_kernel(field: wp.array3d[float], origin: wp.vec3, h: float):
     i, j, k = wp.tid()
     p = origin + h * wp.vec3(float(i), float(j), float(k))
     q = wp.vec2(wp.length(wp.vec2(p[0], p[2])) - 0.5, p[1])
@@ -76,7 +76,7 @@ def torus_field_kernel(field: wp.array3d(dtype=float), origin: wp.vec3, h: float
 
 
 @wp.kernel(enable_backward=False)
-def sphere_field_kernel_aniso(field: wp.array3d(dtype=float), lower: wp.vec3, delta: wp.vec3):
+def sphere_field_kernel_aniso(field: wp.array3d[float], lower: wp.vec3, delta: wp.vec3):
     i, j, k = wp.tid()
     p = lower + wp.cw_mul(delta, wp.vec3(float(i), float(j), float(k)))
     field[i, j, k] = wp.length(p) - 0.5
@@ -142,10 +142,10 @@ def sphere_batch_kernel_grad(points: wp.array[wp.vec3], radius: wp.array[wp.floa
 
 
 def sphere_evaluate_grad(radius_wp):
-    """Batched sphere evaluator parametrized by ``radius_wp``, for testing that gradient
-    flows through sparse_marching_cubes.
+    """Batched sphere evaluator parametrized by ``radius_wp``.
 
-    The output array must be allocated with ``requires_grad=True`` for Warp's
+    For testing that gradient flows through sparse_marching_cubes. The output
+    array must be allocated with ``requires_grad=True`` for Warp's
     tape to track it -- the same requirement as any other differentiable Warp
     kernel output; ``sparse_marching_cubes`` cannot infer this on the
     caller's behalf.
@@ -686,8 +686,11 @@ def _sphere_area_grad_dense(node_dim, radius, device):
 
 
 def _sphere_area_grad_sparse(node_dim, radius, device):
-    """d(area)/d(radius) of a sphere via sparse_marching_cubes_from_cells, on every cell
-    of the same dense grid (no octree -- sparse_cells_via_lipschitz_pruning is not differentiated)."""
+    """d(area)/d(radius) of a sphere via sparse_marching_cubes_from_cells.
+
+    On every cell of the same dense grid (no octree --
+    sparse_cells_via_lipschitz_pruning is not differentiated).
+    """
     lower = wp.vec3(-1.0, -1.0, -1.0)
     upper = wp.vec3(1.0, 1.0, 1.0)
     ncells = node_dim - 1
