@@ -96,28 +96,12 @@ warp/examples/geometry
            :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_isosurface.py
       - .. image:: ./img/examples/geometry_sparse_marching_cubes.png
            :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_sparse_marching_cubes.py
-      -
+      - .. image:: ./img/examples/geometry_poisson_disk_sampling.png
+           :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_poisson_disk_sampling.py
       -
     * - isosurface
       - sparse marching cubes
-      -
-      -
-
-warp/examples/geometry
-^^^^^^^^^^^^^^^^^^^^^^^
-
-.. list-table::
-    :widths: 25 25 25 25
-    :class: gallery
-
-    * - .. image:: ./img/examples/geometry_poisson_disk_sampling.png
-           :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_poisson_disk_sampling.py
-      -
-      -
-      -
-    * - parallel Poisson-disk sampling
-      -
-      -
+      - parallel Poisson-disk sampling
       -
 
 warp/examples/fem

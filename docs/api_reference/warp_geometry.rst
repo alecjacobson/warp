@@ -15,10 +15,18 @@ API
 
    IsoSurfaceBase
    IsoSurfaceMarchingCubes
+   MeshSample
+   PoissonDiskSampler
    SweptVolumeSignMode
+   UniformSampler
+   UniformSamplerState
    delaunay_edge_flip
+   draw
    find_triangle_neighbor_edge_index
    lipschitz_octree
+   pair_correlation
+   poisson_disk_sample
+   sample_barycentrics
    sparse_marching_cubes
    sparse_marching_cubes_from_cells
    swept_volume_bounds
@@ -26,12 +34,4 @@ API
    swept_volume_mesh
    swept_volume_sdf
    tri_tri_adjacency
-   MeshSample
-   PoissonDiskSampler
-   UniformSampler
-   UniformSamplerState
-   draw
-   pair_correlation
-   poisson_disk_sample
-   sample_barycentrics
    uniformly_sample

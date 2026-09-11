@@ -877,7 +877,7 @@ class PoissonDiskSampler:
     By default the minimum distance is Euclidean, the standard approximation to
     geodesic distance, accurate when ``radius`` is small relative to the surface's
     curvature. Set ``geodesic`` to instead measure the approximate on-surface
-    distance (:func:`curvature_corrected_distance`): this stops samples on opposite sides of
+    distance (``curvature_corrected_distance``): this stops samples on opposite sides of
     a thin feature -- close in 3D but far along the surface -- from over-separating,
     at the cost of a normal per candidate and a slightly heavier conflict test.
     The geodesic path is a strict addition; the Euclidean path is unchanged.
@@ -898,7 +898,7 @@ class PoissonDiskSampler:
         seed: Seed for candidate generation and priorities. Fixing it makes the
             result deterministic.
         geodesic: If set, use Bowers et al.'s approximate geodesic metric
-            (:func:`curvature_corrected_distance`) for the minimum distance instead of the
+            (``curvature_corrected_distance``) for the minimum distance instead of the
             Euclidean one. Keeps a single sample per grid cell: the paper's
             multiple-samples-per-cell extension is intentionally omitted -- it was
             implemented and measured to add nothing under this approximation (see
@@ -1235,7 +1235,7 @@ def poisson_disk_sample(
             ``None``.
         seed: Seed for candidate generation and priorities.
         geodesic: If set, measure the minimum distance with the approximate
-            geodesic (on-surface) metric of :func:`curvature_corrected_distance` instead of
+            geodesic (on-surface) metric of ``curvature_corrected_distance`` instead of
             the Euclidean one, which avoids over-separating samples across thin
             features. See :class:`PoissonDiskSampler`.
         face_areas: Optional precomputed per-triangle areas, forwarded to
