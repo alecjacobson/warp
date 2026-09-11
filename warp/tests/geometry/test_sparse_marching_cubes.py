@@ -41,7 +41,7 @@ def _torus_batch_kernel(points: wp.array[wp.vec3], values: wp.array[wp.float32])
 
 
 def sphere_evaluate(points):
-    """Batched, all-on-device evaluator for ``sphere_sdf``.
+    """Evaluate ``sphere_sdf`` in batches, entirely on-device.
 
     ``sparse_marching_cubes``/``lipschitz_octree`` only
     accept a batched callable, not a bare single-point ``@wp.func`` -- this is
@@ -54,7 +54,7 @@ def sphere_evaluate(points):
 
 
 def torus_evaluate(points):
-    """Batched, all-on-device evaluator for ``torus_sdf`` (see ``sphere_evaluate``)."""
+    """Evaluate ``torus_sdf`` in batches, entirely on-device (see ``sphere_evaluate``)."""
     values = wp.empty(points.shape[0], dtype=wp.float32, device=points.device)
     wp.launch(_torus_batch_kernel, dim=points.shape[0], inputs=[points], outputs=[values], device=points.device)
     return values
@@ -142,7 +142,7 @@ def sphere_batch_kernel_grad(points: wp.array[wp.vec3], radius: wp.array[wp.floa
 
 
 def sphere_evaluate_grad(radius_wp):
-    """Batched sphere evaluator parametrized by ``radius_wp``.
+    """Build a batched sphere evaluator parametrized by ``radius_wp``.
 
     For testing that gradient flows through sparse_marching_cubes. The output
     array must be allocated with ``requires_grad=True`` for Warp's
@@ -194,7 +194,7 @@ def _validate_mesh(test, verts, faces, check_nonempty=True):
 
 
 def _one_sided_hausdorff(a_points, b_points, bucket):
-    """Max over ``a`` of the nearest distance to ``b`` via a spatial hash.
+    """Compute the max over ``a`` of the nearest distance to ``b`` via a spatial hash.
 
     Exact set comparison is too brittle here: the ``@wp.func`` and the dense
     field kernel compile the same arithmetic with slightly different
@@ -669,7 +669,7 @@ def test_sparse_mc_from_cells(test, device):
 
 
 def _sphere_area_grad_dense(node_dim, radius, device):
-    """d(area)/d(radius) of a sphere via dense marching cubes (for cross-checking)."""
+    """Compute d(area)/d(radius) of a sphere via dense marching cubes (for cross-checking)."""
     lower = wp.vec3(-1.0, -1.0, -1.0)
     upper = wp.vec3(1.0, 1.0, 1.0)
     delta = wp.vec3(2.0 / (node_dim - 1), 2.0 / (node_dim - 1), 2.0 / (node_dim - 1))
@@ -687,7 +687,7 @@ def _sphere_area_grad_dense(node_dim, radius, device):
 
 
 def _sphere_area_grad_sparse(node_dim, radius, device):
-    """d(area)/d(radius) of a sphere via sparse_marching_cubes_from_cells.
+    """Compute d(area)/d(radius) of a sphere via sparse_marching_cubes_from_cells.
 
     On every cell of the same dense grid (no octree --
     lipschitz_octree is not differentiated).
@@ -820,7 +820,7 @@ def test_sparse_mc_via_lipschitz_pruning_differentiable(test, device):
 
 
 def test_lipschitz_octree_compose_with_from_cells(test, device):
-    """Regression: lipschitz_octree()'s cells feed sparse_marching_cubes_from_cells() directly.
+    """Verify lipschitz_octree()'s cells feed sparse_marching_cubes_from_cells() directly.
 
     lipschitz_octree() used to return world-space cell origins (wp.vec3),
     which required rounding to recover integer subscripts before calling

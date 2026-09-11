@@ -604,7 +604,7 @@ def _as_cell_subscripts(cells, device) -> wp.array:
 
 
 def _cell_subscript_bounds(cells: wp.array, device) -> tuple[np.ndarray, np.ndarray]:
-    """Per-axis ``(min, max)`` of the cell subscripts, reduced on ``device``.
+    """Reduce the per-axis ``(min, max)`` of the cell subscripts on ``device``.
 
     Only the six resulting integers cross the bus, rather than the whole cell
     array, which matters when the caller already holds the cells on the GPU.

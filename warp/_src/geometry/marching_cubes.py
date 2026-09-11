@@ -466,7 +466,7 @@ _mc_edge_offset_cache: dict[str, wp.array] = {}
 
 
 def _get_mc_case_to_tri_range_table(device) -> wp.array:
-    """Lazily creates and caches the case-to-tri-range table on the target device."""
+    """Lazily create and cache the case-to-tri-range table on the target device."""
     device = str(device)
     if device not in _mc_case_to_tri_range_cache:
         _mc_case_to_tri_range_cache[device] = wp.array(MC_CASE_TO_TRI_RANGE, dtype=wp.int32, device=device)
@@ -474,7 +474,7 @@ def _get_mc_case_to_tri_range_table(device) -> wp.array:
 
 
 def _get_mc_tri_local_inds_table(device) -> wp.array:
-    """Lazily creates and caches the tri-local-indices table on the target device."""
+    """Lazily create and cache the tri-local-indices table on the target device."""
     device = str(device)
     if device not in _mc_tri_local_inds_cache:
         _mc_tri_local_inds_cache[device] = wp.array(MC_TRI_LOCAL_INDICES, dtype=wp.int32, device=device)
@@ -482,7 +482,7 @@ def _get_mc_tri_local_inds_table(device) -> wp.array:
 
 
 def _get_mc_edge_offset_table(device) -> wp.array:
-    """Lazily creates and caches the edge offset table on the target device."""
+    """Lazily create and cache the edge offset table on the target device."""
     device = str(device)
     if device not in _mc_edge_offset_cache:
         _mc_edge_offset_cache[device] = wp.array(_MC_EDGE_OFFSETS, dtype=wp.int32, device=device)
