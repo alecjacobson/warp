@@ -236,28 +236,69 @@ def test_texture3d_resolution(
 # ============================================================================
 
 
-@wp.kernel
-def sample_texture2d_array(
+def sample_texture2d_array_kernel(
     textures: wp.array[wp.Texture2D],
     uv: wp.vec2f,
-    output: wp.array[float],
+    output_base: wp.array[float],
+    output_lod: wp.array[float],
 ):
-    """Sample from an array of 2D textures, one texture per thread."""
+    """Repeatedly sample lane-selected 2D textures with and without explicit LOD."""
     tid = wp.tid()
     tex = textures[tid]
-    output[tid] = wp.texture_sample(tex, uv, dtype=float)
+    offset = wp.vec2f(0.01, 0.0)
+    output_base[tid] = (
+        wp.texture_sample(tex, uv, dtype=float)
+        + 2.0 * wp.texture_sample(tex, uv + offset, dtype=float)
+        + 3.0 * wp.texture_sample(tex, uv - offset, dtype=float)
+    )
+    output_lod[tid] = (
+        wp.texture_sample(tex, uv, dtype=float, lod=1.0)
+        + 2.0 * wp.texture_sample(tex, uv + offset, dtype=float, lod=1.0)
+        + 3.0 * wp.texture_sample(tex, uv - offset, dtype=float, lod=1.0)
+    )
 
 
-@wp.kernel
-def sample_texture3d_array(
+def sample_texture3d_array_kernel(
     textures: wp.array[wp.Texture3D],
     uvw: wp.vec3f,
-    output: wp.array[float],
+    output_base: wp.array[float],
+    output_lod: wp.array[float],
 ):
-    """Sample from an array of 3D textures, one texture per thread."""
+    """Repeatedly sample lane-selected 3D textures with and without explicit LOD."""
     tid = wp.tid()
     tex = textures[tid]
-    output[tid] = wp.texture_sample(tex, uvw, dtype=float)
+    offset = wp.vec3f(0.01, 0.0, 0.0)
+    output_base[tid] = (
+        wp.texture_sample(tex, uvw, dtype=float)
+        + 2.0 * wp.texture_sample(tex, uvw + offset, dtype=float)
+        + 3.0 * wp.texture_sample(tex, uvw - offset, dtype=float)
+    )
+    output_lod[tid] = (
+        wp.texture_sample(tex, uvw, dtype=float, lod=1.0)
+        + 2.0 * wp.texture_sample(tex, uvw + offset, dtype=float, lod=1.0)
+        + 3.0 * wp.texture_sample(tex, uvw - offset, dtype=float, lod=1.0)
+    )
+
+
+# Force CUBIN output at both effective optimization boundaries to cover the
+# divergent-handle compiler regression. Level 0 is covered because CUDA 12.8 is
+# not expected to honor optimization levels here.
+sample_texture2d_array_kernels = {
+    optimization_level: wp.kernel(
+        sample_texture2d_array_kernel,
+        module="unique",
+        module_options={"cuda_output": "cubin", "optimization_level": optimization_level},
+    )
+    for optimization_level in (0, 3)
+}
+sample_texture3d_array_kernels = {
+    optimization_level: wp.kernel(
+        sample_texture3d_array_kernel,
+        module="unique",
+        module_options={"cuda_output": "cubin", "optimization_level": optimization_level},
+    )
+    for optimization_level in (0, 3)
+}
 
 
 # ============================================================================
@@ -663,7 +704,7 @@ def test_texture3d_resolution_query(test, device):
 
 
 def test_texture_dtype_prefers_warp_types(test, device):
-    """Texture dtype property should report canonical Warp scalar types."""
+    """Verify that texture dtype property should report canonical Warp scalar types."""
     data_u8 = np.zeros((4, 4), dtype=np.uint8)
     tex_u8 = wp.Texture2D(data_u8, device=device)
     test.assertIs(tex_u8.dtype, wp.uint8)
@@ -674,13 +715,13 @@ def test_texture_dtype_prefers_warp_types(test, device):
 
 
 def test_texture_dtype_float_alias_maps_to_float32(test, device):
-    """Python float in constructor args should map to Warp float32."""
+    """Verify that Python float in constructor args should map to Warp float32."""
     tex = wp.Texture1D(width=4, num_channels=1, dtype=float, device=device)
     test.assertIs(tex.dtype, wp.float32)
 
 
 def test_texture_dtype_int_alias_maps_to_int32(test, device):
-    """Python int in constructor args should map to Warp int32."""
+    """Verify that Python int in constructor args should map to Warp int32."""
     tex = wp.Texture1D(width=4, num_channels=1, dtype=int, device=device)
     test.assertIs(tex.dtype, wp.int32)
 
@@ -850,7 +891,7 @@ def test_texture1d_new_del(test, device):
 
 
 def test_texture2d_constructor_from_same_device_array(test, device):
-    """Texture2D constructor should accept same-device wp.array input."""
+    """Verify that Texture2D constructor should accept same-device wp.array input."""
     h, w = 8, 16
     data = np.random.default_rng(1234).random((h, w, 4), dtype=np.float32)
     src = wp.array(data, dtype=wp.vec4, device=device)
@@ -870,7 +911,7 @@ def test_texture2d_constructor_from_same_device_array(test, device):
 
 
 def test_texture2d_constructor_transfers_cross_device(test, device):
-    """Constructor should transparently transfer wp.array data to the target device."""
+    """Verify that constructor should transparently transfer wp.array data to the target device."""
     data = np.random.default_rng(42).random((4, 4), dtype=np.float32)
     src = wp.array(data, dtype=float, device="cpu")
     tex = wp.Texture2D(src, filter_mode=wp.TextureFilterMode.CLOSEST, device=device)
@@ -928,7 +969,7 @@ def test_texture3d_cuda_interop_handles(test, device):
 
 
 def test_texture_id_device_independent(test, device):
-    """Texture.id should be valid on both CPU and CUDA."""
+    """Verify that texture.id should be valid on both CPU and CUDA."""
     data = np.zeros((4, 4, 4), dtype=np.float32)
     tex = wp.Texture2D(data, device=device)
 
@@ -1026,7 +1067,7 @@ def test_texture_copy_validation_messages(test, device):
 
 
 def test_texture2d_cuda_array_copy_api_rejects_indexedarray(test, device):
-    """Texture2D CUDA copy helpers should reject non-``wp.array`` inputs."""
+    """Verify that Texture2D CUDA copy helpers should reject non-``wp.array`` inputs."""
     h, w = 8, 16
     data = np.random.default_rng(1234).random((h, w, 4), dtype=np.float32)
     src = wp.array(data, dtype=wp.vec4, device=device)
@@ -1039,7 +1080,7 @@ def test_texture2d_cuda_array_copy_api_rejects_indexedarray(test, device):
 
 
 def test_texture3d_cuda_array_copy_api_rejects_indexedarray(test, device):
-    """Texture3D CUDA copy helpers should reject non-``wp.array`` inputs."""
+    """Verify that Texture3D CUDA copy helpers should reject non-``wp.array`` inputs."""
     d, h, w = 6, 8, 16
     data = np.random.default_rng(1234).random((d, h, w, 4), dtype=np.float32)
     dst = wp.zeros((d, h, w), dtype=wp.vec4, device=device)
@@ -1204,7 +1245,7 @@ def test_texture3d_cuda_surface_property_api(test, device):
 
 
 def test_texture2d_cuda_surface_property_requires_surface_access(test, device):
-    """cuda_surface should fail unless surface access was enabled at texture creation."""
+    """Verify that cuda_surface should fail unless surface access was enabled at texture creation."""
     data = np.zeros((4, 4, 4), dtype=np.float32)
     tex = wp.Texture2D(data, device=device)
 
@@ -1213,7 +1254,7 @@ def test_texture2d_cuda_surface_property_requires_surface_access(test, device):
 
 
 def test_texture3d_cuda_surface_property_requires_surface_access(test, device):
-    """cuda_surface should fail unless surface access was enabled at texture creation."""
+    """Verify that cuda_surface should fail unless surface access was enabled at texture creation."""
     data = np.zeros((4, 4, 4), dtype=np.float32)
     tex = wp.Texture3D(data, device=device)
 
@@ -2573,7 +2614,7 @@ def test_texture_struct_both_members(test, device):
 
 
 def test_texture2d_array(test, device):
-    """Test sampling from an array of 2D textures.
+    """Test repeated sampling from an array of 2D textures.
 
     Creates multiple 2D textures with different constant values and verifies
     that each thread correctly samples from its corresponding texture.
@@ -2591,34 +2632,37 @@ def test_texture2d_array(test, device):
             data,
             filter_mode=wp.TextureFilterMode.CLOSEST,
             address_mode=wp.TextureAddressMode.CLAMP,
+            num_mip_levels=2,
             device=device,
         )
         textures.append(tex)
-        expected_values.append(value)
+        expected_values.append(6.0 * value)
 
     # Create array of textures
     tex_array = wp.array(textures, dtype=wp.Texture2D, device=device)
 
-    # Output array
-    output = wp.zeros(num_textures, dtype=float, device=device)
-
     # Sample at center of each texture (same UV for all)
     uv = wp.vec2f(0.5, 0.5)
 
-    wp.launch(
-        sample_texture2d_array,
-        dim=num_textures,
-        inputs=[tex_array, uv, output],
-        device=device,
-    )
-
-    result = output.numpy()
     expected = np.array(expected_values, dtype=np.float32)
-    np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+    for optimization_level, kernel in sample_texture2d_array_kernels.items():
+        with test.subTest(optimization_level=optimization_level):
+            output_base = wp.zeros(num_textures, dtype=float, device=device)
+            output_lod = wp.zeros(num_textures, dtype=float, device=device)
+
+            wp.launch(
+                kernel,
+                dim=num_textures,
+                inputs=[tex_array, uv, output_base, output_lod],
+                device=device,
+            )
+
+            np.testing.assert_allclose(output_base.numpy(), expected, rtol=1e-5, atol=1e-5)
+            np.testing.assert_allclose(output_lod.numpy(), expected, rtol=1e-5, atol=1e-5)
 
 
 def test_texture3d_array(test, device):
-    """Test sampling from an array of 3D textures.
+    """Test repeated sampling from an array of 3D textures.
 
     Creates multiple 3D textures with different constant values and verifies
     that each thread correctly samples from its corresponding texture.
@@ -2636,30 +2680,33 @@ def test_texture3d_array(test, device):
             data,
             filter_mode=wp.TextureFilterMode.CLOSEST,
             address_mode=wp.TextureAddressMode.CLAMP,
+            num_mip_levels=2,
             device=device,
         )
         textures.append(tex)
-        expected_values.append(value)
+        expected_values.append(6.0 * value)
 
     # Create array of textures
     tex_array = wp.array(textures, dtype=wp.Texture3D, device=device)
 
-    # Output array
-    output = wp.zeros(num_textures, dtype=float, device=device)
-
     # Sample at center of each texture (same UVW for all)
     uvw = wp.vec3f(0.5, 0.5, 0.5)
 
-    wp.launch(
-        sample_texture3d_array,
-        dim=num_textures,
-        inputs=[tex_array, uvw, output],
-        device=device,
-    )
-
-    result = output.numpy()
     expected = np.array(expected_values, dtype=np.float32)
-    np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+    for optimization_level, kernel in sample_texture3d_array_kernels.items():
+        with test.subTest(optimization_level=optimization_level):
+            output_base = wp.zeros(num_textures, dtype=float, device=device)
+            output_lod = wp.zeros(num_textures, dtype=float, device=device)
+
+            wp.launch(
+                kernel,
+                dim=num_textures,
+                inputs=[tex_array, uvw, output_base, output_lod],
+                device=device,
+            )
+
+            np.testing.assert_allclose(output_base.numpy(), expected, rtol=1e-5, atol=1e-5)
+            np.testing.assert_allclose(output_lod.numpy(), expected, rtol=1e-5, atol=1e-5)
 
 
 # ============================================================================
@@ -2710,7 +2757,7 @@ def sample_texture3d_mipmap(
 
 
 def test_texture2d_mipmap_full_chain(test, device):
-    """A texture created with num_mip_levels=0 should expose the full chain down to 1x1."""
+    """Verify that a texture created with num_mip_levels=0 should expose the full chain down to 1x1."""
     width = height = 16
     data = np.zeros((height, width, 4), dtype=np.float32)
     y = np.linspace(0.0, 1.0, height, dtype=np.float32)
@@ -2742,7 +2789,7 @@ def test_texture2d_mipmap_full_chain(test, device):
 
 
 def test_texture2d_mipmap_lod_selects_constant_level(test, device):
-    """Sampling at an integer LOD should return the constant color of that level."""
+    """Verify that sampling at an integer LOD should return the constant color of that level."""
     width = height = 8
 
     base = np.full((height, width, 4), fill_value=0.1, dtype=np.float32)

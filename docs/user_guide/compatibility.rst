@@ -27,7 +27,7 @@ on platforms with NVIDIA CUDA support. The following table summarizes platform s
     +=====================+==============+======================+====================+=====================+
     | **Windows** 10/11   | ``x86-64``   | PC                   | Supported ✅       | CUDA                |
     +---------------------+--------------+----------------------+--------------------+---------------------+
-    | **Windows** 11      | ``arm64``    | PC                   | Planned            | CUDA (Planned)      |
+    | **Windows** 11      | ``arm64``    | PC                   | Source build ✅    | CPU Only            |
     +---------------------+--------------+----------------------+--------------------+---------------------+
     | **Linux**           | ``x86-64``   | PC / Server          | Supported ✅       | CUDA                |
     +---------------------+--------------+----------------------+--------------------+---------------------+
@@ -37,6 +37,8 @@ on platforms with NVIDIA CUDA support. The following table summarizes platform s
     +---------------------+--------------+----------------------+--------------------+---------------------+
     | **macOS**           | ``x86-64``   | Intel-based Mac      | Discontinued       | None                |
     +---------------------+--------------+----------------------+--------------------+---------------------+
+
+Warp supports CPU execution on Windows ARM64 when built from source. We do not currently publish pre-built wheels for this platform.
 
 Runtime requirements
 --------------------
@@ -66,7 +68,7 @@ The following requirements apply when running Warp:
     | CUDA 13.x                  | Turing              | 7.5 (``sm_75``)        | GeForce RTX 20xx series                  |
     +----------------------------+---------------------+------------------------+------------------------------------------+
 
-To determine your GPU's compute capability, see `NVIDIA CUDA GPUs <https://developer.nvidia.com/cuda-gpus>`__.
+To determine your GPU's compute capability, see `NVIDIA CUDA GPUs <https://developer.nvidia.com/cuda/gpus>`__.
 
 * **Driver Requirements**: The driver requirements are determined by the CUDA Toolkit version used to build the Warp
   library, not the version installed on the system when running Warp.
@@ -367,7 +369,7 @@ We follow NVIDIA's driver compatibility policies:
   associated with your driver during initialization.
 
 For the most up-to-date driver compatibility information, consult the 
-`CUDA Compatibility Guide <https://docs.nvidia.com/deploy/cuda-compatibility/>`__.
+`CUDA Compatibility Guide <https://docs.nvidia.com/deploy/cuda-compatibility/latest/>`__.
 
 GPU architectures
 ~~~~~~~~~~~~~~~~~
