@@ -15,12 +15,15 @@ API
 
    IsoSurfaceBase
    IsoSurfaceMarchingCubes
+   OBBMeasureType
    SweptVolumeSignMode
    delaunay_edge_flip
    find_triangle_neighbor_edge_index
    lipschitz_octree
+   oriented_bounding_box
    sparse_marching_cubes
    sparse_marching_cubes_from_cells
+   super_fibonacci
    swept_volume_bounds
    swept_volume_field
    swept_volume_mesh

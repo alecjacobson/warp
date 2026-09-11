@@ -1,0 +1,1 @@
+Added `warp.geometry.oriented_bounding_box`, which fits an approximate oriented bounding box to a point set by scoring candidate orientations from a Super-Fibonacci spiral over SO(3) (plus the axis-aligned and PCA frames) and keeping the box that minimizes volume or surface area.
