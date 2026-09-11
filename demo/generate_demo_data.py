@@ -25,11 +25,11 @@ USD = os.environ.get(
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "parallel-swept-volume/assets/ur10_animated.usda"),
 )
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "swept_volume_demo.npz")
-FIELD_CACHE = "/tmp/_field_0.015_1800.npz"
 
 device = "cuda:0"
-ENVELOPE_SAMPLES = 1800  # dense stamping for a smooth envelope
+ENVELOPE_SAMPLES = 7200  # dense temporal stamping for a smooth envelope
 VOX = 0.015
+FIELD_CACHE = f"/tmp/_field_{VOX}_{ENVELOPE_SAMPLES}.npz"
 N_FRAMES = 120  # animation frames the viewer scrubs through
 
 
