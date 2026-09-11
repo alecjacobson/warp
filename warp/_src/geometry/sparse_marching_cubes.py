@@ -125,7 +125,7 @@ def _make_evaluator(field, device) -> Callable[[wp.array], wp.array]:
             "        wp.launch(eval_kernel, dim=points.shape[0], inputs=[points], outputs=[values], "
             "device=points.device)\n"
             "        return values\n\n"
-            "This keeps evaluation on the GPU; see warp/examples/core/example_sparse_marching_cubes.py."
+            "This keeps evaluation on the GPU; see warp/examples/geometry/example_sparse_marching_cubes.py."
         )
 
     if not callable(field):
@@ -945,7 +945,7 @@ def sparse_cells_via_lipschitz_pruning(
     lipschitz_bound: float = 1.0,
     device: wp.DeviceLike = None,
 ):
-    """Find the octree leaf cells that may contain the level set of an implicit function.
+    """Return max-depth octree cells that may intersect a level set of a Lipschitz-bounded implicit field.
 
     Builds a sparse octree top-down, keeping only cells whose subtree can still
     reach the ``threshold`` level set of a 1-Lipschitz field: a cell of width
@@ -1183,7 +1183,7 @@ def sparse_marching_cubes(
     corners) query ``field`` in batches, never one point at a time. If ``field`` is
     implemented entirely with Warp (a kernel launch, with no host round trip),
     the whole pipeline stays on the GPU; see
-    ``warp/examples/core/example_sparse_marching_cubes.py`` for a mesh-query
+    ``warp/examples/geometry/example_sparse_marching_cubes.py`` for a mesh-query
     implicit function that does this. A callable that wraps a host library
     (NumPy, PyTorch, ...) is equally valid -- it just pays a device/host sync
     on every call, since the values it returns must still land back on the
@@ -1265,7 +1265,7 @@ def sparse_marching_cubes(
     stats = {
         "leaf_cells": 0,
         "unique_corners": 0,
-        "sdf_evaluations": 0,
+        "field_evaluations": 0,
         "resolution": resolution,
         "requested_ncells": ncells,
         "culled_cells": 0,
@@ -1289,7 +1289,7 @@ def sparse_marching_cubes(
         counting_evaluate, lower_corner, root_width, max_depth, threshold, lipschitz_bound, device
     )
     if cells is None:
-        stats["sdf_evaluations"] = eval_count[0]
+        stats["field_evaluations"] = eval_count[0]
         return finish(_empty_mesh(device))
 
     # -- Discard cells outside the requested (padded) grid --------------------
@@ -1304,7 +1304,7 @@ def sparse_marching_cubes(
     stats["culled_cells"] = n_culled
     n_cells = cells.shape[0]
     if n_cells == 0:
-        stats["sdf_evaluations"] = eval_count[0]
+        stats["field_evaluations"] = eval_count[0]
         return finish(_empty_mesh(device))
     stats["leaf_cells"] = n_cells
 
@@ -1317,7 +1317,7 @@ def sparse_marching_cubes(
     stats["unique_corners"] = n_unique
 
     corner_values = counting_evaluate(corner_positions)
-    stats["sdf_evaluations"] = eval_count[0]
+    stats["field_evaluations"] = eval_count[0]
 
     # -- Sparse marching cubes -----------------------------------------------
     return finish(_extract_from_dedup(cell_corners, corner_positions, corner_values, threshold, device))

@@ -2937,7 +2937,7 @@ The :class:`wp.geometry.IsoSurfaceMarchingCubes
 approximating an isosurface of a 3-D scalar field. The resulting triangle mesh
 can be saved to a USD file using the :class:`warp.render.UsdRenderer`.
 
-.. deprecated:: 1.17
+.. deprecated:: 1.18
 
     ``wp.MarchingCubes`` is a deprecated alias of
     :class:`wp.geometry.IsoSurfaceMarchingCubes
@@ -2976,7 +2976,7 @@ can be saved to a USD file using the :class:`warp.render.UsdRenderer`.
 The resulting mesh is stored in ``mc.verts`` as a :class:`wp.array <warp.array>` of
 :class:`wp.vec3 <warp.vec3>` vertices and in ``mc.indices`` as a flat :class:`wp.int32 <warp.int32>` index array.
 
-See :github:`warp/examples/core/example_isosurface.py` for a complete usage example.
+See :github:`warp/examples/geometry/example_isosurface.py` for a complete usage example.
 
 Sparse Marching Cubes
 #####################
@@ -2992,7 +2992,7 @@ function has a Lipschitz constant of 1 because
 isosurface by efficiently identifying cells near the requested level set using
 an octree and then running marching cubes only on those cells.
 
-.. figure:: ../img/examples/core_sparse_marching_cubes.gif
+.. figure:: ../img/examples/geometry_sparse_marching_cubes.gif
     :align: center
     :width: 60%
 
@@ -3151,7 +3151,7 @@ cells -- more than ten times what the search evaluated -- and the gap grows
 with resolution. The subscripts here are also centered on the origin and
 therefore negative on one side, which the extractor handles directly.
 
-See :github:`warp/examples/core/example_sparse_marching_cubes.py` for a
+See :github:`warp/examples/geometry/example_sparse_marching_cubes.py` for a
 complete usage example, with an interactive rendering mode and a
 ``--show-cells`` option that draws the octree leaf cells as a voxel cage
 around the surface, and

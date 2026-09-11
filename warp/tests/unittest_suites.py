@@ -190,6 +190,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
     from warp.tests.test_enum import TestEnum
     from warp.tests.test_examples import (
         TestCoreExamples,
+        TestGeometryExamples,
         TestOptimExamples,
     )
     from warp.tests.test_external_build import TestExternalBuild
@@ -350,6 +351,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
         TestEnum,
         TestExternalBuild,
         TestCoreExamples,
+        TestGeometryExamples,
         TestOptimExamples,
         TestFactoryStyleArrayAnnotations,
         TestFabricArray,

@@ -46,7 +46,7 @@ def sphere_evaluate(points):
     ``sparse_marching_cubes``/``sparse_cells_via_lipschitz_pruning`` only
     accept a batched callable, not a bare single-point ``@wp.func`` -- this is
     the pattern callers use to batch one, matching
-    ``warp/examples/core/example_sparse_marching_cubes.py``.
+    ``warp/examples/geometry/example_sparse_marching_cubes.py``.
     """
     values = wp.empty(points.shape[0], dtype=wp.float32, device=points.device)
     wp.launch(_sphere_batch_kernel, dim=points.shape[0], inputs=[points], outputs=[values], device=points.device)
@@ -409,21 +409,22 @@ def test_sparse_mc_stats_fewer_evaluations(test, device):
     # grid, so the octree needs no padding and the cull pass is a no-op.
     test.assertEqual(stats["culled_cells"], 0)
     # Surface work is ~O(R^2); dense is O(R^3). Require a comfortable margin.
-    test.assertLess(stats["sdf_evaluations"], dense_evals // 4)
+    test.assertLess(stats["field_evaluations"], dense_evals // 4)
 
 
 def test_sparse_mc_no_padding_when_power_of_two_plus_one(test, device):
-    """Regression guard: the anisotropic/cull generalization must be a no-op for exact grids.
+    """Confirm the anisotropic/cull generalization is a no-op for exact grids.
 
     ``nx = ny = nz = 2**depth + 1`` requires no power-of-two padding, so the
     leaf-cell and evaluation counts must exactly match what the pre-refactor
-    cubic-only octree produced for the same depth. This is a deterministic
-    stand-in for a performance-regression test (see AGENTS.md's ban on
-    timing-based assertions): if the generalized, anisotropic-capable code path
-    ever adds overhead for the common isotropic case, these counts would move.
+    cubic-only octree produced for the same depth. Fixed expected counts are a
+    deterministic stand-in for a performance-regression test, since
+    timing-based assertions are unreliable under parallel test execution on
+    shared CI runners: if the generalized, anisotropic-capable code path ever
+    adds overhead for the common isotropic case, these counts would move.
     """
     origin = (-1.0, -1.0, -1.0)
-    for max_depth, expected_leaf_cells, expected_sdf_evaluations in (
+    for max_depth, expected_leaf_cells, expected_field_evaluations in (
         (5, 1304, 6275),
         (6, 5360, 24387),
         (7, 22088, 98443),
@@ -432,7 +433,7 @@ def test_sparse_mc_no_padding_when_power_of_two_plus_one(test, device):
             _, _, stats = _sparse_mc(sphere_evaluate, origin, 2.0, max_depth, return_stats=True, device=device)
             test.assertEqual(stats["culled_cells"], 0)
             test.assertEqual(stats["leaf_cells"], expected_leaf_cells)
-            test.assertEqual(stats["sdf_evaluations"], expected_sdf_evaluations)
+            test.assertEqual(stats["field_evaluations"], expected_field_evaluations)
 
 
 def test_sparse_mc_numpy_evaluator(test, device):

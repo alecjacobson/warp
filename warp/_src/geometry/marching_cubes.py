@@ -874,7 +874,7 @@ class IsoSurfaceMarchingCubes(IsoSurfaceBase):
     ) -> tuple[wp.array[wp.vec3], wp.array[wp.int32]]:
         """Extract a triangular mesh from a 3D scalar field.
 
-        .. deprecated:: 1.17
+        .. deprecated:: 1.18
             Use :meth:`~.extract` instead. This alias will be removed in a future version of Warp.
         """
         log_warning(

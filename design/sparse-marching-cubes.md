@@ -17,7 +17,7 @@ An external user (surfacing very high-resolution custom sparse data structures)
 asked for isosurface extraction that takes an **implicit function** -- something
 that can evaluate the field at a point -- rather than a pre-filled dense grid,
 so the extractor itself decides where to sample. This is the common shape for
-signed distance functions (SDFs), neural implicits (NeRF-style occupancy/SDF
+signed distance functions (SDFs), neural implicit (NeRF-style occupancy/SDF
 networks), and mesh distance queries, where evaluating a full dense grid at the
 target resolution is expensive or infeasible.
 
@@ -40,7 +40,7 @@ callable on an explicit cell set, independent of how the cells were chosen.
 | --- | ----------- | -------- | ----- |
 | R1  | Extract an isosurface from an implicit function without materializing a dense grid | Must | The core ask |
 | R2  | Run cell selection, corner de-duplication, and extraction on the GPU | Must | These stages never round-trip to host |
-| R3  | Accept the implicit function as a batched Python callable `evaluate(points) -> values` | Must | Batches evaluate meshes, neural implicits, and NumPy/PyTorch fields uniformly; see "Batched-callable-only contract" below |
+| R3  | Accept the implicit function as a batched Python callable `evaluate(points) -> values` | Must | Batches evaluate meshes, neural implicit, and NumPy/PyTorch fields uniformly; see "Batched-callable-only contract" below |
 | R4  | Produce a watertight, manifold mesh matching dense marching cubes at equal resolution | Must | Correctness / fair comparison |
 | R5  | Expose the extraction stage on an explicit `(cells, corner_values)` list | Should | Vision/genAI "marked voxels" workflow |
 | R6  | Expose the cell-selection stage (`sparse_cells_via_lipschitz_pruning`) on its own | Should | Custom extractors, visualization |
@@ -84,7 +84,7 @@ is exactly the bound used by `igl::lipschitz_octree_prune`.
 ### Batched-callable-only contract
 
 The public API accepts `sdf` only as a batched callable,
-`evaluate(points: wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32)` --
+`evaluate(points: wp.array[wp.vec3]) -> wp.array[wp.float32]` --
 not a bare single-point `@wp.func`. An earlier revision auto-wrapped a
 `@wp.func` in a generated, cached `eval_sdf_kernel` (closing over the function
 object) so a per-point signature could be passed directly. Review feedback
@@ -98,13 +98,13 @@ looked identical either way.
 Removing that path makes the two supported styles explicit at the call site:
 
 - **All on-device.** Write a small `@wp.kernel` that evaluates the field over
-  the batch (see `warp/examples/core/example_sparse_marching_cubes.py` and
+  the batch (see `warp/examples/geometry/example_sparse_marching_cubes.py` and
   the `test_sparse_mc_mesh_minus_sphere_on_device` test, which composes a mesh
   query with an analytic sphere via CSG subtraction, `max(d_mesh, -d_sphere)`,
   in one kernel). Field evaluation then never leaves the GPU.
 - **Host round trip, caller's choice.** A callable that wraps NumPy, PyTorch,
   or any other host library is equally valid -- `_make_evaluator` only
-  requires the *returned* array to be a `wp.array(dtype=wp.float32)` back on
+  requires the *returned* array to be a `wp.array[wp.float32]` back on
   the query points' device. This costs a device/host sync on every call (once
   per octree level, plus once for the corners), which is the caller's to pay
   knowingly rather than something the library defaults into. Exercised by
@@ -135,7 +135,7 @@ Module: `warp/_src/geometry/sparse_marching_cubes.py` (public re-exports in
 `warp/geometry.py`).
 
 **GPU octree construction** (`_build_lipschitz_octree`). Cells are stored as a
-flat `wp.array(dtype=wp.vec3i)` of integer subscripts. Each level: evaluate the
+flat `wp.array[wp.vec3i]` of integer subscripts. Each level: evaluate the
 field at cell centers, mark cells within the Lipschitz band, stream-compact the
 survivors with `wp._src.utils.array_scan`, and subdivide each survivor into 8
 children. The only host synchronizations are the per-level compaction counts
@@ -179,10 +179,16 @@ is deterministic. Confirmed on both CPU (multithreaded) and CUDA.
 # Full pipeline: implicit function -> mesh. Parameterized exactly like
 # warp.geometry.IsoSurfaceMarchingCubes.extract, so the two are interchangeable.
 verts, indices = wp.geometry.sparse_marching_cubes(
-    sdf,                 # evaluate(points: wp.array(dtype=wp.vec3)) -> wp.array(dtype=wp.float32)
-    nx, ny, nz,
-    lower=None, upper=None,
-    threshold=0.0, lipschitz_bound=1.0, device=None, return_stats=False,
+    sdf,  # evaluate(points: wp.array[wp.vec3]) -> wp.array[wp.float32]
+    nx,
+    ny,
+    nz,
+    lower=None,
+    upper=None,
+    threshold=0.0,
+    lipschitz_bound=1.0,
+    device=None,
+    return_stats=False,
 )
 
 # Stage 1: choose occupied cells (cubic root box; lower-level primitive, not
@@ -191,9 +197,12 @@ cells, cell_width = wp.geometry.sparse_cells_via_lipschitz_pruning(sdf, origin, 
 
 # Stage 2: extract on an explicit cell set (e.g. marked voxels from a model).
 verts, indices = wp.geometry.sparse_marching_cubes_from_cells(
-    cells,               # (N, 3) int subscripts
-    corner_values,       # (N, 8) field values, in IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS order
-    origin, cell_width, threshold=0.0, device=None,
+    cells,  # (N, 3) int subscripts
+    corner_values,  # (N, 8) field values, in IsoSurfaceMarchingCubes.CUBE_CORNER_OFFSETS order
+    origin,
+    cell_width,
+    threshold=0.0,
+    device=None,
 )
 ```
 
@@ -362,7 +371,7 @@ Tests live in `warp/tests/geometry/test_sparse_marching_cubes.py` and run across
   reconciliation described above.
 - **No padding for exact power-of-two grids (regression guard)** -- for
   `nx = ny = nz = 2**depth + 1`, `culled_cells` is exactly zero and
-  `leaf_cells`/`sdf_evaluations` exactly match fixed values recorded for that
+  `leaf_cells`/`field_evaluations` exactly match fixed values recorded for that
   depth. This is a deterministic stand-in for a performance-regression test
   (unit tests must not assert on timing, per `AGENTS.md`): if the generalized,
   anisotropic-capable code path ever added overhead for the common isotropic

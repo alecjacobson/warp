@@ -314,17 +314,17 @@ def main():
                 f"dense={dense_tris} sparse={sparse_tris} (speedup would be unfair)"
             )
 
-        eval_ratio = dense_evals / max(stats["sdf_evaluations"], 1)
+        eval_ratio = dense_evals / max(stats["field_evaluations"], 1)
         if dense_ms is not None:
             print(
                 f"{depth:>5} {resolution:>6} {dense_ms:>11.3f} {sparse_ms:>12.3f} {dense_ms / sparse_ms:>7.2f}x "
-                f"{dense_evals:>13,} {stats['sdf_evaluations']:>13,} {eval_ratio:>6.1f}x "
+                f"{dense_evals:>13,} {stats['field_evaluations']:>13,} {eval_ratio:>6.1f}x "
                 f"{stats['leaf_cells']:>11,} {sparse_tris:>9,}"
             )
         else:
             print(
                 f"{depth:>5} {resolution:>6} {'OOM':>11} {sparse_ms:>12.3f} {'--':>8} "
-                f"{dense_evals:>13,} {stats['sdf_evaluations']:>13,} {eval_ratio:>6.1f}x "
+                f"{dense_evals:>13,} {stats['field_evaluations']:>13,} {eval_ratio:>6.1f}x "
                 f"{stats['leaf_cells']:>11,} {sparse_tris:>9,}"
             )
 

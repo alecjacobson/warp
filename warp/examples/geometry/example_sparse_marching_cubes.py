@@ -12,7 +12,7 @@
 #
 # The implicit function here is a signed distance field to the Stanford
 # bunny mesh (evaluated on the GPU with a winding-number sign), re-meshed
-# every frame as it spins. Compare with example_marching_cubes.py, which
+# every frame as it spins. Compare with example_isosurface.py, which
 # extracts a surface from a dense field.
 #
 # Rendering:
@@ -199,7 +199,7 @@ class Example:
         verts, indices = wp.geometry.IsoSurfaceMarchingCubes.extract(
             field, threshold=0.0, lower=self.origin, upper=upper
         )
-        stats = {"resolution": resolution, "leaf_cells": resolution**3, "sdf_evaluations": n_nodes**3}
+        stats = {"resolution": resolution, "leaf_cells": resolution**3, "field_evaluations": n_nodes**3}
         return verts, indices, stats
 
     def step(self):
@@ -228,9 +228,9 @@ class Example:
                 print(
                     f"  frame {self.frame} [{self.mode}]: resolution {resolution}^3, "
                     f"{stats['leaf_cells']:,} cells, "
-                    f"{stats['sdf_evaluations']:,} implicit evaluations "
+                    f"{stats['field_evaluations']:,} implicit evaluations "
                     f"({dense_evals:,} for a dense grid, "
-                    f"{dense_evals / max(stats['sdf_evaluations'], 1):.1f}x fewer)"
+                    f"{dense_evals / max(stats['field_evaluations'], 1):.1f}x fewer)"
                 )
 
     def _render_to(self, renderer):
