@@ -31,3 +31,30 @@ from warp._src.geometry.delaunay import (
 from warp._src.geometry.delaunay import (
     tri_tri_adjacency as tri_tri_adjacency,
 )
+from warp._src.geometry.sampling import (
+    MeshSample as MeshSample,
+)
+from warp._src.geometry.sampling import (
+    PoissonDiskSampler as PoissonDiskSampler,
+)
+from warp._src.geometry.sampling import (
+    UniformSampler as UniformSampler,
+)
+from warp._src.geometry.sampling import (
+    UniformSamplerState as UniformSamplerState,
+)
+from warp._src.geometry.sampling import (
+    draw as draw,
+)
+from warp._src.geometry.sampling import (
+    pair_correlation as pair_correlation,
+)
+from warp._src.geometry.sampling import (
+    poisson_disk_sample as poisson_disk_sample,
+)
+from warp._src.geometry.sampling import (
+    sample_barycentrics as sample_barycentrics,
+)
+from warp._src.geometry.sampling import (
+    uniformly_sample as uniformly_sample,
+)

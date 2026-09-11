@@ -31,7 +31,6 @@ API
    UniformSampler
    UniformSamplerState
    draw
-   geodesic_distance
    pair_correlation
    poisson_disk_sample
    sample_barycentrics
