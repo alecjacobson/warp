@@ -858,14 +858,22 @@ def _poisson_gather_kernel(
     out_priority[tid] = in_priority[j]
 
 
+# Extension seam: this sampler is radius-driven (count emergent). A future
+# count-driven strategy (e.g. weighted sample elimination to an exact count)
+# should slot in additively -- keep ``radius`` widen-able to optional and reserve
+# the keyword ``num_points`` for the target count. See
+# ``design/parallel-poisson-disk-sampling.md`` ("Future extension") before adding
+# knobs here, so the naming and control-flow stay clean rather than being worked
+# around later.
 class PoissonDiskSampler:
     """Draw a Poisson-disk (blue-noise) point set over a triangle mesh surface.
 
-    No two returned samples are closer than ``radius`` in Euclidean distance, and
-    the set is *maximal*: no further candidate could be added without violating
-    that spacing. The distribution therefore has the characteristic blue-noise
-    spectrum -- suppressed low frequencies and no structured aliasing -- which
-    makes it well suited to stippling, scattering, remeshing seeds, and
+    Sampling is driven by a target ``radius``: no two returned samples are closer
+    than ``radius`` in Euclidean distance, and the set is *maximal* -- no further
+    candidate could be added without violating that spacing (so the sample count
+    is emergent, not specified). The distribution therefore has the characteristic
+    blue-noise spectrum -- suppressed low frequencies and no structured aliasing --
+    which makes it well suited to stippling, scattering, remeshing seeds, and
     Monte-Carlo integration.
 
     The sampler follows Bowers et al., *"Parallel Poisson Disk Sampling with
@@ -1216,10 +1224,11 @@ def poisson_disk_sample(
 ) -> tuple[wp.array, wp.array, wp.array]:
     """Sample a Poisson-disk (blue-noise) point set over a triangle mesh surface.
 
-    No two returned samples are closer than ``radius``, and the set is maximal.
-    This is a convenience wrapper that builds a :class:`PoissonDiskSampler` and
-    reads back its result; construct the class directly to inspect the sampler or
-    reuse the candidate pool.
+    Sampling is driven by a target ``radius``: no two returned samples are closer
+    than ``radius`` and the set is maximal (the count is emergent). This is a
+    convenience wrapper that builds a :class:`PoissonDiskSampler` and reads back
+    its result; construct the class directly to inspect the sampler or reuse the
+    candidate pool.
 
     Args:
         points: Vertex positions, either a :class:`warp.array` of
