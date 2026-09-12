@@ -200,3 +200,45 @@ r, g = geo.pair_correlation(sampler.points, area=sampler.total_area, r_max=0.3)
   and reports throughput. No speedup-ratio assertions (flaky in CI).
 - **Example**: a headless polyscope script renders the mesh and its Poisson-disk
   samples and writes an animated GIF sweeping the radius.
+
+## Future extension: count-controlled sampling (reserved API surface)
+
+The current sampler is **radius-driven**: you specify `radius`, and the sample
+count is emergent (a maximal set). A natural future addition is a
+**count-driven** strategy -- e.g. weighted sample elimination (Yuksel 2015, as in
+Open3D): oversample, then greedily remove the highest-weight samples until an
+exact target count remains. We deliberately do **not** implement it yet (no
+current use case truly needs an exact count -- see the PhysicsNeMo comparison in
+`tools/benchmarks/poisson_vs_physicsnemo/`, whose own pipelines hit fixed sizes
+with plain random subsampling), but the present API is shaped so it can be added
+**additively, with no deprecation**. To keep that true, later work should follow
+these reservations rather than reinventing them:
+
+- **Control knob: `num_points`.** Reserve the keyword `num_points: int | None`
+  for the target count. Do *not* use `target_num_points` (verbose) or a separate
+  `poisson_disk_sample_count()` function -- keep a single entry point. `num_points`
+  matches the existing `num_candidates` / `num_samples` naming.
+- **`radius` becomes optional.** Widen `radius: float` to `radius: float | None =
+  None` and require *exactly one* of `radius` / `num_points`. Widening a required
+  argument to optional is backward compatible, so existing radius callers are
+  untouched. In count mode, `radius` (if also given) is a lower-bound spacing hint.
+- **Infer the algorithm from the control knob; reserve `mode` only if needed.**
+  `radius` given -> the current parallel maximal-independent-set fill; `num_points`
+  given -> elimination. Add an explicit `mode`/`strategy` keyword *only* if the two
+  axes ever need to vary independently (e.g. elimination targeting a radius). Do
+  not add a single-valued `mode` now -- an argument with one legal value is its own
+  awkwardness.
+- **Reuse the oversampling knobs.** Elimination also draws a dense pool first, so
+  `num_candidates` / `candidate_multiplier` keep their meaning for both strategies.
+- **Return shape is unchanged.** Elimination keeps a subset of the candidate pool,
+  so each surviving sample still has a face + barycentric `uv`; the
+  `(faces, uv, points)` tuple (and the class attributes) stay as they are.
+- **Keyword-only additions.** Everything after `radius` is keyword-only, so new
+  knobs are purely additive; never insert a new positional parameter.
+- **Maximality is now scoped in the docstrings** to the radius-driven path, so a
+  fixed-count (non-maximal) mode will not contradict the class contract.
+
+Orthogonal naming note (not about this algorithm): if more distance metrics are
+ever added beyond Euclidean/geodesic, prefer promoting the `geodesic: bool` flag
+to a `metric: str` enum (keeping `geodesic=` as a compatibility alias) rather than
+accreting more booleans.
