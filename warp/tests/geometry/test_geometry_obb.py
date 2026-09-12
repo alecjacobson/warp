@@ -135,14 +135,16 @@ def test_obb_recovers_rotated_box(test, device):
 
 
 def test_obb_pca_helps_elongated_shapes(test, device):
-    # On a strongly elongated shape the spiral's angular resolution is the
-    # limiting factor, and the covariance eigenvectors are a much better guess.
+    # On a strongly elongated shape the spiral's angular resolution is the limiting factor,
+    # and the covariance eigenvectors are a much better guess. Refinement is disabled here
+    # (refine_iters=0) to isolate the initial search: with it on, the local search closes the
+    # gap and PCA no longer helps measurably.
     rng = np.random.default_rng(73)
     p_np, extents = _rod(rng)
     points = wp.array(p_np, dtype=wp.vec3, device=device)
 
-    _, _, without_pca = _host(geo.oriented_bounding_box(points, num_samples=32, include_pca=False))
-    _, _, with_pca = _host(geo.oriented_bounding_box(points, num_samples=32, include_pca=True))
+    _, _, without_pca = _host(geo.oriented_bounding_box(points, num_samples=32, include_pca=False, refine_iters=0))
+    _, _, with_pca = _host(geo.oriented_bounding_box(points, num_samples=32, include_pca=True, refine_iters=0))
 
     test.assertLess(with_pca, without_pca)
     test.assertLess(with_pca, float(np.prod(extents)) * 2.0)

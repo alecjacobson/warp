@@ -43,29 +43,38 @@ def super_fibonacci(i: int, n: int) -> wp.quat:
     return wp.quat(r * wp.sin(alpha), r * wp.cos(alpha), R * wp.sin(beta), R * wp.cos(beta))
 
 
-_SF_PLASTIC = wp.constant(wp.float64(0.7548776662466927))
-"""Reciprocal of the plastic number, a low-discrepancy step for the refinement angles."""
-
-_GOLDEN_ANGLE = wp.constant(wp.float32(2.399963229728653))
-"""Golden angle in radians, spacing successive refinement axes on a Fibonacci sphere."""
+@wp.func
+def radical_inverse(base: int, i: int) -> wp.float32:
+    # Van der Corput radical inverse of ``i`` in ``base``: reflect its base-``base`` digits
+    # about the radix point into ``[0, 1)``. The building block of the Halton sequence.
+    digit = 1.0 / wp.float32(base)
+    scale = digit
+    result = wp.float32(0.0)
+    rem = i
+    while rem > 0:
+        result += wp.float32(rem % base) * scale
+        rem = rem // base
+        scale *= digit
+    return result
 
 
 @wp.func
 def small_rotation(i: int, n: int, radius: wp.float32) -> wp.quat:
-    # A deterministic small rotation used to probe orientations near a current best.
-    # The axis is the i-th point of a Fibonacci sphere (near-uniform directions) and the
-    # signed angle is a low-discrepancy value in ``[-radius, radius]``; together the batch
-    # samples a shrinking spherical neighborhood of rotations without any host randomness.
-    u = (wp.float32(i) + 0.5) / wp.float32(n)
-    z = 1.0 - 2.0 * u
-    r = wp.sqrt(wp.max(0.0, 1.0 - z * z))
-    phi = _GOLDEN_ANGLE * wp.float32(i)
-    axis = wp.vec3(r * wp.cos(phi), r * wp.sin(phi), z)
+    # The ``i``-th deterministic rotation probing a neighborhood of angular radius ``radius``
+    # around the identity. The rotation vector is a 3D Halton point (bases 2, 3, 5) mapped
+    # uniformly into the ball: being low-discrepancy it covers the ball evenly instead of
+    # clumping like an axis/angle split, and the radial map ``r = radius * u^(1/3)`` samples
+    # the whole ball rather than concentrating near the center, where the larger corrective
+    # steps of the local search would otherwise be missed. ``n`` is unused (the Halton
+    # sequence is progressive); it is kept for call-site compatibility.
+    idx = i + 1  # Halton point 0 is the origin (a zero rotation); skip it.
+    radial = wp.pow(radical_inverse(2, idx), 1.0 / 3.0)
+    cos_theta = 1.0 - 2.0 * radical_inverse(3, idx)
+    sin_theta = wp.sqrt(wp.max(0.0, 1.0 - cos_theta * cos_theta))
+    phi = 2.0 * wp.pi * radical_inverse(5, idx)
+    axis = wp.vec3(sin_theta * wp.cos(phi), sin_theta * wp.sin(phi), cos_theta)
 
-    t = wp.float64(i) * _SF_PLASTIC
-    frac = wp.float32(t - wp.floor(t))
-    angle = radius * (2.0 * frac - 1.0)
-
+    angle = radius * radial
     half = 0.5 * angle
     s = wp.sin(half)
     return wp.quat(axis[0] * s, axis[1] * s, axis[2] * s, wp.cos(half))
