@@ -13,7 +13,8 @@ current CUDA stream) -- every GPU kernel is PhysicsNeMo's own code, unchanged.
 Run in a separate environment that has torch (CUDA), Warp, and SciPy::
 
     python -m venv .venv && . .venv/bin/activate
-    pip install "torch" warp-lang scipy --index-url <a CUDA build matching your driver>
+    pip install torch --index-url <a torch CUDA wheel index matching your driver>
+    pip install warp-lang scipy
     python tools/benchmarks/poisson_vs_physicsnemo/run_physicsnemo.py
 
 See ``README.md`` for the full workflow, the pinned commit, and results.

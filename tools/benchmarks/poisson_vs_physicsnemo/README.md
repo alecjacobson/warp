@@ -30,7 +30,8 @@ uv run --with scipy tools/benchmarks/poisson_vs_physicsnemo/run_ours.py
 # 3. PhysicsNeMo, in a separate env with torch (a CUDA build matching your
 #    driver), warp-lang, and scipy:
 python -m venv /tmp/pnemo && . /tmp/pnemo/bin/activate
-pip install torch warp-lang scipy   # pick a torch CUDA wheel for your driver
+pip install torch --index-url <a torch CUDA wheel index matching your driver>
+pip install warp-lang scipy
 python tools/benchmarks/poisson_vs_physicsnemo/run_physicsnemo.py
 ```
 
