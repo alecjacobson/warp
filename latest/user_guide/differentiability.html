@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Differentiability &#8212; Warp 1.18.0.dev4</title>
+    <title>Differentiability &#8212; Warp 1.19.0.dev0</title>
   
   
   
@@ -44,7 +44,7 @@
 
 
 
-    <script src="../_static/documentation_options.js?v=37cfc7f0"></script>
+    <script src="../_static/documentation_options.js?v=b77277d8"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -71,7 +71,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="1.18.0.dev4" />
+  <meta name="docsearch:version" content="1.19.0.dev0" />
   
     
     <script src="../_static/searchtools.js"></script>
@@ -148,11 +148,11 @@
       
     
     
-    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.18.0.dev4 - Home"/>
-    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.18.0.dev4 - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.19.0.dev0 - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.19.0.dev0 - Home"/>
   
   
-    <p class="title logo__title">Warp 1.18.0.dev4</p>
+    <p class="title logo__title">Warp 1.19.0.dev0</p>
   
 </a></div>
     
@@ -292,11 +292,11 @@
       
     
     
-    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.18.0.dev4 - Home"/>
-    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.18.0.dev4 - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.19.0.dev0 - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.19.0.dev0 - Home"/>
   
   
-    <p class="title logo__title">Warp 1.18.0.dev4</p>
+    <p class="title logo__title">Warp 1.19.0.dev0</p>
   
 </a>
 
@@ -679,6 +679,12 @@ detect array overwrites. <a class="reference internal" href="#array-overwrite-tr
 <p>Though in-place operations such as <code class="docutils literal notranslate"><span class="pre">x[tid]</span> <span class="pre">+=</span> <span class="pre">1.0</span></code> and <a class="reference internal" href="../language_reference/_generated/warp.atomic_add.html#warp._src.lang.atomic_add" title="warp._src.lang.atomic_add"><code class="xref py py-func docutils literal notranslate"><span class="pre">wp.atomic_add()</span></code></a> are technically overwrite operations,
 the Warp graph specifically accommodates adjoint accumulation in these cases. <a class="reference internal" href="#in-place-math"><span class="std std-ref">Read more here</span></a>.</p>
 </div>
+<p>Warp can differentiate builtin atomic <code class="docutils literal notranslate"><span class="pre">+=</span></code> and <code class="docutils literal notranslate"><span class="pre">-=</span></code> updates to array components.
+It rejects other augmented assignments to differentiable components when generating
+backward code, including those handled by user-defined operators. For example,
+<code class="docutils literal notranslate"><span class="pre">values[i].x</span> <span class="pre">+=</span> <span class="pre">rhs</span></code> is unsupported if a user-defined <code class="docutils literal notranslate"><span class="pre">add</span></code> function handles it.
+Write the result to a separate array, or set
+<code class="docutils literal notranslate"><span class="pre">enable_backward=False</span></code> on the kernel if you only need forward execution.</p>
 </section>
 <section id="copying-is-differentiable">
 <h2>Copying is Differentiable<a class="headerlink" href="#copying-is-differentiable" title="Link to this heading">#</a></h2>

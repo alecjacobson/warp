@@ -251,10 +251,10 @@ Pass the *data* array together with a list of :class:`wp.int32 <warp.int32>` ind
     import warp as wp
 
     # Base data.
-    arr = wp.array((1.23, 2.34, 3.45, 4.56, 5.67, 6.78), device="cuda")
+    arr = wp.array((1.23, 2.34, 3.45, 4.56, 5.67, 6.78))
 
     # Only view elements at odd indices.
-    idx = wp.array((1, 3, 5), dtype=wp.int32, device="cuda")
+    idx = wp.array((1, 3, 5), dtype=wp.int32)
     sub = wp.indexedarray(arr, [idx])  # Same as wp.indexedarray1d(...)
     print(sub)
 
@@ -421,7 +421,7 @@ Structured arrays fully support nested structs and Warp vector (and matrix) type
     na["f"][2] = 13.37
     na["bar"]["x"][4] = wp.vec3(1.0)
 
-    a = wp.array(na, dtype=Foo, device="cuda:0")
+    a = wp.array(na, dtype=Foo)
 
     print(a.numpy())
 
@@ -1996,7 +1996,10 @@ API Capture: Saving and Loading Graphs
     surface, the C ``wp_apic_*`` API, and the recorded operation set are all
     subject to change without a formal deprecation cycle. ``.wrp`` files written
     by one version of Warp may not be loadable by another. The current writer
-    emits format version 15, and the reader accepts versions 13 through 15.
+    emits format version 16, and the reader accepts versions 13 through 16.
+    Version 16 stores kernel launch extents as unsigned 32-bit values. Older
+    files whose launch extents have the high bit set are rejected because those
+    values overflowed the signed representation used by their format.
 
 The APIC operation stream lets Warp serialize a supported captured graph to
 disk and load it back later from another Python program or a standalone C++
@@ -2214,6 +2217,9 @@ declared in `warp/native/apic.h <https://github.com/NVIDIA/warp/blob/main/warp/n
     // Release the loaded graph and its associated allocations.
     void wp_apic_destroy_graph(APICGraph* graph);
 
+For native library headers, build-system setup, platform-specific linking,
+deployment, and version compatibility, see :ref:`native_library_linking`.
+
 Two reference C++ examples ship with Warp under ``warp/examples/cpp/``. Both
 implement the same interactive 2-D wave simulation visualized with GLFW/OpenGL,
 and both take their captured ``.wrp`` file from a Python ``capture_wave.py``
@@ -2301,14 +2307,23 @@ CPU device. ``main.cpp`` does not link against CUDA at all. Replay goes through
     wp_apic_destroy_graph(graph);
 
 CPU graph replay needs function pointers for each recorded kernel. These are
-resolved from the ``.o`` files in the companion ``_modules/`` directory by
-loading the ``warp-clang`` library at runtime and calling its ``wp_load_obj`` /
-``wp_lookup`` entry points, then registering each pointer with the loaded graph
-via ``wp_apic_register_loaded_cpu_kernel``. The example walks every kernel
-returned by ``wp_apic_get_num_kernels`` and does this resolution once at
-startup. Kernel metadata includes both the kernel key and module hash so
-same-key kernels from distinct ``module="unique"`` modules resolve to the
-correct object file and function pointer. The C API surface for this lookup is:
+resolved from the ``.o`` files in the companion ``_modules/`` directory. The
+CPU example links against ``warp-clang`` at build time, loads each object with
+``wp_load_obj()``, resolves its functions with ``wp_lookup()``, and registers
+each pointer with the loaded graph via
+``wp_apic_register_loaded_cpu_kernel()``.
+
+Before the first call to ``wp_load_obj()``, a standalone native consumer must
+pass the core runtime table returned by ``wp_cpu_block_runtime_get_api()`` to
+``wp_llvm_set_cpu_block_runtime()``. This lets JIT-loaded kernels resolve the
+cooperative CPU block entry points implemented by the core Warp library. Warp's
+Python runtime performs the same binding during initialization.
+
+The example walks every kernel returned by ``wp_apic_get_num_kernels()`` and
+does this resolution once at startup. Kernel metadata includes both the kernel
+key and module hash so same-key kernels from distinct ``module="unique"``
+modules resolve to the correct object file and function pointer. The C API
+surface for this lookup is:
 
 .. code:: c
 
@@ -2769,9 +2784,11 @@ Textures can be sampled inside kernels using the :func:`wp.texture_sample() <war
         output[tid] = wp.texture_sample(tex, uv, dtype=float)
 
 Supported data types include ``wp.uint8``, ``wp.uint16``, ``wp.uint32``, ``wp.int8``, ``wp.int16``,
-``wp.int32``, ``wp.float16``, and ``wp.float32``. Unsigned integer textures are automatically
-normalized to the [0, 1] range when sampled; signed integer textures are normalized to [-1, 1];
-float types are returned as-is.
+``wp.int32``, ``wp.float16``, and ``wp.float32``. Unsigned 8- and 16-bit integer textures are
+automatically normalized to the [0, 1] range when sampled; signed 8- and 16-bit integer textures are
+normalized to [-1, 1]; float types are returned as-is. Sampling a ``wp.uint32`` or ``wp.int32``
+texture causes kernel execution to fail, but these dtypes remain usable for storage, copies, and
+interop.
 
 .. seealso:: :ref:`Reference <builtins-textures>` for the texture sampling functions available in kernels.
 
@@ -2943,10 +2960,11 @@ can be saved to a USD file using the :class:`warp.render.UsdRenderer`.
     :class:`wp.geometry.IsoSurfaceMarchingCubes
     <warp.geometry.IsoSurfaceMarchingCubes>` and will be removed in a future
     version of Warp. It is resolved lazily, so the two names refer to the same
-    class and accessing it emits a warning. Because it is resolved at runtime
-    rather than imported, it does not appear in ``warp/__init__.pyi``; annotate
-    with :class:`wp.geometry.IsoSurfaceMarchingCubes
-    <warp.geometry.IsoSurfaceMarchingCubes>` instead.
+    class and accessing it emits a warning.
+
+    The legacy ``domain_bounds_lower_corner`` and
+    ``domain_bounds_upper_corner`` constructor arguments and attributes remain
+    available as deprecated aliases of ``lower`` and ``upper``, respectively.
 
 .. testcode::
     :skipif: wp.get_cuda_device_count() == 0

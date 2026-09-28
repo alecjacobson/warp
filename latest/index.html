@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>NVIDIA Warp Documentation &#8212; Warp 1.18.0.dev4</title>
+    <title>NVIDIA Warp Documentation &#8212; Warp 1.19.0.dev0</title>
   
   
   
@@ -44,7 +44,7 @@
 
 
 
-    <script src="_static/documentation_options.js?v=37cfc7f0"></script>
+    <script src="_static/documentation_options.js?v=b77277d8"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -69,7 +69,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="1.18.0.dev4" />
+  <meta name="docsearch:version" content="1.19.0.dev0" />
   
     
     <script src="_static/searchtools.js"></script>
@@ -146,11 +146,11 @@
       
     
     
-    <img src="_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.18.0.dev4 - Home"/>
-    <img src="_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.18.0.dev4 - Home"/>
+    <img src="_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.19.0.dev0 - Home"/>
+    <img src="_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.19.0.dev0 - Home"/>
   
   
-    <p class="title logo__title">Warp 1.18.0.dev4</p>
+    <p class="title logo__title">Warp 1.19.0.dev0</p>
   
 </a></div>
     
@@ -290,11 +290,11 @@
       
     
     
-    <img src="_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.18.0.dev4 - Home"/>
-    <img src="_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.18.0.dev4 - Home"/>
+    <img src="_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.19.0.dev0 - Home"/>
+    <img src="_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.19.0.dev0 - Home"/>
   
   
-    <p class="title logo__title">Warp 1.18.0.dev4</p>
+    <p class="title logo__title">Warp 1.19.0.dev0</p>
   
 </a>
 
@@ -542,7 +542,12 @@ with frameworks such as PyTorch, JAX and Paddle.</p>
 <div class="highlight-sh notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>warp-lang
 </pre></div>
 </div>
-<p>For conda, nightly builds, CUDA 13 builds, building from source, and driver requirements,
+<p>PyPI and nightly wheels for Linux and Windows use CUDA Toolkit 13.4. They require an
+NVIDIA R580-series or newer driver and a Turing (<code class="docutils literal notranslate"><span class="pre">sm_75</span></code>) or newer GPU for CUDA acceleration.
+For CUDA 12 environments, download a <code class="docutils literal notranslate"><span class="pre">+cu12</span></code> wheel from
+<a class="reference external" href="https://github.com/NVIDIA/warp/releases">GitHub Releases</a> or build Warp from source with CUDA 12.
+Warp can also run on the CPU. The Apple Silicon macOS wheel is CPU-only.</p>
+<p>For conda, nightly builds, CUDA 12 compatibility wheels, building from source, and driver requirements,
 see <a class="reference internal" href="user_guide/installation.html"><span class="doc">Installation</span></a>.</p>
 </section>
 <section id="example-gallery">
@@ -726,6 +731,18 @@ tile-based GPU programming. Install the optional dependencies with
 <td><p>darcy level-set optimization</p></td>
 <td><p>elastic shape optimization</p></td>
 </tr>
+<tr class="row-odd"><td><a class="reference external image-reference" href="https://github.com/NVIDIA/warp/blob/main/warp/examples/fem/example_cantilever_topology_optimization.py"><img alt="_images/fem_cantilever_topology_optimization.png" src="_images/fem_cantilever_topology_optimization.png" />
+</a>
+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="row-even"><td><p>cantilever topology optimization</p></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -780,7 +797,11 @@ tile-based GPU programming. Install the optional dependencies with
 </td>
 </tr>
 <tr class="row-even"><td><p>diffray</p></td>
-<td><p>fluid checkpoint</p></td>
+<td><div class="line-block">
+<div class="line">fluid checkpoint</div>
+<div class="line"><a class="reference external" href="https://github.com/NVIDIA/warp/blob/main/warp/examples/optim/example_fluid_checkpoint.py">basic</a> · <a class="reference external" href="https://github.com/NVIDIA/warp/blob/main/warp/examples/optim/example_fluid_checkpoint_custom_backward.py">custom backward</a></div>
+</div>
+</td>
 <td><p>particle repulsion</p></td>
 <td><p>navier-stokes perturbation</p></td>
 </tr>
