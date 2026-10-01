@@ -87,6 +87,24 @@ class LinearSolver(ABC):
         start on entry (zero if none) and the solution on return.
         """
 
+    def solve_many(self, rhs: wp.array, x: wp.array) -> None:
+        """Solve ``matrix x[:, j] = rhs[:, j]`` for every column of the two-dimensional
+        ``rhs`` / ``x`` (shape ``(n, k)``), in place.
+
+        The default loops over columns calling :meth:`solve`. A backend that can solve
+        several right-hand sides together (e.g. a direct factorization reused across a
+        multi-RHS triangular solve) should override this -- that is where most of the
+        speedup of batching the solves comes from.
+        """
+        n, k = rhs.shape
+        column_rhs = wp.empty(n, dtype=rhs.dtype, device=rhs.device)
+        column_x = wp.empty(n, dtype=x.dtype, device=x.device)
+        for j in range(k):
+            wp.launch(_get_column, dim=n, inputs=[rhs, j], outputs=[column_rhs], device=rhs.device)
+            wp.launch(_get_column, dim=n, inputs=[x, j], outputs=[column_x], device=x.device)
+            self.solve(column_rhs, column_x)
+            wp.launch(_set_column, dim=n, inputs=[x, j, column_x], device=x.device)
+
 
 class ConjugateGradientSolver(LinearSolver):
     """Default backend: Jacobi-preconditioned conjugate gradient.
@@ -207,6 +225,23 @@ class MetricHarmonicSolver:
         self._star1: wp.array | None = None
         self._prepared = False
 
+        # Scratch reused across solve()/vjp() so neither allocates per iteration: this
+        # keeps memory flat (important for large direct factorizations) and lets the
+        # whole loop be captured into a CUDA graph.
+        self._sol = wp.empty(num_points, dtype=wp.float32, device=self.device)
+        self._edge = wp.empty(self.num_edges, dtype=wp.float32, device=self.device)
+        self._forcing = wp.empty(num_points, dtype=wp.float32, device=self.device)
+        self._interior_col = wp.empty(self.num_interior, dtype=wp.float32, device=self.device)
+        self._full = wp.empty(num_points, dtype=wp.float32, device=self.device)
+        self._vertex_col = wp.empty(num_points, dtype=wp.float32, device=self.device)
+        self._d0_w = wp.empty(self.num_edges, dtype=wp.float32, device=self.device)
+        self._d0_lambda = wp.empty(self.num_edges, dtype=wp.float32, device=self.device)
+        # Batched (n, k) right-hand side / solution / scattered buffers, sized lazily.
+        self._rhs_batch: wp.array | None = None
+        self._x_batch: wp.array | None = None
+        self._scattered: wp.array | None = None
+        self._batch_width = 0
+
     def prepare(self, star1: wp.array) -> None:
         """Materialize the reduced operator ``L_uu(s)`` for the metric ``star1``.
 
@@ -226,11 +261,18 @@ class MetricHarmonicSolver:
         self._star1 = star1
         self._prepared = True
 
-    def _apply_full(self, vector: wp.array) -> wp.array:
-        """Apply the unreduced ``L(s) = d0^T diag(s) d0`` to a full-length vector."""
-        edge = bsr_mv(self.d0, vector)
-        wp.launch(_scale_in_place, dim=self.num_edges, inputs=[edge, self._star1], device=self.device)
-        return bsr_mv(self.d0, edge, transpose=True)
+    def _apply_full_into(self, vector: wp.array, out: wp.array) -> None:
+        """Apply the unreduced ``L(s) = d0^T diag(s) d0`` to ``vector``, writing ``out``."""
+        bsr_mv(self.d0, vector, y=self._edge, beta=0.0)
+        wp.launch(_scale_in_place, dim=self.num_edges, inputs=[self._edge, self._star1], device=self.device)
+        bsr_mv(self.d0, self._edge, y=out, transpose=True, beta=0.0)
+
+    def _ensure_batch(self, width: int) -> None:
+        if self._batch_width != width:
+            self._rhs_batch = wp.empty((self.num_interior, width), dtype=wp.float32, device=self.device)
+            self._x_batch = wp.empty((self.num_interior, width), dtype=wp.float32, device=self.device)
+            self._scattered = wp.empty((self.num_points, width), dtype=wp.float32, device=self.device)
+            self._batch_width = width
 
     def solve(self, boundary_values: wp.array, warm_start: wp.array | None = None) -> wp.array:
         """Solve ``L(s) w = 0`` with ``w[boundary] = boundary_values``.
@@ -252,24 +294,51 @@ class MetricHarmonicSolver:
         self._require_prepared()
         columns_2d = boundary_values.ndim == 2
         num_functions = boundary_values.shape[1] if columns_2d else 1
+        self._ensure_batch(num_functions)
         result = wp.zeros(
             (self.num_points, num_functions) if columns_2d else self.num_points, dtype=wp.float32, device=self.device
         )
 
+        # Build every column's reduced right-hand side and keep its scattered boundary
+        # data, then solve all columns together.
         for c in range(num_functions):
             column = _column_of(boundary_values, c, columns_2d, self.device)
-            solution = bsr_mv(self._boundary_selection, column, transpose=True)  # scatter boundary data
-            forcing = self._apply_full(solution)
-            rhs = bsr_mv(self._interior_selection, forcing, alpha=-1.0)
+            bsr_mv(self._boundary_selection, column, y=self._sol, transpose=True, beta=0.0)  # scatter
+            self._apply_full_into(self._sol, self._forcing)
+            bsr_mv(self._interior_selection, self._forcing, y=self._interior_col, alpha=-1.0, beta=0.0)
+            wp.launch(
+                _set_column, dim=self.num_interior, inputs=[self._rhs_batch, c, self._interior_col], device=self.device
+            )
+            wp.launch(_set_column, dim=self.num_points, inputs=[self._scattered, c, self._sol], device=self.device)
 
-            if warm_start is None:
-                x = wp.zeros(self.num_interior, dtype=wp.float32, device=self.device)
-            else:
+        if warm_start is None:
+            self._x_batch.zero_()
+        else:
+            for c in range(num_functions):
                 warm_column = _column_of(warm_start, c, columns_2d, self.device)
-                x = bsr_mv(self._interior_selection, warm_column)
-            self.solver.solve(rhs, x)
-            solution = bsr_mv(self._interior_selection, x, y=solution, transpose=True, alpha=1.0, beta=1.0)
-            _store(result, solution, c, columns_2d, self.device)
+                bsr_mv(self._interior_selection, warm_column, y=self._interior_col, beta=0.0)
+                wp.launch(
+                    _set_column,
+                    dim=self.num_interior,
+                    inputs=[self._x_batch, c, self._interior_col],
+                    device=self.device,
+                )
+
+        self.solver.solve_many(self._rhs_batch, self._x_batch)
+
+        for c in range(num_functions):
+            wp.launch(
+                _get_column, dim=self.num_points, inputs=[self._scattered, c], outputs=[self._sol], device=self.device
+            )
+            wp.launch(
+                _get_column,
+                dim=self.num_interior,
+                inputs=[self._x_batch, c],
+                outputs=[self._interior_col],
+                device=self.device,
+            )
+            bsr_mv(self._interior_selection, self._interior_col, y=self._sol, transpose=True, alpha=1.0, beta=1.0)
+            _store(result, self._sol, c, columns_2d, self.device)
 
         return result
 
@@ -289,23 +358,38 @@ class MetricHarmonicSolver:
         self._require_prepared()
         columns_2d = solution.ndim == 2
         num_functions = solution.shape[1] if columns_2d else 1
+        self._ensure_batch(num_functions)
         grad_star1 = wp.zeros(self.num_edges, dtype=wp.float32, device=self.device)
 
+        # Adjoint systems share the operator with the forward solve, so batch them too.
         for c in range(num_functions):
-            w_column = _column_of(solution, c, columns_2d, self.device)
             g_column = _column_of(grad_solution, c, columns_2d, self.device)
+            bsr_mv(self._interior_selection, g_column, y=self._interior_col, beta=0.0)
+            wp.launch(
+                _set_column, dim=self.num_interior, inputs=[self._rhs_batch, c, self._interior_col], device=self.device
+            )
 
-            g_interior = bsr_mv(self._interior_selection, g_column)
-            adjoint = wp.zeros(self.num_interior, dtype=wp.float32, device=self.device)
-            self.solver.solve(g_interior, adjoint)
-            adjoint_full = bsr_mv(self._interior_selection, adjoint, transpose=True)  # zero on the boundary
+        self._x_batch.zero_()
+        self.solver.solve_many(self._rhs_batch, self._x_batch)
 
-            d0_w = bsr_mv(self.d0, w_column)
-            d0_lambda = bsr_mv(self.d0, adjoint_full)
+        for c in range(num_functions):
+            wp.launch(
+                _get_column,
+                dim=self.num_interior,
+                inputs=[self._x_batch, c],
+                outputs=[self._interior_col],
+                device=self.device,
+            )
+            bsr_mv(
+                self._interior_selection, self._interior_col, y=self._full, transpose=True, beta=0.0
+            )  # zero on boundary
+            w_column = _column_of(solution, c, columns_2d, self.device)
+            bsr_mv(self.d0, w_column, y=self._d0_w, beta=0.0)
+            bsr_mv(self.d0, self._full, y=self._d0_lambda, beta=0.0)
             wp.launch(
                 _accumulate_neg_product,
                 dim=self.num_edges,
-                inputs=[d0_w, d0_lambda],
+                inputs=[self._d0_w, self._d0_lambda],
                 outputs=[grad_star1],
                 device=self.device,
             )

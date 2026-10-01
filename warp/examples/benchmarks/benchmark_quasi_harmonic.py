@@ -37,17 +37,24 @@ It can run directly on the Wang & Solomon ``qhw-code`` example datasets (a
 directory holding ``V.mtx``, ``F.mtx`` for triangles or tets, ``B.mtx`` boundary
 indices, ``BC.mtx`` handle values, and optional ``mv.mtx`` lumped mass).
 
+All handle columns are solved together: :class:`~warp.geometry.MetricHarmonicSolver`
+assembles every column's right-hand side and calls the backend's ``solve_many``, and
+the cuDSS backend below back-substitutes them in one multi-RHS solve (the solves,
+which dominate, are then batched). ``--max-rhs`` caps how many columns share a solve;
+a very large 3D factor plus a wide solve workspace can exhaust device memory, in which
+case the columns are split into balanced chunks.
+
 For reference, their own ``qhw`` ``adamd`` solver (Intel MKL + CHOLMOD supernodal
 direct solve) on the ``tibiman-H`` tet mesh (22,263 vertices, 84,125 tets, 16
 handles) costs ~180 ms/iteration in the paper (1.80 s for the k=10 run on an
-i9-7900X). The exact binary, measured on the shared CPU this benchmark ran on,
-costs ~300-350 ms/iteration (it runs ~1.9x slower than the paper's machine). The
-graph-captured cuDSS loop here runs the same mesh at ~9 ms/iteration on an L40 --
-roughly a 35x per-iteration speedup *on the same machine* (GPU vs CPU). This
-compares optimization-loop cost at matched iteration counts; it is not a weight-
-quality comparison, and the per-edge DEC metric here differs from the paper's
-per-element tensor metric, so the final smoothness energies are not directly
-comparable.
+i9-7900X); the exact binary measured on the shared CPU here costs ~300-350
+ms/iteration (it runs ~1.9x slower than the paper's machine). The graph-captured
+cuDSS loop here runs that mesh at ~2.8 ms/iteration on an L40, and the larger
+``dragon-H`` mesh (330,206 vertices, 1,187,670 tets, 17 handles) at ~31 ms/iteration
+(``--max-rhs 16``) versus ~11 s/iteration for the official binary. This compares
+optimization-loop cost at matched iteration counts; it is not a weight-quality
+comparison, and the per-edge DEC metric here differs from the paper's per-element
+tensor metric, so the final smoothness energies are not directly comparable.
 
 The cuDSS backend needs the optional ``warp-cudss`` package and a cuDSS shared
 library (set ``CUDSS_LIBRARY_PATH`` or install ``nvidia-cudss-cu12``); the
@@ -98,26 +105,59 @@ _REFERENCES = {
 # all on-device, so it is safe inside a captured graph.
 # ---------------------------------------------------------------------------
 class CudssLinearSolver(warp.geometry.LinearSolver):
-    def __init__(self, mtype="spd", device=None):
+    """cuDSS direct solver with batched multi-RHS support.
+
+    ``solve_many`` solves all handle columns through cuDSS multi-RHS solves instead of
+    one at a time. ``max_rhs`` caps the number of columns solved together (the solve
+    workspace grows with it, and very large 3D factors can exhaust device memory); the
+    columns are split into balanced chunks no larger than that cap.
+    """
+
+    def __init__(self, mtype="spd", max_rhs=None, device=None):
         self.mtype = mtype
+        self.max_rhs = max_rhs
         self.device = wp.get_device(device)
         self._cud = None
+        self._matrix = None
         self._b = None
         self._x = None
+        self._nrhs = None
 
     def prepare(self, matrix):
+        self._matrix = matrix
+        if self._cud is not None:
+            self._cud.refactor(matrix)  # same pattern, new values
+
+    def _ensure(self, n, k):
         if self._cud is None:
-            self._b = wp.zeros(matrix.shape[0], dtype=matrix.scalar_type, device=self.device)
-            self._x = wp.zeros(matrix.shape[0], dtype=matrix.scalar_type, device=self.device)
+            cap = k if self.max_rhs is None else min(k, self.max_rhs)
+            num_chunks = (k + cap - 1) // cap
+            self._nrhs = (k + num_chunks - 1) // num_chunks  # balanced chunk width
+            self._b = wp.zeros(n * self._nrhs, dtype=self._matrix.scalar_type, device=self.device)
+            self._x = wp.zeros(n * self._nrhs, dtype=self._matrix.scalar_type, device=self.device)
             self._cud = warp_cudss.CudssSolver(mtype=self.mtype, device=self.device)
-            self._cud.setup(matrix, self._x, self._b)
-        else:
-            self._cud.refactor(matrix)
+            self._cud.setup(self._matrix, self._x, self._b, nrhs=self._nrhs)
 
     def solve(self, rhs, x):
-        wp.copy(self._b, rhs)
+        self._ensure(rhs.shape[0], 1)
+        n = rhs.shape[0]
+        wp.copy(self._b[:n], rhs)
         self._cud.solve()
-        wp.copy(x, self._x)
+        wp.copy(x, self._x[:n])
+
+    def solve_many(self, rhs, x):
+        n, k = rhs.shape
+        self._ensure(n, k)
+        nrhs = self._nrhs
+        for start in range(0, k, nrhs):
+            cols = range(start, min(start + nrhs, k))
+            for j, c in enumerate(cols):
+                wp.launch(
+                    _get_column, dim=n, inputs=[rhs, c], outputs=[self._b[j * n : (j + 1) * n]], device=self.device
+                )
+            self._cud.solve()
+            for j, c in enumerate(cols):
+                wp.launch(_set_column, dim=n, inputs=[x, c, self._x[j * n : (j + 1) * n]], device=self.device)
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +336,13 @@ def main():
     parser.add_argument("--res", type=int, default=128, help="Grid resolution per side (if --mesh grid).")
     parser.add_argument("--iters", type=int, default=300, help="Adam iterations to time.")
     parser.add_argument("--lr", type=float, default=0.05, help="Adam learning rate on the log-metric.")
+    parser.add_argument(
+        "--max-rhs",
+        type=int,
+        default=None,
+        help="Cap on handle columns solved together by cuDSS (default: all at once). "
+        "Lower it if a large 3D mesh exhausts device memory.",
+    )
     args = parser.parse_args()
 
     with wp.ScopedDevice(args.device):
@@ -361,7 +408,7 @@ def run(args):
         return 0.5 * float(np.sum(U.numpy() * biharmonic_U.numpy()))
 
     def make_solver(backend_name):
-        backend = CudssLinearSolver(device=device) if backend_name == "cudss" else None
+        backend = CudssLinearSolver(max_rhs=args.max_rhs, device=device) if backend_name == "cudss" else None
         return warp.geometry.MetricHarmonicSolver(
             d0, num_points, boundary, solver=backend, tol=1e-6, max_iters=4 * num_points
         )

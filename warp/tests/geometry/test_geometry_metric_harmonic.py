@@ -177,6 +177,56 @@ def test_metric_solve_custom_backend(test, device):
     test.assertEqual(backend.num_solves, 2)  # reused for both columns
 
 
+class _BatchedDenseSolver(_DenseDirectSolver):
+    """A backend that overrides ``solve_many`` to solve all columns in one shot."""
+
+    def __init__(self):
+        super().__init__()
+        self.num_solve_many = 0
+
+    def solve_many(self, rhs, x):
+        self.num_solve_many += 1
+        b = rhs.numpy().astype(np.float64)  # (n, k)
+        y = np.linalg.solve(self.factor, b)
+        solution = np.linalg.solve(self.factor.T, y)
+        wp.copy(x, wp.array(solution.astype(np.float32), dtype=wp.float32, device=self._device))
+
+
+def test_metric_solve_batched_backend(test, device):
+    """A backend overriding solve_many (batched) matches the per-column default."""
+    points_np, tris, boundary_np = _grid(5)
+    n = points_np.shape[0]
+    points = wp.array(points_np, dtype=wp.vec3, device=device)
+    indices = wp.array(tris.flatten(), dtype=wp.int32, device=device)
+    boundary = wp.array(boundary_np, dtype=wp.int32, device=device)
+
+    d0, star1 = warp.geometry.dec_operators(points, indices)
+    positive = wp.array(np.abs(star1.numpy()) + 0.5, dtype=wp.float32, device=device)
+    bc = wp.array(
+        np.random.default_rng(3).standard_normal((boundary_np.shape[0], 4)).astype(np.float32),
+        dtype=wp.float32,
+        device=device,
+    )
+
+    reference = warp.geometry.MetricHarmonicSolver(d0, n, boundary, tol=1e-10, max_iters=10 * n)
+    reference.prepare(positive)
+    solution_ref = reference.solve(bc)
+    expected = solution_ref.numpy()
+    grad_ref = reference.vjp(solution_ref, solution_ref).numpy()
+
+    backend = _BatchedDenseSolver()
+    custom = warp.geometry.MetricHarmonicSolver(d0, n, boundary, solver=backend)
+    custom.prepare(positive)
+    solution = custom.solve(bc)
+    got = solution.numpy()
+    grad = custom.vjp(solution, solution).numpy()
+
+    assert_np_equal(got, expected, tol=1e-4)
+    assert_np_equal(grad, grad_ref, tol=1e-4)
+    test.assertEqual(backend.num_solves, 0)  # single-column solve() never used
+    test.assertGreaterEqual(backend.num_solve_many, 2)  # one forward + one adjoint batch
+
+
 devices = get_test_devices()
 
 
@@ -188,6 +238,12 @@ add_function_test(
     TestGeometryMetricHarmonic,
     "test_metric_solve_matches_harmonic",
     test_metric_solve_matches_harmonic,
+    devices=devices,
+)
+add_function_test(
+    TestGeometryMetricHarmonic,
+    "test_metric_solve_batched_backend",
+    test_metric_solve_batched_backend,
     devices=devices,
 )
 add_function_test(
