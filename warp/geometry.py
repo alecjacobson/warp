@@ -56,6 +56,8 @@ from warp._src.geometry import LaplacianWeighting as LaplacianWeighting
 from warp._src.geometry import laplacian as laplacian
 from warp._src.geometry import massmatrix as massmatrix
 from warp._src.geometry import MassMatrixType as MassMatrixType
+from warp._src.geometry import ConjugateGradientSolver as ConjugateGradientSolver
+from warp._src.geometry import LinearSolver as LinearSolver
 from warp._src.geometry import MetricHarmonicSolver as MetricHarmonicSolver
 from warp._src.geometry import vertex_adjacency_matrix as vertex_adjacency_matrix
 

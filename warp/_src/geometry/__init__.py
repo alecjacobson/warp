@@ -68,5 +68,11 @@ from warp._src.geometry.mass import (
     massmatrix as massmatrix,
 )
 from warp._src.geometry.metric_harmonic import (
+    ConjugateGradientSolver as ConjugateGradientSolver,
+)
+from warp._src.geometry.metric_harmonic import (
+    LinearSolver as LinearSolver,
+)
+from warp._src.geometry.metric_harmonic import (
     MetricHarmonicSolver as MetricHarmonicSolver,
 )

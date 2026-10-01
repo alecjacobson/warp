@@ -13,9 +13,11 @@ API
    :nosignatures:
    :toctree: _generated
 
+   ConjugateGradientSolver
    IsoSurfaceBase
    IsoSurfaceMarchingCubes
    LaplacianWeighting
+   LinearSolver
    MassMatrixType
    MetricHarmonicSolver
    SweptVolumeSignMode

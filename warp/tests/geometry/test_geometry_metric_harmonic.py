@@ -112,6 +112,71 @@ def test_metric_vjp_matches_finite_differences(test, device):
     assert_np_equal(analytic, numeric.astype(np.float32), tol=2e-2 * max(1.0, np.abs(numeric).max()))
 
 
+class _DenseDirectSolver(warp.geometry.LinearSolver):
+    """A factor-once / solve-many backend (dense Cholesky on the host).
+
+    Stands in for a direct solver such as cuDSS: :meth:`prepare` factors the
+    materialized operator a single time, and each :meth:`solve` back-substitutes.
+    Used only to exercise the :class:`~warp.geometry.LinearSolver` seam; it round-trips
+    through the host, so it is for small systems in tests, not production.
+    """
+
+    def __init__(self):
+        self.factor = None
+        self.num_prepares = 0
+        self.num_solves = 0
+
+    def prepare(self, matrix):
+        offsets = matrix.offsets.numpy()
+        columns = matrix.columns.numpy()
+        values = matrix.values.numpy().reshape(matrix.nnz_sync())
+        n = matrix.shape[0]
+        dense = np.zeros((n, n), dtype=np.float64)
+        for row in range(n):
+            for k in range(offsets[row], offsets[row + 1]):
+                dense[row, columns[k]] = values[k]
+        self.factor = np.linalg.cholesky(dense)
+        self._device = matrix.device
+        self.num_prepares += 1
+
+    def solve(self, rhs, x):
+        b = rhs.numpy().astype(np.float64)
+        y = np.linalg.solve(self.factor, b)
+        solution = np.linalg.solve(self.factor.T, y)
+        wp.copy(x, wp.array(solution.astype(np.float32), dtype=wp.float32, device=self._device))
+        self.num_solves += 1
+
+
+def test_metric_solve_custom_backend(test, device):
+    """A caller-supplied LinearSolver backend plugs in and matches the default CG solve."""
+    points_np, tris, boundary_np = _grid(5)
+    n = points_np.shape[0]
+    points = wp.array(points_np, dtype=wp.vec3, device=device)
+    indices = wp.array(tris.flatten(), dtype=wp.int32, device=device)
+    boundary = wp.array(boundary_np, dtype=wp.int32, device=device)
+
+    d0, star1 = warp.geometry.dec_operators(points, indices)
+    positive = wp.array(np.abs(star1.numpy()) + 0.5, dtype=wp.float32, device=device)
+    bc = wp.array(
+        np.random.default_rng(2).standard_normal((boundary_np.shape[0], 2)).astype(np.float32),
+        dtype=wp.float32,
+        device=device,
+    )
+
+    reference = warp.geometry.MetricHarmonicSolver(d0, n, boundary, tol=1e-10, max_iters=10 * n)
+    reference.prepare(positive)
+    expected = reference.solve(bc).numpy()
+
+    backend = _DenseDirectSolver()
+    custom = warp.geometry.MetricHarmonicSolver(d0, n, boundary, solver=backend)
+    custom.prepare(positive)
+    got = custom.solve(bc).numpy()
+
+    assert_np_equal(got, expected, tol=1e-4)
+    test.assertEqual(backend.num_prepares, 1)  # factored once
+    test.assertEqual(backend.num_solves, 2)  # reused for both columns
+
+
 devices = get_test_devices()
 
 
@@ -135,6 +200,12 @@ add_function_test(
     TestGeometryMetricHarmonic,
     "test_metric_vjp_matches_finite_differences",
     test_metric_vjp_matches_finite_differences,
+    devices=devices,
+)
+add_function_test(
+    TestGeometryMetricHarmonic,
+    "test_metric_solve_custom_backend",
+    test_metric_solve_custom_backend,
     devices=devices,
 )
 

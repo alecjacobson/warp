@@ -14,16 +14,19 @@ the adjoint (implicit-function) method rather than by differentiating the solver
     adjoint   ``L_uu(s) lambda_u = (dLoss/dw)_u``
     gradient  ``dLoss/ds = -(d0 w) * (d0 lambda)``   (elementwise over edges)
 
-The reduced interior operator ``L_uu(s)`` is *materialized* as a sparse matrix (so
-conjugate gradient uses a single sparse matrix-vector product and a diagonal
-Jacobi preconditioner), rebuilt by :meth:`prepare` each time the metric changes.
-The ``prepare`` / ``solve`` / ``vjp`` split mirrors the factor-then-solve pattern a
-direct solver uses, which makes it the natural seam for swapping in a factorizing
-backend later.
+The reduced interior operator ``L_uu(s)`` is *materialized* as a sparse matrix,
+rebuilt by :meth:`~MetricHarmonicSolver.prepare` each time the metric changes, and
+handed to a pluggable :class:`LinearSolver` backend. The default backend
+(:class:`ConjugateGradientSolver`) runs Jacobi-preconditioned conjugate gradient; a
+factorizing backend (e.g. a cuDSS Cholesky) that factors in ``prepare`` and
+back-substitutes in ``solve`` drops in through the same interface. The
+``prepare`` / ``solve`` / ``vjp`` split mirrors the factor-then-solve pattern a
+direct solver uses, which makes it the natural seam for that swap.
 """
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 import warp as wp
@@ -56,6 +59,88 @@ def _accumulate_neg_product(a: wp.array[float], b: wp.array[float], out: wp.arra
     out[i] = out[i] - a[i] * b[i]
 
 
+class LinearSolver(ABC):
+    """Pluggable backend solving ``A x = b`` for a fixed symmetric positive-definite ``A``.
+
+    :class:`MetricHarmonicSolver` calls :meth:`prepare` whenever the operator changes
+    (once per metric update) and :meth:`solve` for every right-hand side that reuses
+    it -- the forward solve of each column and the adjoint solve all share one prepared
+    operator. This is the seam for a factorizing backend: a direct solver (e.g. cuDSS
+    Cholesky) factors once in :meth:`prepare` and back-substitutes in :meth:`solve`,
+    amortizing the factorization across the many solves of a metric-optimization step.
+    """
+
+    @abstractmethod
+    def prepare(self, matrix: BsrMatrix) -> None:
+        """Set up the operator ``matrix`` (e.g. factor it, or build a preconditioner).
+
+        Called once per distinct operator. The matrix is square, symmetric, and
+        positive definite.
+        """
+
+    @abstractmethod
+    def solve(self, rhs: wp.array, x: wp.array) -> None:
+        """Solve ``matrix x = rhs`` in place, using the incoming ``x`` as initial guess.
+
+        ``prepare`` is guaranteed to have been called first. ``rhs`` and ``x`` are
+        one-dimensional arrays matching the operator dimension; ``x`` holds a warm
+        start on entry (zero if none) and the solution on return.
+        """
+
+
+class ConjugateGradientSolver(LinearSolver):
+    """Default backend: Jacobi-preconditioned conjugate gradient.
+
+    Args:
+        tol: Relative residual tolerance.
+        max_iters: Maximum iterations. Defaults to the operator dimension.
+        use_preconditioner: If ``True`` (default), use a diagonal (Jacobi)
+            preconditioner. This is essential on non-uniform meshes, where it can
+            cut the iteration count by an order of magnitude.
+        check_every: Iterations between host-side convergence checks. ``0`` keeps the
+            entire solve on the device (CUDA only, no host readback). Defaults to
+            ``0`` on CUDA and ``10`` on CPU.
+    """
+
+    def __init__(
+        self,
+        *,
+        tol: float = 1.0e-6,
+        max_iters: int | None = None,
+        use_preconditioner: bool = True,
+        check_every: int | None = None,
+    ):
+        self.tol = tol
+        self.max_iters = max_iters
+        self.use_preconditioner = use_preconditioner
+        self.check_every = check_every
+        self._operator = None
+        self._preconditioner = None
+        self._maxiter = None
+        self._check_every = 0
+
+    def prepare(self, matrix: BsrMatrix) -> None:
+        self._operator = aslinearoperator(matrix)
+        self._preconditioner = preconditioner(matrix, "diag") if self.use_preconditioner else None
+        self._maxiter = self.max_iters if self.max_iters is not None else matrix.shape[0]
+        # Device-side convergence (no host readback) is available on CUDA; on CPU
+        # fall back to periodic host checks so the solve still terminates early.
+        self._check_every = self.check_every if self.check_every is not None else (0 if matrix.device.is_cuda else 10)
+
+    def solve(self, rhs: wp.array, x: wp.array) -> None:
+        if self._operator is None:
+            raise RuntimeError("Call ConjugateGradientSolver.prepare() before solve().")
+        cg(
+            self._operator,
+            rhs,
+            x,
+            tol=self.tol,
+            maxiter=self._maxiter,
+            M=self._preconditioner,
+            check_every=self._check_every,
+        )
+
+
 class MetricHarmonicSolver:
     """Harmonic solve of ``d0^T diag(s) d0`` with Dirichlet data, differentiable in ``s``.
 
@@ -70,12 +155,17 @@ class MetricHarmonicSolver:
         num_points: Number of mesh vertices.
         boundary: Indices of the constrained vertices (distinct), of type
             :class:`warp.int32`.
-        tol: Relative residual tolerance for the conjugate-gradient solves.
-        max_iters: Maximum conjugate-gradient iterations. Defaults to the number
-            of interior vertices.
-        use_preconditioner: If ``True`` (default), use a diagonal (Jacobi)
-            preconditioner. This is essential on non-uniform meshes, where it can
-            cut the iteration count by an order of magnitude.
+        tol: Relative residual tolerance for the default conjugate-gradient backend.
+            Ignored when ``solver`` is given.
+        max_iters: Maximum iterations for the default backend. Defaults to the number
+            of interior vertices. Ignored when ``solver`` is given.
+        use_preconditioner: Whether the default backend uses a diagonal (Jacobi)
+            preconditioner (default ``True``). Ignored when ``solver`` is given.
+        solver: Linear-solver backend used to solve the reduced interior system. If
+            omitted, a :class:`ConjugateGradientSolver` is built from ``tol``,
+            ``max_iters``, and ``use_preconditioner``. Pass a custom
+            :class:`LinearSolver` (e.g. a cuDSS-backed direct solver) to factor the
+            materialized operator once per metric and back-substitute each solve.
         device: Device on which to run. Defaults to the device of ``d0``.
     """
 
@@ -88,6 +178,7 @@ class MetricHarmonicSolver:
         tol: float = 1.0e-6,
         max_iters: int | None = None,
         use_preconditioner: bool = True,
+        solver: LinearSolver | None = None,
         device: DeviceLike | None = None,
     ):
         self.device = wp.get_device(device) if device is not None else d0.device
@@ -98,12 +189,9 @@ class MetricHarmonicSolver:
         self.interior = _interior_indices(boundary, num_points, self.num_interior, self.device)
         self._boundary_selection = _selection_matrix(boundary, num_points, wp.float32, self.device)
         self._interior_selection = _selection_matrix(self.interior, num_points, wp.float32, self.device)
-        self.tol = tol
-        self.max_iters = max_iters if max_iters is not None else self.num_interior
-        self._use_preconditioner = use_preconditioner
-        # Device-side convergence (no host readback) is available on CUDA; on CPU
-        # fall back to periodic host checks so the solve still terminates early.
-        self._check_every = 0 if self.device.is_cuda else 10
+        self.solver = solver or ConjugateGradientSolver(
+            tol=tol, max_iters=max_iters, use_preconditioner=use_preconditioner
+        )
 
         # ``d0_i = d0 restricted to interior columns`` (edges x interior). Then
         # ``L_uu(s) = d0_i^T diag(s) d0_i``. Precompute it and the per-nonzero edge
@@ -117,15 +205,15 @@ class MetricHarmonicSolver:
         self._reduced = bsr_mm(self._d0_interior_T, self._d0_interior, work_arrays=self._mm_work)
 
         self._star1: wp.array | None = None
-        self._operator = None
-        self._preconditioner = None
+        self._prepared = False
 
     def prepare(self, star1: wp.array) -> None:
         """Materialize the reduced operator ``L_uu(s)`` for the metric ``star1``.
 
-        Rebuilds the sparse operator (reusing the fixed sparsity pattern) and its
-        preconditioner, and stores the metric for the Dirichlet forcing term. Call
-        once per metric before :meth:`solve` / :meth:`vjp`.
+        Rebuilds the sparse operator (reusing the fixed sparsity pattern), hands it to
+        the solver backend (which factors it or builds its preconditioner), and stores
+        the metric for the Dirichlet forcing term. Call once per metric before
+        :meth:`solve` / :meth:`vjp`.
         """
         wp.launch(
             _scale_by_row,
@@ -134,20 +222,9 @@ class MetricHarmonicSolver:
             device=self.device,
         )
         bsr_mm(self._d0_interior_T, self._scaled, self._reduced, reuse_topology=True, work_arrays=self._mm_work)
+        self.solver.prepare(self._reduced)
         self._star1 = star1
-        self._operator = aslinearoperator(self._reduced)
-        self._preconditioner = preconditioner(self._reduced, "diag") if self._use_preconditioner else None
-
-    def _cg(self, rhs: wp.array, x: wp.array) -> None:
-        cg(
-            self._operator,
-            rhs,
-            x,
-            tol=self.tol,
-            maxiter=self.max_iters,
-            M=self._preconditioner,
-            check_every=self._check_every,
-        )
+        self._prepared = True
 
     def _apply_full(self, vector: wp.array) -> wp.array:
         """Apply the unreduced ``L(s) = d0^T diag(s) d0`` to a full-length vector."""
@@ -165,9 +242,8 @@ class MetricHarmonicSolver:
                 one-dimensional array for a single function, or a two-dimensional
                 ``(num_boundary, d)`` array for ``d`` functions.
             warm_start: Optional previous solution (same shape as the returned
-                array) used as the conjugate-gradient initial guess. In an
-                optimization loop the previous iteration's solution makes an
-                excellent warm start.
+                array) used as the solver's initial guess. In an optimization loop
+                the previous iteration's solution makes an excellent warm start.
 
         Returns:
             The solution at every vertex, shaped like ``boundary_values``
@@ -191,7 +267,7 @@ class MetricHarmonicSolver:
             else:
                 warm_column = _column_of(warm_start, c, columns_2d, self.device)
                 x = bsr_mv(self._interior_selection, warm_column)
-            self._cg(rhs, x)
+            self.solver.solve(rhs, x)
             solution = bsr_mv(self._interior_selection, x, y=solution, transpose=True, alpha=1.0, beta=1.0)
             _store(result, solution, c, columns_2d, self.device)
 
@@ -221,7 +297,7 @@ class MetricHarmonicSolver:
 
             g_interior = bsr_mv(self._interior_selection, g_column)
             adjoint = wp.zeros(self.num_interior, dtype=wp.float32, device=self.device)
-            self._cg(g_interior, adjoint)
+            self.solver.solve(g_interior, adjoint)
             adjoint_full = bsr_mv(self._interior_selection, adjoint, transpose=True)  # zero on the boundary
 
             d0_w = bsr_mv(self.d0, w_column)
@@ -237,7 +313,7 @@ class MetricHarmonicSolver:
         return grad_star1
 
     def _require_prepared(self) -> None:
-        if self._operator is None:
+        if not self._prepared:
             raise RuntimeError("Call MetricHarmonicSolver.prepare(star1) before solve() or vjp().")
 
 
