@@ -355,6 +355,8 @@ def run(args):
             wp.launch(_set_column, dim=num_points, inputs=[out, h], outputs=[column], device=device)
 
     def objective(U):
+        # f = 1/2 sum_h U_h^T B U_h. Note qhw reports sum_h U_h^T B U_h (no 1/2), i.e.
+        # twice this value, so compare qhw's printed energy against 2 * f here.
         apply_biharmonic(U, biharmonic_U)
         return 0.5 * float(np.sum(U.numpy() * biharmonic_U.numpy()))
 
