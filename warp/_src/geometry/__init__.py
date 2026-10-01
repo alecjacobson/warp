@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from warp._src.geometry.dec import (
+    dec_operators as dec_operators,
+)
 from warp._src.geometry.delaunay import (
     SweptVolumeSignMode as SweptVolumeSignMode,
 )
@@ -30,4 +33,40 @@ from warp._src.geometry.delaunay import (
 )
 from warp._src.geometry.delaunay import (
     tri_tri_adjacency as tri_tri_adjacency,
+)
+from warp._src.geometry.harmonic import (
+    harmonic as harmonic,
+)
+from warp._src.geometry.laplacian import (
+    LaplacianWeighting as LaplacianWeighting,
+)
+from warp._src.geometry.laplacian import (
+    laplacian as laplacian,
+)
+from warp._src.geometry.laplacian import (
+    tet_edge_weights as tet_edge_weights,
+)
+from warp._src.geometry.laplacian import (
+    triangle_cotangent_weights as triangle_cotangent_weights,
+)
+from warp._src.geometry.laplacian import (
+    triangle_double_area as triangle_double_area,
+)
+from warp._src.geometry.laplacian import (
+    triangle_edge_length_sq as triangle_edge_length_sq,
+)
+from warp._src.geometry.laplacian import (
+    triangle_normal as triangle_normal,
+)
+from warp._src.geometry.laplacian import (
+    vertex_adjacency_matrix as vertex_adjacency_matrix,
+)
+from warp._src.geometry.mass import (
+    MassMatrixType as MassMatrixType,
+)
+from warp._src.geometry.mass import (
+    massmatrix as massmatrix,
+)
+from warp._src.geometry.metric_harmonic import (
+    MetricHarmonicSolver as MetricHarmonicSolver,
 )

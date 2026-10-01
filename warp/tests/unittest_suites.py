@@ -129,6 +129,11 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
     from warp.tests.fem.test_fem_shape import TestFemShape
     from warp.tests.geometry.test_bvh import TestBvh
     from warp.tests.geometry.test_delaunay import TestDelaunay
+    from warp.tests.geometry.test_geometry_dec import TestGeometryDEC
+    from warp.tests.geometry.test_geometry_harmonic import TestGeometryHarmonic
+    from warp.tests.geometry.test_geometry_laplacian import TestGeometryLaplacian
+    from warp.tests.geometry.test_geometry_massmatrix import TestGeometryMassMatrix
+    from warp.tests.geometry.test_geometry_metric_harmonic import TestGeometryMetricHarmonic
     from warp.tests.geometry.test_hash_grid import TestHashGrid
     from warp.tests.geometry.test_marching_cubes import TestMarchingCubes
     from warp.tests.geometry.test_mesh import TestMesh
@@ -381,6 +386,11 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
         TestFuncParameterTargets,
         TestFutureAnnotations,
         TestGenerics,
+        TestGeometryDEC,
+        TestGeometryHarmonic,
+        TestGeometryLaplacian,
+        TestGeometryMassMatrix,
+        TestGeometryMetricHarmonic,
         TestGrad,
         TestGradCustoms,
         TestGradDebug,

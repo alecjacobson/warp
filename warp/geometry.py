@@ -49,3 +49,20 @@ from warp._src.geometry import swept_volume_sdf as swept_volume_sdf
 # from warp._src.geometry import in_circle as in_circle
 # from warp._src.geometry import signed_area as signed_area
 from warp._src.geometry import tri_tri_adjacency as tri_tri_adjacency
+
+from warp._src.geometry import dec_operators as dec_operators
+from warp._src.geometry import harmonic as harmonic
+from warp._src.geometry import LaplacianWeighting as LaplacianWeighting
+from warp._src.geometry import laplacian as laplacian
+from warp._src.geometry import massmatrix as massmatrix
+from warp._src.geometry import MassMatrixType as MassMatrixType
+from warp._src.geometry import MetricHarmonicSolver as MetricHarmonicSolver
+from warp._src.geometry import vertex_adjacency_matrix as vertex_adjacency_matrix
+
+# Device functions (``@wp.func``) shared with the cotangent Laplacian and DEC
+# operators, exposed for use inside user kernels.
+from warp._src.geometry import tet_edge_weights as tet_edge_weights
+from warp._src.geometry import triangle_cotangent_weights as triangle_cotangent_weights
+from warp._src.geometry import triangle_double_area as triangle_double_area
+from warp._src.geometry import triangle_edge_length_sq as triangle_edge_length_sq
+from warp._src.geometry import triangle_normal as triangle_normal
