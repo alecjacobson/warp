@@ -35,12 +35,19 @@ The point of the benchmark is twofold:
 
 It can run directly on the Wang & Solomon ``qhw-code`` example datasets (a
 directory holding ``V.mtx``, ``F.mtx`` for triangles or tets, ``B.mtx`` boundary
-indices, ``BC.mtx`` handle values, and optional ``mv.mtx`` lumped mass). For
-reference, their own ``qhw`` ``adamd`` solver (Intel MKL + CHOLMOD supernodal
-direct solve) runs 25 Adam iterations on the ``tibiman-H`` tet mesh (22,263
-vertices, 84,125 tets, 16 handles) at ~283 ms/iteration, and on the ``grid2d-40``
-triangle mesh at ~5.4 ms/iteration. The graph-captured cuDSS loop here runs those
-same meshes at ~9 ms and well under 1 ms per iteration on an L40.
+indices, ``BC.mtx`` handle values, and optional ``mv.mtx`` lumped mass).
+
+For reference, their own ``qhw`` ``adamd`` solver (Intel MKL + CHOLMOD supernodal
+direct solve) on the ``tibiman-H`` tet mesh (22,263 vertices, 84,125 tets, 16
+handles) costs ~180 ms/iteration in the paper (1.80 s for the k=10 run on an
+i9-7900X). The exact binary, measured on the shared CPU this benchmark ran on,
+costs ~300-350 ms/iteration (it runs ~1.9x slower than the paper's machine). The
+graph-captured cuDSS loop here runs the same mesh at ~9 ms/iteration on an L40 --
+roughly a 35x per-iteration speedup *on the same machine* (GPU vs CPU). This
+compares optimization-loop cost at matched iteration counts; it is not a weight-
+quality comparison, and the per-edge DEC metric here differs from the paper's
+per-element tensor metric, so the final smoothness energies are not directly
+comparable.
 
 The cuDSS backend needs the optional ``warp-cudss`` package and a cuDSS shared
 library (set ``CUDSS_LIBRARY_PATH`` or install ``nvidia-cudss-cu12``); the
@@ -71,8 +78,12 @@ except ImportError:
 # Published timings of the reference solvers on shared meshes, keyed by a substring
 # of the mesh argument, for a side-by-side line in the output.
 _REFERENCES = {
-    "tibiman": "official qhw adamd (MKL+CHOLMOD, 2x Xeon): ~283 ms/iter (7.07 s / 25 iters)",
-    "grid2d-40": "official qhw adamd (MKL+CHOLMOD, 2x Xeon): ~5.4 ms/iter (2.75 s / 510 iters to f=52.79)",
+    # Paper numbers are on the authors' i9-7900X; the measured numbers are the actual
+    # qhw binary on whatever CPU this benchmark shares, which runs it ~1.9x slower --
+    # so the apples-to-apples claim is same-machine (GPU vs CPU), not vs the paper.
+    "tibiman": "qhw adamd: paper 'Ours k=10' 1.80 s (i9-7900X); measured here "
+    "346 ms/iter (3.47 s / 10 iters), 298 ms/iter (7.46 s / 25 iters)",
+    "grid2d-40": "qhw adamd measured here: ~5.4 ms/iter (2.75 s / 510 iters to f=52.79)",
     "case02": "gauss-newton-bbw C++/CHOLMOD (2x Xeon): ~24.6 ms/iter (49.3 s / 2000 iters to f~1.9e-4)",
 }
 
