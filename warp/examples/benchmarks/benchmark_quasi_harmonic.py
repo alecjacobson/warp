@@ -3,18 +3,19 @@
 
 """Tight GPU metric-optimization loop for quasi-harmonic (BBW-style) weights.
 
-This benchmarks the optimization at the heart of Wang & Solomon-style *Fast
+This benchmarks the optimization at the heart of Wang & Solomon's *Fast
 Quasi-Harmonic Weights* and the DEC per-edge-metric variant studied in the
 ``gauss-newton-bbw`` repository. The model is identical to those references:
 
     minimize over the per-edge metric  theta
-        f(u) = 1/2 u^T B u,     B = L M^-1 L   (fixed biharmonic energy)
-    subject to  K(theta) u = 0,   u[boundary] = bc,
+        f(U) = 1/2 sum_h U_h^T B U_h,   B = L M^-1 L   (fixed biharmonic energy)
+    subject to  K(theta) U_h = 0,   U_h[boundary] = bc_h,
         K(theta) = d0^T diag(exp theta) d0     (the DEC-factored Laplacian)
 
 solved with Adam on ``theta`` using the adjoint gradient from
 :class:`warp.geometry.MetricHarmonicSolver`. Each Adam step rebuilds the reduced
-interior operator ``K_uu(theta)`` and solves two linear systems (forward + adjoint).
+interior operator ``K_uu(theta)`` and solves two linear systems per handle
+(forward + adjoint).
 
 The point of the benchmark is twofold:
 
@@ -32,20 +33,25 @@ The point of the benchmark is twofold:
    captured into a single CUDA graph and replayed. This removes per-launch overhead
    and is what makes the loop *tight*.
 
-For reference, the ``gauss-newton-bbw`` C++/CHOLMOD port (supernodal direct solve,
-2x Xeon) runs this same optimization on the ``case02ctv`` mesh (23,140 vertices,
-69,414 edges) at about 24.6 ms per Adam iteration. The graph-captured cuDSS loop
-here runs the same mesh at well under 1 ms per iteration on an L40.
+It can run directly on the Wang & Solomon ``qhw-code`` example datasets (a
+directory holding ``V.mtx``, ``F.mtx`` for triangles or tets, ``B.mtx`` boundary
+indices, ``BC.mtx`` handle values, and optional ``mv.mtx`` lumped mass). For
+reference, their own ``qhw`` ``adamd`` solver (Intel MKL + CHOLMOD supernodal
+direct solve) runs 25 Adam iterations on the ``tibiman-H`` tet mesh (22,263
+vertices, 84,125 tets, 16 handles) at ~283 ms/iteration, and on the ``grid2d-40``
+triangle mesh at ~5.4 ms/iteration. The graph-captured cuDSS loop here runs those
+same meshes at ~9 ms and well under 1 ms per iteration on an L40.
 
-Running the cuDSS backend needs the optional ``warp-cudss`` package and a cuDSS
-shared library (set ``CUDSS_LIBRARY_PATH`` or install ``nvidia-cudss-cu12``). The
-conjugate-gradient backend always runs. Example::
+The cuDSS backend needs the optional ``warp-cudss`` package and a cuDSS shared
+library (set ``CUDSS_LIBRARY_PATH`` or install ``nvidia-cudss-cu12``); the
+conjugate-gradient backend always runs. Examples::
 
     python benchmark_quasi_harmonic.py --mesh grid --res 128
-    python benchmark_quasi_harmonic.py --mesh /path/to/mesh.ply --iters 500
+    python benchmark_quasi_harmonic.py --mesh /path/to/qhw-code/data/tibiman-H
 """
 
 import argparse
+import os
 import struct
 import time
 
@@ -61,6 +67,14 @@ try:
     _HAVE_CUDSS = True
 except ImportError:
     _HAVE_CUDSS = False
+
+# Published timings of the reference solvers on shared meshes, keyed by a substring
+# of the mesh argument, for a side-by-side line in the output.
+_REFERENCES = {
+    "tibiman": "official qhw adamd (MKL+CHOLMOD, 2x Xeon): ~283 ms/iter (7.07 s / 25 iters)",
+    "grid2d-40": "official qhw adamd (MKL+CHOLMOD, 2x Xeon): ~5.4 ms/iter (2.75 s / 510 iters to f=52.79)",
+    "case02": "gauss-newton-bbw C++/CHOLMOD (2x Xeon): ~24.6 ms/iter (49.3 s / 2000 iters to f~1.9e-4)",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +175,43 @@ def _reciprocal(src: wp.array(dtype=float), out: wp.array(dtype=float)):
     out[wp.tid()] = 1.0 / src[wp.tid()]
 
 
+@wp.kernel
+def _get_column(src: wp.array2d(dtype=float), c: int, out: wp.array(dtype=float)):
+    out[wp.tid()] = src[wp.tid(), c]
+
+
+@wp.kernel
+def _set_column(dst: wp.array2d(dtype=float), c: int, src: wp.array(dtype=float)):
+    dst[wp.tid(), c] = src[wp.tid()]
+
+
+def read_mtx(path):
+    """Read a dense MatrixMarket array file (column-major) into a 2D NumPy array."""
+    with open(path) as f:
+        header = f.readline()
+        if not header.startswith("%%MatrixMarket matrix array"):
+            raise ValueError(f"not a dense MatrixMarket array: {path}")
+        line = f.readline()
+        while line.startswith("%"):
+            line = f.readline()
+        rows, cols = (int(x) for x in line.split())
+        values = np.fromstring(f.read(), sep="\n")
+    return values.reshape(cols, rows).T  # MatrixMarket array is column-major
+
+
+def load_qhw_dataset(directory):
+    """Load a Wang & Solomon qhw-code example (V/F/B/BC, optional mv). Indices are 1-based."""
+    vertices = read_mtx(os.path.join(directory, "V.mtx")).astype(np.float32)
+    if vertices.shape[1] == 2:  # planar datasets store 2D coordinates
+        vertices = np.concatenate([vertices, np.zeros((vertices.shape[0], 1), np.float32)], axis=1)
+    faces = read_mtx(os.path.join(directory, "F.mtx")).astype(np.int32) - 1
+    boundary = read_mtx(os.path.join(directory, "B.mtx")).astype(np.int32).ravel() - 1
+    bc = read_mtx(os.path.join(directory, "BC.mtx")).astype(np.float32)
+    mv_path = os.path.join(directory, "mv.mtx")
+    mass = read_mtx(mv_path).astype(np.float32).ravel() if os.path.exists(mv_path) else None
+    return vertices, faces, boundary, bc, mass
+
+
 def read_ply(path):
     """Read a little-endian binary PLY with double vertices and a triangle face list."""
     with open(path, "rb") as f:
@@ -209,16 +260,31 @@ def two_region_bc(vertices, lo_frac=0.15, hi_frac=0.85, axis=0):
     above = np.nonzero(vertices[:, axis] > lo + hi_frac * span)[0]
     boundary = np.concatenate([below, above]).astype(np.int32)
     values = np.concatenate([-np.ones(len(below)), np.ones(len(above))]).astype(np.float32)
-    return boundary, values
+    return boundary, values[:, None]  # (num_boundary, 1)
+
+
+def load_problem(args):
+    """Return vertices, faces, boundary indices, boundary values (2D), and optional lumped mass."""
+    if args.mesh == "grid":
+        vertices, faces = build_grid(args.res)
+        boundary, bc = two_region_bc(vertices)
+        return vertices, faces, boundary, bc, None
+    if os.path.isdir(args.mesh):
+        return load_qhw_dataset(args.mesh)
+    vertices, faces = read_ply(args.mesh)
+    boundary, bc = two_region_bc(vertices)
+    return vertices, faces, boundary, bc, None
 
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--device", type=str, default=None)
-    parser.add_argument("--mesh", type=str, default="grid", help="'grid' or a path to a binary PLY file.")
+    parser.add_argument(
+        "--mesh", type=str, default="grid", help="'grid', a binary PLY path, or a qhw-code dataset directory."
+    )
     parser.add_argument("--res", type=int, default=128, help="Grid resolution per side (if --mesh grid).")
     parser.add_argument("--iters", type=int, default=300, help="Adam iterations to time.")
-    parser.add_argument("--lr", type=float, default=0.1, help="Adam learning rate on the log-metric.")
+    parser.add_argument("--lr", type=float, default=0.05, help="Adam learning rate on the log-metric.")
     args = parser.parse_args()
 
     with wp.ScopedDevice(args.device):
@@ -230,42 +296,56 @@ def run(args):
     if not device.is_cuda:
         raise RuntimeError("This benchmark requires a CUDA device.")
 
-    vertices, faces = build_grid(args.res) if args.mesh == "grid" else read_ply(args.mesh)
+    vertices, faces, boundary_np, bc_np, mass_np = load_problem(args)
     num_points = vertices.shape[0]
+    simplex_size = faces.shape[1]
+    num_handles = bc_np.shape[1]
+
     points = wp.array(vertices, dtype=wp.vec3, device=device)
-    indices = wp.array(faces.flatten(), dtype=wp.int32, device=device)
+    # Pass a typed index array so the simplex size (triangle vs tet) is unambiguous.
+    indices = wp.array(faces, dtype=wp.vec3i if simplex_size == 3 else wp.vec4i, device=device)
 
     # Fixed operators: the DEC factors, the biharmonic energy B = L M^-1 L.
     d0, cotangent = warp.geometry.dec_operators(points, indices)
     num_edges = cotangent.shape[0]
     laplacian = warp.geometry.laplacian(points, indices)
-    mass_diag = ws.bsr_get_diag(warp.geometry.massmatrix(points, indices, kind=warp.geometry.MassMatrixType.VORONOI))
-    mass_inverse = wp.empty(num_points, dtype=wp.float32, device=device)
-    wp.launch(_reciprocal, dim=num_points, inputs=[mass_diag], outputs=[mass_inverse], device=device)
+    if mass_np is not None:
+        mass_inverse = wp.array(1.0 / mass_np, dtype=wp.float32, device=device)
+    else:
+        mass_diag = ws.bsr_get_diag(
+            warp.geometry.massmatrix(points, indices, kind=warp.geometry.MassMatrixType.VORONOI)
+        )
+        mass_inverse = wp.empty(num_points, dtype=wp.float32, device=device)
+        wp.launch(_reciprocal, dim=num_points, inputs=[mass_diag], outputs=[mass_inverse], device=device)
 
-    boundary_np, bc_np = two_region_bc(vertices)
     boundary = wp.array(boundary_np, dtype=wp.int32, device=device)
     bc = wp.array(bc_np, dtype=wp.float32, device=device)
 
+    kind = "tets" if simplex_size == 4 else "triangles"
     print(
-        f"mesh={args.mesh}  {num_points} vertices, {faces.shape[0]} triangles, {num_edges} edges, "
-        f"|boundary|={boundary_np.shape[0]}, {args.iters} iterations\n"
+        f"mesh={args.mesh}  {num_points} vertices, {faces.shape[0]} {kind}, {num_edges} edges, "
+        f"{num_handles} handles, |boundary|={boundary_np.shape[0]}, {args.iters} iterations\n"
     )
 
-    # Shared per-iteration scratch (persistent, so the captured graph reuses it).
+    # Persistent per-iteration scratch (so the captured graph reuses it).
+    biharmonic_U = wp.empty((num_points, num_handles), dtype=wp.float32, device=device)
+    column = wp.empty(num_points, dtype=wp.float32, device=device)
     scratch = wp.empty(num_points, dtype=wp.float32, device=device)
-    biharmonic_u = wp.empty(num_points, dtype=wp.float32, device=device)
     grad_log = wp.empty(num_edges, dtype=wp.float32, device=device)
     log_metric0 = np.log(np.maximum(cotangent.numpy(), 1e-4)).astype(np.float32)
 
-    def apply_biharmonic(u, out):
-        ws.bsr_mv(laplacian, u, y=scratch, beta=0.0)
-        wp.launch(_multiply, dim=num_points, inputs=[scratch, mass_inverse], outputs=[scratch], device=device)
-        ws.bsr_mv(laplacian, scratch, y=out, beta=0.0)
+    def apply_biharmonic(U, out):
+        # out[:, h] = L (Minv (L U[:, h])) for each handle column h.
+        for h in range(num_handles):
+            wp.launch(_get_column, dim=num_points, inputs=[U, h], outputs=[column], device=device)
+            ws.bsr_mv(laplacian, column, y=scratch, beta=0.0)
+            wp.launch(_multiply, dim=num_points, inputs=[scratch, mass_inverse], outputs=[scratch], device=device)
+            ws.bsr_mv(laplacian, scratch, y=column, beta=0.0)
+            wp.launch(_set_column, dim=num_points, inputs=[out, h], outputs=[column], device=device)
 
-    def objective(u):
-        apply_biharmonic(u, biharmonic_u)
-        return 0.5 * float(np.dot(u.numpy(), biharmonic_u.numpy()))
+    def objective(U):
+        apply_biharmonic(U, biharmonic_U)
+        return 0.5 * float(np.sum(U.numpy() * biharmonic_U.numpy()))
 
     def make_solver(backend_name):
         backend = CudssLinearSolver(device=device) if backend_name == "cudss" else None
@@ -282,20 +362,20 @@ def run(args):
         def iteration():
             wp.launch(_exp, dim=num_edges, inputs=[log_metric], outputs=[metric], device=device)
             solver.prepare(metric)  # assemble + (re)factor K_uu(theta)
-            u = solver.solve(bc)  # forward harmonic solve
-            apply_biharmonic(u, biharmonic_u)  # dF/du = B u
-            grad_metric = solver.vjp(u, biharmonic_u)  # adjoint solve + edge gradient
+            U = solver.solve(bc)  # forward harmonic solve, all handles
+            apply_biharmonic(U, biharmonic_U)  # dF/dU = B U
+            grad_metric = solver.vjp(U, biharmonic_U)  # adjoint solves + edge gradient
             wp.launch(_multiply, dim=num_edges, inputs=[grad_metric, metric], outputs=[grad_log], device=device)
             optimizer.step(grad_log, log_metric)  # chain rule d/d(log) = metric * d/d(metric)
-            return u
+            return U
 
-        u = iteration()  # warmup; also the one-time cuDSS analysis/factorization
-        f0 = objective(u)
+        U = iteration()  # warmup; also the one-time cuDSS analysis/factorization
+        f0 = objective(U)
 
         if capture:
             wp.synchronize_device(device)
             with wp.ScopedCapture(device) as capture_ctx:
-                u = iteration()  # u is written in place on every replay
+                U = iteration()  # U is written in place on every replay
             wp.synchronize_device(device)
 
         wp.synchronize_device(device)
@@ -304,10 +384,10 @@ def run(args):
             if capture:
                 wp.capture_launch(capture_ctx.graph)
             else:
-                u = iteration()
+                U = iteration()
         wp.synchronize_device(device)
         elapsed = time.perf_counter() - start
-        return elapsed, f0, objective(u)
+        return elapsed, f0, objective(U)
 
     backends = [("cg", "GPU CG + Jacobi")]
     if _HAVE_CUDSS:
@@ -322,10 +402,11 @@ def run(args):
             elapsed, f0, ff = time_backend(name, capture)
             mode = "captured" if capture else "eager"
             print(f"{label:<22}{mode:<10}{1000 * elapsed / args.iters:>10.3f}{elapsed:>10.3f}{f0:>14.4e}{ff:>14.4e}")
-    print(
-        "\nReference (gauss-newton-bbw C++/CHOLMOD, 2x Xeon) on case02ctv: ~24.6 ms/iter "
-        "(49.3 s / 2000 iters) to f ~ 1.9e-4."
-    )
+
+    for key, line in _REFERENCES.items():
+        if key in args.mesh:
+            print(f"\nReference ({key}): {line}")
+            break
 
 
 if __name__ == "__main__":
