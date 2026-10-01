@@ -14,8 +14,12 @@ the adjoint (implicit-function) method rather than by differentiating the solver
     adjoint   ``L_uu(s) lambda_u = (dLoss/dw)_u``
     gradient  ``dLoss/ds = -(d0 w) * (d0 lambda)``   (elementwise over edges)
 
-Everything is matrix-free: ``L(s)`` acts as ``d0^T (s * (d0 x))``, so no operator
-is ever assembled and ``s`` only ever appears as an elementwise edge scaling.
+The reduced interior operator ``L_uu(s)`` is *materialized* as a sparse matrix (so
+conjugate gradient uses a single sparse matrix-vector product and a diagonal
+Jacobi preconditioner), rebuilt by :meth:`prepare` each time the metric changes.
+The ``prepare`` / ``solve`` / ``vjp`` split mirrors the factor-then-solve pattern a
+direct solver uses, which makes it the natural seam for swapping in a factorizing
+backend later.
 """
 
 from __future__ import annotations
@@ -24,8 +28,8 @@ from typing import TYPE_CHECKING
 
 import warp as wp
 from warp._src.geometry.harmonic import _get_column, _interior_indices, _selection_matrix, _set_column
-from warp._src.optim.linear import LinearOperator, cg
-from warp._src.sparse import BsrMatrix, bsr_mv
+from warp._src.optim.linear import aslinearoperator, cg, preconditioner
+from warp._src.sparse import BsrMatrix, bsr_copy, bsr_mm, bsr_mm_work_arrays, bsr_mv, bsr_transposed
 
 if TYPE_CHECKING:
     from warp._src.context import DeviceLike
@@ -38,9 +42,11 @@ def _scale_in_place(values: wp.array[float], scale: wp.array[float]):
 
 
 @wp.kernel
-def _axpby(ax: wp.array[float], y: wp.array[float], alpha: float, beta: float, out: wp.array[float]):
-    i = wp.tid()
-    out[i] = alpha * ax[i] + beta * y[i]
+def _scale_by_row(source: wp.array[float], row_of_entry: wp.array[int], scale: wp.array[float], out: wp.array[float]):
+    # ``out[k] = source[k] * scale[row(k)]`` -- scale each nonzero of a sparse
+    # matrix by its row's metric weight, to form ``diag(s) d0_i``.
+    k = wp.tid()
+    out[k] = source[k] * scale[row_of_entry[k]]
 
 
 @wp.kernel
@@ -53,11 +59,10 @@ def _accumulate_neg_product(a: wp.array[float], b: wp.array[float], out: wp.arra
 class MetricHarmonicSolver:
     """Harmonic solve of ``d0^T diag(s) d0`` with Dirichlet data, differentiable in ``s``.
 
-    The topology (``d0`` and the boundary/interior split) is fixed at construction;
-    the metric ``s`` is supplied per call, so a metric-optimization loop builds the
-    solver once and calls :meth:`solve` and :meth:`vjp` each iteration as ``s``
-    changes. The reduced operator ``L_uu(s)`` is applied matrix-free and shared
-    between the forward and adjoint solves.
+    The topology (``d0`` and the boundary/interior split) is fixed at construction.
+    Call :meth:`prepare` with a metric ``s`` to build (materialize) the reduced
+    operator, then :meth:`solve` and :meth:`vjp` as many times as needed with that
+    metric. A metric-optimization loop prepares once per iteration as ``s`` changes.
 
     Args:
         d0: The exterior derivative from :func:`~warp.geometry.dec_operators`, of
@@ -68,6 +73,9 @@ class MetricHarmonicSolver:
         tol: Relative residual tolerance for the conjugate-gradient solves.
         max_iters: Maximum conjugate-gradient iterations. Defaults to the number
             of interior vertices.
+        use_preconditioner: If ``True`` (default), use a diagonal (Jacobi)
+            preconditioner. This is essential on non-uniform meshes, where it can
+            cut the iteration count by an order of magnitude.
         device: Device on which to run. Defaults to the device of ``d0``.
     """
 
@@ -79,6 +87,7 @@ class MetricHarmonicSolver:
         *,
         tol: float = 1.0e-6,
         max_iters: int | None = None,
+        use_preconditioner: bool = True,
         device: DeviceLike | None = None,
     ):
         self.device = wp.get_device(device) if device is not None else d0.device
@@ -91,51 +100,80 @@ class MetricHarmonicSolver:
         self._interior_selection = _selection_matrix(self.interior, num_points, wp.float32, self.device)
         self.tol = tol
         self.max_iters = max_iters if max_iters is not None else self.num_interior
+        self._use_preconditioner = use_preconditioner
+        # Device-side convergence (no host readback) is available on CUDA; on CPU
+        # fall back to periodic host checks so the solve still terminates early.
+        self._check_every = 0 if self.device.is_cuda else 10
 
-    def _reduced_operator(self, star1: wp.array) -> LinearOperator:
-        """Matrix-free ``L_uu(s)``: restrict ``d0^T diag(s) d0`` to interior vertices."""
-        d0 = self.d0
-        selection = self._interior_selection
-        n = self.num_points
-        edges = self.num_edges
-        interior = self.num_interior
-        device = self.device
+        # ``d0_i = d0 restricted to interior columns`` (edges x interior). Then
+        # ``L_uu(s) = d0_i^T diag(s) d0_i``. Precompute it and the per-nonzero edge
+        # index used to scale its rows by the metric.
+        self._d0_interior = bsr_mm(d0, bsr_transposed(self._interior_selection))
+        self._d0_interior_T = bsr_transposed(self._d0_interior)
+        self._edge_of_entry = self._d0_interior.uncompress_rows()
+        self._scaled = bsr_copy(self._d0_interior)
+        # Establish the sparsity of L_uu once so later rebuilds only refill values.
+        self._mm_work = bsr_mm_work_arrays()
+        self._reduced = bsr_mm(self._d0_interior_T, self._d0_interior, work_arrays=self._mm_work)
 
-        full = wp.empty(n, dtype=wp.float32, device=device)
-        edge = wp.empty(edges, dtype=wp.float32, device=device)
-        back = wp.empty(n, dtype=wp.float32, device=device)
-        reduced = wp.empty(interior, dtype=wp.float32, device=device)
+        self._star1: wp.array | None = None
+        self._operator = None
+        self._preconditioner = None
 
-        def matvec(x, y, z, alpha, beta):
-            bsr_mv(selection, x, full, transpose=True)  # extend to all vertices
-            bsr_mv(d0, full, edge)  # edge gradient
-            wp.launch(_scale_in_place, dim=edges, inputs=[edge, star1], device=device)  # apply the metric
-            bsr_mv(d0, edge, back, transpose=True)  # back to vertices
-            bsr_mv(selection, back, reduced)  # restrict to interior
-            wp.launch(_axpby, dim=interior, inputs=[reduced, y, float(alpha), float(beta)], outputs=[z], device=device)
+    def prepare(self, star1: wp.array) -> None:
+        """Materialize the reduced operator ``L_uu(s)`` for the metric ``star1``.
 
-        return LinearOperator((interior, interior), wp.float32, self.device, matvec)
+        Rebuilds the sparse operator (reusing the fixed sparsity pattern) and its
+        preconditioner, and stores the metric for the Dirichlet forcing term. Call
+        once per metric before :meth:`solve` / :meth:`vjp`.
+        """
+        wp.launch(
+            _scale_by_row,
+            dim=self._scaled.values.shape[0],
+            inputs=[self._d0_interior.values, self._edge_of_entry, star1, self._scaled.values],
+            device=self.device,
+        )
+        bsr_mm(self._d0_interior_T, self._scaled, self._reduced, reuse_topology=True, work_arrays=self._mm_work)
+        self._star1 = star1
+        self._operator = aslinearoperator(self._reduced)
+        self._preconditioner = preconditioner(self._reduced, "diag") if self._use_preconditioner else None
 
-    def _apply_full(self, star1: wp.array, vector: wp.array) -> wp.array:
+    def _cg(self, rhs: wp.array, x: wp.array) -> None:
+        cg(
+            self._operator,
+            rhs,
+            x,
+            tol=self.tol,
+            maxiter=self.max_iters,
+            M=self._preconditioner,
+            check_every=self._check_every,
+        )
+
+    def _apply_full(self, vector: wp.array) -> wp.array:
         """Apply the unreduced ``L(s) = d0^T diag(s) d0`` to a full-length vector."""
         edge = bsr_mv(self.d0, vector)
-        wp.launch(_scale_in_place, dim=self.num_edges, inputs=[edge, star1], device=self.device)
+        wp.launch(_scale_in_place, dim=self.num_edges, inputs=[edge, self._star1], device=self.device)
         return bsr_mv(self.d0, edge, transpose=True)
 
-    def solve(self, star1: wp.array, boundary_values: wp.array) -> wp.array:
+    def solve(self, boundary_values: wp.array, warm_start: wp.array | None = None) -> wp.array:
         """Solve ``L(s) w = 0`` with ``w[boundary] = boundary_values``.
 
+        :meth:`prepare` must have been called with the current metric.
+
         Args:
-            star1: Per-edge metric weights, of length ``num_edges``.
             boundary_values: Prescribed values at the constrained vertices: a
                 one-dimensional array for a single function, or a two-dimensional
                 ``(num_boundary, d)`` array for ``d`` functions.
+            warm_start: Optional previous solution (same shape as the returned
+                array) used as the conjugate-gradient initial guess. In an
+                optimization loop the previous iteration's solution makes an
+                excellent warm start.
 
         Returns:
             The solution at every vertex, shaped like ``boundary_values``
             (``(num_points,)`` or ``(num_points, d)``). Boundary entries are exact.
         """
-        operator = self._reduced_operator(star1)
+        self._require_prepared()
         columns_2d = boundary_values.ndim == 2
         num_functions = boundary_values.shape[1] if columns_2d else 1
         result = wp.zeros(
@@ -143,41 +181,47 @@ class MetricHarmonicSolver:
         )
 
         for c in range(num_functions):
-            column = _get_column_or_self(boundary_values, c, columns_2d, self.device)
+            column = _column_of(boundary_values, c, columns_2d, self.device)
             solution = bsr_mv(self._boundary_selection, column, transpose=True)  # scatter boundary data
-            forcing = self._apply_full(star1, solution)
+            forcing = self._apply_full(solution)
             rhs = bsr_mv(self._interior_selection, forcing, alpha=-1.0)
 
-            x = wp.zeros(self.num_interior, dtype=wp.float32, device=self.device)
-            cg(operator, rhs, x, tol=self.tol, maxiter=self.max_iters)
+            if warm_start is None:
+                x = wp.zeros(self.num_interior, dtype=wp.float32, device=self.device)
+            else:
+                warm_column = _column_of(warm_start, c, columns_2d, self.device)
+                x = bsr_mv(self._interior_selection, warm_column)
+            self._cg(rhs, x)
             solution = bsr_mv(self._interior_selection, x, y=solution, transpose=True, alpha=1.0, beta=1.0)
             _store(result, solution, c, columns_2d, self.device)
 
         return result
 
-    def vjp(self, star1: wp.array, solution: wp.array, grad_solution: wp.array) -> wp.array:
-        """Gradient of a loss with respect to ``star1`` through the solve.
+    def vjp(self, solution: wp.array, grad_solution: wp.array) -> wp.array:
+        """Gradient of a loss with respect to the metric through the solve.
+
+        :meth:`prepare` must have been called with the same metric used for the
+        forward :meth:`solve` that produced ``solution``.
 
         Args:
-            star1: The metric weights used in the forward :meth:`solve`.
-            solution: The forward solution ``w`` it returned.
+            solution: The forward solution ``w``.
             grad_solution: The loss gradient ``dLoss/dw``, shaped like ``solution``.
 
         Returns:
             ``dLoss/dstar1``, a length-``num_edges`` array.
         """
-        operator = self._reduced_operator(star1)
+        self._require_prepared()
         columns_2d = solution.ndim == 2
         num_functions = solution.shape[1] if columns_2d else 1
         grad_star1 = wp.zeros(self.num_edges, dtype=wp.float32, device=self.device)
 
         for c in range(num_functions):
-            w_column = _get_column_or_self(solution, c, columns_2d, self.device)
-            g_column = _get_column_or_self(grad_solution, c, columns_2d, self.device)
+            w_column = _column_of(solution, c, columns_2d, self.device)
+            g_column = _column_of(grad_solution, c, columns_2d, self.device)
 
             g_interior = bsr_mv(self._interior_selection, g_column)
             adjoint = wp.zeros(self.num_interior, dtype=wp.float32, device=self.device)
-            cg(operator, g_interior, adjoint, tol=self.tol, maxiter=self.max_iters)
+            self._cg(g_interior, adjoint)
             adjoint_full = bsr_mv(self._interior_selection, adjoint, transpose=True)  # zero on the boundary
 
             d0_w = bsr_mv(self.d0, w_column)
@@ -192,8 +236,12 @@ class MetricHarmonicSolver:
 
         return grad_star1
 
+    def _require_prepared(self) -> None:
+        if self._operator is None:
+            raise RuntimeError("Call MetricHarmonicSolver.prepare(star1) before solve() or vjp().")
 
-def _get_column_or_self(values: wp.array, c: int, columns_2d: bool, device: DeviceLike) -> wp.array:
+
+def _column_of(values: wp.array, c: int, columns_2d: bool, device: DeviceLike) -> wp.array:
     if not columns_2d:
         return values
     out = wp.empty(values.shape[0], dtype=wp.float32, device=device)

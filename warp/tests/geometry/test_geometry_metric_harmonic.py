@@ -39,7 +39,8 @@ def test_metric_solve_matches_harmonic(test, device):
     bc_np = (np.sin(3.0 * points_np[boundary_np, 0])).astype(np.float32)
     bc = wp.array(bc_np, dtype=wp.float32, device=device)
 
-    metric = solver.solve(star1, bc).numpy()
+    solver.prepare(star1)
+    metric = solver.solve(bc).numpy()
     reference = warp.geometry.harmonic(points, indices, boundary, bc, k=1, tol=1e-10).numpy()
     assert_np_equal(metric, reference, tol=1e-4)
 
@@ -55,13 +56,12 @@ def test_metric_solve_multiple_columns(test, device):
     d0, star1 = warp.geometry.dec_operators(points, indices)
     positive = wp.array(np.abs(star1.numpy()) + 0.5, dtype=wp.float32, device=device)
     solver = warp.geometry.MetricHarmonicSolver(d0, n, boundary, tol=1e-10, max_iters=10 * n)
+    solver.prepare(positive)
 
     rng = np.random.default_rng(0)
     bc = rng.standard_normal((boundary_np.shape[0], 3)).astype(np.float32)
-    columns = [
-        solver.solve(positive, wp.array(bc[:, c].copy(), dtype=wp.float32, device=device)).numpy() for c in range(3)
-    ]
-    stacked = solver.solve(positive, wp.array(bc, dtype=wp.float32, device=device)).numpy()
+    columns = [solver.solve(wp.array(bc[:, c].copy(), dtype=wp.float32, device=device)).numpy() for c in range(3)]
+    stacked = solver.solve(wp.array(bc, dtype=wp.float32, device=device)).numpy()
 
     for c in range(3):
         assert_np_equal(stacked[:, c], columns[c], tol=1e-5)
@@ -89,13 +89,15 @@ def test_metric_vjp_matches_finite_differences(test, device):
 
     def loss_only(s_np):
         s = wp.array(s_np.astype(np.float32), dtype=wp.float32, device=device)
-        solution = solver.solve(s, bc).numpy()
+        solver.prepare(s)
+        solution = solver.solve(bc).numpy()
         return float(np.sum(solution * (bilinear @ solution)))
 
     s0_wp = wp.array(s0.astype(np.float32), dtype=wp.float32, device=device)
-    solution = solver.solve(s0_wp, bc).numpy()
+    solver.prepare(s0_wp)
+    solution = solver.solve(bc).numpy()
     grad_solution = wp.array((2.0 * (bilinear @ solution)).astype(np.float32), dtype=wp.float32, device=device)
-    analytic = solver.vjp(s0_wp, wp.array(solution, dtype=wp.float32, device=device), grad_solution).numpy()
+    analytic = solver.vjp(wp.array(solution, dtype=wp.float32, device=device), grad_solution).numpy()
 
     eps = 1e-3
     numeric = np.zeros(num_edges)

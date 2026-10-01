@@ -162,7 +162,7 @@ def main(
 
     boundary = wp.array(handles_np, dtype=wp.int32, device=device)
     boundary_values = wp.array(np.eye(num_handles, dtype=np.float32), dtype=wp.float32, device=device)
-    solver = warp.geometry.MetricHarmonicSolver(d0, num_points, boundary, tol=1e-8, max_iters=4 * num_points)
+    solver = warp.geometry.MetricHarmonicSolver(d0, num_points, boundary, tol=1e-6, max_iters=4 * num_points)
 
     # Optimize the logarithm of the metric so it stays strictly positive. Start
     # from the cotangent weights, clamped positive.
@@ -174,19 +174,24 @@ def main(
     print(f"Bounded biharmonic weights: {num_points} vertices, {triangles_np.shape[0]} triangles, {num_edges} edges")
     print(f"Solving {num_handles} weights over {num_iters} metric-optimization iterations")
     wp.launch(_exp, dim=metric.shape[0], inputs=[log_metric], outputs=[metric], device=device)
-    initial_weights = solver.solve(metric, boundary_values)
+    solver.prepare(metric)
+    initial_weights = solver.solve(boundary_values)
     _report("initial", initial_weights, apply_biharmonic)
 
+    weights = initial_weights
     wp.synchronize_device(device)
     start_time = time.perf_counter()
     for iteration in range(num_iters):
         wp.launch(_exp, dim=metric.shape[0], inputs=[log_metric], outputs=[metric], device=device)
-        weights = solver.solve(metric, boundary_values)
+        solver.prepare(metric)
+        # Warm-start from the previous iteration's weights: the metric moves only a
+        # little per step, so the solution is nearly unchanged.
+        weights = solver.solve(boundary_values, warm_start=weights)
 
         energy = apply_biharmonic(weights)  # B @ W
         grad_weights = wp.empty_like(energy)  # d(w^T B w)/dw = 2 B w
         wp.launch(_scale_2d, dim=energy.shape, inputs=[energy, 2.0], outputs=[grad_weights], device=device)
-        grad_metric = solver.vjp(metric, weights, grad_weights)
+        grad_metric = solver.vjp(weights, grad_weights)
         # Chain rule for the log parameterization: d/d(log s) = s * d/ds.
         grad_log = wp.empty_like(grad_metric)
         wp.launch(_multiply, dim=grad_log.shape[0], inputs=[grad_metric, metric], outputs=[grad_log], device=device)
@@ -196,7 +201,8 @@ def main(
             _report(f"iter {iteration + 1}", weights, apply_biharmonic)
 
     wp.launch(_exp, dim=metric.shape[0], inputs=[log_metric], outputs=[metric], device=device)
-    final_weights = solver.solve(metric, boundary_values)
+    solver.prepare(metric)
+    final_weights = solver.solve(boundary_values, warm_start=weights)
     wp.synchronize_device(device)
     elapsed = time.perf_counter() - start_time
     _report("final", final_weights, apply_biharmonic)
