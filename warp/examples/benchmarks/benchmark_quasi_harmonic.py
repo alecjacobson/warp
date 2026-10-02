@@ -51,10 +51,9 @@ i9-7900X); the exact binary measured on the shared CPU here costs ~300-350
 ms/iteration (it runs ~1.9x slower than the paper's machine). The graph-captured
 cuDSS loop here runs that mesh at ~2.8 ms/iteration on an L40, and the larger
 ``dragon-H`` mesh (330,206 vertices, 1,187,670 tets, 17 handles) at ~31 ms/iteration
-(``--max-rhs 16``) versus ~11 s/iteration for the official binary. This compares
-optimization-loop cost at matched iteration counts; it is not a weight-quality
-comparison, and the per-edge DEC metric here differs from the paper's per-element
-tensor metric, so the final smoothness energies are not directly comparable.
+(``--max-rhs 16``) versus ~11 s/iteration for the official binary. This benchmark
+measures optimization-loop cost per iteration; it is not a weight-quality comparison
+(for that, score each method's output weights through the same ``B = L M^-1 L``).
 
 The cuDSS backend needs the optional ``warp-cudss`` package and a cuDSS shared
 library (set ``CUDSS_LIBRARY_PATH`` or install ``nvidia-cudss-cu12``); the
@@ -161,9 +160,12 @@ class CudssLinearSolver(warp.geometry.LinearSolver):
 
 
 # ---------------------------------------------------------------------------
-# Adam with its step counter on the device, so a captured graph replays the
-# correct bias correction every iteration (a host-side Python counter would be
-# frozen at its capture-time value).
+# Restarting Adam / Nadam, matching Wang & Solomon's `adamd` (see the MATLAB
+# `quasiharmonic` reference). Every `restart_period` steps the moments reset,
+# the step size halves, and bias correction restarts from the local iteration
+# counter -- the annealing schedule that lets it converge in ~25 steps. Everything
+# (iteration counter, step size, restart) is computed on the device from a single
+# iteration counter, so the loop stays graph-capturable.
 # ---------------------------------------------------------------------------
 @wp.kernel
 def _adam_increment(t: wp.array(dtype=float)):
@@ -171,42 +173,73 @@ def _adam_increment(t: wp.array(dtype=float)):
 
 
 @wp.kernel
-def _adam_step(
+def _restart_adam_step(
     grad: wp.array(dtype=float),
     m: wp.array(dtype=float),
     v: wp.array(dtype=float),
-    t: wp.array(dtype=float),
-    lr: float,
+    it_arr: wp.array(dtype=float),
+    lr0: float,
+    period: float,
     beta1: float,
     beta2: float,
     eps: float,
+    nadam: int,
     param: wp.array(dtype=float),
 ):
     i = wp.tid()
+    it = it_arr[0]  # global iteration, 1-based
+    r = wp.floor((it - 1.0) / period)  # number of restarts so far
+    local = (it - 1.0) - r * period + 1.0  # iterations since last restart
+    lr = lr0 * wp.pow(0.5, r)  # step size halves on each restart
+
     g = grad[i]
-    mi = beta1 * m[i] + (1.0 - beta1) * g
-    vi = beta2 * v[i] + (1.0 - beta2) * g * g
+    m_prev = m[i]
+    v_prev = v[i]
+    if it > 1.0:
+        if local == 1.0:  # restart: forget the moments
+            m_prev = 0.0
+            v_prev = 0.0
+    mi = beta1 * m_prev + (1.0 - beta1) * g
+    vi = beta2 * v_prev + (1.0 - beta2) * g * g
     m[i] = mi
     v[i] = vi
-    step = t[0]
-    m_hat = mi / (1.0 - wp.pow(beta1, step))
-    v_hat = vi / (1.0 - wp.pow(beta2, step))
+
+    m_hat = mi / (1.0 - wp.pow(beta1, local))
+    v_hat = vi / (1.0 - wp.pow(beta2, local))
+    if nadam == 1:  # Nesterov look-ahead on the first moment
+        m_hat = beta1 * m_hat + (1.0 - beta1) * g / (1.0 - wp.pow(beta1, local))
     param[i] = param[i] - lr * m_hat / (wp.sqrt(v_hat) + eps)
 
 
 class Adam:
-    def __init__(self, n, lr, device, betas=(0.9, 0.999), eps=1e-8):
+    """Restarting Adam/Nadam. ``restart_period`` <= 0 disables restarts (plain Adam)."""
+
+    def __init__(self, n, lr, device, betas=(0.9, 0.999), eps=1e-8, restart_period=4, nadam=False):
         self.m = wp.zeros(n, dtype=wp.float32, device=device)
         self.v = wp.zeros(n, dtype=wp.float32, device=device)
         self.t = wp.zeros(1, dtype=wp.float32, device=device)
         self.n, self.lr, self.beta1, self.beta2, self.eps, self.device = n, lr, betas[0], betas[1], eps, device
+        self.period = float(restart_period) if restart_period and restart_period > 0 else 1.0e18
+        self.nadam = 1 if nadam else 0
 
     def step(self, grad, param):
         wp.launch(_adam_increment, dim=1, inputs=[self.t], device=self.device)
         wp.launch(
-            _adam_step,
+            _restart_adam_step,
             dim=self.n,
-            inputs=[grad, self.m, self.v, self.t, self.lr, self.beta1, self.beta2, self.eps, param],
+            inputs=[
+                grad,
+                self.m,
+                self.v,
+                self.t,
+                self.lr,
+                self.period,
+                self.beta1,
+                self.beta2,
+                self.eps,
+                self.nadam,
+                param,
+            ],
             device=self.device,
         )
 
@@ -335,7 +368,22 @@ def main():
     )
     parser.add_argument("--res", type=int, default=128, help="Grid resolution per side (if --mesh grid).")
     parser.add_argument("--iters", type=int, default=300, help="Adam iterations to time.")
-    parser.add_argument("--lr", type=float, default=0.05, help="Adam learning rate on the log-metric.")
+    parser.add_argument("--lr", type=float, default=0.2, help="Adam initial learning rate on the log-metric.")
+    parser.add_argument(
+        "--restart-period",
+        type=int,
+        default=8,
+        help="Restart Adam every N steps (reset moments, halve the step), as in Wang & Solomon's adamd. "
+        "Set 0 for no restarts (often as good or better, especially with Nadam).",
+    )
+    parser.add_argument(
+        "--nadam",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use Nadam (Nesterov look-ahead). --no-nadam for plain Adam.",
+    )
+    parser.add_argument("--beta1", type=float, default=0.8, help="Adam first-moment decay.")
+    parser.add_argument("--beta2", type=float, default=0.98, help="Adam second-moment decay.")
     parser.add_argument(
         "--max-rhs",
         type=int,
@@ -417,7 +465,14 @@ def run(args):
         log_metric = wp.array(log_metric0, dtype=wp.float32, device=device)
         metric = wp.empty_like(log_metric)
         solver = make_solver(backend_name)
-        optimizer = Adam(num_edges, args.lr, device)
+        optimizer = Adam(
+            num_edges,
+            args.lr,
+            device,
+            betas=(args.beta1, args.beta2),
+            restart_period=args.restart_period,
+            nadam=args.nadam,
+        )
 
         def iteration():
             wp.launch(_exp, dim=num_edges, inputs=[log_metric], outputs=[metric], device=device)
