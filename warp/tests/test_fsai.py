@@ -125,9 +125,9 @@ def test_application(test, device, dtype):
     rng = np.random.default_rng(18)
     a = _path(35)
     raw = _matrix(a, device, dtype)
-    tol = 3e-6 if dtype == wp.float32 else 2e-12
+    tol = 5e-3 if dtype == wp.float16 else 3e-6 if dtype == wp.float32 else 2e-12
     # Include partial CUDA thread blocks and both ordinary and compressed factors.
-    for storage in dict.fromkeys((dtype, wp.float32)):
+    for storage in (dtype,) if dtype == wp.float16 else dict.fromkeys((dtype, wp.float32)):
         for lanes in (1, 2, 4, 8, 16, 32):
             pre = FSAI(raw, max_row_size=5, factor_dtype=storage, apply_lanes=lanes)
             g = _dense(pre.G).astype(np.float64)
@@ -176,13 +176,14 @@ def test_refit_and_rollback(test, device, dtype):
     a = r @ r.T + np.eye(12) * 3
     b = a + np.diag(np.arange(12))
     for block in (1, 3):
-        for storage in dict.fromkeys((dtype, wp.float32)):
+        for storage in (dtype,) if dtype == wp.float16 else dict.fromkeys((dtype, wp.float32)):
             raw, updated = _matrix(a, device, dtype, block), _matrix(b, device, dtype, block)
             pre = FSAI(raw, max_row_size=5, reuse_pattern=True, factor_dtype=storage, max_step_size=3)
             pointers = (pre.G.values.ptr, pre.GT.values.ptr)
             topology = (pre.G.offsets.numpy().copy(), pre.G.columns.numpy().copy())
             test.assertIs(pre.update(updated), pre)
-            g = _check_local_solves(test, pre, b, rtol=2e-4, atol=2e-7)
+            rtol, atol = (8e-3, 5e-4) if dtype == wp.float16 else (2e-4, 2e-7)
+            g = _check_local_solves(test, pre, b, rtol=rtol, atol=atol)
             test.assertEqual((pre.G.values.ptr, pre.GT.values.ptr), pointers)
             np.testing.assert_array_equal(pre.G.offsets.numpy(), topology[0])
             np.testing.assert_array_equal(pre.G.columns.numpy(), topology[1])
@@ -207,7 +208,7 @@ def test_refit_and_rollback(test, device, dtype):
             # Same object, changing values, then no-argument update.
             updated.values.assign(raw.values.numpy())
             pre.update()
-            _check_local_solves(test, pre, a, rtol=2e-4, atol=2e-7)
+            _check_local_solves(test, pre, a, rtol=rtol, atol=atol)
 
 
 def test_stored_zeros_and_capacity(test, device):
@@ -252,7 +253,7 @@ def test_padded_input(test, device):
 
 
 def test_empty(test, device):
-    for dtype in (wp.float32, wp.float64):
+    for dtype in (wp.float16, wp.float32, wp.float64):
         raw = sp.bsr_zeros(0, 0, dtype, device=device)
         for reuse in (False, True):
             pre = FSAI(raw, reuse_pattern=reuse)
@@ -305,6 +306,75 @@ def test_capture_update(test, device):
                 wp.synchronize_device(device)
 
 
+def test_float16_factors(test, device):
+    # Reference the matrix after input quantization, not the original float64 data.
+    rng = np.random.default_rng(72)
+    r = rng.normal(size=(12, 12))
+    a = r @ r.T + 4 * np.eye(12)
+    a = a.astype(np.float16).astype(np.float64)
+    for block in (1, 3):
+        raw = _matrix(a, device, wp.float16, block)
+        for width, step in ((1, 1), (5, 3), (12, 1), (12, 3)):
+            pre = FSAI(raw, max_row_size=width, max_step_size=step, kap_tolerance=0)
+            test.assertEqual(pre.scalar_type, wp.float16)
+            test.assertEqual(pre.G.scalar_type, wp.float16)
+            test.assertEqual(pre.GT.scalar_type, wp.float16)
+            test.assertEqual(pre._tmp.dtype, wp.float16)
+            g = _check_local_solves(test, pre, a, rtol=1e-2, atol=1e-3).astype(np.float64)
+            if width == 12:
+                reference = np.linalg.inv(a)
+                test.assertLess(np.linalg.norm(g.T @ g - reference) / np.linalg.norm(reference), 1e-2)
+            if width == 1:
+                np.testing.assert_allclose(g.T @ g, np.diag(1 / np.diag(a)), rtol=2e-3, atol=1e-6)
+        with test.assertRaisesRegex(ValueError, "factor_dtype"):
+            FSAI(raw, factor_dtype=wp.float32)
+        # Ordinary construction accepts padded blocks for half precision, too.
+        padded = sp.bsr_zeros(raw.nrow, raw.ncol, raw.dtype, device=device, row_capacity=raw.ncol + 1)
+        sp.bsr_assign(padded, raw, topology="padded")
+        np.testing.assert_array_equal(_dense(FSAI(padded).G), _dense(FSAI(raw).G))
+
+
+def test_float16_pivot_guard(test, device):
+    # Same rank-deficient inputs as block Jacobi. FSAI truncates a factor row
+    # at a rejected pivot, retaining a positive Gram factor rather than
+    # replacing an entire diagonal block with the identity.
+    for a in (np.array([[1, 2], [2, 4]]), np.array([[9, 21], [21, 49]])):
+        pre = FSAI(_matrix(a, device, wp.float16, 2), max_row_size=2)
+        test.assertEqual(pre.truncated_rows, 1)
+        g = _dense(pre.G).astype(np.float64)
+        np.testing.assert_allclose(g, np.diag(1 / np.sqrt(np.diag(a))), rtol=2e-3)
+        test.assertGreater(np.linalg.eigvalsh(g.T @ g).min(), 0)
+    for diagonal in (0, -1, float("nan"), float("inf")):
+        with test.assertRaisesRegex(ValueError, "positive diagonals"):
+            FSAI(_matrix(np.diag([1.0, diagonal]), device, wp.float16))
+
+
+def test_float16_capture_refit(test, device):
+    a = _path(12)
+    for lanes in (1, 4):
+        raw = _matrix(a, device, wp.float16, 3)
+        pre = FSAI(raw, reuse_pattern=True, apply_lanes=lanes, max_row_size=8, kap_tolerance=0)
+        pointers = (pre.G.values.ptr, pre.GT.values.ptr)
+        x = wp.ones(4, dtype=wp.vec3h, device=device)
+        y = wp.empty_like(x)
+        pre.matvec(x, y, y, 1, 0)
+        with wp.ScopedCapture(device=device) as cap:
+            pre.matvec(x, y, y, 1, 0)
+        for multiplier in (2.0, 0.5):
+            pre.update(_matrix(multiplier * a, device, wp.float16, 3))
+            test.assertEqual((pre.G.values.ptr, pre.GT.values.ptr), pointers)
+            wp.capture_launch(cap.graph)
+            g = _dense(pre.G).astype(np.float64)
+            np.testing.assert_allclose(y.numpy().ravel(), g.T @ g @ np.ones(12), rtol=3e-3, atol=1e-3)
+        before = y.numpy().copy()
+        invalid = sp.bsr_copy(raw)
+        invalid.values.zero_()
+        with test.assertRaises(ValueError):
+            pre.update(invalid)
+        wp.capture_launch(cap.graph)
+        np.testing.assert_array_equal(y.numpy(), before)
+
+
 class TestFSAI(unittest.TestCase):
     def test_invalid_arguments(self):
         raw = _matrix(np.eye(3), "cpu")
@@ -329,7 +399,7 @@ class TestFSAI(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "square"):
                 FSAI(invalid)
         with self.assertRaises(TypeError):
-            FSAI(sp.bsr_zeros(3, 3, wp.float16, device="cpu"))
+            FSAI(sp.bsr_zeros(3, 3, wp.bfloat16, device="cpu"))
         with self.assertRaisesRegex(ValueError, "reuse_pattern"):
             FSAI(raw).update()
         for diagonal in (0.0, -1.0, float("inf"), float("nan")):
@@ -363,6 +433,12 @@ for func in (
 ):
     add_function_test(TestFSAI, func.__name__, func, devices=devices)
 add_function_test(TestFSAI, "test_capture_update", test_capture_update, devices=get_cuda_test_devices())
+
+for func in (test_application, test_refit_and_rollback):
+    add_function_test(TestFSAI, f"{func.__name__}_float16", func, devices=devices, dtype=wp.float16)
+for func in (test_float16_factors, test_float16_pivot_guard):
+    add_function_test(TestFSAI, func.__name__, func, devices=devices)
+add_function_test(TestFSAI, "test_float16_capture_refit", test_float16_capture_refit, devices=get_cuda_test_devices())
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

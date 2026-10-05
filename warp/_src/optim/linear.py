@@ -2951,7 +2951,9 @@ def _cr_kernel_1(
     bid = _find_entry_batch(i, batch_offsets, dofs_per_entry)
 
     if bid >= 0:
-        alpha = wp.where(resid[bid] > tol[bid] and y_Ap[bid] > 0.0, zAz_old[bid] / y_Ap[bid], zAz_old.dtype(0.0))
+        alpha = wp.where(
+            resid[bid] > tol[bid] and y_Ap[bid] > y_Ap.dtype(0.0), zAz_old[bid] / y_Ap[bid], zAz_old.dtype(0.0)
+        )
 
         x[i] = x[i] + alpha * p[i]
         r[i] = r[i] - alpha * Ap[i]
@@ -2976,7 +2978,9 @@ def _cr_kernel_2(
     bid = _find_entry_batch(i, batch_offsets, dofs_per_entry)
 
     if bid >= 0:
-        beta = wp.where(resid[bid] > tol[bid] and zAz_old[bid] > 0.0, zAz_new[bid] / zAz_old[bid], zAz_old.dtype(0.0))
+        beta = wp.where(
+            resid[bid] > tol[bid] and zAz_old[bid] > zAz_old.dtype(0.0), zAz_new[bid] / zAz_old[bid], zAz_old.dtype(0.0)
+        )
 
         p[i] = z[i] + beta * p[i]
         Ap[i] = Az[i] + beta * Ap[i]

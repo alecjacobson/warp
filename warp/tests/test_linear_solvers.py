@@ -1060,12 +1060,12 @@ def test_block_jacobi_preconditioner_scalar_fallback(test, device):
 
 
 def test_block_jacobi_preconditioner_dtype_coverage(test, device):
-    """Verify "direct"/"sequential" succeed for float16, unlike "block_jacobi_tile".
+    """Verify Jacobi, direct/sequential block Jacobi and FSAI support float16/32/64.
 
     They perform plain scalar arithmetic (no ``wp.tile_cholesky`` involved), so they support any
     floating scalar type, including ``float16``, in addition to ``float32``/``float64``.
     """
-    for ptype, block_size in (("block_jacobi_direct", 3), ("block_jacobi_sequential", 8)):
+    for ptype, block_size in (("diag", 3), ("block_jacobi_direct", 3), ("block_jacobi_sequential", 8), ("fsai", 8)):
         for dtype in (wp.float16, wp.float32, wp.float64):
             A, _b, _diag_blocks = _make_block_spd_system(
                 num_blocks=4, block_size=block_size, seed=55, dtype=dtype, device=device
@@ -1224,13 +1224,13 @@ def test_block_jacobi_preconditioner_well_conditioned_scaled_block(test, device)
     A relative-pivot tolerance that isn't dtype-aware rejects invertible, merely differently
     scaled blocks as singular and silently falls back to the identity. The scale each dtype can
     resolve differs: float16's tolerance is already ~1 ulp, so ``diag(1, 1e-4)`` is genuinely
-    below its noise floor and ``diag(1, 1e-2)`` is used there instead. Covers both the QR
-    ("direct") and LDL^T ("sequential") strategies.
+    below its noise floor and ``diag(1, 1e-2)`` is used there instead. Covers the QR
+    ("direct") and LDL^T ("sequential") strategies, scalar Jacobi and FSAI.
     """
     rows = wp.array(np.array([0], dtype=np.int32), dtype=int, device=device)
     cols = wp.array(np.array([0], dtype=np.int32), dtype=int, device=device)
 
-    for ptype in ("block_jacobi_direct", "block_jacobi_sequential"):
+    for ptype in ("diag", "block_jacobi_direct", "block_jacobi_sequential", "fsai"):
         for dtype, scale in ((wp.float16, 1.0e-2), (wp.float32, 1.0e-4), (wp.float64, 1.0e-4)):
             block = np.array([[1.0, 0.0], [0.0, scale]])
             expected_inv = np.diag(1.0 / np.diag(block))
@@ -1392,6 +1392,31 @@ def test_block_jacobi_preconditioner_unsupported_dtype(test, device):
 
     with test.assertRaises(ValueError):
         preconditioner(A, "block_jacobi_tile")
+
+
+def test_float16_preconditioned_solvers(test, device):
+    """Check CG and CR against true residuals with every half-compatible preconditioner."""
+    A, b, _ = _make_block_spd_system(num_blocks=4, block_size=3, seed=55, dtype=wp.float16, device=device)
+    n = A.shape[0]
+    dense = np.zeros((n, n))
+    offsets, columns, values = A.offsets.numpy(), A.columns.numpy(), A.values.numpy().astype(np.float64)
+    for row in range(A.nrow):
+        for slot in range(offsets[row], offsets[row + 1]):
+            col = columns[slot]
+            dense[3 * row : 3 * row + 3, 3 * col : 3 * col + 3] = values[slot]
+    rhs = b.numpy().astype(np.float64)
+    for ptype in ("diag", "block_jacobi_direct", "block_jacobi_sequential", "fsai"):
+        M = preconditioner(A, ptype)
+        for solver in (cg, cr):
+            for vector_rhs in (False, True):
+                b_view = b.reshape((-1, 3)).view(wp.vec3h) if vector_rhs else b
+                x = wp.zeros_like(b_view)
+                with wp.ScopedDevice(device):
+                    iterations, error, tolerance = solver(A, b_view, x, M=M, tol=1e-2, maxiter=100)
+                test.assertLess(iterations, 100)
+                test.assertLessEqual(error, tolerance)
+                residual = dense @ x.numpy().ravel().astype(np.float64) - rhs
+                test.assertLess(np.linalg.norm(residual) / np.linalg.norm(rhs), 1.5e-2)
 
 
 class TestLinearSolvers(unittest.TestCase):
@@ -1574,6 +1599,10 @@ add_function_test(
     "test_block_jacobi_direct_explicit_choice_honored_for_unsupported_dtype",
     test_block_jacobi_direct_explicit_choice_honored_for_unsupported_dtype,
     devices=devices,
+)
+
+add_function_test(
+    TestLinearSolvers, "test_float16_preconditioned_solvers", test_float16_preconditioned_solvers, devices=devices
 )
 
 if __name__ == "__main__":

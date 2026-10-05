@@ -202,8 +202,8 @@ class FSAI(LinearOperator):
     even when the input uses block storage. No host numerical backend is used.
 
     Args:
-        A: Square :class:`warp.sparse.BsrMatrix` with square blocks and ``float32``
-            or ``float64`` scalar entries. Both triangles must be stored. Symmetry
+        A: Square :class:`warp.sparse.BsrMatrix` with square blocks and ``float16``,
+            ``float32`` or ``float64`` scalar entries. Both triangles must be stored. Symmetry
             and positive definiteness are caller preconditions, not checked globally.
             Stored columns must be sorted and unique within each row, as produced
             by the standard BSR construction functions.
@@ -214,8 +214,9 @@ class FSAI(LinearOperator):
             stops, in [0, 1). Zero disables this stopping test. It is checked after
             each batch, so changing ``max_step_size`` may require retuning it.
         pivot_floor: Smallest accepted pivot of the diagonally equilibrated local
-            Cholesky factorization, in (0, 1). ``None`` selects 1e-6 for ``float32``
-            and 1e-12 for ``float64``. Setup truncates a row before a rejected pivot.
+            Cholesky factorization, in (0, 1). ``None`` selects 1e-3 for ``float16``,
+            1e-6 for ``float32`` and 1e-12 for ``float64``. Setup truncates a row
+            before a rejected pivot.
         apply_lanes: CUDA threads cooperating on each scalar row during application;
             one of 1, 2, 4, 8, 16, or 32. One uses the ordinary sparse product.
             CPU uses the ordinary product regardless of this setting.
@@ -275,8 +276,8 @@ class FSAI(LinearOperator):
     ):
         if not isinstance(A, sp.BsrMatrix) or A.shape[0] != A.shape[1] or A.block_shape[0] != A.block_shape[1]:
             raise ValueError("FSAI requires a square BSR matrix with square blocks")
-        if A.scalar_type not in (wp.float32, wp.float64):
-            raise TypeError("FSAI supports float32 and float64")
+        if A.scalar_type not in (wp.float16, wp.float32, wp.float64):
+            raise TypeError("FSAI supports float16, float32 and float64")
         if not isinstance(max_row_size, int) or not 1 <= max_row_size <= 64:
             raise ValueError("max_row_size must be an integer in [1, 64]")
         if not isinstance(max_step_size, int) or not 1 <= max_step_size <= 64:
@@ -284,15 +285,15 @@ class FSAI(LinearOperator):
         if not 0 <= kap_tolerance < 1:
             raise ValueError("kap_tolerance must be in [0, 1)")
         if pivot_floor is None:
-            pivot_floor = 1.0e-6 if A.scalar_type == wp.float32 else 1.0e-12
+            pivot_floor = {wp.float16: 1.0e-3, wp.float32: 1.0e-6, wp.float64: 1.0e-12}[A.scalar_type]
         if not 0 < pivot_floor < 1:
             raise ValueError("pivot_floor must be in (0, 1)")
         if not isinstance(apply_lanes, int) or apply_lanes not in (1, 2, 4, 8, 16, 32):
             raise ValueError("apply_lanes must be one of 1, 2, 4, 8, 16, 32")
         if factor_dtype is None:
             factor_dtype = A.scalar_type
-        if factor_dtype not in (A.scalar_type, wp.float32):
-            raise ValueError("factor_dtype must be the matrix scalar type or wp.float32")
+        if factor_dtype != A.scalar_type and not (A.scalar_type == wp.float64 and factor_dtype == wp.float32):
+            raise ValueError("factor_dtype must be the matrix scalar type, or wp.float32 for a float64 matrix")
         if reuse_pattern and A.row_counts is not None:
             raise ValueError("reuse_pattern requires compact BSR storage; canonicalize with bsr_copy")
         self.max_row_size = max_row_size
