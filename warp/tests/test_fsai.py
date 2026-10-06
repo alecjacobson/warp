@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import unittest
+from unittest import mock
 
 import numpy as np
 
 import warp as wp
 import warp.sparse as sp
+from warp._src.optim import fsai as fsai_module
 from warp.optim.linear import FSAI, cg, cr, preconditioner
 from warp.tests.unittest_utils import add_function_test, get_cuda_test_devices, get_test_devices
 
@@ -55,6 +57,7 @@ def _check_local_solves(test, pre, a, rtol=1e-10, atol=1e-12):
 
 
 def test_full_pattern(test, device, dtype):
+    """Check that an unrestricted pattern reproduces the exact inverse and local solves."""
     rng = np.random.default_rng(7)
     a = rng.normal(size=(8, 8))
     a = a @ a.T + np.eye(8)
@@ -65,6 +68,7 @@ def test_full_pattern(test, device, dtype):
 
 
 def test_adaptive_support(test, device, dtype):
+    """Check adaptive support selection against an independent dense greedy search."""
     rng = np.random.default_rng(193)
     a = rng.normal(size=(18, 18))
     a[rng.random(a.shape) < 0.65] = 0
@@ -104,6 +108,7 @@ def test_adaptive_support(test, device, dtype):
 
 
 def test_narrow_frontier_and_zero_tolerance(test, device):
+    """Check that short frontiers and a disabled tolerance do not stop growth early."""
     # The frontier has one candidate. A short batch must not use a full batch's
     # budget; improvement rounding to zero must not stop a disabled tolerance.
     a = _path(32)
@@ -114,6 +119,7 @@ def test_narrow_frontier_and_zero_tolerance(test, device):
 
 
 def test_pivot_guard(test, device):
+    """Check that a rejected pivot truncates the row and is counted."""
     a = np.array([[1.0, 1 - 1e-14, 0], [1 - 1e-14, 1.0, 0], [0, 0, 2.0]])
     for width in (1, 2):
         pre = FSAI(_matrix(a, device), max_row_size=width, max_step_size=6)
@@ -122,6 +128,7 @@ def test_pivot_guard(test, device):
 
 
 def test_application(test, device, dtype):
+    """Check ``G.T @ G`` application across lanes, storage types and aliasing."""
     rng = np.random.default_rng(18)
     a = _path(35)
     raw = _matrix(a, device, dtype)
@@ -152,6 +159,7 @@ def test_application(test, device, dtype):
 
 
 def test_solver_integration(test, device, dtype):
+    """Check CG and CR convergence with FSAI against the true residual."""
     a = _path(24)
     tolerance = 1e-5 if dtype == wp.float32 else 1e-11
     for block in (1, 3):
@@ -171,6 +179,7 @@ def test_solver_integration(test, device, dtype):
 
 
 def test_refit_and_rollback(test, device, dtype):
+    """Check that refits reuse storage and failed updates leave the factor unchanged."""
     rng = np.random.default_rng(48)
     r = rng.normal(size=(12, 12))
     a = r @ r.T + np.eye(12) * 3
@@ -212,6 +221,7 @@ def test_refit_and_rollback(test, device, dtype):
 
 
 def test_stored_zeros_and_capacity(test, device):
+    """Check that stored zeros are retained and unused capacity is ignored."""
     a = _path(3)
     a[0, 2] = a[2, 0] = 0
     raw = _matrix(a, device, block=3)
@@ -240,6 +250,7 @@ def test_stored_zeros_and_capacity(test, device):
 
 
 def test_padded_input(test, device):
+    """Check that padded input matches compact input and is rejected for reuse."""
     a = _path(12)
     for block in (1, 3):
         raw = _matrix(a, device, block=block)
@@ -253,6 +264,7 @@ def test_padded_input(test, device):
 
 
 def test_empty(test, device):
+    """Check construction, application and update on an empty matrix."""
     for dtype in (wp.float16, wp.float32, wp.float64):
         raw = sp.bsr_zeros(0, 0, dtype, device=device)
         for reuse in (False, True):
@@ -266,7 +278,30 @@ def test_empty(test, device):
             wp.synchronize_device(device)
 
 
+def test_apply_dispatch(test, device):
+    """Check that each apply configuration reaches its intended kernel path."""
+    a = _path(12)
+    for dtype, storage in ((wp.float64, wp.float64), (wp.float64, wp.float32)):
+        raw = _matrix(a, device, dtype)
+        x = wp.ones(12, dtype=dtype, device=device)
+        y = wp.empty_like(x)
+        for lanes in (1, 4):
+            pre = FSAI(raw, max_row_size=5, factor_dtype=storage, apply_lanes=lanes)
+            with (
+                mock.patch.object(fsai_module, "_grouped_mv", wraps=fsai_module._grouped_mv) as grouped,
+                mock.patch.object(fsai_module, "_mixed_kernel", wraps=fsai_module._mixed_kernel) as mixed,
+            ):
+                pre.matvec(x, y, y, 1, 0)
+            # The grouped kernel is CUDA only; CPU always uses the ordinary product.
+            expect_grouped = device.is_cuda and lanes > 1
+            test.assertEqual(grouped.call_count, 2 if expect_grouped else 0)
+            test.assertEqual(mixed.call_count, 2 if storage != dtype and not expect_grouped else 0)
+            g = _dense(pre.G)
+            np.testing.assert_allclose(y.numpy(), g.T @ g @ np.ones(12), rtol=1e-6, atol=1e-6)
+
+
 def test_scaling_and_conversion(test, device):
+    """Check badly scaled inputs and factor conversion overflow handling."""
     a = _path(12)
     scale = np.geomspace(1e-8, 1e8, len(a))
     a *= scale[:, None] * scale[None, :]
@@ -285,6 +320,7 @@ def test_scaling_and_conversion(test, device):
 
 
 def test_capture_update(test, device):
+    """Check that CUDA graph application sees refit factor values."""
     a = _path(12)
     for block in (1, 3):
         for lanes in (1, 4):
@@ -307,6 +343,7 @@ def test_capture_update(test, device):
 
 
 def test_float16_factors(test, device):
+    """Check float16 factors against local solves and the exact inverse."""
     # Reference the matrix after input quantization, not the original float64 data.
     rng = np.random.default_rng(72)
     r = rng.normal(size=(12, 12))
@@ -335,6 +372,7 @@ def test_float16_factors(test, device):
 
 
 def test_float16_pivot_guard(test, device):
+    """Check float16 pivot truncation and invalid diagonal rejection."""
     # Same rank-deficient inputs as block Jacobi. FSAI truncates a factor row
     # at a rejected pivot, retaining a positive Gram factor rather than
     # replacing an entire diagonal block with the identity.
@@ -350,6 +388,7 @@ def test_float16_pivot_guard(test, device):
 
 
 def test_float16_capture_refit(test, device):
+    """Check that float16 CUDA graph application sees refit factor values."""
     a = _path(12)
     for lanes in (1, 4):
         raw = _matrix(a, device, wp.float16, 3)
@@ -377,6 +416,7 @@ def test_float16_capture_refit(test, device):
 
 class TestFSAI(unittest.TestCase):
     def test_invalid_arguments(self):
+        """Check that invalid arguments and matrices raise specific errors."""
         raw = _matrix(np.eye(3), "cpu")
         for option in ("max_row_size", "max_step_size"):
             for value in (0, -1, 65, 1.5):
@@ -430,6 +470,7 @@ for func in (
     test_padded_input,
     test_empty,
     test_scaling_and_conversion,
+    test_apply_dispatch,
 ):
     add_function_test(TestFSAI, func.__name__, func, devices=devices)
 add_function_test(TestFSAI, "test_capture_update", test_capture_update, devices=get_cuda_test_devices())

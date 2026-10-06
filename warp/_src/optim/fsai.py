@@ -684,8 +684,8 @@ class _RefitPlan:
             wp.launch(_compare_topology, a.size, [a, b, self.bad], device=A.device)
         if self.bad.numpy()[0]:
             raise ValueError("FSAI update requires identical sparsity; rebuild to change it")
-        if A.values.size < self.topology[1].size:
-            raise ValueError("Insufficient source values")
+        if A.values.size < A.nnz_sync():
+            raise ValueError("FSAI update requires a values array covering every stored block")
         wp.launch(
             self.gather,
             self.mapping.size,
