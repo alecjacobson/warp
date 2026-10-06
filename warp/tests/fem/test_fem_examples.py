@@ -3,9 +3,8 @@
 
 """Test warp.fem examples with unittest.
 
-Registers FEM examples as test cases that run each example as a subprocess.
-Currently all examples are restricted to CUDA devices only; CPU device
-testing might be phased in later.
+Registers FEM examples as subprocess tests on CUDA devices and runs focused
+regression checks on CPU and CUDA devices.
 """
 
 import os
@@ -14,15 +13,19 @@ import sys
 import tempfile
 import unittest
 from typing import Any
+from unittest.mock import patch
 
 import warp as wp
+import warp.sparse as sparse
 import warp.tests.unittest_utils
 from warp._src.utils import check_p2p
+from warp.examples.fem import example_magnetostatics
 from warp.tests.unittest_utils import (
     USD_AVAILABLE,
     add_function_test,
     get_selected_cuda_test_devices,
     get_selected_cuda_test_devices_with_mempool,
+    get_test_devices,
     sanitize_identifier,
 )
 
@@ -156,6 +159,43 @@ class TestFemExamples(unittest.TestCase):
 
 class TestFemDiffusionExamples(unittest.TestCase):
     pass
+
+
+def test_magnetostatics_residual(test, device):
+    solve = example_magnetostatics.fem_example_utils.bsr_cg
+
+    def checked_solve(A, b, x, **kwargs):
+        result = solve(A, b=b, x=x, **kwargs)
+        # Recompute b - A*x in float64 rather than trusting the recursive residual.
+        A64 = sparse.bsr_copy(A, scalar_type=wp.float64)
+        b64 = wp.array(b.numpy(), dtype=wp.float64, device=device)
+        x64 = wp.array(x.numpy(), dtype=wp.float64, device=device)
+        residual = wp.clone(b64)
+        sparse.bsr_mv(A64, x64, residual, alpha=-1.0, beta=1.0)
+        b_norm_sq = wp.utils.array_inner(b64, b64)
+        residual_norm_sq = wp.utils.array_inner(residual, residual)
+        test.assertGreater(b_norm_sq, 0.0)
+        test.assertLessEqual(residual_norm_sq, 1.0e-8 * b_norm_sq)
+        return result
+
+    with wp.ScopedDevice(device):
+        for fp64 in (False, True):
+            with test.subTest(fp64=fp64):
+                example = example_magnetostatics.Example(resolution=16, fp64=fp64)
+                with patch.object(
+                    example_magnetostatics.fem_example_utils, "bsr_cg", side_effect=checked_solve
+                ) as solver:
+                    example.step()
+                solver.assert_called_once()
+
+
+add_function_test(
+    TestFemExamples,
+    "test_magnetostatics_residual",
+    test_magnetostatics_residual,
+    devices=get_test_devices(mode="basic"),
+    check_output=False,
+)
 
 
 # MGPU tests may fail on systems where P2P transfers are misconfigured
