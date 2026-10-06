@@ -331,8 +331,9 @@ def test_capture_update(test, device):
                 x = wp.ones(12 // block, dtype=vector, device=device)
                 y = wp.empty_like(x)
                 y.fill_(float("nan"))
+                # Load the kernel modules before capture; capture uses force_module_load=False.
                 pre.matvec(x, y, y, 1, 0)
-                with wp.ScopedCapture(device=device) as cap:
+                with wp.ScopedCapture(device=device, force_module_load=False) as cap:
                     pre.matvec(x, y, y, 1, 0)
                 for multiplier in (2.0, 0.5):
                     pre.update(_matrix(multiplier * a, device, block=block))
@@ -396,8 +397,9 @@ def test_float16_capture_refit(test, device):
         pointers = (pre.G.values.ptr, pre.GT.values.ptr)
         x = wp.ones(4, dtype=wp.vec3h, device=device)
         y = wp.empty_like(x)
+        # Load the kernel modules before capture; capture uses force_module_load=False.
         pre.matvec(x, y, y, 1, 0)
-        with wp.ScopedCapture(device=device) as cap:
+        with wp.ScopedCapture(device=device, force_module_load=False) as cap:
             pre.matvec(x, y, y, 1, 0)
         for multiplier in (2.0, 0.5):
             pre.update(_matrix(multiplier * a, device, wp.float16, 3))
