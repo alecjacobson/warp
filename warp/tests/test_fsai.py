@@ -261,6 +261,12 @@ def test_padded_input(test, device):
         np.testing.assert_allclose(_dense(pre.G), _dense(expected.G), atol=1e-12)
         with test.assertRaisesRegex(ValueError, "compact"):
             FSAI(padded, reuse_pattern=True)
+        # Compacting with bsr_compress, as the error message advises, makes reuse possible.
+        sp.bsr_compress(padded, prune_numerical_zeros=False)
+        test.assertIsNone(padded.row_counts)
+        np.testing.assert_allclose(
+            _dense(FSAI(padded, max_row_size=5, reuse_pattern=True).G), _dense(expected.G), atol=1e-12
+        )
 
 
 def test_empty(test, device):

@@ -225,8 +225,8 @@ class FSAI(LinearOperator):
             Products accumulate in the matrix scalar type; the transpose is formed
             from the same rounded factor, preserving the Gram form.
         reuse_pattern: Retain a plan for :meth:`update` on the original factor
-            supports. Requires compact input storage; use :func:`warp.sparse.bsr_copy`
-            to compact a padded matrix first. Ordinary construction accepts either.
+            supports. Requires compact input storage; use :func:`warp.sparse.bsr_compress`
+            with ``prune_numerical_zeros=False`` to compact a padded matrix first. Ordinary construction accepts either.
         max_step_size: Maximum distinct largest-residual frontier entries selected
             per growth step, in [1, 64]. Batching reduces searches but can change the
             selected supports. A short batch does not exhaust the row-size budget.
@@ -296,7 +296,7 @@ class FSAI(LinearOperator):
         if factor_dtype != A.scalar_type and not (A.scalar_type == wp.float64 and factor_dtype == wp.float32):
             raise ValueError("factor_dtype must be the matrix scalar type, or wp.float32 for a float64 matrix")
         if reuse_pattern and A.row_counts is not None:
-            raise ValueError("reuse_pattern requires compact BSR storage; canonicalize with bsr_copy")
+            raise ValueError("reuse_pattern requires compact BSR storage; compact with bsr_compress")
         self.max_row_size = max_row_size
         self.max_step_size = max_step_size
         self.factor_dtype = factor_dtype
