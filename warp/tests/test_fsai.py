@@ -306,6 +306,63 @@ def test_apply_dispatch(test, device):
             np.testing.assert_allclose(y.numpy(), g.T @ g @ np.ones(12), rtol=1e-6, atol=1e-6)
 
 
+def test_captured_update(test, device, dtype):
+    """Check that a captured update refits, rejects bad input and reports status on the device."""
+    a = _path(12)
+    tol = 3e-3 if dtype == wp.float16 else 1e-5 if dtype == wp.float32 else 1e-12
+    for block in (1, 3):
+        raw = _matrix(a, device, dtype, block)
+        pre = FSAI(raw, max_row_size=5, reuse_pattern=True)
+        vector = dtype if block == 1 else wp.types.vector(block, dtype)
+        x = wp.ones(12 // block, dtype=vector, device=device)
+        y = wp.empty_like(x)
+        # Eager warm-up loads every kernel module before capture.
+        pre.update()
+        pre.matvec(x, y, y, 1, 0)
+        with wp.ScopedCapture(device=device, force_module_load=False) as cap:
+            pre.update()
+            pre.matvec(x, y, y, 1, 0)
+
+        def replay(values=None, columns=None, raw=raw, pre=pre, cap=cap, y=y):
+            if values is not None:
+                raw.values.assign(values)
+            if columns is not None:
+                raw.columns.assign(columns)
+            wp.capture_launch(cap.graph)
+            return pre.update_status.numpy().copy(), _dense(pre.G).astype(np.float64), y.numpy().ravel()
+
+        original_values = raw.values.numpy().copy()
+        original_columns = raw.columns.numpy().copy()
+        for multiplier in (2.0, 0.5):
+            status, g, result = replay(_matrix(multiplier * a, device, dtype, block).values.numpy())
+            np.testing.assert_array_equal(status, 0)
+            np.testing.assert_allclose(result, g.T @ g @ np.ones(12), rtol=tol, atol=tol)
+        reference = _dense(pre.G).astype(np.float64)
+        _check_local_solves(
+            test, pre, 0.5 * a, rtol=8e-3 if dtype == wp.float16 else 2e-4, atol=5e-4 if dtype == wp.float16 else 2e-7
+        )
+
+        # A nonpositive diagonal is reported on the device and the factor is kept.
+        status, g, _ = replay(np.zeros_like(original_values))
+        test.assertGreater(status[1], 0)
+        np.testing.assert_array_equal(g, reference)
+        np.testing.assert_array_equal(_dense(pre.GT).astype(np.float64), reference.T)
+
+        # A changed topology is reported and the factor is kept.
+        changed = original_columns.copy()
+        changed[0] += 1
+        status, g, _ = replay(_matrix(a, device, dtype, block).values.numpy(), changed)
+        test.assertGreater(status[0], 0)
+        np.testing.assert_array_equal(g, reference)
+
+        # Restoring valid input clears the status and applies the new factor.
+        status, g, result = replay(original_values, original_columns)
+        np.testing.assert_array_equal(status, 0)
+        test.assertFalse(np.array_equal(g, reference))
+        np.testing.assert_allclose(result, g.T @ g @ np.ones(12), rtol=tol, atol=tol)
+        wp.synchronize_device(device)
+
+
 def test_concurrent_streams(test, device):
     """Check that one instance applied on concurrent streams never corrupts an output."""
     num_blocks, block_size = 50_000, 12
@@ -507,6 +564,14 @@ for func in (
 ):
     add_function_test(TestFSAI, func.__name__, func, devices=devices)
 add_function_test(TestFSAI, "test_capture_update", test_capture_update, devices=get_cuda_test_devices())
+for dtype in (wp.float16, wp.float32, wp.float64):
+    add_function_test(
+        TestFSAI,
+        f"test_captured_update_{dtype.__name__}",
+        test_captured_update,
+        devices=get_cuda_test_devices(),
+        dtype=dtype,
+    )
 add_function_test(TestFSAI, "test_concurrent_streams", test_concurrent_streams, devices=get_cuda_test_devices())
 
 for func in (test_application, test_refit_and_rollback):

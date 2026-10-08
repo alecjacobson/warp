@@ -236,9 +236,15 @@ class FSAI(LinearOperator):
         GT: Stored transpose of ``G``, including any storage rounding.
         truncated_rows: Number of setup rows stopped by the pivot safeguard.
         source: Matrix used by the most recent successful construction or update.
+        update_status: ``None`` without ``reuse_pattern``. Otherwise an ``int`` array
+            on the matrix device with three counts from the most recent update: the
+            topology mismatches against the original matrix, the invalid diagonals,
+            and the local factorizations that failed. The new factors were applied
+            only if all three are zero.
 
     Note:
-        Construction and updates synchronize and cannot be captured. Application is
+        Construction synchronizes and cannot be captured. :meth:`update` can be
+        captured in a CUDA graph (see its documentation), and application is
         CUDA graph-capturable after warming up the kernels, which requires a CUDA
         device with memory pool support because each application allocates its
         scratch. One instance may be applied concurrently from independent streams;
@@ -364,15 +370,23 @@ class FSAI(LinearOperator):
         self.GT = sp.bsr_transposed(self.G)
         super().__init__(A.shape, A.dtype, device, self._apply)
         self._refit = None
+        self.update_status = None
         if reuse_pattern:
             self._refit = _RefitPlan(self, A, scalar, max_row_size, pivot_floor)
+            self.update_status = self._refit.status
 
     def update(self, A: sp.BsrMatrix | None = None) -> "FSAI":
         """Refit on the original factor supports, preserving captured apply buffers.
 
         Requires ``reuse_pattern=True`` and identical compact BSR topology/storage.
         This is not a new adaptive pattern search. Rebuild when convergence worsens.
-        Failed validation leaves the previous factors intact. Updates synchronize.
+        Failed validation leaves the previous factors intact.
+
+        Outside graph capture, the update synchronizes and raises on failure. During
+        CUDA graph capture, the update performs no host reads and cannot raise
+        for numerical failures; after each replay, inspect :attr:`update_status`.
+        Run one eager update first so the kernels are loaded before capture, and
+        have the matrix keep the same arrays so a replay reads its new values.
 
         Args:
             A: Matrix with new numerical values. ``None`` reuses :attr:`source`.
@@ -381,8 +395,9 @@ class FSAI(LinearOperator):
             This preconditioner with updated numerical factors.
 
         Raises:
-            ValueError: No reuse plan exists, matrix metadata or topology changed,
-                or a local factorization or storage conversion failed. Unlike
+            ValueError: No reuse plan exists, matrix metadata or array sizes changed,
+                or, when not capturing, the topology changed or a local factorization
+                or storage conversion failed. Unlike
                 initial construction, refits reject a bad pivot without truncating
                 the fixed support. Rebuild to select new supports.
         """
@@ -633,20 +648,36 @@ def _refit_kernels(dtype, storage, width):
             wp.atomic_add(bad, 0, 1)
 
     @wp.kernel(enable_backward=False, module="unique")
-    def transpose(values: wp.array[storage], mapping: wp.array[int], out: wp.array[storage]):
+    def commit(
+        candidate: wp.array[storage],
+        status: wp.array[int],
+        mapping: wp.array[int],
+        values: wp.array[storage],
+        transposed: wp.array[storage],
+    ):
+        # Publish the refit factor only if every validation passed; otherwise the
+        # previous factor stays in place.
         e = wp.tid()
-        out[mapping[e]] = values[e]
+        if status[0] == 0 and status[1] == 0 and status[2] == 0:
+            values[e] = candidate[e]
+            transposed[mapping[e]] = candidate[e]
 
-    return gather, refit, transpose
+    return gather, refit, commit
 
 
 class _RefitPlan:
     def __init__(self, owner, A, scalar, width, floor):
         self.signature = (A.shape, A.dtype, A.device, A.row_counts is not None)
-        self.topology = [wp.clone(a) for a in self.arrays(A)]
+        # Every size used by an update is fixed here, so updating never reads the
+        # block count back from the device and can be captured in a CUDA graph.
+        self.nrow = A.nrow
+        self.nnz = A.nnz_sync()
+        self.topology = [wp.clone(A.offsets[: A.nrow + 1])]
+        if self.nnz:
+            self.topology.append(wp.clone(A.columns[: self.nnz]))
         self.scalar = scalar
         self.floor = floor
-        self.gather, self.refit, self.scatter_transpose = _refit_kernels(A.scalar_type, owner.factor_dtype, width)
+        self.gather, self.refit, self.commit = _refit_kernels(A.scalar_type, owner.factor_dtype, width)
         self.mapping = wp.empty(scalar.nnz_sync(), dtype=int, device=A.device)
         # Padded source rows need compact search endpoints, not unused slots.
         # _source_map's search is safe for compact input; padded input is rejected
@@ -667,28 +698,31 @@ class _RefitPlan:
         self.values = wp.empty_like(scalar.values)
         self.candidate = wp.empty_like(owner.G.values)
         self.scale = wp.empty(scalar.nrow, dtype=A.scalar_type, device=A.device)
-        self.bad = wp.zeros(2, dtype=int, device=A.device)
-
-    @staticmethod
-    def arrays(A):
-        nnz = A.nnz_sync()
-        # Warp rejects zero-length slices, including [:0] on an empty array.
-        columns = A.columns[:nnz] if nnz else wp.empty(0, dtype=int, device=A.device)
-        return [A.offsets[: A.nrow + 1], columns] + ([A.row_counts] if A.row_counts is not None else [])
+        # Counts of [topology mismatches, invalid diagonals, failed local factorizations].
+        self.status = wp.zeros(3, dtype=int, device=A.device)
+        self.topology_status = self.status[0:1]
+        self.diagonal_status = self.status[1:2]
+        self.refit_status = self.status[2:3]
 
     def update(self, owner, A, diagonal):
         if (A.shape, A.dtype, A.device, A.row_counts is not None) != self.signature:
             raise ValueError("FSAI update requires the original shape, dtype, device and topology")
-        incoming = self.arrays(A)
-        if any(a.shape != b.shape for a, b in zip(incoming, self.topology, strict=True)):
-            raise ValueError("FSAI update requires identical topology storage")
-        self.bad.zero_()
-        for a, b in zip(incoming, self.topology, strict=True):
-            wp.launch(_compare_topology, a.size, [a, b, self.bad], device=A.device)
-        if self.bad.numpy()[0]:
-            raise ValueError("FSAI update requires identical sparsity; rebuild to change it")
-        if A.values.size < A.nnz_sync():
-            raise ValueError("FSAI update requires a values array covering every stored block")
+        if A.offsets.size < self.nrow + 1 or A.columns.size < self.nnz or A.values.size < self.nnz:
+            raise ValueError("FSAI update requires storage covering every block of the original matrix")
+        self.status.zero_()
+        wp.launch(
+            _compare_topology,
+            self.nrow + 1,
+            [A.offsets[: self.nrow + 1], self.topology[0], self.topology_status],
+            device=A.device,
+        )
+        if self.nnz:
+            wp.launch(
+                _compare_topology,
+                self.nnz,
+                [A.columns[: self.nnz], self.topology[1], self.topology_status],
+                device=A.device,
+            )
         wp.launch(
             self.gather,
             self.mapping.size,
@@ -699,7 +733,7 @@ class _RefitPlan:
         wp.launch(
             diagonal,
             s.nrow,
-            [s.offsets, s.columns, self.values, self.scale, self.bad],
+            [s.offsets, s.columns, self.values, self.scale, self.diagonal_status],
             device=A.device,
         )
         wp.launch(
@@ -714,19 +748,26 @@ class _RefitPlan:
                 self.scale,
                 A.scalar_type(self.floor),
                 self.candidate,
-                self.bad,
+                self.refit_status,
             ],
             device=A.device,
         )
-        if self.bad.numpy()[0]:
-            raise ValueError("FSAI refit requires finite positive diagonals and SPD local supports")
-        wp.copy(owner.G.values, self.candidate)
         wp.launch(
-            self.scatter_transpose,
+            self.commit,
             self.transpose.size,
-            [owner.G.values, self.transpose, owner.GT.values],
+            [self.candidate, self.status, self.transpose, owner.G.values, owner.GT.values],
             device=A.device,
         )
+        if not A.device.is_capturing:
+            self.check()
+
+    def check(self):
+        """Raise if the most recent update was rejected, synchronizing the device."""
+        topology, diagonal, refit = self.status.numpy()
+        if topology:
+            raise ValueError("FSAI update requires identical sparsity; rebuild to change it")
+        if diagonal or refit:
+            raise ValueError("FSAI refit requires finite positive diagonals and SPD local supports")
 
 
 @lru_cache(None)
