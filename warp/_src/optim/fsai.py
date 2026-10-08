@@ -239,9 +239,10 @@ class FSAI(LinearOperator):
 
     Note:
         Construction and updates synchronize and cannot be captured. Application is
-        CUDA graph-capturable after warming up the kernels. Instances own scratch:
-        do not apply the same instance concurrently on independent streams, or
-        overlap an update with application. Treat ``G`` and ``GT`` as read-only.
+        CUDA graph-capturable after warming up the kernels, which requires a CUDA
+        device with memory pool support because each application allocates its
+        scratch. One instance may be applied concurrently from independent streams;
+        do not overlap an update with application. Treat ``G`` and ``GT`` as read-only.
         Rebuild or call :meth:`update` after changing the input values. This
         preconditioner does not provide automatic differentiation.
 
@@ -361,7 +362,6 @@ class FSAI(LinearOperator):
             if status.numpy()[0]:
                 raise ValueError("factor_dtype conversion lost finite entries or a positive diagonal")
         self.GT = sp.bsr_transposed(self.G)
-        self._tmp = wp.empty(n, dtype=dtype, device=device)
         super().__init__(A.shape, A.dtype, device, self._apply)
         self._refit = None
         if reuse_pattern:
@@ -399,10 +399,13 @@ class FSAI(LinearOperator):
         x = x.view(self.scalar_type).flatten()
         z = z.view(self.scalar_type).flatten()
         y = y.view(self.scalar_type).flatten()
+        # Scratch is allocated per application, from the stream-ordered pool on CUDA, so
+        # concurrent applications on different streams never share an intermediate.
+        tmp = wp.empty(x.shape, dtype=x.dtype, device=x.device)
         if alpha != 0.0:
-            _matvec(self.G, x, self._tmp, self._tmp, 1.0, 0.0, self.apply_lanes)
+            _matvec(self.G, x, tmp, tmp, 1.0, 0.0, self.apply_lanes)
         # x is fully consumed before writing z, including when x, y, z alias.
-        _matvec(self.GT, self._tmp, y, z, alpha, beta, self.apply_lanes)
+        _matvec(self.GT, tmp, y, z, alpha, beta, self.apply_lanes)
 
 
 @lru_cache(None)

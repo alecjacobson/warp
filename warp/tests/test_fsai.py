@@ -300,6 +300,32 @@ def test_apply_dispatch(test, device):
             np.testing.assert_allclose(y.numpy(), g.T @ g @ np.ones(12), rtol=1e-6, atol=1e-6)
 
 
+def test_concurrent_streams(test, device):
+    """Check that one instance applied on concurrent streams never corrupts an output."""
+    num_blocks, block_size = 50_000, 12
+    count = num_blocks * block_size
+    A = sp.bsr_identity(num_blocks, block_type=wp.types.matrix((block_size, block_size), wp.float32), device=device)
+    pre = FSAI(A)
+    stream0 = wp.Stream(device, priority=0)
+    stream1 = wp.Stream(device, priority=-1)
+    x0 = wp.full(count, 1.0, dtype=wp.float32, device=device)
+    x1 = wp.full(count, 2.0, dtype=wp.float32, device=device)
+    z0, z1 = wp.zeros_like(x0), wp.zeros_like(x1)
+    pre.matvec(x0, z0, z0, 1.0, 0.0)
+    wp.synchronize_device(device)
+    for _ in range(100):
+        # Zero each output on the stream that writes it so the memset stays ordered.
+        with wp.ScopedStream(stream0, sync_enter=False, sync_exit=False):
+            z0.zero_()
+            pre.matvec(x0, z0, z0, 1.0, 0.0)
+        with wp.ScopedStream(stream1, sync_enter=False, sync_exit=False):
+            z1.zero_()
+            pre.matvec(x1, z1, z1, 1.0, 0.0)
+        wp.synchronize_device(device)
+        np.testing.assert_array_equal(z0.numpy(), x0.numpy())
+        np.testing.assert_array_equal(z1.numpy(), x1.numpy())
+
+
 def test_scaling_and_conversion(test, device):
     """Check badly scaled inputs and factor conversion overflow handling."""
     a = _path(12)
@@ -357,7 +383,6 @@ def test_float16_factors(test, device):
             test.assertEqual(pre.scalar_type, wp.float16)
             test.assertEqual(pre.G.scalar_type, wp.float16)
             test.assertEqual(pre.GT.scalar_type, wp.float16)
-            test.assertEqual(pre._tmp.dtype, wp.float16)
             g = _check_local_solves(test, pre, a, rtol=1e-2, atol=1e-3).astype(np.float64)
             if width == 12:
                 reference = np.linalg.inv(a)
@@ -476,6 +501,7 @@ for func in (
 ):
     add_function_test(TestFSAI, func.__name__, func, devices=devices)
 add_function_test(TestFSAI, "test_capture_update", test_capture_update, devices=get_cuda_test_devices())
+add_function_test(TestFSAI, "test_concurrent_streams", test_concurrent_streams, devices=get_cuda_test_devices())
 
 for func in (test_application, test_refit_and_rollback):
     add_function_test(TestFSAI, f"{func.__name__}_float16", func, devices=devices, dtype=wp.float16)
