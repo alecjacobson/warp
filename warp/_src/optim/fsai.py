@@ -217,9 +217,6 @@ class FSAI(LinearOperator):
             Cholesky factorization, in (0, 1). ``None`` selects 1e-3 for ``float16``,
             1e-6 for ``float32`` and 1e-12 for ``float64``. Setup truncates a row
             before a rejected pivot.
-        apply_lanes: CUDA threads cooperating on each scalar row during application;
-            one of 1, 2, 4, 8, 16, or 32. One uses the ordinary sparse product.
-            CPU uses the ordinary product regardless of this setting.
         factor_dtype: Factor storage type: the matrix scalar type, or ``wp.float32``
             to compress a ``float64`` factor. ``None`` uses the matrix scalar type.
             Products accumulate in the matrix scalar type; the transpose is formed
@@ -276,7 +273,6 @@ class FSAI(LinearOperator):
         max_row_size: int = 8,
         kap_tolerance: float = 1.0e-3,
         pivot_floor: float | None = None,
-        apply_lanes: int = 1,
         factor_dtype: type | None = None,
         reuse_pattern: bool = False,
         max_step_size: int = 1,
@@ -295,8 +291,6 @@ class FSAI(LinearOperator):
             pivot_floor = {wp.float16: 1.0e-3, wp.float32: 1.0e-6, wp.float64: 1.0e-12}[A.scalar_type]
         if not 0 < pivot_floor < 1:
             raise ValueError("pivot_floor must be in (0, 1)")
-        if not isinstance(apply_lanes, int) or apply_lanes not in (1, 2, 4, 8, 16, 32):
-            raise ValueError("apply_lanes must be one of 1, 2, 4, 8, 16, 32")
         if factor_dtype is None:
             factor_dtype = A.scalar_type
         if factor_dtype != A.scalar_type and not (A.scalar_type == wp.float64 and factor_dtype == wp.float32):
@@ -306,7 +300,6 @@ class FSAI(LinearOperator):
         self.max_row_size = max_row_size
         self.max_step_size = max_step_size
         self.factor_dtype = factor_dtype
-        self.apply_lanes = apply_lanes
         self.source = A
         # Settle the source count before scalarization: nnz can otherwise be a
         # very loose assembly upper bound, causing oversized temporary buffers.
@@ -418,9 +411,9 @@ class FSAI(LinearOperator):
         # concurrent applications on different streams never share an intermediate.
         tmp = wp.empty(x.shape, dtype=x.dtype, device=x.device)
         if alpha != 0.0:
-            _matvec(self.G, x, tmp, tmp, 1.0, 0.0, self.apply_lanes)
+            _matvec(self.G, x, tmp, tmp, 1.0, 0.0)
         # x is fully consumed before writing z, including when x, y, z alias.
-        _matvec(self.GT, tmp, y, z, alpha, beta, self.apply_lanes)
+        _matvec(self.GT, tmp, y, z, alpha, beta)
 
 
 @lru_cache(None)
@@ -771,60 +764,6 @@ class _RefitPlan:
 
 
 @lru_cache(None)
-def _grouped_kernel(dtype, lanes, storage_type):
-    rows = 128 // lanes
-
-    @wp.kernel(enable_backward=False, module="unique")
-    def mv(
-        n: int,
-        offsets: wp.array[int],
-        columns: wp.array[int],
-        values: wp.array[storage_type],
-        x: wp.array[dtype],
-        y: wp.array[dtype],
-        z: wp.array[dtype],
-        alpha: dtype,
-        beta: dtype,
-    ):
-        row, lane = wp.tid()
-        result = dtype(0)
-        if row < n and alpha != dtype(0):
-            for e in range(offsets[row] + lane, offsets[row + 1], wp.static(lanes)):
-                result += dtype(values[e]) * x[columns[e]]
-        t = wp.tile_reshape(wp.tile(result), shape=(wp.static(rows), wp.static(lanes)))
-        sums = wp.tile_sum(t, axis=1)
-        result = wp.tile_extract(sums, row % wp.static(rows))
-        if lane == 0 and row < n:
-            result *= alpha
-            if beta != dtype(0):
-                result += beta * y[row]
-            z[row] = result
-
-    return mv
-
-
-def _grouped_mv(a, x, y, z, alpha, beta, lanes):
-    rows = 128 // lanes
-    wp.launch(
-        _grouped_kernel(x.dtype, lanes, a.scalar_type),
-        dim=(((a.nrow + rows - 1) // rows) * rows, lanes),
-        inputs=[
-            a.nrow,
-            a.offsets,
-            a.columns,
-            a.values,
-            x,
-            y,
-            z,
-            x.dtype(alpha),
-            x.dtype(beta),
-        ],
-        device=a.device,
-        block_dim=128,
-    )
-
-
-@lru_cache(None)
 def _mixed_kernel(storage_type, dtype):
     @wp.kernel(enable_backward=False, module="unique")
     def mv(
@@ -850,11 +789,9 @@ def _mixed_kernel(storage_type, dtype):
     return mv
 
 
-def _matvec(a, x, y, z, alpha, beta, lanes):
-    """Canonical scalar CSR; x and z must not alias for the tiled path."""
-    if a.device.is_cuda and lanes > 1:
-        _grouped_mv(a, x, y, z, alpha, beta, lanes)
-    elif a.scalar_type != x.dtype:
+def _matvec(a, x, y, z, alpha, beta):
+    """Compute ``z = alpha * a @ x + beta * y`` for a canonical scalar CSR matrix."""
+    if a.scalar_type != x.dtype:
         wp.launch(
             _mixed_kernel(a.scalar_type, x.dtype),
             a.nrow,

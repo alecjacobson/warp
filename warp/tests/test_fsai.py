@@ -128,34 +128,33 @@ def test_pivot_guard(test, device):
 
 
 def test_application(test, device, dtype):
-    """Check ``G.T @ G`` application across lanes, storage types and aliasing."""
+    """Check ``G.T @ G`` application across storage types and aliasing."""
     rng = np.random.default_rng(18)
     a = _path(35)
     raw = _matrix(a, device, dtype)
     tol = 5e-3 if dtype == wp.float16 else 3e-6 if dtype == wp.float32 else 2e-12
-    # Include partial CUDA thread blocks and both ordinary and compressed factors.
+    # Include both ordinary and compressed factors.
     for storage in (dtype,) if dtype == wp.float16 else dict.fromkeys((dtype, wp.float32)):
-        for lanes in (1, 2, 4, 8, 16, 32):
-            pre = FSAI(raw, max_row_size=5, factor_dtype=storage, apply_lanes=lanes)
-            g = _dense(pre.G).astype(np.float64)
-            np.testing.assert_array_equal(_dense(pre.GT), g.T)
-            for alias in ("none", "xz", "yz", "xy", "xyz"):
-                x = wp.array(rng.normal(size=len(a)), dtype=dtype, device=device)
-                y = x if alias in ("xy", "xyz") else wp.array(rng.normal(size=len(a)), dtype=dtype, device=device)
-                z = x if alias in ("xz", "xyz") else y if alias == "yz" else wp.empty_like(x)
-                expected = 0.7 * g.T @ g @ x.numpy() - 1.2 * y.numpy()
-                pre.matvec(x, y, z, 0.7, -1.2)
-                np.testing.assert_allclose(z.numpy(), expected, rtol=tol, atol=tol)
-            x = wp.ones(len(a), dtype=dtype, device=device)
-            y = wp.empty_like(x)
-            z = wp.empty_like(x)
-            y.fill_(float("nan"))
-            pre.matvec(x, y, z, 1, 0)
-            np.testing.assert_allclose(z.numpy(), g.T @ g @ np.ones(len(a)), rtol=tol, atol=tol)
-            x.fill_(float("nan"))
-            y.fill_(2)
-            pre.matvec(x, y, z, 0, 0.5)
-            np.testing.assert_array_equal(z.numpy(), 1)
+        pre = FSAI(raw, max_row_size=5, factor_dtype=storage)
+        g = _dense(pre.G).astype(np.float64)
+        np.testing.assert_array_equal(_dense(pre.GT), g.T)
+        for alias in ("none", "xz", "yz", "xy", "xyz"):
+            x = wp.array(rng.normal(size=len(a)), dtype=dtype, device=device)
+            y = x if alias in ("xy", "xyz") else wp.array(rng.normal(size=len(a)), dtype=dtype, device=device)
+            z = x if alias in ("xz", "xyz") else y if alias == "yz" else wp.empty_like(x)
+            expected = 0.7 * g.T @ g @ x.numpy() - 1.2 * y.numpy()
+            pre.matvec(x, y, z, 0.7, -1.2)
+            np.testing.assert_allclose(z.numpy(), expected, rtol=tol, atol=tol)
+        x = wp.ones(len(a), dtype=dtype, device=device)
+        y = wp.empty_like(x)
+        z = wp.empty_like(x)
+        y.fill_(float("nan"))
+        pre.matvec(x, y, z, 1, 0)
+        np.testing.assert_allclose(z.numpy(), g.T @ g @ np.ones(len(a)), rtol=tol, atol=tol)
+        x.fill_(float("nan"))
+        y.fill_(2)
+        pre.matvec(x, y, z, 0, 0.5)
+        np.testing.assert_array_equal(z.numpy(), 1)
 
 
 def test_solver_integration(test, device, dtype):
@@ -285,25 +284,18 @@ def test_empty(test, device):
 
 
 def test_apply_dispatch(test, device):
-    """Check that each apply configuration reaches its intended kernel path."""
+    """Check that compressed factors use the mixed-storage kernel and others do not."""
     a = _path(12)
-    for dtype, storage in ((wp.float64, wp.float64), (wp.float64, wp.float32)):
-        raw = _matrix(a, device, dtype)
-        x = wp.ones(12, dtype=dtype, device=device)
-        y = wp.empty_like(x)
-        for lanes in (1, 4):
-            pre = FSAI(raw, max_row_size=5, factor_dtype=storage, apply_lanes=lanes)
-            with (
-                mock.patch.object(fsai_module, "_grouped_mv", wraps=fsai_module._grouped_mv) as grouped,
-                mock.patch.object(fsai_module, "_mixed_kernel", wraps=fsai_module._mixed_kernel) as mixed,
-            ):
-                pre.matvec(x, y, y, 1, 0)
-            # The grouped kernel is CUDA only; CPU always uses the ordinary product.
-            expect_grouped = device.is_cuda and lanes > 1
-            test.assertEqual(grouped.call_count, 2 if expect_grouped else 0)
-            test.assertEqual(mixed.call_count, 2 if storage != dtype and not expect_grouped else 0)
-            g = _dense(pre.G)
-            np.testing.assert_allclose(y.numpy(), g.T @ g @ np.ones(12), rtol=1e-6, atol=1e-6)
+    raw = _matrix(a, device, wp.float64)
+    x = wp.ones(12, dtype=wp.float64, device=device)
+    y = wp.empty_like(x)
+    for storage in (wp.float64, wp.float32):
+        pre = FSAI(raw, max_row_size=5, factor_dtype=storage)
+        with mock.patch.object(fsai_module, "_mixed_kernel", wraps=fsai_module._mixed_kernel) as mixed:
+            pre.matvec(x, y, y, 1, 0)
+        test.assertEqual(mixed.call_count, 2 if storage == wp.float32 else 0)
+        g = _dense(pre.G)
+        np.testing.assert_allclose(y.numpy(), g.T @ g @ np.ones(12), rtol=1e-6, atol=1e-6)
 
 
 def test_captured_update(test, device, dtype):
@@ -412,24 +404,23 @@ def test_capture_update(test, device):
     """Check that CUDA graph application sees refit factor values."""
     a = _path(12)
     for block in (1, 3):
-        for lanes in (1, 4):
-            for storage in (wp.float32, wp.float64):
-                raw = _matrix(a, device, block=block)
-                pre = FSAI(raw, max_row_size=5, reuse_pattern=True, factor_dtype=storage, apply_lanes=lanes)
-                vector = wp.float64 if block == 1 else wp.vec3d
-                x = wp.ones(12 // block, dtype=vector, device=device)
-                y = wp.empty_like(x)
-                y.fill_(float("nan"))
-                # Load the kernel modules before capture; capture uses force_module_load=False.
+        for storage in (wp.float32, wp.float64):
+            raw = _matrix(a, device, block=block)
+            pre = FSAI(raw, max_row_size=5, reuse_pattern=True, factor_dtype=storage)
+            vector = wp.float64 if block == 1 else wp.vec3d
+            x = wp.ones(12 // block, dtype=vector, device=device)
+            y = wp.empty_like(x)
+            y.fill_(float("nan"))
+            # Load the kernel modules before capture; capture uses force_module_load=False.
+            pre.matvec(x, y, y, 1, 0)
+            with wp.ScopedCapture(device=device, force_module_load=False) as cap:
                 pre.matvec(x, y, y, 1, 0)
-                with wp.ScopedCapture(device=device, force_module_load=False) as cap:
-                    pre.matvec(x, y, y, 1, 0)
-                for multiplier in (2.0, 0.5):
-                    pre.update(_matrix(multiplier * a, device, block=block))
-                    wp.capture_launch(cap.graph)
-                    g = _dense(pre.G).astype(np.float64)
-                    np.testing.assert_allclose(y.numpy().ravel(), g.T @ g @ np.ones(12), rtol=1e-12, atol=1e-12)
-                wp.synchronize_device(device)
+            for multiplier in (2.0, 0.5):
+                pre.update(_matrix(multiplier * a, device, block=block))
+                wp.capture_launch(cap.graph)
+                g = _dense(pre.G).astype(np.float64)
+                np.testing.assert_allclose(y.numpy().ravel(), g.T @ g @ np.ones(12), rtol=1e-12, atol=1e-12)
+            wp.synchronize_device(device)
 
 
 def test_float16_factors(test, device):
@@ -479,29 +470,28 @@ def test_float16_pivot_guard(test, device):
 def test_float16_capture_refit(test, device):
     """Check that float16 CUDA graph application sees refit factor values."""
     a = _path(12)
-    for lanes in (1, 4):
-        raw = _matrix(a, device, wp.float16, 3)
-        pre = FSAI(raw, reuse_pattern=True, apply_lanes=lanes, max_row_size=8, kap_tolerance=0)
-        pointers = (pre.G.values.ptr, pre.GT.values.ptr)
-        x = wp.ones(4, dtype=wp.vec3h, device=device)
-        y = wp.empty_like(x)
-        # Load the kernel modules before capture; capture uses force_module_load=False.
+    raw = _matrix(a, device, wp.float16, 3)
+    pre = FSAI(raw, reuse_pattern=True, max_row_size=8, kap_tolerance=0)
+    pointers = (pre.G.values.ptr, pre.GT.values.ptr)
+    x = wp.ones(4, dtype=wp.vec3h, device=device)
+    y = wp.empty_like(x)
+    # Load the kernel modules before capture; capture uses force_module_load=False.
+    pre.matvec(x, y, y, 1, 0)
+    with wp.ScopedCapture(device=device, force_module_load=False) as cap:
         pre.matvec(x, y, y, 1, 0)
-        with wp.ScopedCapture(device=device, force_module_load=False) as cap:
-            pre.matvec(x, y, y, 1, 0)
-        for multiplier in (2.0, 0.5):
-            pre.update(_matrix(multiplier * a, device, wp.float16, 3))
-            test.assertEqual((pre.G.values.ptr, pre.GT.values.ptr), pointers)
-            wp.capture_launch(cap.graph)
-            g = _dense(pre.G).astype(np.float64)
-            np.testing.assert_allclose(y.numpy().ravel(), g.T @ g @ np.ones(12), rtol=3e-3, atol=1e-3)
-        before = y.numpy().copy()
-        invalid = sp.bsr_copy(raw)
-        invalid.values.zero_()
-        with test.assertRaises(ValueError):
-            pre.update(invalid)
+    for multiplier in (2.0, 0.5):
+        pre.update(_matrix(multiplier * a, device, wp.float16, 3))
+        test.assertEqual((pre.G.values.ptr, pre.GT.values.ptr), pointers)
         wp.capture_launch(cap.graph)
-        np.testing.assert_array_equal(y.numpy(), before)
+        g = _dense(pre.G).astype(np.float64)
+        np.testing.assert_allclose(y.numpy().ravel(), g.T @ g @ np.ones(12), rtol=3e-3, atol=1e-3)
+    before = y.numpy().copy()
+    invalid = sp.bsr_copy(raw)
+    invalid.values.zero_()
+    with test.assertRaises(ValueError):
+        pre.update(invalid)
+    wp.capture_launch(cap.graph)
+    np.testing.assert_array_equal(y.numpy(), before)
 
 
 class TestFSAI(unittest.TestCase):
@@ -515,7 +505,6 @@ class TestFSAI(unittest.TestCase):
         for option, values in (
             ("kap_tolerance", (-1, 1, float("nan"), float("inf"))),
             ("pivot_floor", (0, 1, float("nan"))),
-            ("apply_lanes", (0, 3, 64)),
             ("factor_dtype", (wp.float16, wp.int32)),
         ):
             for value in values:
