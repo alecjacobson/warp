@@ -60,7 +60,9 @@ def _aabb_measure(points_np, measure_type):
     dims = points_np.max(axis=0) - points_np.min(axis=0)
     if measure_type == geo.OBBMeasureType.VOLUME:
         return float(np.prod(dims))
-    return float(2.0 * (dims[0] * dims[1] + dims[1] * dims[2] + dims[0] * dims[2]))
+    if measure_type == geo.OBBMeasureType.SURFACE_AREA:
+        return float(2.0 * (dims[0] * dims[1] + dims[1] * dims[2] + dims[0] * dims[2]))
+    return float(0.5 * np.sum(dims))
 
 
 def _shapes(rng):
@@ -101,6 +103,43 @@ def test_obb_measure_matches_extents(test, device):
     e = np.asarray(extents, dtype=np.float64)
     expected = 2.0 * (e[0] * e[1] + e[1] * e[2] + e[0] * e[2])
     test.assertAlmostEqual(measure / expected, 1.0, places=4)
+
+    _, extents, measure = _host(
+        geo.oriented_bounding_box(points, measure_type=geo.OBBMeasureType.MEAN_WIDTH, num_samples=128)
+    )
+    e = np.asarray(extents, dtype=np.float64)
+    test.assertAlmostEqual(measure / float(0.5 * np.sum(e)), 1.0, places=4)
+
+
+def _skewed_cloud(seed):
+    """Return a few randomly rotated, anisotropic points whose best boxes differ by objective."""
+    rng = np.random.default_rng(seed)
+    num_points = int(rng.integers(5, 12))
+    cloud = rng.normal(size=(num_points, 3)) * np.array([3.0, 1.0, 0.3]) ** rng.uniform(0.0, 1.5)
+    q, r = np.linalg.qr(rng.normal(size=(3, 3)))
+    q = q * np.sign(np.diag(r))
+    q[:, 0] *= np.linalg.det(q)
+    return (cloud @ q.T).astype(np.float32)
+
+
+def test_obb_mean_width_objective(test, device):
+    """Minimize the mean width of the box, which picks a different box than minimizing the volume."""
+    # On this cloud the volume-minimizing box has a larger mean width than the mean-width-minimizing
+    # box, and the other way around for the volume, so each objective must win on its own measure.
+    points = wp.array(_skewed_cloud(14), dtype=wp.vec3, device=device)
+    Measure = geo.OBBMeasureType
+    kwargs = {"num_samples": 256, "include_pca": False}
+
+    _, volume_extents, _ = _host(geo.oriented_bounding_box(points, measure_type=Measure.VOLUME, **kwargs))
+    _, width_extents, width_measure = _host(
+        geo.oriented_bounding_box(points, measure_type=Measure.MEAN_WIDTH, **kwargs)
+    )
+    volume_extents = np.asarray(volume_extents, dtype=np.float64)
+    width_extents = np.asarray(width_extents, dtype=np.float64)
+
+    test.assertAlmostEqual(width_measure / float(0.5 * np.sum(width_extents)), 1.0, places=4)
+    test.assertLess(0.5 * np.sum(width_extents), 0.98 * 0.5 * np.sum(volume_extents))
+    test.assertLess(np.prod(volume_extents), np.prod(width_extents))
 
 
 def test_obb_never_worse_than_aabb(test, device):
@@ -632,6 +671,7 @@ add_function_test(TestGeometryOBB, "test_obb_contains_all_points", test_obb_cont
 add_function_test(
     TestGeometryOBB, "test_obb_measure_matches_extents", test_obb_measure_matches_extents, devices=devices
 )
+add_function_test(TestGeometryOBB, "test_obb_mean_width_objective", test_obb_mean_width_objective, devices=devices)
 add_function_test(TestGeometryOBB, "test_obb_never_worse_than_aabb", test_obb_never_worse_than_aabb, devices=devices)
 add_function_test(TestGeometryOBB, "test_obb_recovers_rotated_box", test_obb_recovers_rotated_box, devices=devices)
 add_function_test(

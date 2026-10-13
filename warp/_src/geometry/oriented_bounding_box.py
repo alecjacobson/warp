@@ -94,6 +94,8 @@ class OBBMeasureType(enum.IntEnum):
     """Minimize the volume of the bounding box."""
     SURFACE_AREA = 1
     """Minimize the surface area of the bounding box."""
+    MEAN_WIDTH = 2
+    """Minimize the mean width of the bounding box, which is half the sum of its side lengths."""
 
 
 _OBB_POINT_CHUNKS = 256
@@ -345,12 +347,14 @@ def oriented_bounding_box_measure_kernel(
     hi = max_bounds[shape, i]
 
     # Full side lengths of the box and the measure being minimized. Default to the
-    # volume; only the surface-area branch overrides it (keeps `measure` defined on
-    # every path for codegen).
+    # volume; the other branches override it (keeps `measure` defined on every path
+    # for codegen).
     dims = hi - lo
     measure = dims[0] * dims[1] * dims[2]
     if measure_type == wp.static(int(OBBMeasureType.SURFACE_AREA)):
         measure = 2.0 * (dims[0] * dims[1] + dims[1] * dims[2] + dims[0] * dims[2])
+    elif measure_type == wp.static(int(OBBMeasureType.MEAN_WIDTH)):
+        measure = 0.5 * (dims[0] + dims[1] + dims[2])
 
     # Box center in the rotated frame, mapped back into world space. The stored
     # transform takes the box's local axis-aligned frame to world coordinates.
@@ -572,6 +576,11 @@ def oriented_bounding_boxes(
         entry ``i`` describes point set ``i`` exactly as for :func:`oriented_bounding_box`.
 
     Note:
+        The cost of the search is proportional to the total number of points. Replacing each point set
+        with its convex hull vertices, or with any other conservative subset that never discards a
+        point on the hull, leaves every box unchanged and lowers the cost in proportion to the number
+        of points removed; see :func:`oriented_bounding_box`.
+
         Scratch memory grows with
         ``num_shapes * max(num_samples, num_refine_starts * num_refine_samples, 3 * num_refine_starts * num_spin_samples)``.
         For a very large number of shapes, call this function on groups of them.
@@ -678,13 +687,23 @@ def oriented_bounding_box(
     subsample, which bounds its cost but can change which orientation is chosen; the returned box
     is always re-measured over every point, so it stays exact and encloses all of them.
 
+    The cost of the search is proportional to the number of points. A bounding box is determined by
+    the convex hull of the points, so replacing a very large input with its convex hull vertices, or
+    with any other conservative subset that never discards a point on the hull (for example, the
+    extreme points along a set of directions), leaves the box for every orientation unchanged and
+    lowers the cost in proportion to the number of points removed. Unlike ``max_search_points``, this
+    does not change which orientation is searched. The PCA candidate is the one exception, since it
+    comes from the covariance of whichever points are given.
+
     To fit many point sets at once, see :func:`oriented_bounding_boxes`.
 
     Args:
         points: Array of point positions of type :class:`warp.vec3`.
         measure_type: Quantity to minimize, as an :class:`OBBMeasureType` member:
             :attr:`OBBMeasureType.VOLUME` minimizes the box volume;
-            :attr:`OBBMeasureType.SURFACE_AREA` minimizes the box surface area.
+            :attr:`OBBMeasureType.SURFACE_AREA` minimizes the box surface area;
+            :attr:`OBBMeasureType.MEAN_WIDTH` minimizes the box mean width, half the sum of its side
+            lengths.
         num_samples: Number of candidate orientations to sample from the spiral. Larger
             values give a tighter box at higher cost.
         include_axis_aligned: Whether to also evaluate the identity rotation.
@@ -694,7 +713,8 @@ def oriented_bounding_box(
             larger than a given cap, candidates are scored over a deterministic strided subsample
             of about that size, which bounds the cost of the search but can change which
             orientation is chosen. The winning orientation's box is recomputed over the full point
-            set, so the returned box is exact and encloses every point either way.
+            set, so the returned box is exact and encloses every point either way. For very large
+            inputs, prefer filtering the points as described above, which does not change the search.
         num_refine_starts: Number of distinct candidate orientations that are refined, each from a
             different basin of the search space. Refining several avoids committing to a sampled
             orientation that is not near the best one.
