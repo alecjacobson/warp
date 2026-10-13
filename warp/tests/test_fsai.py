@@ -355,6 +355,34 @@ def test_captured_update(test, device, dtype):
         wp.synchronize_device(device)
 
 
+def test_conditional_graph_solve(test, device, dtype):
+    """Check that FSAI refits and preconditions CG and CR in one graph with a conditional solver loop."""
+    if not wp.is_conditional_graph_supported():
+        test.skipTest("conditional CUDA graphs are not supported")
+    a = _path(24)
+    tolerance = 1e-5 if dtype == wp.float32 else 1e-11
+    for solver in (cg, cr):
+        raw = _matrix(a, device, dtype)
+        pre = FSAI(raw, reuse_pattern=True)
+        b = wp.ones(len(a), dtype=dtype, device=device)
+        x = wp.zeros_like(b)
+        values = raw.values.numpy().copy()
+        with wp.ScopedDevice(device):
+            # Eager warm-up loads every kernel module before capture.
+            pre.update()
+            solver(raw, b, x, M=pre, tol=tolerance, maxiter=100)
+            with wp.ScopedCapture(force_module_load=False) as capture:
+                pre.update()
+                solver(raw, b, x, M=pre, tol=tolerance, maxiter=100, check_every=0, use_cuda_graph=True)
+            for multiplier in (2.0, 0.5):
+                raw.values.assign(values * multiplier)
+                x.zero_()
+                wp.capture_launch(capture.graph)
+                np.testing.assert_array_equal(pre.update_status.numpy(), 0)
+                # Check the true residual, independently of the solver's report.
+                np.testing.assert_allclose(multiplier * a @ x.numpy(), 1.0, atol=4 * tolerance, rtol=0)
+
+
 def test_concurrent_streams(test, device):
     """Check that one instance applied on concurrent streams never corrupts an output."""
     num_blocks, block_size = 50_000, 12
@@ -558,6 +586,14 @@ for dtype in (wp.float16, wp.float32, wp.float64):
         TestFSAI,
         f"test_captured_update_{dtype.__name__}",
         test_captured_update,
+        devices=get_cuda_test_devices(),
+        dtype=dtype,
+    )
+for dtype in (wp.float32, wp.float64):
+    add_function_test(
+        TestFSAI,
+        f"test_conditional_graph_solve_{dtype.__name__}",
+        test_conditional_graph_solve,
         devices=get_cuda_test_devices(),
         dtype=dtype,
     )

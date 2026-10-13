@@ -242,10 +242,11 @@ class FSAI(LinearOperator):
     Note:
         Construction synchronizes and cannot be captured. :meth:`update` can be
         captured in a CUDA graph (see its documentation), and application is
-        CUDA graph-capturable after warming up the kernels, which requires a CUDA
-        device with memory pool support because each application allocates its
-        scratch. One instance may be applied concurrently from independent streams;
-        do not overlap an update with application. Treat ``G`` and ``GT`` as read-only.
+        CUDA graph-capturable after warming up the kernels, including inside the
+        conditional graph loop of the iterative solvers. Applications of one instance
+        on different streams are ordered against each other and never overlap. Do not
+        overlap an update with application, and do not replay one captured graph that
+        applies the instance concurrently with another use of the same instance. Treat ``G`` and ``GT`` as read-only.
         Rebuild or call :meth:`update` after changing the input values. This
         preconditioner does not provide automatic differentiation.
 
@@ -361,6 +362,11 @@ class FSAI(LinearOperator):
             if status.numpy()[0]:
                 raise ValueError("factor_dtype conversion lost finite entries or a positive diagonal")
         self.GT = sp.bsr_transposed(self.G)
+        # One persistent scratch vector, so application allocates nothing and can run
+        # inside a conditional graph body. Applications on different CUDA streams are
+        # ordered against each other through an event.
+        self._tmp = wp.empty(n, dtype=dtype, device=device)
+        self._tmp_event = wp.Event(device) if device.is_cuda else None
         super().__init__(A.shape, A.dtype, device, self._apply)
         self._refit = None
         self.update_status = None
@@ -407,13 +413,18 @@ class FSAI(LinearOperator):
         x = x.view(self.scalar_type).flatten()
         z = z.view(self.scalar_type).flatten()
         y = y.view(self.scalar_type).flatten()
-        # Scratch is allocated per application, from the stream-ordered pool on CUDA, so
-        # concurrent applications on different streams never share an intermediate.
-        tmp = wp.empty(x.shape, dtype=x.dtype, device=x.device)
+        # Outside graph capture, order this application after the previous one on any
+        # other stream, since both share the scratch vector. Inside capture the
+        # graph's own dependencies apply and events must not be recorded or waited on.
+        stream = x.device.stream if x.device.is_cuda and not x.device.is_capturing else None
+        if stream is not None:
+            stream.wait_event(self._tmp_event)
         if alpha != 0.0:
-            _matvec(self.G, x, tmp, tmp, 1.0, 0.0)
+            _matvec(self.G, x, self._tmp, self._tmp, 1.0, 0.0)
         # x is fully consumed before writing z, including when x, y, z alias.
-        _matvec(self.GT, tmp, y, z, alpha, beta)
+        _matvec(self.GT, self._tmp, y, z, alpha, beta)
+        if stream is not None:
+            stream.record_event(self._tmp_event)
 
 
 @lru_cache(None)
