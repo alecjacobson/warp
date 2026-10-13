@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ class UniformSamplerState:
     mesh: wp.uint64
     """Identifier of the :class:`warp.Mesh` being sampled."""
 
-    cdf: wp.array(dtype=wp.float32)
+    cdf: wp.array[wp.float32]
     """Normalized cumulative distribution over triangle areas, ending at ``1``."""
 
 
@@ -59,7 +59,8 @@ def sample_barycentrics(rng: wp.uint32) -> wp.vec2:
     """Draw barycentric coordinates uniformly over the unit triangle.
 
     Args:
-        rng: Random number generator state, updated in place by each draw.
+        rng: Random number generator state. Passed by value, so the caller's
+            state is not advanced; use a distinct state for each draw.
 
     Returns:
         Barycentric coordinates ``(u, v)`` uniformly distributed over a triangle,
@@ -126,8 +127,10 @@ def draw_sample(state: UniformSamplerState, rng: wp.uint32) -> MeshSample:
     Args:
         state: Sampler state, typically ``UniformSampler.state`` passed as a
             kernel argument.
-        rng: Random number generator state, updated in place by each draw. A
-            single ``rng`` can therefore feed repeated ``draw_sample`` calls in a loop.
+        rng: Random number generator state. Warp functions receive it by value,
+            so the caller's ``rng`` is *not* advanced: calling ``draw_sample`` twice
+            with the same ``rng`` returns the same sample. Use a distinct state
+            (e.g. ``wp.rand_init(seed, tid * n + i)``) for each draw.
 
     Returns:
         The sampled :class:`MeshSample` (a triangle index and barycentrics).
@@ -146,9 +149,9 @@ def draw_sample(state: UniformSamplerState, rng: wp.uint32) -> MeshSample:
 
 @wp.kernel(enable_backward=False)
 def _triangle_areas_kernel(
-    points: wp.array(dtype=wp.vec3),
-    indices: wp.array(dtype=wp.int32),
-    out_areas: wp.array(dtype=wp.float32),
+    points: wp.array[wp.vec3],
+    indices: wp.array[wp.int32],
+    out_areas: wp.array[wp.float32],
 ):
     tri = wp.tid()
     v0 = points[indices[tri * 3 + 0]]
@@ -158,7 +161,7 @@ def _triangle_areas_kernel(
 
 
 @wp.kernel(enable_backward=False)
-def _areas_invalid_kernel(areas: wp.array(dtype=wp.float32), out_flag: wp.array(dtype=wp.int32)):
+def _areas_invalid_kernel(areas: wp.array[wp.float32], out_flag: wp.array[wp.int32]):
     tid = wp.tid()
     a = areas[tid]
     if a < 0.0 or not wp.isfinite(a):
@@ -167,25 +170,20 @@ def _areas_invalid_kernel(areas: wp.array(dtype=wp.float32), out_flag: wp.array(
 
 @wp.kernel(enable_backward=False)
 def _normalize_cdf_kernel(
-    cumulative: wp.array(dtype=wp.float32),
-    out_cdf: wp.array(dtype=wp.float32),
+    cumulative: wp.array[wp.float32],
+    out_cdf: wp.array[wp.float32],
 ):
     tri = wp.tid()
     total = cumulative[cumulative.shape[0] - 1]
-    # A degenerate (zero-area) mesh has no meaningful area weighting; fall back to
-    # a uniform-over-triangles CDF so sampling still terminates instead of NaN.
-    if total > 0.0:
-        out_cdf[tri] = cumulative[tri] / total
-    else:
-        out_cdf[tri] = float(tri + 1) / float(cumulative.shape[0])
+    out_cdf[tri] = cumulative[tri] / total
 
 
 @wp.kernel(enable_backward=False)
 def _draw_kernel(
     state: UniformSamplerState,
     seed: wp.int32,
-    out_faces: wp.array(dtype=wp.int32),
-    out_uv: wp.array(dtype=wp.vec2),
+    out_faces: wp.array[wp.int32],
+    out_uv: wp.array[wp.vec2],
 ):
     tid = wp.tid()
     rng = wp.rand_init(seed, tid)
@@ -255,6 +253,10 @@ class UniformSampler:
 
         self.points = _as_vec3_array(points, self.device)
         self.indices = _as_index_array(faces, self.device)
+        if self.indices.ndim != 1 or self.indices.shape[0] % 3 != 0:
+            raise ValueError(
+                f"`faces` must contain a multiple of 3 indices (flat or (num_triangles, 3)), got shape {self.indices.shape}."
+            )
         self.num_triangles = self.indices.shape[0] // 3
         if self.num_triangles == 0:
             raise ValueError("`faces` must describe at least one triangle.")
@@ -293,6 +295,8 @@ class UniformSampler:
         # sizing candidate pools (e.g. Poisson-disk sampling). Reading that one
         # element avoids a second full reduction over the triangles.
         self.total_area = float(cumulative[self.num_triangles - 1 :].numpy()[0])
+        if not self.total_area > 0.0:
+            raise ValueError("The mesh has zero total surface area, so there is nothing to sample.")
 
         self.cdf = wp.empty(self.num_triangles, dtype=wp.float32, device=self.device)
         wp.launch(
@@ -375,9 +379,9 @@ class UniformSampler:
 @wp.kernel(enable_backward=False)
 def _eval_positions_kernel(
     mesh: wp.uint64,
-    faces: wp.array(dtype=wp.int32),
-    uv: wp.array(dtype=wp.vec2),
-    out_positions: wp.array(dtype=wp.vec3),
+    faces: wp.array[wp.int32],
+    uv: wp.array[wp.vec2],
+    out_positions: wp.array[wp.vec3],
 ):
     tid = wp.tid()
     p = uv[tid]
@@ -433,14 +437,14 @@ _POISSON_ACCEPTED = wp.constant(wp.int32(1))
 
 
 @wp.kernel(enable_backward=False)
-def _poisson_priority_kernel(seed: wp.int32, out_priority: wp.array(dtype=wp.float32)):
+def _poisson_priority_kernel(seed: wp.int32, out_priority: wp.array[wp.float32]):
     tid = wp.tid()
     rng = wp.rand_init(seed, tid)
     out_priority[tid] = wp.randf(rng)
 
 
 @wp.kernel(enable_backward=False)
-def _poisson_mask_kernel(status: wp.array(dtype=wp.int32), out_mask: wp.array(dtype=wp.int32)):
+def _poisson_mask_kernel(status: wp.array[wp.int32], out_mask: wp.array[wp.int32]):
     tid = wp.tid()
     if status[tid] == _POISSON_ACCEPTED:
         out_mask[tid] = 1
@@ -450,14 +454,14 @@ def _poisson_mask_kernel(status: wp.array(dtype=wp.int32), out_mask: wp.array(dt
 
 @wp.kernel(enable_backward=False)
 def _poisson_compact_kernel(
-    status: wp.array(dtype=wp.int32),
-    offsets: wp.array(dtype=wp.int32),
-    in_faces: wp.array(dtype=wp.int32),
-    in_uv: wp.array(dtype=wp.vec2),
-    in_points: wp.array(dtype=wp.vec3),
-    out_faces: wp.array(dtype=wp.int32),
-    out_uv: wp.array(dtype=wp.vec2),
-    out_points: wp.array(dtype=wp.vec3),
+    status: wp.array[wp.int32],
+    offsets: wp.array[wp.int32],
+    in_faces: wp.array[wp.int32],
+    in_uv: wp.array[wp.vec2],
+    in_points: wp.array[wp.vec3],
+    out_faces: wp.array[wp.int32],
+    out_uv: wp.array[wp.vec2],
+    out_points: wp.array[wp.vec3],
 ):
     # ``offsets`` is an inclusive prefix sum of the accepted mask, so an accepted
     # candidate writes to slot ``offsets[tid] - 1``.
@@ -522,7 +526,7 @@ def _hash_slot0(key: wp.int64, table_size: wp.int32) -> wp.int32:
 
 
 @wp.func
-def _hash_find(key: wp.int64, table_size: wp.int32, slot_key: wp.array(dtype=wp.int64)) -> wp.int32:
+def _hash_find(key: wp.int64, table_size: wp.int32, slot_key: wp.array[wp.int64]) -> wp.int32:
     # Return the slot holding ``key``, or -1 if the cell is absent (empty slot).
     slot = _hash_slot0(key, table_size)
     for _ in range(table_size):
@@ -539,14 +543,14 @@ def _hash_find(key: wp.int64, table_size: wp.int32, slot_key: wp.array(dtype=wp.
 
 @wp.kernel(enable_backward=False)
 def _poisson_hash_insert_kernel(
-    points: wp.array(dtype=wp.vec3),
+    points: wp.array[wp.vec3],
     lo: wp.vec3,
     inv_mu: wp.float32,
     gx: wp.int32,
     gy: wp.int32,
     gz: wp.int32,
     table_size: wp.int32,
-    slot_key: wp.array(dtype=wp.int64),
+    slot_key: wp.array[wp.int64],
 ):
     # Insert each candidate's cell id once (deduplicated by CAS on an empty slot).
     tid = wp.tid()
@@ -568,16 +572,16 @@ def _poisson_hash_insert_kernel(
 
 @wp.kernel(enable_backward=False)
 def _poisson_setup_kernel(
-    points: wp.array(dtype=wp.vec3),
+    points: wp.array[wp.vec3],
     lo: wp.vec3,
     inv_mu: wp.float32,
     gx: wp.int32,
     gy: wp.int32,
     gz: wp.int32,
     table_size: wp.int32,
-    slot_key: wp.array(dtype=wp.int64),
-    out_slot: wp.array(dtype=wp.int32),
-    out_phase: wp.array(dtype=wp.int32),
+    slot_key: wp.array[wp.int64],
+    out_slot: wp.array[wp.int32],
+    out_phase: wp.array[wp.int32],
 ):
     # Cache each candidate's hash slot and phase group so the phase passes below
     # avoid recomputing them.
@@ -595,9 +599,9 @@ def _cell_free(
     gy: wp.int32,
     gz: wp.int32,
     table_size: wp.int32,
-    slot_key: wp.array(dtype=wp.int64),
-    slot_sample: wp.array(dtype=wp.int32),
-    points: wp.array(dtype=wp.vec3),
+    slot_key: wp.array[wp.int64],
+    slot_sample: wp.array[wp.int32],
+    points: wp.array[wp.vec3],
     r_sq: wp.float32,
 ) -> bool:
     # True if no accepted sample in the surrounding 5x5x5 block is within radius.
@@ -623,7 +627,7 @@ def _cell_free(
 @wp.kernel(enable_backward=False)
 def _poisson_phase_max_kernel(
     phase: wp.int32,
-    points: wp.array(dtype=wp.vec3),
+    points: wp.array[wp.vec3],
     lo: wp.vec3,
     inv_mu: wp.float32,
     gx: wp.int32,
@@ -631,14 +635,14 @@ def _poisson_phase_max_kernel(
     gz: wp.int32,
     table_size: wp.int32,
     radius: wp.float32,
-    slot_key: wp.array(dtype=wp.int64),
-    slot_sample: wp.array(dtype=wp.int32),
-    cand_slot: wp.array(dtype=wp.int32),
-    cand_phase: wp.array(dtype=wp.int32),
-    priority: wp.array(dtype=wp.float32),
-    status: wp.array(dtype=wp.int32),
-    free: wp.array(dtype=wp.int32),
-    cell_best: wp.array(dtype=wp.float32),
+    slot_key: wp.array[wp.int64],
+    slot_sample: wp.array[wp.int32],
+    cand_slot: wp.array[wp.int32],
+    cand_phase: wp.array[wp.int32],
+    priority: wp.array[wp.float32],
+    status: wp.array[wp.int32],
+    free: wp.array[wp.int32],
+    cell_best: wp.array[wp.float32],
 ):
     tid = wp.tid()
     if status[tid] != _POISSON_ACTIVE or cand_phase[tid] != phase:
@@ -655,13 +659,13 @@ def _poisson_phase_max_kernel(
 @wp.kernel(enable_backward=False)
 def _poisson_phase_pick_kernel(
     phase: wp.int32,
-    cand_slot: wp.array(dtype=wp.int32),
-    cand_phase: wp.array(dtype=wp.int32),
-    priority: wp.array(dtype=wp.float32),
-    status: wp.array(dtype=wp.int32),
-    free: wp.array(dtype=wp.int32),
-    cell_best: wp.array(dtype=wp.float32),
-    cell_winner: wp.array(dtype=wp.int32),
+    cand_slot: wp.array[wp.int32],
+    cand_phase: wp.array[wp.int32],
+    priority: wp.array[wp.float32],
+    status: wp.array[wp.int32],
+    free: wp.array[wp.int32],
+    cell_best: wp.array[wp.float32],
+    cell_winner: wp.array[wp.int32],
 ):
     # Among conflict-free candidates sharing the winning priority in a cell, the
     # lowest index claims it (a deterministic tie-break).
@@ -676,12 +680,12 @@ def _poisson_phase_pick_kernel(
 @wp.kernel(enable_backward=False)
 def _poisson_phase_accept_kernel(
     phase: wp.int32,
-    cand_slot: wp.array(dtype=wp.int32),
-    cand_phase: wp.array(dtype=wp.int32),
-    status: wp.array(dtype=wp.int32),
-    free: wp.array(dtype=wp.int32),
-    cell_winner: wp.array(dtype=wp.int32),
-    slot_sample: wp.array(dtype=wp.int32),
+    cand_slot: wp.array[wp.int32],
+    cand_phase: wp.array[wp.int32],
+    status: wp.array[wp.int32],
+    free: wp.array[wp.int32],
+    cell_winner: wp.array[wp.int32],
+    slot_sample: wp.array[wp.int32],
 ):
     tid = wp.tid()
     if status[tid] != _POISSON_ACTIVE or cand_phase[tid] != phase or free[tid] == 0:
@@ -711,10 +715,10 @@ def _cell_free_geodesic(
     gy: wp.int32,
     gz: wp.int32,
     table_size: wp.int32,
-    slot_key: wp.array(dtype=wp.int64),
-    slot_sample: wp.array(dtype=wp.int32),
-    points: wp.array(dtype=wp.vec3),
-    normals: wp.array(dtype=wp.vec3),
+    slot_key: wp.array[wp.int64],
+    slot_sample: wp.array[wp.int32],
+    points: wp.array[wp.vec3],
+    normals: wp.array[wp.vec3],
     radius: wp.float32,
     r_sq: wp.float32,
 ) -> bool:
@@ -744,8 +748,8 @@ def _cell_free_geodesic(
 @wp.kernel(enable_backward=False)
 def _poisson_phase_max_geodesic_kernel(
     phase: wp.int32,
-    points: wp.array(dtype=wp.vec3),
-    normals: wp.array(dtype=wp.vec3),
+    points: wp.array[wp.vec3],
+    normals: wp.array[wp.vec3],
     lo: wp.vec3,
     inv_mu: wp.float32,
     gx: wp.int32,
@@ -753,14 +757,14 @@ def _poisson_phase_max_geodesic_kernel(
     gz: wp.int32,
     table_size: wp.int32,
     radius: wp.float32,
-    slot_key: wp.array(dtype=wp.int64),
-    slot_sample: wp.array(dtype=wp.int32),
-    cand_slot: wp.array(dtype=wp.int32),
-    cand_phase: wp.array(dtype=wp.int32),
-    priority: wp.array(dtype=wp.float32),
-    status: wp.array(dtype=wp.int32),
-    free: wp.array(dtype=wp.int32),
-    cell_best: wp.array(dtype=wp.float32),
+    slot_key: wp.array[wp.int64],
+    slot_sample: wp.array[wp.int32],
+    cand_slot: wp.array[wp.int32],
+    cand_phase: wp.array[wp.int32],
+    priority: wp.array[wp.float32],
+    status: wp.array[wp.int32],
+    free: wp.array[wp.int32],
+    cell_best: wp.array[wp.float32],
 ):
     tid = wp.tid()
     if status[tid] != _POISSON_ACTIVE or cand_phase[tid] != phase:
@@ -779,8 +783,8 @@ def _poisson_phase_max_geodesic_kernel(
 @wp.kernel(enable_backward=False)
 def _eval_normals_kernel(
     mesh: wp.uint64,
-    faces: wp.array(dtype=wp.int32),
-    out_normals: wp.array(dtype=wp.vec3),
+    faces: wp.array[wp.int32],
+    out_normals: wp.array[wp.vec3],
 ):
     tid = wp.tid()
     out_normals[tid] = wp.mesh_eval_face_normal(mesh, faces[tid])
@@ -788,9 +792,9 @@ def _eval_normals_kernel(
 
 @wp.kernel(enable_backward=False)
 def _bounds_kernel(
-    points: wp.array(dtype=wp.vec3),
-    out_lo: wp.array(dtype=wp.float32),
-    out_hi: wp.array(dtype=wp.float32),
+    points: wp.array[wp.vec3],
+    out_lo: wp.array[wp.float32],
+    out_hi: wp.array[wp.float32],
 ):
     tid = wp.tid()
     p = points[tid]
@@ -810,13 +814,13 @@ def _bounding_box(points: wp.array, device) -> tuple[np.ndarray, np.ndarray]:
 
 @wp.kernel(enable_backward=False)
 def _poisson_cellid_kernel(
-    points: wp.array(dtype=wp.vec3),
+    points: wp.array[wp.vec3],
     lo: wp.vec3,
     inv_mu: wp.float32,
     gx: wp.int32,
     gy: wp.int32,
     gz: wp.int32,
-    out_cellid: wp.array(dtype=wp.int64),
+    out_cellid: wp.array[wp.int64],
 ):
     tid = wp.tid()
     c = _cell_coord(points[tid], lo, inv_mu, gx, gy, gz)
@@ -824,22 +828,22 @@ def _poisson_cellid_kernel(
 
 
 @wp.kernel(enable_backward=False)
-def _poisson_iota_kernel(out: wp.array(dtype=wp.int32)):
+def _poisson_iota_kernel(out: wp.array[wp.int32]):
     tid = wp.tid()
     out[tid] = tid
 
 
 @wp.kernel(enable_backward=False)
 def _poisson_gather_kernel(
-    order: wp.array(dtype=wp.int32),
-    in_points: wp.array(dtype=wp.vec3),
-    in_faces: wp.array(dtype=wp.int32),
-    in_uv: wp.array(dtype=wp.vec2),
-    in_priority: wp.array(dtype=wp.float32),
-    out_points: wp.array(dtype=wp.vec3),
-    out_faces: wp.array(dtype=wp.int32),
-    out_uv: wp.array(dtype=wp.vec2),
-    out_priority: wp.array(dtype=wp.float32),
+    order: wp.array[wp.int32],
+    in_points: wp.array[wp.vec3],
+    in_faces: wp.array[wp.int32],
+    in_uv: wp.array[wp.vec2],
+    in_priority: wp.array[wp.float32],
+    out_points: wp.array[wp.vec3],
+    out_faces: wp.array[wp.int32],
+    out_uv: wp.array[wp.vec2],
+    out_priority: wp.array[wp.float32],
 ):
     tid = wp.tid()
     j = order[tid]
@@ -925,8 +929,8 @@ class PoissonDiskSampler:
         face_areas=None,
         device: DeviceLike | None = None,
     ):
-        if radius <= 0.0:
-            raise ValueError(f"`radius` must be positive, got {radius}.")
+        if not (0.0 < radius < float("inf")):
+            raise ValueError(f"`radius` must be positive and finite, got {radius}.")
         if num_candidates is not None and num_candidates < 1:
             raise ValueError(f"`num_candidates` must be at least 1, got {num_candidates}.")
 
@@ -1008,6 +1012,11 @@ class PoissonDiskSampler:
         mu = self.radius / 1.7320508075688772  # radius / sqrt(3)
         inv_mu = float(1.0 / mu)
         gx, gy, gz = (int(v) for v in np.maximum(np.ceil((hi - lo) / mu).astype(np.int64) + 1, 1))
+        if max(gx, gy, gz) > np.iinfo(np.int32).max:
+            raise ValueError(
+                f"`radius` ({self.radius}) is too small for the mesh extent: the spatial grid would need "
+                f"{gx} x {gy} x {gz} cells."
+            )
         lo_vec = wp.vec3(float(lo[0]), float(lo[1]), float(lo[2]))
         return inv_mu, gx, gy, gz, lo_vec
 
@@ -1272,11 +1281,11 @@ def poisson_disk_sample(
 @wp.kernel(enable_backward=False)
 def _pcf_histogram_kernel(
     grid: wp.uint64,
-    points: wp.array(dtype=wp.vec3),
+    points: wp.array[wp.vec3],
     r_max: wp.float32,
     inv_dr: wp.float32,
     num_bins: wp.int32,
-    counts: wp.array(dtype=wp.int32),
+    counts: wp.array[wp.int32],
 ):
     tid = wp.tid()
     pi = points[tid]

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Uniform surface sampling: warp.geometry.uniformly_sample and UniformSampler."""
@@ -207,7 +207,7 @@ def test_draw_sample_in_kernel(test, device):
     def sample_faces_kernel(
         state: geo.UniformSamplerState,
         seed: int,
-        out_faces: wp.array(dtype=wp.int32),
+        out_faces: wp.array[wp.int32],
     ):
         tid = wp.tid()
         rng = wp.rand_init(seed, tid)
@@ -221,6 +221,13 @@ def test_draw_sample_in_kernel(test, device):
     f = out_faces.numpy()
     test.assertTrue(np.all((f == 0) | (f == 1)))
     test.assertTrue(np.any(f == 0) and np.any(f == 1))
+
+
+def test_zero_area_mesh_raises(test, device):
+    """Raise ValueError when the mesh has zero total surface area."""
+    points = np.zeros((3, 3), dtype=np.float32)
+    with test.assertRaises(ValueError):
+        geo.UniformSampler(points, np.array([0, 1, 2], dtype=np.int32), device=device)
 
 
 def test_empty_faces_raises(test, device):
@@ -299,6 +306,7 @@ add_function_test(TestGeometrySampling, "test_within_triangle_uniform", test_wit
 add_function_test(TestGeometrySampling, "test_sample_points_on_surface", test_sample_points_on_surface, devices=devices)
 add_function_test(TestGeometrySampling, "test_seed_behavior", test_seed_behavior, devices=devices)
 add_function_test(TestGeometrySampling, "test_draw_sample_in_kernel", test_draw_sample_in_kernel, devices=devices)
+add_function_test(TestGeometrySampling, "test_zero_area_mesh_raises", test_zero_area_mesh_raises, devices=devices)
 add_function_test(TestGeometrySampling, "test_empty_faces_raises", test_empty_faces_raises, devices=devices)
 add_function_test(
     TestGeometrySampling, "test_face_areas_match_computed", test_face_areas_match_computed, devices=devices

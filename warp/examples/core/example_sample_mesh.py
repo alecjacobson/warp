@@ -104,7 +104,7 @@ FACE_VERTEX_INDICES = np.array(
 def sample_mesh(
     sampler: warp.geometry.UniformSamplerState,
     seed: int,
-    out_points: wp.array(dtype=wp.vec3),
+    out_points: wp.array[wp.vec3],
 ):
     tid = wp.tid()
 

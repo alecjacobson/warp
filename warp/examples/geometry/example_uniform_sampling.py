@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ###########################################################################
@@ -58,7 +58,7 @@ def build_torus(num_major=48, num_minor=24, major_radius=1.0, minor_radius=0.35)
 def sample_points_kernel(
     sampler: warp.geometry.UniformSamplerState,
     seed: int,
-    out_points: wp.array(dtype=wp.vec3),
+    out_points: wp.array[wp.vec3],
 ):
     tid = wp.tid()
     rng = wp.rand_init(seed, tid)

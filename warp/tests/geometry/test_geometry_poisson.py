@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Parallel Poisson-disk surface sampling and its pair-correlation analysis."""
@@ -114,11 +114,11 @@ def _two_sheets(n=40, size=1.0, gap=0.065):
 
 @wp.kernel
 def _geodesic_distance_kernel(
-    p1: wp.array(dtype=wp.vec3),
-    n1: wp.array(dtype=wp.vec3),
-    p2: wp.array(dtype=wp.vec3),
-    n2: wp.array(dtype=wp.vec3),
-    out: wp.array(dtype=wp.float32),
+    p1: wp.array[wp.vec3],
+    n1: wp.array[wp.vec3],
+    p2: wp.array[wp.vec3],
+    n2: wp.array[wp.vec3],
+    out: wp.array[wp.float32],
 ):
     i = wp.tid()
     out[i] = curvature_corrected_distance(p1[i], n1[i], p2[i], n2[i])
@@ -210,9 +210,9 @@ def test_maximal_coverage(test, device):
 @wp.kernel(enable_backward=False)
 def _eval_probe(
     mesh: wp.uint64,
-    faces: wp.array(dtype=wp.int32),
-    uv: wp.array(dtype=wp.vec2),
-    out: wp.array(dtype=wp.vec3),
+    faces: wp.array[wp.int32],
+    uv: wp.array[wp.vec2],
+    out: wp.array[wp.vec3],
 ):
     i = wp.tid()
     p = uv[i]
