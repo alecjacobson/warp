@@ -62,14 +62,14 @@ def radical_inverse(base: int, i: int) -> wp.float32:
 
 
 @wp.func
-def small_rotation(i: int, n: int, radius: wp.float32) -> wp.quat:
+def small_rotation(i: int, radius: wp.float32) -> wp.quat:
     # The ``i``-th deterministic rotation probing a neighborhood of angular radius ``radius``
     # around the identity. The rotation vector is a 3D Halton point (bases 2, 3, 5) mapped
     # uniformly into the ball: being low-discrepancy it covers the ball evenly instead of
     # clumping like an axis/angle split, and the radial map ``r = radius * u^(1/3)`` samples
     # the whole ball rather than concentrating near the center, where the larger corrective
-    # steps of the local search would otherwise be missed. ``n`` is unused (the Halton
-    # sequence is progressive); it is kept for call-site compatibility.
+    # steps of the local search would otherwise be missed. The Halton sequence is progressive, so
+    # the number of samples need not be known.
     idx = i + 1  # Halton point 0 is the origin (a zero rotation); skip it.
     radial = wp.pow(radical_inverse(2, idx), 1.0 / 3.0)
     cos_theta = 1.0 - 2.0 * radical_inverse(3, idx)
@@ -376,7 +376,7 @@ def oriented_bounding_box_refine_generate_kernel(
     # current champions (``batch`` consecutive columns per start).
     shape, i = wp.tid()
     start = i // batch
-    rot_batch[shape, i] = wp.normalize(small_rotation(i % batch, batch, radius) * champion[shape, start])
+    rot_batch[shape, i] = wp.normalize(small_rotation(i % batch, radius) * champion[shape, start])
 
 
 @wp.kernel(enable_backward=False)
@@ -467,7 +467,9 @@ def oriented_bounding_box_select_kernel(
         if work[shape, i] < best_work:
             best_work = work[shape, i]
             best = i
-    if best_work < wp.float32(math.inf):
+    # The first pick always commits the argmin, even if every measure is non-finite, so the champion is
+    # never left uninitialized.
+    if best_work < wp.float32(math.inf) or pick_index == 0:
         champion[shape, pick_index] = rotations[shape, best]
         champion_measure[shape, pick_index] = measures[shape, best]
         work[shape, best] = wp.float32(math.inf)
@@ -572,8 +574,9 @@ def oriented_bounding_boxes(
         entry ``i`` describes point set ``i`` exactly as for :func:`oriented_bounding_box`.
 
     Note:
-        Scratch memory grows with ``num_shapes * max(num_samples, num_refine_starts * num_refine_samples, 3 * num_refine_starts * num_spin_samples)``. For a very
-        large number of shapes, call this function on groups of them.
+        Scratch memory grows with
+        ``num_shapes * max(num_samples, num_refine_starts * num_refine_samples, 3 * num_refine_starts * num_spin_samples)``.
+        For a very large number of shapes, call this function on groups of them.
 
     Raises:
         ValueError: If a search parameter is out of range as for :func:`oriented_bounding_box`, if
@@ -697,7 +700,7 @@ def oriented_bounding_box(
             different basin of the search space. Refining several avoids committing to a sampled
             orientation that is not near the best one.
         num_refine_iterations: Number of coarse-to-fine refinement rounds after the initial search.
-            Pass ``0`` to return the best sampled orientation directly.
+            Pass ``0`` together with ``num_spin_samples=0`` to return the best sampled orientation directly.
         num_refine_samples: Number of orientations probed per refinement round around each start.
         num_spin_samples: Number of angles probed about each of the box's three axes in each of three
             final spin rounds (coarse to fine) around each start. Spinning about an axis keeps a box face
@@ -726,9 +729,10 @@ def oriented_bounding_box(
         ``include_pca=False`` for a bitwise reproducible result.
 
     Raises:
-        ValueError: If ``num_samples``, ``num_refine_starts`` or ``num_refine_samples`` is not a positive integer, if ``num_spin_samples`` is negative, if
-            ``num_refine_iterations`` is negative, if ``max_search_points`` is not positive, or if
-            ``points`` is empty.
+        ValueError: If ``num_samples``, ``num_refine_starts`` or ``num_refine_samples`` is not a positive
+            integer, if ``num_spin_samples`` or ``num_refine_iterations`` is negative, if
+            ``max_search_points`` is not positive, if ``points`` is empty, or if the search needs too much
+            scratch memory.
     """
     _validate_search_parameters(
         num_samples, num_refine_starts, num_refine_iterations, num_refine_samples, num_spin_samples, max_search_points
@@ -851,7 +855,8 @@ def _fit_oriented_bounding_boxes(
     ):
         raise ValueError(
             f"Fitting {num_shapes} shapes with {num_candidates} candidate orientations each needs too much "
-            "scratch memory; fit the shapes in smaller groups or reduce `num_samples`."
+            "scratch memory; fit the shapes in smaller groups or reduce `num_samples`, `num_refine_starts`, "
+            "`num_refine_samples` or `num_spin_samples`."
         )
     rotations = wp.empty((num_shapes, num_candidates), dtype=wp.quat, device=device)
 

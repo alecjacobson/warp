@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ###########################################################################
@@ -40,6 +40,9 @@ BOX_EDGES = np.array([(0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5
 _AXIS = np.array([1.0, 2.0, 3.0]) / np.linalg.norm([1.0, 2.0, 3.0])
 _K = np.array([[0, -_AXIS[2], _AXIS[1]], [_AXIS[2], 0, -_AXIS[0]], [-_AXIS[1], _AXIS[0], 0]])
 ROTATION = np.eye(3) + np.sin(0.7) * _K + (1.0 - np.cos(0.7)) * _K @ _K
+
+# Search parameters that keep only the best sampled orientation: one start, no refinement or spin rounds.
+SAMPLED_ONLY = {"num_refine_starts": 1, "num_refine_iterations": 0, "num_spin_samples": 0}
 
 
 def box_corners(xform: wp.transform, extents: wp.vec3) -> np.ndarray:
@@ -126,9 +129,9 @@ def main(stage_path="example_geometry_oriented_bounding_box.usd", show_polyscope
     # of the unrotated squashed mesh is an upper bound on the true optimum.
     best_known = float(np.prod((points_np * squash).max(axis=0) - (points_np * squash).min(axis=0)))
 
-    # Refinement is disabled here (``num_refine_iterations=0``) to isolate what each candidate set
+    # Refinement is disabled here (one start, no refinement or spin rounds) to isolate what each candidate set
     # contributes to the *initial* search; with it on (the default) the coarse-to-fine local
-    # search tightens all of these further and largely closes the gap between them.
+    # search and spin rounds tighten all of these further and largely closes the gap between them.
     print(f"\nsquashed ({squash[1]:g}x in y) and rotated bunny -- candidate sets, minimum volume:")
     for label, kwargs in (
         ("spiral only", {"include_axis_aligned": False, "include_pca": False}),
@@ -136,9 +139,7 @@ def main(stage_path="example_geometry_oriented_bounding_box.usd", show_polyscope
         ("spiral + PCA", {"include_axis_aligned": False, "include_pca": True}),
         ("all three (default)", {}),
     ):
-        _, _, measure = host_obb(
-            wp.geometry.oriented_bounding_box(flat, Measure.VOLUME, num_refine_iterations=0, **kwargs)
-        )
+        _, _, measure = host_obb(wp.geometry.oriented_bounding_box(flat, Measure.VOLUME, **SAMPLED_ONLY, **kwargs))
         print(
             f"  {label:<24} volume {measure:.6f}   ({measure / flat_aabb_volume:6.1%} of AABB, "
             f"{measure / best_known:.2f}x the best achievable)"
@@ -152,7 +153,7 @@ def main(stage_path="example_geometry_oriented_bounding_box.usd", show_polyscope
     print("\nvolume vs. number of sampled orientations (refinement off):")
     for num_samples in (16, 64, 256, 1024, 4096, 16384):
         _, _, measure = host_obb(
-            wp.geometry.oriented_bounding_box(points, Measure.VOLUME, num_samples=num_samples, num_refine_iterations=0)
+            wp.geometry.oriented_bounding_box(points, Measure.VOLUME, num_samples=num_samples, **SAMPLED_ONLY)
         )
         marker = "   <- default" if num_samples == 4096 else ""
         print(f"  {num_samples:>6} samples   volume {measure:.5f}   ({measure / aabb_volume:.1%} of AABB){marker}")

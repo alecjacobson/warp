@@ -135,19 +135,21 @@ def test_obb_recovers_rotated_box(test, device):
     test.assertAlmostEqual(max(np.asarray(got_extents, dtype=np.float64)), max(extents), delta=0.05)
 
 
+# Keyword arguments that reduce the search to the best sampled orientation: one start, no refinement, no spin.
+_SAMPLED_ONLY = {"num_refine_starts": 1, "num_refine_iterations": 0, "num_spin_samples": 0}
+
+
 def test_obb_pca_helps_elongated_shapes(test, device):
     # On a strongly elongated shape the spiral's angular resolution is the limiting factor,
     # and the covariance eigenvectors are a much better guess. Refinement is disabled here
-    # (num_refine_iterations=0) to isolate the initial search: with it on, the local search closes the
+    # (``_SAMPLED_ONLY``) to isolate the initial search: with it on, the local search closes the
     # gap and PCA no longer helps measurably.
     rng = np.random.default_rng(73)
     p_np, extents = _rod(rng)
     points = wp.array(p_np, dtype=wp.vec3, device=device)
 
-    _, _, without_pca = _host(
-        geo.oriented_bounding_box(points, num_samples=32, include_pca=False, num_refine_iterations=0)
-    )
-    _, _, with_pca = _host(geo.oriented_bounding_box(points, num_samples=32, include_pca=True, num_refine_iterations=0))
+    _, _, without_pca = _host(geo.oriented_bounding_box(points, num_samples=32, include_pca=False, **_SAMPLED_ONLY))
+    _, _, with_pca = _host(geo.oriented_bounding_box(points, num_samples=32, include_pca=True, **_SAMPLED_ONLY))
 
     test.assertLess(with_pca, without_pca)
     test.assertLess(with_pca, float(np.prod(extents)) * 2.0)
@@ -211,8 +213,10 @@ def test_obb_refinement_reaches_higher_sample_quality(test, device):
     p_np, extents = _rod(rng)
     points = wp.array(p_np, dtype=wp.vec3, device=device)
 
-    _, _, coarse = _host(geo.oriented_bounding_box(points, num_samples=64, num_refine_iterations=0))
-    _, _, refined = _host(geo.oriented_bounding_box(points, num_samples=64, num_refine_iterations=8))
+    _, _, coarse = _host(geo.oriented_bounding_box(points, num_samples=64, **_SAMPLED_ONLY))
+    _, _, refined = _host(
+        geo.oriented_bounding_box(points, num_samples=64, num_refine_iterations=8, num_spin_samples=0)
+    )
 
     test.assertLess(refined, coarse)
     test.assertLess(refined, float(np.prod(extents)) * 1.2)
@@ -255,6 +259,20 @@ def test_obb_spin_rounds_never_worse(test, device):
                 _, _, without_spin = _host(geo.oriented_bounding_box(points, num_spin_samples=0, **kwargs))
                 _, _, with_spin = _host(geo.oriented_bounding_box(points, num_spin_samples=32, **kwargs))
                 test.assertLessEqual(with_spin, without_spin * (1.0 + 1e-5))
+
+
+def test_obb_overflowing_measure_returns_valid_box(test, device):
+    """Return a finite box when the box volume overflows float32."""
+    # At these coordinates every candidate's volume overflows to infinity, so no candidate can
+    # win on measure; the fit must still commit to one of them rather than leave its champion
+    # uninitialized.
+    rng = np.random.default_rng(139)
+    points = wp.array((rng.uniform(-1.0, 1.0, (500, 3)) * 1e13).astype(np.float32), dtype=wp.vec3, device=device)
+
+    transform, extents, _ = _host(geo.oriented_bounding_box(points, num_samples=64))
+
+    test.assertTrue(np.all(np.isfinite(transform)))
+    test.assertTrue(np.all(np.isfinite(extents)))
 
 
 def test_obb_multiple_refine_starts_escape_wrong_basin(test, device):
@@ -393,7 +411,14 @@ def _batch_shapes(rng):
     ]
 
 
-_SEARCH = {"num_samples": 96, "max_search_points": 100, "num_refine_iterations": 2, "num_refine_samples": 32}
+_SEARCH = {
+    "num_samples": 96,
+    "max_search_points": 100,
+    "num_refine_starts": 3,
+    "num_refine_iterations": 2,
+    "num_refine_samples": 32,
+    "num_spin_samples": 8,
+}
 
 
 def test_obbs_match_single_shape_fits(test, device):
@@ -626,6 +651,12 @@ add_function_test(
 )
 add_function_test(
     TestGeometryOBB, "test_obb_spin_rounds_never_worse", test_obb_spin_rounds_never_worse, devices=devices
+)
+add_function_test(
+    TestGeometryOBB,
+    "test_obb_overflowing_measure_returns_valid_box",
+    test_obb_overflowing_measure_returns_valid_box,
+    devices=devices,
 )
 add_function_test(
     TestGeometryOBB,
