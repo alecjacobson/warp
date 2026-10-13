@@ -129,9 +129,6 @@ _OBB_SPIN_HALF_RANGES = (math.pi / 4, 0.02, 0.002)
 _OBB_START_SEPARATION = 0.3
 """Minimum angular separation (radians), modulo the symmetries of a box, between two refinement starts."""
 
-_OBB_MAX_SEARCH_POINTS = 100_000
-"""Default cap on the points used to *score* orientations; the winner is re-measured exactly."""
-
 _INT32_MAX = 2**31 - 1
 
 
@@ -520,7 +517,7 @@ def oriented_bounding_boxes(
     *,
     include_axis_aligned: bool = True,
     include_pca: bool = True,
-    max_search_points: int | None = _OBB_MAX_SEARCH_POINTS,
+    max_search_points: int | None = None,
     num_refine_starts: int = _OBB_REFINE_STARTS,
     num_refine_iterations: int = _OBB_REFINE_ITERATIONS,
     num_refine_samples: int = _OBB_REFINE_SAMPLES,
@@ -548,8 +545,9 @@ def oriented_bounding_boxes(
         include_axis_aligned: Whether to also evaluate the identity rotation.
         include_pca: Whether to also evaluate the principal axes of each point set.
         max_search_points: Upper bound on how many points of each point set are used to *score*
-            candidate orientations. Each box is still re-measured over all of its points. Pass
-            ``None`` to always score over every point.
+            candidate orientations, or ``None`` (the default) to score over every point. A cap bounds
+            the cost of fitting very large point sets but can change which orientation is chosen. Each
+            box is re-measured over all of its points either way.
         num_refine_starts: Number of distinct candidate orientations that are refined, each from a
             different basin of the search space. Refining several avoids committing to a sampled
             orientation that is not near the best one.
@@ -639,7 +637,7 @@ def oriented_bounding_box(
     *,
     include_axis_aligned: bool = True,
     include_pca: bool = True,
-    max_search_points: int | None = _OBB_MAX_SEARCH_POINTS,
+    max_search_points: int | None = None,
     num_refine_starts: int = _OBB_REFINE_STARTS,
     num_refine_iterations: int = _OBB_REFINE_ITERATIONS,
     num_refine_samples: int = _OBB_REFINE_SAMPLES,
@@ -675,10 +673,10 @@ def oriented_bounding_box(
     each of its box axes, which converges onto a face-flush box that the isotropic rounds reach only
     slowly. The best refined orientation is returned. Because the spiral
     resolves orientation only to its sample spacing, this reaches the quality of a much
-    larger ``num_samples`` at a fraction of the cost. For a large point set the orientation
-    search runs over a strided subsample of at most ``max_search_points`` points -- the best
-    orientation is a property of the cloud's shape, which a subsample captures -- while the
-    returned box is always re-measured over every point, so it stays exact.
+    larger ``num_samples`` at a fraction of the cost. The orientation search scores every point by
+    default. For a very large point set, ``max_search_points`` caps the search at a strided
+    subsample, which bounds its cost but can change which orientation is chosen; the returned box
+    is always re-measured over every point, so it stays exact and encloses all of them.
 
     To fit many point sets at once, see :func:`oriented_bounding_boxes`.
 
@@ -692,10 +690,11 @@ def oriented_bounding_box(
         include_axis_aligned: Whether to also evaluate the identity rotation.
         include_pca: Whether to also evaluate the principal axes of ``points``.
         max_search_points: Upper bound on how many points are used to *score* candidate
-            orientations. When ``points`` is larger, candidates are scored over a
-            deterministic strided subsample of about this size; the winning orientation's
-            box is then recomputed over the full point set, so the returned box is exact.
-            Pass ``None`` to always score over every point.
+            orientations, or ``None`` (the default) to score over every point. When ``points`` is
+            larger than a given cap, candidates are scored over a deterministic strided subsample
+            of about that size, which bounds the cost of the search but can change which
+            orientation is chosen. The winning orientation's box is recomputed over the full point
+            set, so the returned box is exact and encloses every point either way.
         num_refine_starts: Number of distinct candidate orientations that are refined, each from a
             different basin of the search space. Refining several avoids committing to a sampled
             orientation that is not near the best one.

@@ -3,6 +3,7 @@
 
 """Oriented bounding box fitting."""
 
+import inspect
 import math
 import unittest
 import unittest.mock
@@ -306,6 +307,13 @@ def test_obb_refine_starts_exceeding_distinct_basins(test, device):
     _, _, measure = _host(geo.oriented_bounding_box(points, num_samples=32, num_refine_starts=8))
 
     test.assertAlmostEqual(measure, 1.0, places=4)
+
+
+def test_obb_default_scores_every_point(test, device):
+    """Score candidate orientations over every point unless the caller caps them."""
+    # Subsampling the search can change which orientation wins, so it must be opt-in.
+    for fit in (geo.oriented_bounding_box, geo.oriented_bounding_boxes):
+        test.assertIsNone(inspect.signature(fit).parameters["max_search_points"].default)
 
 
 def test_obb_subsample_stays_exact(test, device):
@@ -639,6 +647,9 @@ add_function_test(
     "test_obb_refinement_reaches_higher_sample_quality",
     test_obb_refinement_reaches_higher_sample_quality,
     devices=devices,
+)
+add_function_test(
+    TestGeometryOBB, "test_obb_default_scores_every_point", test_obb_default_scores_every_point, devices=devices
 )
 add_function_test(TestGeometryOBB, "test_obb_subsample_stays_exact", test_obb_subsample_stays_exact, devices=devices)
 add_function_test(TestGeometryOBB, "test_obb_subsample_boundary", test_obb_subsample_boundary, devices=devices)
