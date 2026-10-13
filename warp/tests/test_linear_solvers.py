@@ -17,6 +17,20 @@ from warp.sparse import bsr_from_triplets, bsr_identity, bsr_mv, bsr_set_from_tr
 from warp.tests.unittest_utils import *
 
 
+def _dense_matrix(A):
+    """Return ``A`` as a dense NumPy array, whether it is a dense Warp array or a BSR matrix."""
+    if not hasattr(A, "offsets"):
+        return A.numpy()
+    rows, cols = A.block_shape
+    dense = np.zeros(A.shape)
+    offsets, columns = A.offsets.numpy(), A.columns.numpy()
+    values = A.values.numpy().astype(np.float64).reshape(-1, rows, cols)
+    for row in range(A.nrow):
+        for slot in range(offsets[row], offsets[row + 1]):
+            dense[row * rows : (row + 1) * rows, columns[slot] * cols : (columns[slot] + 1) * cols] = values[slot]
+    return dense
+
+
 def _check_linear_solve(test, A, b, func, *args, **kwargs):
     # test from zero
     x = wp.zeros_like(b)
@@ -58,10 +72,10 @@ def _check_linear_solve(test, A, b, func, *args, **kwargs):
     # In CG and BiCGSTAB residual norm is evaluating from running residual
     # rather then being computed from scratch as Ax - b
     # This can lead to accumulated inaccuracies over iterations, esp in float32
-    residual = A.numpy() @ x.numpy() - b.numpy()
+    residual = _dense_matrix(A) @ x.numpy().ravel() - b.numpy().ravel()
     err_np = np.linalg.norm(residual)
 
-    if A.dtype == wp.float64:
+    if getattr(A, "scalar_type", A.dtype) == wp.float64:
         test.assertLessEqual(err_np, 2.0 * atol)
     else:
         test.assertLessEqual(err_np, 32.0 * atol)
@@ -1419,6 +1433,19 @@ def test_float16_preconditioned_solvers(test, device):
                 test.assertLess(np.linalg.norm(residual) / np.linalg.norm(rhs), 1.5e-2)
 
 
+def test_fsai_preconditioned_solvers(test, device):
+    """Solve block SPD systems with every Krylov solver and FSAI, including capturable solver loops."""
+    for dtype in (wp.float32, wp.float64):
+        A, b, _ = _make_block_spd_system(num_blocks=8, block_size=3, seed=77, dtype=dtype, device=device)
+        M = preconditioner(A, "fsai")
+        tol = 1.0e-5 if dtype == wp.float32 else 1.0e-10
+        for solver in (cg, cr):
+            _check_linear_solve(test, A, b, solver, M=M, maxiter=1000, tol=tol)
+        for solver in (bicgstab, gmres):
+            _check_linear_solve(test, A, b, solver, M=M, maxiter=1000, tol=tol)
+            _check_linear_solve(test, A, b, solver, M=M, maxiter=1000, tol=tol, is_left_preconditioner=True)
+
+
 class TestLinearSolvers(unittest.TestCase):
     pass
 
@@ -1601,6 +1628,9 @@ add_function_test(
     devices=devices,
 )
 
+add_function_test(
+    TestLinearSolvers, "test_fsai_preconditioned_solvers", test_fsai_preconditioned_solvers, devices=devices
+)
 add_function_test(
     TestLinearSolvers, "test_float16_preconditioned_solvers", test_float16_preconditioned_solvers, devices=devices
 )
