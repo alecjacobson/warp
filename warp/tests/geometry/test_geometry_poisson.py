@@ -124,10 +124,12 @@ def _geodesic_distance_kernel(
     out[i] = curvature_corrected_distance(p1[i], n1[i], p2[i], n2[i])
 
 
-def _min_pairwise_distance(pts: np.ndarray) -> float:
+def _min_pairwise_distance(pts: np.ndarray, radius: float) -> float:
     """Return the smallest distance between any two distinct points.
 
-    Uses a uniform cell hash so it stays cheap for large point sets.
+    Uses a uniform cell hash so it stays cheap for large point sets. The cell is at
+    least ``radius`` wide, so any pair closer than ``radius`` lies in the same or an
+    adjacent cell and is never missed.
     """
     if len(pts) < 2:
         return np.inf
@@ -135,7 +137,7 @@ def _min_pairwise_distance(pts: np.ndarray) -> float:
     # own or an adjacent cell.
     span = pts.max(axis=0) - pts.min(axis=0)
     approx = max(np.mean(span) / max(len(pts) ** (1.0 / 2.0), 1.0), 1e-6)
-    cell = approx
+    cell = max(radius, approx)
     keys = np.floor((pts - pts.min(axis=0)) / cell).astype(np.int64)
     buckets: dict = {}
     for idx, k in enumerate(map(tuple, keys)):
@@ -180,7 +182,7 @@ def test_minimum_distance(test, device):
     radius = 0.1
     _, _, pos = geo.poisson_disk_sample(points, faces, radius=radius, seed=3, device=device)
     wp.synchronize_device()
-    mind = _min_pairwise_distance(pos.numpy())
+    mind = _min_pairwise_distance(pos.numpy(), radius)
     test.assertGreaterEqual(mind, radius - 1e-4)
 
 
@@ -294,6 +296,15 @@ def test_function_matches_class(test, device):
     np.testing.assert_array_equal(uv.numpy(), sampler.uv.numpy())
 
 
+def test_pair_correlation_device_override(test, device):
+    """Move points to the requested device when it differs from where they live."""
+    points = wp.array(np.random.default_rng(0).random((200, 3)), dtype=wp.vec3, device="cpu")
+    r_cpu, g_cpu = geo.pair_correlation(points, 1.0, num_bins=16, device="cpu")
+    r, g = geo.pair_correlation(points, 1.0, num_bins=16, device=device)
+    np.testing.assert_allclose(r, r_cpu, rtol=1e-5)
+    np.testing.assert_allclose(g, g_cpu, rtol=1e-3, atol=1e-3)
+
+
 def test_pair_correlation_invalid_r_max_raises(test, device):
     points, faces, _ = _plane(24, 1.0)
     sampler = geo.PoissonDiskSampler(points, faces, radius=0.1, device=device)
@@ -394,7 +405,7 @@ def test_scale_regression(test, device):
     test.assertGreater(num, 0)
     test.assertLessEqual(num / n_max, 1.0 + 1e-6)
     # The blue-noise minimum-distance property must still hold at scale.
-    mind = _min_pairwise_distance(sampler.points.numpy())
+    mind = _min_pairwise_distance(sampler.points.numpy(), radius)
     test.assertGreaterEqual(mind, radius - 1e-4)
 
 
@@ -434,6 +445,9 @@ add_function_test(
 )
 add_function_test(
     TestGeometryPoisson, "test_geodesic_helps_thin_feature", test_geodesic_helps_thin_feature, devices=devices
+)
+add_function_test(
+    TestGeometryPoisson, "test_pair_correlation_device_override", test_pair_correlation_device_override, devices=devices
 )
 add_function_test(
     TestGeometryPoisson,

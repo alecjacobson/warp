@@ -403,10 +403,6 @@ add_example_test(
 )
 
 
-class TestGeometryExamples(unittest.TestCase):
-    pass
-
-
 add_example_test(
     TestGeometryExamples,
     name="geometry.example_uniform_sampling",

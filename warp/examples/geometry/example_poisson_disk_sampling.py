@@ -57,7 +57,10 @@ def load_obj(path):
             if line.startswith("v "):
                 verts.append([float(x) for x in line.split()[1:4]])
             elif line.startswith("f "):
-                idx = [int(tok.split("/")[0]) - 1 for tok in line.split()[1:]]
+                idx = [int(tok.split("/")[0]) for tok in line.split()[1:]]
+                # Positive OBJ indices are 1-based; negative ones count back from the
+                # vertices read so far.
+                idx = [i - 1 if i > 0 else len(verts) + i for i in idx]
                 for k in range(1, len(idx) - 1):
                     faces.extend([idx[0], idx[k], idx[k + 1]])
     verts = np.array(verts, dtype=np.float32)
@@ -84,9 +87,10 @@ class Example:
             self.points, self.faces = load_obj(mesh)
             # Default to roughly 32k samples if no radius was given.
             if radius is None:
-                lo, hi = self.points.min(0), self.points.max(0)
-                area = float(np.prod(hi - lo))
-                radius = 0.02 * float(np.cbrt(area))
+                # Scale with the surface area, which stays nonzero for flat meshes.
+                tri = self.points[self.faces.reshape(-1, 3)]
+                area = 0.5 * float(np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1).sum())
+                radius = 0.02 * float(np.sqrt(area))
 
         # Dense blue-noise sampling: no two points closer than `radius`.
         self.sampler = warp.geometry.PoissonDiskSampler(

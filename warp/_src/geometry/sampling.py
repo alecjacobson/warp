@@ -1334,6 +1334,8 @@ def pair_correlation(
         pair-correlation value in each bin.
     """
     device = wp.get_device(device) if device is not None else points.device
+    if points.device != device:
+        points = points.to(device)
     num_points = int(points.shape[0])
     if num_points < 2:
         raise ValueError("`pair_correlation` needs at least two points.")
