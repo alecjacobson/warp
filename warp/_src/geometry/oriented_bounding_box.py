@@ -111,8 +111,23 @@ _OBB_REFINE_RADIUS0 = 0.35
 _OBB_REFINE_SHRINK = 0.72
 """Factor by which the refine radius shrinks each round, focusing the local search."""
 
-_OBB_REFINE_BATCH = 128
-"""Default number of orientations probed per refinement round."""
+_OBB_REFINE_STARTS = 4
+"""Default number of distinct basins refined in parallel."""
+
+_OBB_REFINE_ITERATIONS = 12
+"""Default number of coarse-to-fine refinement rounds."""
+
+_OBB_REFINE_SAMPLES = 128
+"""Default number of orientations probed per refinement round around each start."""
+
+_OBB_SPIN_SAMPLES = 64
+"""Default number of spin angles probed about each box axis in each spin round."""
+
+_OBB_SPIN_HALF_RANGES = (math.pi / 4, 0.02, 0.002)
+"""Half-width (radians) of the spin angles probed in each spin round, coarse to fine."""
+
+_OBB_START_SEPARATION = 0.3
+"""Minimum angular separation (radians), modulo the symmetries of a box, between two refinement starts."""
 
 _OBB_MAX_SEARCH_POINTS = 100_000
 """Default cap on the points used to *score* orientations; the winner is re-measured exactly."""
@@ -357,37 +372,142 @@ def oriented_bounding_box_refine_generate_kernel(
     batch: int,
     rot_batch: wp.array2d[wp.quat],
 ):
-    # Each thread proposes one orientation in a shrinking neighborhood of its shape's current
-    # champion, so the batch performs a parallel local search around it.
+    # Each thread proposes one orientation in a shrinking neighborhood of one of its shape's
+    # current champions (``batch`` consecutive columns per start).
     shape, i = wp.tid()
-    rot_batch[shape, i] = wp.normalize(small_rotation(i, batch, radius) * champion[shape, 0])
+    start = i // batch
+    rot_batch[shape, i] = wp.normalize(small_rotation(i % batch, batch, radius) * champion[shape, start])
 
 
 @wp.kernel(enable_backward=False)
 def oriented_bounding_box_champion_kernel(
     rotations: wp.array2d[wp.quat],
     measures: wp.array2d[wp.float32],
+    batch: int,
     champion: wp.array2d[wp.quat],
-    champion_measure: wp.array[wp.float32],
+    champion_measure: wp.array2d[wp.float32],
 ):
-    # One thread per shape: argmin over that shape's scored batch, committing its best to the
-    # champion if it improves on it. Kept on device (and single-threaded within a shape, so the
-    # champion quaternion is never torn between competing threads) so the whole search stays
-    # capturable in a CUDA graph. A strict ``<`` resolves ties to the lowest index, matching a
-    # host ``argmin``; seeding ``champion_measure`` to infinity makes the first call adopt the
-    # batch's best.
-    shape = wp.tid()
+    # One thread per (shape, start): argmin over that start's scored batch, committing its best
+    # if it improves on the start's champion.
+    shape, start = wp.tid()
+    base = start * batch
 
     best = int(0)
-    best_measure = measures[shape, 0]
-    for i in range(1, measures.shape[1]):
-        if measures[shape, i] < best_measure:
-            best_measure = measures[shape, i]
+    best_measure = measures[shape, base]
+    for i in range(1, batch):
+        if measures[shape, base + i] < best_measure:
+            best_measure = measures[shape, base + i]
             best = i
 
-    if best_measure < champion_measure[shape]:
-        champion_measure[shape] = best_measure
-        champion[shape, 0] = rotations[shape, best]
+    if best_measure < champion_measure[shape, start]:
+        champion_measure[shape, start] = best_measure
+        champion[shape, start] = rotations[shape, base + best]
+
+
+@wp.func
+def box_symmetry(index: int) -> wp.quat:
+    # The ``index``-th of the 24 rotations that map an axis-aligned box onto itself, up to sign:
+    # the identity and three half turns about the axes, six quarter turns about the axes, six half
+    # turns about edge directions and eight third turns about the body diagonals.
+    root_half = wp.sqrt(0.5)
+    q = wp.vec4(0.0, 0.0, 0.0, 0.0)
+    if index == 0:
+        q[3] = 1.0
+    elif index < 4:
+        q[index - 1] = 1.0
+    elif index < 10:
+        q[(index - 4) // 2] = root_half if (index & 1) == 0 else -root_half
+        q[3] = root_half
+    elif index < 16:
+        pair = (index - 10) // 2
+        q[pair // 2] = root_half
+        q[wp.min(pair + 1, 2)] = root_half if (index & 1) == 0 else -root_half
+    else:
+        bits = index - 16
+        q = wp.vec4(
+            0.5 if (bits & 1) == 0 else -0.5,
+            0.5 if (bits & 2) == 0 else -0.5,
+            0.5 if (bits & 4) == 0 else -0.5,
+            0.5,
+        )
+    return wp.quat(q[0], q[1], q[2], q[3])
+
+
+@wp.kernel(enable_backward=False)
+def oriented_bounding_box_block_kernel(
+    rotations: wp.array2d[wp.quat],
+    picked: wp.array2d[wp.quat],
+    pick_index: int,
+    min_cos_half_angle: float,
+    work: wp.array2d[wp.float32],
+):
+    # Exclude every candidate within the separation angle of the latest pick, modulo the box
+    # symmetries, so that the next pick comes from a different basin.
+    shape, i = wp.tid()
+    q = rotations[shape, i]
+    p = picked[shape, pick_index]
+    for g in range(24):
+        if wp.abs(wp.dot(q, box_symmetry(g) * p)) > min_cos_half_angle:
+            work[shape, i] = wp.float32(math.inf)
+
+
+@wp.kernel(enable_backward=False)
+def oriented_bounding_box_select_kernel(
+    rotations: wp.array2d[wp.quat],
+    measures: wp.array2d[wp.float32],
+    work: wp.array2d[wp.float32],
+    pick_index: int,
+    champion: wp.array2d[wp.quat],
+    champion_measure: wp.array2d[wp.float32],
+):
+    shape = wp.tid()
+    best = int(0)
+    best_work = work[shape, 0]
+    for i in range(1, work.shape[1]):
+        if work[shape, i] < best_work:
+            best_work = work[shape, i]
+            best = i
+    if best_work < wp.float32(math.inf):
+        champion[shape, pick_index] = rotations[shape, best]
+        champion_measure[shape, pick_index] = measures[shape, best]
+        work[shape, best] = wp.float32(math.inf)
+    else:  # fewer distinct basins than starts: repeat the best
+        champion[shape, pick_index] = champion[shape, 0]
+        champion_measure[shape, pick_index] = champion_measure[shape, 0]
+
+
+@wp.kernel(enable_backward=False)
+def oriented_bounding_box_final_kernel(
+    champion: wp.array2d[wp.quat],
+    champion_measure: wp.array2d[wp.float32],
+    out: wp.array2d[wp.quat],
+):
+    shape = wp.tid()
+    best = int(0)
+    for i in range(1, champion.shape[1]):
+        if champion_measure[shape, i] < champion_measure[shape, best]:
+            best = i
+    out[shape, 0] = champion[shape, best]
+
+
+@wp.kernel(enable_backward=False)
+def oriented_bounding_box_spin_generate_kernel(
+    champion: wp.array2d[wp.quat],
+    half_range: float,
+    samples_per_axis: int,
+    rot_batch: wp.array2d[wp.quat],
+):
+    # One thread per (shape, start, axis, angle): spin the start's champion about one of its own box axes.
+    shape, i = wp.tid()
+    per_start = 3 * samples_per_axis
+    start = i // per_start
+    r = i % per_start
+    axis_index = r // samples_per_axis
+    j = r % samples_per_axis
+    angle = half_range * (2.0 * (float(j) + 0.5) / float(samples_per_axis) - 1.0)
+    axis = wp.vec3(0.0, 0.0, 0.0)
+    axis[axis_index] = 1.0
+    rot_batch[shape, i] = wp.normalize(wp.quat_from_axis_angle(axis, angle) * champion[shape, start])
 
 
 def oriented_bounding_boxes(
@@ -399,8 +519,10 @@ def oriented_bounding_boxes(
     include_axis_aligned: bool = True,
     include_pca: bool = True,
     max_search_points: int | None = _OBB_MAX_SEARCH_POINTS,
-    refine_iters: int = 4,
-    refine_batch: int = _OBB_REFINE_BATCH,
+    num_refine_starts: int = _OBB_REFINE_STARTS,
+    num_refine_iterations: int = _OBB_REFINE_ITERATIONS,
+    num_refine_samples: int = _OBB_REFINE_SAMPLES,
+    num_spin_samples: int = _OBB_SPIN_SAMPLES,
     max_points_per_shape: int | None = None,
     validate: bool = True,
     device: DeviceLike | None = None,
@@ -426,8 +548,15 @@ def oriented_bounding_boxes(
         max_search_points: Upper bound on how many points of each point set are used to *score*
             candidate orientations. Each box is still re-measured over all of its points. Pass
             ``None`` to always score over every point.
-        refine_iters: Number of coarse-to-fine refinement rounds after the initial search.
-        refine_batch: Number of orientations probed per refinement round.
+        num_refine_starts: Number of distinct candidate orientations that are refined, each from a
+            different basin of the search space. Refining several avoids committing to a sampled
+            orientation that is not near the best one.
+        num_refine_iterations: Number of coarse-to-fine refinement rounds after the initial search.
+        num_refine_samples: Number of orientations probed per refinement round around each start.
+        num_spin_samples: Number of angles probed about each of the box's three axes in each of three
+            final spin rounds (coarse to fine) around each start. Spinning about an axis keeps a box face
+            that is flush with a face of the point set's convex hull flush, so this settles the box onto
+            the best such position. Pass ``0`` to skip the spin rounds.
         max_points_per_shape: Optional upper bound on the size of any one point set, used only
             to size the launches. Supplying it avoids over-provisioning threads when every
             point set is small. Results do not depend on it.
@@ -443,7 +572,7 @@ def oriented_bounding_boxes(
         entry ``i`` describes point set ``i`` exactly as for :func:`oriented_bounding_box`.
 
     Note:
-        Scratch memory grows with ``num_shapes * (num_samples + refine_batch)``. For a very
+        Scratch memory grows with ``num_shapes * max(num_samples, num_refine_starts * num_refine_samples, 3 * num_refine_starts * num_spin_samples)``. For a very
         large number of shapes, call this function on groups of them.
 
     Raises:
@@ -453,7 +582,9 @@ def oriented_bounding_boxes(
             too large for the scratch memory.
         TypeError: If ``offsets`` does not hold ``int32`` values.
     """
-    _validate_search_parameters(num_samples, refine_iters, refine_batch, max_search_points)
+    _validate_search_parameters(
+        num_samples, num_refine_starts, num_refine_iterations, num_refine_samples, num_spin_samples, max_search_points
+    )
     if max_points_per_shape is not None and max_points_per_shape < 1:
         raise ValueError(f"`max_points_per_shape` must be a positive integer or None, but got {max_points_per_shape}.")
     if offsets.dtype != wp.int32:
@@ -490,8 +621,10 @@ def oriented_bounding_boxes(
         include_axis_aligned,
         include_pca,
         max_search_points,
-        refine_iters,
-        refine_batch,
+        num_refine_starts,
+        num_refine_iterations,
+        num_refine_samples,
+        num_spin_samples,
         device,
     )
 
@@ -504,8 +637,10 @@ def oriented_bounding_box(
     include_axis_aligned: bool = True,
     include_pca: bool = True,
     max_search_points: int | None = _OBB_MAX_SEARCH_POINTS,
-    refine_iters: int = 4,
-    refine_batch: int = _OBB_REFINE_BATCH,
+    num_refine_starts: int = _OBB_REFINE_STARTS,
+    num_refine_iterations: int = _OBB_REFINE_ITERATIONS,
+    num_refine_samples: int = _OBB_REFINE_SAMPLES,
+    num_spin_samples: int = _OBB_SPIN_SAMPLES,
     device: DeviceLike | None = None,
 ) -> tuple[wp.array, wp.array, wp.array]:
     """Approximate an oriented bounding box (OBB) of a point set by sampling orientations.
@@ -530,9 +665,12 @@ def oriented_bounding_box(
     by ``num_samples`` alone. Both extras are cheap relative to ``num_samples``
     candidates.
 
-    After the initial search the best orientation is refined by ``refine_iters`` rounds of
-    coarse-to-fine local search: each round scores a batch of orientations in a shrinking
-    angular neighborhood of the current best and keeps any improvement. Because the spiral
+    After the initial search the best ``num_refine_starts`` orientations from distinct basins
+    are each refined by ``num_refine_iterations`` rounds of coarse-to-fine local search: each
+    round scores a batch of orientations in a shrinking angular neighborhood of the current
+    best of that start and keeps any improvement. Three spin rounds then rotate each start about
+    each of its box axes, which converges onto a face-flush box that the isotropic rounds reach only
+    slowly. The best refined orientation is returned. Because the spiral
     resolves orientation only to its sample spacing, this reaches the quality of a much
     larger ``num_samples`` at a fraction of the cost. For a large point set the orientation
     search runs over a strided subsample of at most ``max_search_points`` points -- the best
@@ -555,9 +693,16 @@ def oriented_bounding_box(
             deterministic strided subsample of about this size; the winning orientation's
             box is then recomputed over the full point set, so the returned box is exact.
             Pass ``None`` to always score over every point.
-        refine_iters: Number of coarse-to-fine refinement rounds after the initial search.
+        num_refine_starts: Number of distinct candidate orientations that are refined, each from a
+            different basin of the search space. Refining several avoids committing to a sampled
+            orientation that is not near the best one.
+        num_refine_iterations: Number of coarse-to-fine refinement rounds after the initial search.
             Pass ``0`` to return the best sampled orientation directly.
-        refine_batch: Number of orientations probed per refinement round.
+        num_refine_samples: Number of orientations probed per refinement round around each start.
+        num_spin_samples: Number of angles probed about each of the box's three axes in each of three
+            final spin rounds (coarse to fine) around each start. Spinning about an axis keeps a box face
+            that is flush with a face of the point set's convex hull flush, so this settles the box onto
+            the best such position. Pass ``0`` to skip the spin rounds.
         device: Device on which to run. Defaults to the device of ``points``.
 
     Returns:
@@ -581,11 +726,13 @@ def oriented_bounding_box(
         ``include_pca=False`` for a bitwise reproducible result.
 
     Raises:
-        ValueError: If ``num_samples`` or ``refine_batch`` is not a positive integer, if
-            ``refine_iters`` is negative, if ``max_search_points`` is not positive, or if
+        ValueError: If ``num_samples``, ``num_refine_starts`` or ``num_refine_samples`` is not a positive integer, if ``num_spin_samples`` is negative, if
+            ``num_refine_iterations`` is negative, if ``max_search_points`` is not positive, or if
             ``points`` is empty.
     """
-    _validate_search_parameters(num_samples, refine_iters, refine_batch, max_search_points)
+    _validate_search_parameters(
+        num_samples, num_refine_starts, num_refine_iterations, num_refine_samples, num_spin_samples, max_search_points
+    )
 
     num_points = points.shape[0]
     if num_points == 0:
@@ -608,19 +755,27 @@ def oriented_bounding_box(
         include_axis_aligned,
         include_pca,
         max_search_points,
-        refine_iters,
-        refine_batch,
+        num_refine_starts,
+        num_refine_iterations,
+        num_refine_samples,
+        num_spin_samples,
         device,
     )
 
 
-def _validate_search_parameters(num_samples, refine_iters, refine_batch, max_search_points):
+def _validate_search_parameters(
+    num_samples, num_refine_starts, num_refine_iterations, num_refine_samples, num_spin_samples, max_search_points
+):
     if num_samples < 1:
         raise ValueError(f"`num_samples` must be a positive integer, but got {num_samples}.")
-    if refine_iters < 0:
-        raise ValueError(f"`refine_iters` must be a non-negative integer, but got {refine_iters}.")
-    if refine_batch < 1:
-        raise ValueError(f"`refine_batch` must be a positive integer, but got {refine_batch}.")
+    if num_refine_starts < 1:
+        raise ValueError(f"`num_refine_starts` must be a positive integer, but got {num_refine_starts}.")
+    if num_refine_iterations < 0:
+        raise ValueError(f"`num_refine_iterations` must be a non-negative integer, but got {num_refine_iterations}.")
+    if num_refine_samples < 1:
+        raise ValueError(f"`num_refine_samples` must be a positive integer, but got {num_refine_samples}.")
+    if num_spin_samples < 0:
+        raise ValueError(f"`num_spin_samples` must be a non-negative integer, but got {num_spin_samples}.")
     if max_search_points is not None and max_search_points < 1:
         raise ValueError(f"`max_search_points` must be a positive integer or None, but got {max_search_points}.")
 
@@ -646,8 +801,10 @@ def _fit_oriented_bounding_boxes(
     include_axis_aligned,
     include_pca,
     max_search_points,
-    refine_iters,
-    refine_batch,
+    num_refine_starts,
+    num_refine_iterations,
+    num_refine_samples,
+    num_spin_samples,
     device,
 ):
     measure_code = int(OBBMeasureType(measure_type))
@@ -687,7 +844,11 @@ def _fit_oriented_bounding_boxes(
 
     # Candidate orientations: the spiral first, then any extras in the trailing slots.
     num_candidates = num_samples + int(include_axis_aligned) + int(include_pca)
-    if num_shapes * max(num_candidates, refine_batch) > _OBB_MAX_SCRATCH_ROWS:
+    if (
+        num_shapes
+        * max(num_candidates, num_refine_starts * num_refine_samples, num_refine_starts * 3 * num_spin_samples)
+        > _OBB_MAX_SCRATCH_ROWS
+    ):
         raise ValueError(
             f"Fitting {num_shapes} shapes with {num_candidates} candidate orientations each needs too much "
             "scratch memory; fit the shapes in smaller groups or reduce `num_samples`."
@@ -746,30 +907,42 @@ def _fit_oriented_bounding_boxes(
         device,
     )
 
-    # Champion: the best orientation found so far, tracked on device so the whole search
-    # stays capturable in a CUDA graph. Seeded to +inf so the initial candidates are adopted.
-    champion = wp.empty((num_shapes, 1), dtype=wp.quat, device=device)
-    champion_measure = wp.full(num_shapes, wp.float32(math.inf), dtype=wp.float32, device=device)
-    wp.launch(
-        oriented_bounding_box_champion_kernel,
-        dim=num_shapes,
-        inputs=[rotations, measures],
-        outputs=[champion, champion_measure],
-        device=device,
-    )
+    # Refinement starts: the best-scoring candidates, skipping any within ``_OBB_START_SEPARATION`` of an
+    # earlier pick (modulo the box symmetries). The single best sample is often not in the basin of the
+    # best orientation, so several distinct basins are refined and the best result is kept. Everything
+    # stays on the device so the search remains capturable in a CUDA graph.
+    num_starts = num_refine_starts
+    champion = wp.empty((num_shapes, num_starts), dtype=wp.quat, device=device)
+    champion_measure = wp.empty((num_shapes, num_starts), dtype=wp.float32, device=device)
+    work = wp.clone(measures)
+    for k in range(num_starts):
+        if k > 0:
+            wp.launch(
+                oriented_bounding_box_block_kernel,
+                dim=(num_shapes, num_candidates),
+                inputs=[rotations, champion, k - 1, math.cos(0.5 * _OBB_START_SEPARATION)],
+                outputs=[work],
+                device=device,
+            )
+        wp.launch(
+            oriented_bounding_box_select_kernel,
+            dim=num_shapes,
+            inputs=[rotations, measures, work, k],
+            outputs=[champion, champion_measure],
+            device=device,
+        )
 
-    # Coarse-to-fine refinement: each round scores a batch of orientations in a shrinking
-    # neighborhood of the champion and keeps any improvement. A fixed number of rounds of
-    # fixed-size launches keeps the whole thing capturable.
-    if refine_iters > 0:
-        rot_batch = wp.empty((num_shapes, refine_batch), dtype=wp.quat, device=device)
-        batch_chunks = _num_chunks(num_shapes, refine_batch, search_hint)
+    # Coarse-to-fine refinement: each round scores a batch of orientations in a shrinking neighborhood of
+    # every start and keeps any improvement. A fixed number of fixed-size rounds keeps it capturable.
+    if num_refine_iterations > 0:
+        rot_batch = wp.empty((num_shapes, num_starts * num_refine_samples), dtype=wp.quat, device=device)
+        batch_chunks = _num_chunks(num_shapes, num_starts * num_refine_samples, search_hint)
         radius = _OBB_REFINE_RADIUS0
-        for _ in range(refine_iters):
+        for _ in range(num_refine_iterations):
             wp.launch(
                 oriented_bounding_box_refine_generate_kernel,
-                dim=(num_shapes, refine_batch),
-                inputs=[champion, radius, refine_batch],
+                dim=(num_shapes, num_starts * num_refine_samples),
+                inputs=[champion, radius, num_refine_samples],
                 outputs=[rot_batch],
                 device=device,
             )
@@ -778,12 +951,48 @@ def _fit_oriented_bounding_boxes(
             )
             wp.launch(
                 oriented_bounding_box_champion_kernel,
-                dim=num_shapes,
-                inputs=[rot_batch, batch_measures],
+                dim=(num_shapes, num_starts),
+                inputs=[rot_batch, batch_measures, num_refine_samples],
                 outputs=[champion, champion_measure],
                 device=device,
             )
             radius *= _OBB_REFINE_SHRINK
+
+    # Spin rounds: rotate each start's champion about each of its own box axes, over shrinking angular
+    # ranges. A spin about a box axis leaves that axis, and any hull face it is flush with, in place, so
+    # this walks along the floor of the narrow valley that isotropic proposals rarely hit.
+    if num_spin_samples > 0:
+        spin_batch = 3 * num_spin_samples
+        spin_rotations = wp.empty((num_shapes, num_starts * spin_batch), dtype=wp.quat, device=device)
+        spin_chunks = _num_chunks(num_shapes, num_starts * spin_batch, search_hint)
+        for half_range in _OBB_SPIN_HALF_RANGES:
+            wp.launch(
+                oriented_bounding_box_spin_generate_kernel,
+                dim=(num_shapes, num_starts * spin_batch),
+                inputs=[champion, half_range, num_spin_samples],
+                outputs=[spin_rotations],
+                device=device,
+            )
+            spin_measures, _, _ = _score_orientations(
+                search_points, search_offsets, search_cap, spin_rotations, spin_chunks, measure_code, device
+            )
+            wp.launch(
+                oriented_bounding_box_champion_kernel,
+                dim=(num_shapes, num_starts),
+                inputs=[spin_rotations, spin_measures, spin_batch],
+                outputs=[champion, champion_measure],
+                device=device,
+            )
+
+    best_champion = wp.empty((num_shapes, 1), dtype=wp.quat, device=device)
+    wp.launch(
+        oriented_bounding_box_final_kernel,
+        dim=num_shapes,
+        inputs=[champion, champion_measure],
+        outputs=[best_champion],
+        device=device,
+    )
+    champion = best_champion
 
     # Re-measure the winning orientation over every point of each shape. This makes the returned box
     # exact when the search used a subsample or a refined orientation, and unifies every path.

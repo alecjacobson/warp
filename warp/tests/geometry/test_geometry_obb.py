@@ -138,14 +138,16 @@ def test_obb_recovers_rotated_box(test, device):
 def test_obb_pca_helps_elongated_shapes(test, device):
     # On a strongly elongated shape the spiral's angular resolution is the limiting factor,
     # and the covariance eigenvectors are a much better guess. Refinement is disabled here
-    # (refine_iters=0) to isolate the initial search: with it on, the local search closes the
+    # (num_refine_iterations=0) to isolate the initial search: with it on, the local search closes the
     # gap and PCA no longer helps measurably.
     rng = np.random.default_rng(73)
     p_np, extents = _rod(rng)
     points = wp.array(p_np, dtype=wp.vec3, device=device)
 
-    _, _, without_pca = _host(geo.oriented_bounding_box(points, num_samples=32, include_pca=False, refine_iters=0))
-    _, _, with_pca = _host(geo.oriented_bounding_box(points, num_samples=32, include_pca=True, refine_iters=0))
+    _, _, without_pca = _host(
+        geo.oriented_bounding_box(points, num_samples=32, include_pca=False, num_refine_iterations=0)
+    )
+    _, _, with_pca = _host(geo.oriented_bounding_box(points, num_samples=32, include_pca=True, num_refine_iterations=0))
 
     test.assertLess(with_pca, without_pca)
     test.assertLess(with_pca, float(np.prod(extents)) * 2.0)
@@ -182,10 +184,22 @@ def test_obb_refinement_never_worse(test, device):
         for measure_type in geo.OBBMeasureType:
             with test.subTest(shape=name, measure=measure_type.name):
                 _, _, base = _host(
-                    geo.oriented_bounding_box(points, measure_type=measure_type, num_samples=128, refine_iters=0)
+                    geo.oriented_bounding_box(
+                        points,
+                        measure_type=measure_type,
+                        num_samples=128,
+                        num_refine_iterations=0,
+                        num_spin_samples=0,
+                    )
                 )
                 _, _, refined = _host(
-                    geo.oriented_bounding_box(points, measure_type=measure_type, num_samples=128, refine_iters=6)
+                    geo.oriented_bounding_box(
+                        points,
+                        measure_type=measure_type,
+                        num_samples=128,
+                        num_refine_iterations=6,
+                        num_spin_samples=0,
+                    )
                 )
                 test.assertLessEqual(refined, base * (1.0 + 1e-5))
 
@@ -197,11 +211,83 @@ def test_obb_refinement_reaches_higher_sample_quality(test, device):
     p_np, extents = _rod(rng)
     points = wp.array(p_np, dtype=wp.vec3, device=device)
 
-    _, _, coarse = _host(geo.oriented_bounding_box(points, num_samples=64, refine_iters=0))
-    _, _, refined = _host(geo.oriented_bounding_box(points, num_samples=64, refine_iters=8))
+    _, _, coarse = _host(geo.oriented_bounding_box(points, num_samples=64, num_refine_iterations=0))
+    _, _, refined = _host(geo.oriented_bounding_box(points, num_samples=64, num_refine_iterations=8))
 
     test.assertLess(refined, coarse)
     test.assertLess(refined, float(np.prod(extents)) * 1.2)
+
+
+def _rotated_prism(seed, num_corners=14):
+    """Return the corners of an extruded random convex profile under a random rotation."""
+    rng = np.random.default_rng(seed)
+    angles = np.sort(rng.uniform(0.0, 2.0 * np.pi, num_corners))
+    radii = rng.uniform(0.6, 1.0, num_corners)
+    profile = np.stack([radii * np.cos(angles), 0.55 * radii * np.sin(angles)], axis=1)
+    prism = np.concatenate([np.c_[profile, np.full(num_corners, -0.25)], np.c_[profile, np.full(num_corners, 0.25)]])
+    q, r = np.linalg.qr(rng.normal(size=(3, 3)))
+    q = q * np.sign(np.diag(r))
+    q[:, 0] *= np.linalg.det(q)
+    return (prism @ q.T).astype(np.float32)
+
+
+def test_obb_spin_rounds_settle_face_flush_box(test, device):
+    """Spin about the box axes to reach a box that isotropic refinement alone leaves loose."""
+    # An extruded profile has a face-flush optimum whose spin about the extrusion axis the
+    # isotropic rounds converge on only slowly, so a small budget of them leaves the box loose.
+    points = wp.array(_rotated_prism(80), dtype=wp.vec3, device=device)
+    kwargs = {"num_samples": 256, "num_refine_starts": 2, "num_refine_iterations": 3, "num_refine_samples": 16}
+
+    _, _, without_spin = _host(geo.oriented_bounding_box(points, num_spin_samples=0, **kwargs))
+    _, _, with_spin = _host(geo.oriented_bounding_box(points, num_spin_samples=64, **kwargs))
+
+    test.assertLess(with_spin, 0.9 * without_spin)
+
+
+def test_obb_spin_rounds_never_worse(test, device):
+    """Return a box no looser with spin rounds than without them."""
+    rng = np.random.default_rng(131)
+    for name, p_np in _shapes(rng).items():
+        points = wp.array(p_np, dtype=wp.vec3, device=device)
+        for measure_type in geo.OBBMeasureType:
+            with test.subTest(shape=name, measure=measure_type.name):
+                kwargs = {"measure_type": measure_type, "num_samples": 128, "num_refine_iterations": 2}
+                _, _, without_spin = _host(geo.oriented_bounding_box(points, num_spin_samples=0, **kwargs))
+                _, _, with_spin = _host(geo.oriented_bounding_box(points, num_spin_samples=32, **kwargs))
+                test.assertLessEqual(with_spin, without_spin * (1.0 + 1e-5))
+
+
+def test_obb_multiple_refine_starts_escape_wrong_basin(test, device):
+    """Refine several orientations to reach a box that refining only the best sample misses."""
+    # On this cloud the best sampled orientation lies in the basin of a worse local optimum, so
+    # refining it alone cannot reach the tighter box that another basin offers.
+    rng = np.random.default_rng(127)
+    p_np = rng.normal(size=(24, 3)).astype(np.float32) * np.array([1.0, 0.8, 0.6], dtype=np.float32)
+    points = wp.array(p_np, dtype=wp.vec3, device=device)
+    kwargs = {
+        "num_samples": 64,
+        "include_axis_aligned": False,
+        "include_pca": False,
+        "num_refine_iterations": 8,
+        "num_refine_samples": 16,
+        "num_spin_samples": 0,
+    }
+
+    _, _, single = _host(geo.oriented_bounding_box(points, num_refine_starts=1, **kwargs))
+    _, _, several = _host(geo.oriented_bounding_box(points, num_refine_starts=4, **kwargs))
+
+    test.assertLess(several, 0.9 * single)
+
+
+def test_obb_refine_starts_exceeding_distinct_basins(test, device):
+    """Accept more refine starts than the cloud has distinct basins."""
+    # Every orientation of a cube is equivalent modulo its symmetries, so the later starts have
+    # no distinct basin left to take and must repeat the best one rather than fail.
+    points = wp.array(U.unit_cube()[0], dtype=wp.vec3, device=device)
+
+    _, _, measure = _host(geo.oriented_bounding_box(points, num_samples=32, num_refine_starts=8))
+
+    test.assertAlmostEqual(measure, 1.0, places=4)
 
 
 def test_obb_subsample_stays_exact(test, device):
@@ -236,7 +322,9 @@ def test_obb_refine_tiny_cloud(test, device):
     p_np = rng.standard_normal((3, 3)).astype(np.float32)
     points = wp.array(p_np, dtype=wp.vec3, device=device)
 
-    transform, extents, _ = _host(geo.oriented_bounding_box(points, num_samples=16, refine_iters=4, refine_batch=8))
+    transform, extents, _ = _host(
+        geo.oriented_bounding_box(points, num_samples=16, num_refine_iterations=4, num_refine_samples=8)
+    )
     overhang = _to_local(p_np, transform, extents).max()
     test.assertLess(overhang, 1e-4 * max(float(np.max(np.asarray(extents, dtype=np.float64))), 1.0))
 
@@ -248,10 +336,14 @@ def test_obb_invalid_arguments(test, device):
         geo.oriented_bounding_box(points, num_samples=0)
     with test.assertRaisesRegex(ValueError, "num_samples"):
         geo.oriented_bounding_box(points, num_samples=-5)
-    with test.assertRaisesRegex(ValueError, "refine_iters"):
-        geo.oriented_bounding_box(points, refine_iters=-1)
-    with test.assertRaisesRegex(ValueError, "refine_batch"):
-        geo.oriented_bounding_box(points, refine_batch=0)
+    with test.assertRaisesRegex(ValueError, "num_refine_starts"):
+        geo.oriented_bounding_box(points, num_refine_starts=0)
+    with test.assertRaisesRegex(ValueError, "num_refine_iterations"):
+        geo.oriented_bounding_box(points, num_refine_iterations=-1)
+    with test.assertRaisesRegex(ValueError, "num_refine_samples"):
+        geo.oriented_bounding_box(points, num_refine_samples=0)
+    with test.assertRaisesRegex(ValueError, "num_spin_samples"):
+        geo.oriented_bounding_box(points, num_spin_samples=-1)
     with test.assertRaisesRegex(ValueError, "max_search_points"):
         geo.oriented_bounding_box(points, max_search_points=0)
 
@@ -301,7 +393,7 @@ def _batch_shapes(rng):
     ]
 
 
-_SEARCH = {"num_samples": 96, "max_search_points": 100, "refine_iters": 2, "refine_batch": 32}
+_SEARCH = {"num_samples": 96, "max_search_points": 100, "num_refine_iterations": 2, "num_refine_samples": 32}
 
 
 def test_obbs_match_single_shape_fits(test, device):
@@ -374,7 +466,7 @@ def test_obbs_many_small_shapes(test, device):
     num_shapes = 3000
     shapes = [rng.standard_normal((int(rng.integers(1, 12)), 3)).astype(np.float32) for _ in range(num_shapes)]
     points, offsets = _pack(shapes, device)
-    kwargs = {"num_samples": 256, "include_pca": False, "refine_iters": 1, "refine_batch": 16}
+    kwargs = {"num_samples": 256, "include_pca": False, "num_refine_iterations": 1, "num_refine_samples": 16}
     transform, _, measure = geo.oriented_bounding_boxes(points, offsets, max_points_per_shape=11, **kwargs)
     for i in rng.choice(num_shapes, size=8, replace=False):
         single = _host(geo.oriented_bounding_box(wp.array(shapes[i], dtype=wp.vec3, device=device), **kwargs))
@@ -432,7 +524,7 @@ def test_obbs_launch_count_does_not_scale_with_shapes(test, device):
     # whereas fitting shapes one at a time launches a full search per shape. A launch count is a
     # deterministic proxy for the speedup, which a timing assertion could not give reliably.
     cube = U.unit_cube()[0]
-    kwargs = {"num_samples": 8, "refine_iters": 2, "refine_batch": 8, "validate": False}
+    kwargs = {"num_samples": 8, "num_refine_iterations": 2, "num_refine_samples": 8, "validate": False}
 
     def count_launches(fit):
         real_launch = wp.launch
@@ -476,7 +568,13 @@ def test_obbs_graph_capturable_with_subsampling(test, device):
     rng = np.random.default_rng(131)
     shapes = [_rod(rng, num_points=200)[0], _rod(rng, num_points=50)[0]]
     points, offsets = _pack(shapes, device)
-    kwargs = {"num_samples": 32, "max_search_points": 20, "include_pca": False, "refine_iters": 1, "refine_batch": 8}
+    kwargs = {
+        "num_samples": 32,
+        "max_search_points": 20,
+        "include_pca": False,
+        "num_refine_iterations": 1,
+        "num_refine_samples": 8,
+    }
     wp.load_module(geo, device=device)
     expected = geo.oriented_bounding_boxes(points, offsets, **kwargs)
 
@@ -520,6 +618,27 @@ add_function_test(
 add_function_test(TestGeometryOBB, "test_obb_subsample_stays_exact", test_obb_subsample_stays_exact, devices=devices)
 add_function_test(TestGeometryOBB, "test_obb_subsample_boundary", test_obb_subsample_boundary, devices=devices)
 add_function_test(TestGeometryOBB, "test_obb_refine_tiny_cloud", test_obb_refine_tiny_cloud, devices=devices)
+add_function_test(
+    TestGeometryOBB,
+    "test_obb_spin_rounds_settle_face_flush_box",
+    test_obb_spin_rounds_settle_face_flush_box,
+    devices=devices,
+)
+add_function_test(
+    TestGeometryOBB, "test_obb_spin_rounds_never_worse", test_obb_spin_rounds_never_worse, devices=devices
+)
+add_function_test(
+    TestGeometryOBB,
+    "test_obb_multiple_refine_starts_escape_wrong_basin",
+    test_obb_multiple_refine_starts_escape_wrong_basin,
+    devices=devices,
+)
+add_function_test(
+    TestGeometryOBB,
+    "test_obb_refine_starts_exceeding_distinct_basins",
+    test_obb_refine_starts_exceeding_distinct_basins,
+    devices=devices,
+)
 add_function_test(TestGeometryOBB, "test_obb_invalid_arguments", test_obb_invalid_arguments, devices=devices)
 add_function_test(TestGeometryOBB, "test_obb_graph_capturable", test_obb_graph_capturable, devices=cuda_devices)
 

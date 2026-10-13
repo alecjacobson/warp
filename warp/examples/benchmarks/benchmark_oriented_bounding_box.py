@@ -62,10 +62,13 @@ def main():
     aabb = _aabb_volume(p_np)
     print(f"  {'num_samples':>12}{'refine=0':>12}{'refine=4':>12}{'refine=8':>12}")
     for num_samples in (16, 64, 256, 1024, 4096):
-        row = [_measure(points, num_samples=num_samples, refine_iters=r, include_pca=False) / aabb for r in (0, 4, 8)]
+        row = [
+            _measure(points, num_samples=num_samples, num_refine_iterations=r, include_pca=False) / aabb
+            for r in (0, 4, 8)
+        ]
         print(f"  {num_samples:>12}{row[0]:>12.4f}{row[1]:>12.4f}{row[2]:>12.4f}")
 
-    print("\nSubsample speed on a large cloud (num_samples=4096, refine_iters=4):")
+    print("\nSubsample speed on a large cloud (num_samples=4096, num_refine_iterations=4):")
     print(f"  {'points':>12}{'full (ms)':>14}{'subsample (ms)':>18}{'speedup':>10}{'vol ratio':>12}")
     for n in (250_000, 1_000_000, 4_000_000):
         p_np = _rotated_rod(rng, n)
