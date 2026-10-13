@@ -11,8 +11,8 @@
 # (triangles on the inner rim are far smaller than those on the outer rim). The
 # sampler weights each triangle by its area, so the drawn points stay evenly
 # spread across the surface regardless of that tessellation. Each frame draws a
-# fresh set of points from within a kernel by calling the sampler's `draw`
-# member function, evaluating world-space positions on the GPU.
+# fresh set of points from within a kernel by calling `draw_sample`
+# from the device, evaluating world-space positions on the GPU.
 #
 #   uv run --with usd-core warp/examples/geometry/example_uniform_sampling.py
 ###########################################################################
@@ -64,7 +64,7 @@ def sample_points_kernel(
     rng = wp.rand_init(seed, tid)
 
     # Draw one uniform surface sample and evaluate its world-space position.
-    s = warp.geometry.draw(sampler, rng)
+    s = warp.geometry.draw_sample(sampler, rng)
     out_points[tid] = wp.mesh_eval_position(sampler.mesh, s.face, s.uv[0], s.uv[1])
 
 

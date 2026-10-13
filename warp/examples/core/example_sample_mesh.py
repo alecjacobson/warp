@@ -11,7 +11,7 @@
 # across the surface even when the tessellation is non-uniform. It precomputes a
 # cumulative area distribution once; each draw is then a binary search plus a
 # within-triangle sample. Here the per-sample device function is called inside a
-# kernel via the sampler's `draw` member so that positions are evaluated on the
+# kernel via `draw_sample` so that positions are evaluated on the
 # GPU without a round trip.
 #
 ###########################################################################
@@ -112,7 +112,7 @@ def sample_mesh(
 
     # Draw a point uniformly on the surface: a triangle chosen with probability
     # proportional to its area, plus a uniform location within that triangle.
-    s = warp.geometry.draw(sampler, rng)
+    s = warp.geometry.draw_sample(sampler, rng)
 
     # Evaluate the world-space position from the sampled face and barycentrics.
     out_points[tid] = wp.mesh_eval_position(sampler.mesh, s.face, s.uv[0], s.uv[1])

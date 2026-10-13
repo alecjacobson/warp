@@ -44,7 +44,7 @@ from warp._src.geometry.sampling import (
     UniformSamplerState as UniformSamplerState,
 )
 from warp._src.geometry.sampling import (
-    draw as draw,
+    draw_sample as draw_sample,
 )
 from warp._src.geometry.sampling import (
     pair_correlation as pair_correlation,

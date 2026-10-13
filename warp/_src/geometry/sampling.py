@@ -40,7 +40,7 @@ class MeshSample:
 
 @wp.struct
 class UniformSamplerState:
-    """Device-side state of a :class:`UniformSampler`, passed to :func:`draw`.
+    """Device-side state of a :class:`UniformSampler`, passed to :func:`draw_sample`.
 
     It bundles the mesh identifier with the cumulative area distribution needed
     to pick a triangle with probability proportional to its area. Obtain an
@@ -116,7 +116,7 @@ def curvature_corrected_distance(p1: wp.vec3, n1: wp.vec3, p2: wp.vec3, n2: wp.v
 
 
 @wp.func
-def draw(state: UniformSamplerState, rng: wp.uint32) -> MeshSample:
+def draw_sample(state: UniformSamplerState, rng: wp.uint32) -> MeshSample:
     """Draw one point uniformly over the surface of a mesh.
 
     A triangle is chosen with probability proportional to its area via a binary
@@ -127,7 +127,7 @@ def draw(state: UniformSamplerState, rng: wp.uint32) -> MeshSample:
         state: Sampler state, typically ``UniformSampler.state`` passed as a
             kernel argument.
         rng: Random number generator state, updated in place by each draw. A
-            single ``rng`` can therefore feed repeated ``draw`` calls in a loop.
+            single ``rng`` can therefore feed repeated ``draw_sample`` calls in a loop.
 
     Returns:
         The sampled :class:`MeshSample` (a triangle index and barycentrics).
@@ -189,7 +189,7 @@ def _draw_kernel(
 ):
     tid = wp.tid()
     rng = wp.rand_init(seed, tid)
-    sample = draw(state, rng)
+    sample = draw_sample(state, rng)
     out_faces[tid] = sample.face
     out_uv[tid] = sample.uv
 
@@ -227,10 +227,8 @@ class UniformSampler:
 
     * :meth:`sample` (host side) launches a kernel and returns arrays of faces
       and barycentric coordinates -- convenient for one-shot sampling.
-    * :attr:`draw` (device side) samples a single point from within your own
-      kernel. It is the module-level :func:`draw` exposed as a member ``@wp.func``,
-      so ``sampler.draw(sampler.state, rng)`` resolves inside a kernel when
-      ``sampler`` is captured from the enclosing scope.
+    * :func:`draw_sample` (device side) samples a single point from within your own
+      kernel, given the sampler's :attr:`state`.
 
     Args:
         points: Vertex positions, either a :class:`warp.array` of
@@ -249,13 +247,6 @@ class UniformSampler:
     Attributes:
         total_area: Total surface area of the mesh.
     """
-
-    # Expose the device sampling function as a member ``@wp.func`` so that it can
-    # be called as ``sampler.draw(sampler.state, rng)`` from inside a kernel that
-    # captures the sampler, in addition to the module-level ``warp.geometry.draw``.
-    # ``draw`` is a ``warp.Function`` (not a plain function), so attribute access
-    # returns it unbound rather than turning it into a Python method.
-    draw = draw
 
     def __init__(self, points, faces, *, face_areas=None, device: DeviceLike | None = None):
         if device is None:
@@ -861,10 +852,8 @@ def _poisson_gather_kernel(
 # Extension seam: this sampler is radius-driven (count emergent). A future
 # count-driven strategy (e.g. weighted sample elimination to an exact count)
 # should slot in additively -- keep ``radius`` widen-able to optional and reserve
-# the keyword ``num_points`` for the target count. See
-# ``design/parallel-poisson-disk-sampling.md`` ("Future extension") before adding
-# knobs here, so the naming and control-flow stay clean rather than being worked
-# around later.
+# the keyword ``num_points`` for the target count, so that it can be added without
+# deprecating anything.
 class PoissonDiskSampler:
     """Draw a Poisson-disk (blue-noise) point set over a triangle mesh surface.
 
@@ -909,8 +898,7 @@ class PoissonDiskSampler:
             (``curvature_corrected_distance``) for the minimum distance instead of the
             Euclidean one. Keeps a single sample per grid cell: the paper's
             multiple-samples-per-cell extension is intentionally omitted -- it was
-            implemented and measured to add nothing under this approximation (see
-            ``design/parallel-poisson-disk-sampling.md``).
+            implemented and measured to add nothing under this approximation.
         face_areas: Optional precomputed per-triangle areas forwarded to the
             internal :class:`UniformSampler`; computed from the mesh when ``None``.
         device: Device on which to run. Defaults to the device of ``points``.

@@ -26,7 +26,7 @@ Surface sampling draws points on triangle meshes:
 
 * **Uniform sampling** (:func:`uniformly_sample`, :class:`UniformSampler`) draws
   points spread evenly across a mesh regardless of how finely it is tessellated,
-  and the device function :func:`draw` samples a single point from within your
+  and the device function :func:`draw_sample` samples a single point from within your
   own :func:`warp.kernel` definitions.
 * **Poisson-disk sampling** (:func:`poisson_disk_sample`,
   :class:`PoissonDiskSampler`) draws blue-noise point sets in which no two
@@ -79,4 +79,4 @@ from warp._src.geometry import uniformly_sample as uniformly_sample
 
 from warp._src.geometry import find_triangle_neighbor_edge_index as find_triangle_neighbor_edge_index
 from warp._src.geometry import swept_volume_sdf as swept_volume_sdf
-from warp._src.geometry import draw as draw
+from warp._src.geometry import draw_sample as draw_sample

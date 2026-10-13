@@ -198,8 +198,8 @@ def test_seed_behavior(test, device):
     test.assertFalse(np.array_equal(a_uv.numpy(), c_uv.numpy()))
 
 
-def test_draw_free_function_in_kernel(test, device):
-    # The device function warp.geometry.draw can be called from a user kernel.
+def test_draw_sample_in_kernel(test, device):
+    # The device function warp.geometry.draw_sample can be called from a user kernel.
     points, faces = _two_triangles()
     sampler = geo.UniformSampler(points, faces, device=device)
 
@@ -211,7 +211,7 @@ def test_draw_free_function_in_kernel(test, device):
     ):
         tid = wp.tid()
         rng = wp.rand_init(seed, tid)
-        s = geo.draw(state, rng)
+        s = geo.draw_sample(state, rng)
         out_faces[tid] = s.face
 
     out_faces = wp.empty(4096, dtype=wp.int32, device=device)
@@ -221,31 +221,6 @@ def test_draw_free_function_in_kernel(test, device):
     f = out_faces.numpy()
     test.assertTrue(np.all((f == 0) | (f == 1)))
     test.assertTrue(np.any(f == 0) and np.any(f == 1))
-
-
-def test_draw_member_function_in_kernel(test, device):
-    # The sampler exposes draw as a member @wp.func, resolvable as sampler.draw
-    # from a kernel that captures the sampler.
-    points, faces = _two_triangles()
-    sampler = geo.UniformSampler(points, faces, device=device)
-
-    @wp.kernel
-    def sample_pos_kernel(
-        state: geo.UniformSamplerState,
-        seed: int,
-        out_pos: wp.array(dtype=wp.vec3),
-    ):
-        tid = wp.tid()
-        rng = wp.rand_init(seed, tid)
-        s = sampler.draw(state, rng)
-        out_pos[tid] = wp.mesh_eval_position(state.mesh, s.face, s.uv[0], s.uv[1])
-
-    out_pos = wp.empty(4096, dtype=wp.vec3, device=device)
-    wp.launch(sample_pos_kernel, dim=4096, inputs=[sampler.state, 13], outputs=[out_pos], device=device)
-    wp.synchronize_device()
-
-    pos = out_pos.numpy()
-    np.testing.assert_allclose(pos[:, 2], 0.0, atol=1e-6)
 
 
 def test_empty_faces_raises(test, device):
@@ -323,12 +298,7 @@ add_function_test(TestGeometrySampling, "test_area_weighting", test_area_weighti
 add_function_test(TestGeometrySampling, "test_within_triangle_uniform", test_within_triangle_uniform, devices=devices)
 add_function_test(TestGeometrySampling, "test_sample_points_on_surface", test_sample_points_on_surface, devices=devices)
 add_function_test(TestGeometrySampling, "test_seed_behavior", test_seed_behavior, devices=devices)
-add_function_test(
-    TestGeometrySampling, "test_draw_free_function_in_kernel", test_draw_free_function_in_kernel, devices=devices
-)
-add_function_test(
-    TestGeometrySampling, "test_draw_member_function_in_kernel", test_draw_member_function_in_kernel, devices=devices
-)
+add_function_test(TestGeometrySampling, "test_draw_sample_in_kernel", test_draw_sample_in_kernel, devices=devices)
 add_function_test(TestGeometrySampling, "test_empty_faces_raises", test_empty_faces_raises, devices=devices)
 add_function_test(
     TestGeometrySampling, "test_face_areas_match_computed", test_face_areas_match_computed, devices=devices

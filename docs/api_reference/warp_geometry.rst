@@ -40,6 +40,6 @@ Kernel API
    :nosignatures:
    :toctree: _generated
 
-   draw
+   draw_sample
    find_triangle_neighbor_edge_index
    swept_volume_sdf

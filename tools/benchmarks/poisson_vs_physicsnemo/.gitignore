@@ -1,4 +1,0 @@
-# Fetched third-party source (PhysicsNeMo, Apache-2.0) and generated artifacts.
-_vendor/
-mesh.npz
-__pycache__/
