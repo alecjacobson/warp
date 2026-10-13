@@ -18,6 +18,7 @@
 
 #include "apic.h"
 #include "apic_internal.h"
+#include "cpu_block_runtime.h"
 #include "error.h"
 #include "hashgrid.h"
 #include "mesh.h"
@@ -27,7 +28,7 @@
 #include <climits>
 #include <cmath>
 #include <cstddef>  // offsetof
-#include <cstdint>  // SIZE_MAX
+#include <cstdint>  // UINT64_MAX
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -346,7 +347,7 @@ void apic_record_kernel_launch(
     const char* kernel_key,
     const char* module_hash,
     int is_forward,
-    const int* shape,
+    const uint32_t* shape,
     int ndim,
     uint64_t size,
     int max_blocks,
@@ -1408,20 +1409,6 @@ static bool apic_is_radix_dtype(uint8_t dtype)
         || dtype == APIC_TYPE_INT64 || dtype == APIC_TYPE_UINT64 || dtype == APIC_TYPE_FLOAT64;
 }
 
-// Checked multiply: writes a*b to *out and returns true, or returns false if
-// the product would overflow size_t. Replay computes byte spans as products of
-// record fields (count, stride, nnz, block size, scalar size) and trusts the
-// validator, so a corrupt/oversized .wrp could otherwise wrap a span to a small
-// value that passes resolve_ptr's bounds check while the host op reads/writes
-// far more. The validator uses this to reject such records up front.
-static bool apic_mul_check(uint64_t a, uint64_t b, uint64_t* out)
-{
-    if (b != 0 && a > (SIZE_MAX / b))
-        return false;
-    *out = a * b;
-    return true;
-}
-
 static bool apic_add_check(uint64_t a, uint64_t b, uint64_t* out)
 {
     if (a > UINT64_MAX - b)
@@ -1435,7 +1422,9 @@ static bool apic_add_check(uint64_t a, uint64_t b, uint64_t* out)
 // op_type is recognized. Called once at stream-close time (end of recording
 // for live capture; after .wrp load for deserialized graphs). Replay paths
 // skip per-op bounds checks once this returns true.
-bool apic_validate_operation_stream(const uint8_t* data, size_t size, uint32_t operation_count, uint32_t depth)
+bool apic_validate_operation_stream(
+    const uint8_t* data, size_t size, uint32_t operation_count, uint32_t depth, uint32_t format_version
+)
 {
     // Cap conditional nesting before recursion can stack-overflow on a
     // malformed .wrp. 1024 levels is far past anything a real program will
@@ -1476,6 +1465,24 @@ bool apic_validate_operation_stream(const uint8_t* data, size_t size, uint32_t o
                 return false;
             }
             const APICLaunchRecord* rec = reinterpret_cast<const APICLaunchRecord*>(ptr);
+            if (format_version < APIC_UNSIGNED_LAUNCH_BOUNDS_VERSION) {
+                int ndim = rec->ndim;
+                if (ndim < 1)
+                    ndim = 1;
+                if (ndim > APIC_LAUNCH_MAX_DIMS)
+                    ndim = APIC_LAUNCH_MAX_DIMS;
+                for (int d = 0; d < ndim; d++) {
+                    if (rec->shape[d] > INT32_MAX) {
+                        fprintf(
+                            stderr,
+                            "Warp APIC error: legacy kernel launch shape overflows signed 32-bit extent at operation "
+                            "%u dimension %d\n",
+                            i, d
+                        );
+                        return false;
+                    }
+                }
+            }
             const uint8_t* var_data = ptr + sizeof(APICLaunchRecord);
             if (var_data + rec->kernel_key_len + rec->module_hash_len > op_end) {
                 fprintf(stderr, "Warp APIC error: kernel launch strings overflow at operation %u\n", i);
@@ -1596,8 +1603,17 @@ bool apic_validate_operation_stream(const uint8_t* data, size_t size, uint32_t o
                 return false;
             }
             const APICMemtileRecord* rec = reinterpret_cast<const APICMemtileRecord*>(ptr);
+            if (rec->srcsize == 0) {
+                fprintf(stderr, "Warp APIC error: MEMTILE source size is zero at operation %u\n", i);
+                return false;
+            }
             if (op_start + sizeof(APICMemtileRecord) + rec->srcsize > op_end) {
                 fprintf(stderr, "Warp APIC error: memtile inline data overflow at operation %u\n", i);
+                return false;
+            }
+            uint64_t total_bytes;
+            if (!apic_mul_check(rec->count, rec->srcsize, &total_bytes)) {
+                fprintf(stderr, "Warp APIC error: memtile span overflow at operation %u\n", i);
                 return false;
             }
             break;
@@ -1878,7 +1894,9 @@ bool apic_validate_operation_stream(const uint8_t* data, size_t size, uint32_t o
             const uint8_t* branch_b = branch_a + rec->branch_a_size;
             // Recurse into the inner sub-streams.
             if (rec->branch_a_size > 0
-                && !apic_validate_operation_stream(branch_a, rec->branch_a_size, rec->branch_a_op_count, depth + 1)) {
+                && !apic_validate_operation_stream(
+                    branch_a, rec->branch_a_size, rec->branch_a_op_count, depth + 1, format_version
+                )) {
                 fprintf(stderr, "Warp APIC error: branch_a invalid at operation %u\n", i);
                 return false;
             }
@@ -1887,7 +1905,9 @@ bool apic_validate_operation_stream(const uint8_t* data, size_t size, uint32_t o
                 return false;
             }
             if (rec->branch_b_size > 0
-                && !apic_validate_operation_stream(branch_b, rec->branch_b_size, rec->branch_b_op_count, depth + 1)) {
+                && !apic_validate_operation_stream(
+                    branch_b, rec->branch_b_size, rec->branch_b_op_count, depth + 1, format_version
+                )) {
                 fprintf(stderr, "Warp APIC error: branch_b invalid at operation %u\n", i);
                 return false;
             }
@@ -2166,7 +2186,7 @@ static bool apic_cpu_replay_stream(
             memset(bounds_buf, 0, bounds_size);
             uint64_t shape_size = 1;
             for (int d = 0; d < ndim; d++)
-                reinterpret_cast<int*>(bounds_buf)[d] = rec->shape[d];
+                reinterpret_cast<uint32_t*>(bounds_buf)[d] = rec->shape[d];
             for (int d = 0; d < ndim; d++)
                 shape_size *= static_cast<uint64_t>(rec->shape[d]);
             *reinterpret_cast<size_t*>(bounds_buf + size_offset) = rec->size;
@@ -2218,7 +2238,12 @@ static bool apic_cpu_replay_stream(
             // apic_info=nullptr is safe: g_apic_state is null during replay, so
             // the recording branch in wp_cpu_launch_kernel is a no-op and the
             // execute branch fires.
+            wp_take_cpu_block_error();
             wp_cpu_launch_kernel(func, bounds_buf, fwd_buf, adj_buf, /*apic_info=*/nullptr);
+            if (const char* block_error = wp_take_cpu_block_error()) {
+                wp::set_error_string("%s", block_error);
+                return false;
+            }
             break;
         }
 
@@ -2251,7 +2276,11 @@ static bool apic_cpu_replay_stream(
         case APIC_OP_MEMTILE: {
             const APICMemtileRecord* rec = reinterpret_cast<const APICMemtileRecord*>(ptr);
             const void* value = ptr + sizeof(APICMemtileRecord);
-            uint64_t total_bytes = rec->count * rec->srcsize;
+            uint64_t total_bytes;
+            if (!apic_mul_check(rec->count, rec->srcsize, &total_bytes)) {
+                fprintf(stderr, "Warp APIC error: memtile span overflow at operation %u\n", i);
+                return false;
+            }
             void* dst = resolve_ptr(rec->region_id, rec->offset, total_bytes);
             if (!dst) {
                 fprintf(stderr, "Warp APIC error: memtile pointer resolution failed at operation %u\n", i);
@@ -3286,7 +3315,9 @@ APICGraph* wp_apic_load_graph(void* context, const char* path, int device_type)
         memcpy(&operation_count, operations_ptr, sizeof(operation_count));
         operation_stream = operations_ptr + sizeof(operation_count);
         operation_stream_size = operations_size - sizeof(operation_count);
-        if (!apic_validate_operation_stream(operation_stream, operation_stream_size, operation_count)) {
+        if (!apic_validate_operation_stream(
+                operation_stream, operation_stream_size, operation_count, 0, header->version
+            )) {
             wp::set_error_string("Warp APIC error: operation stream failed validation");
             return nullptr;
         }

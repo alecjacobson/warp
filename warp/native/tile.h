@@ -21,6 +21,10 @@ using wp_tile_lane_mask_bits_t = decltype(WP_TILE_LANE_MASK_ALL);
 
 #include "rand.h"
 
+#if !defined(__CUDA_ARCH__)
+#include "cpu_block_runtime.h"
+#endif
+
 #ifdef __clang__
 // disable warnings related to C++17 extensions on CPU JIT builds
 #pragma clang diagnostic push
@@ -48,7 +52,17 @@ struct alignas(16) float4 {
 #if defined(__CUDA_ARCH__)
 #define WP_TILE_SYNC __syncthreads
 #else
-#define WP_TILE_SYNC void
+namespace wp {
+
+class tile_shared_storage_t;
+template <typename T> struct wp_block_shared;
+template <int BlockDim> inline void tile_sync()
+{
+    if constexpr (BlockDim > 1)
+        ::wp_cpu_tile_sync();
+}
+}  // namespace wp
+#define WP_TILE_SYNC ::wp::tile_sync<WP_TILE_BLOCK_DIM>
 #endif
 
 #if defined(__CUDA_ARCH__) && !defined(__INTELLISENSE__)
@@ -78,10 +92,20 @@ template <> struct wp_is_null_func<int> {
     static constexpr bool value = true;
 };
 
-#if defined(__CUDACC_RTC__) || (defined(__clang__) && defined(__CUDA__))
+#if defined(__CUDA_ARCH__) || defined(__CUDACC_RTC__) || (defined(__clang__) && defined(__CUDA__))
 #define WP_TILE_THREAD_IDX threadIdx.x
 #else
-#define WP_TILE_THREAD_IDX 0
+// Preserve the literal-zero specialization in unoptimized CPU debug builds.
+namespace wp {
+template <int BlockDim> WP_FORCEINLINE int tile_thread_idx()
+{
+    if constexpr (BlockDim == 1)
+        return 0;
+    else
+        return ::wp_cpu_get_thread_idx();
+}
+}  // namespace wp
+#define WP_TILE_THREAD_IDX (::wp::tile_thread_idx<WP_TILE_BLOCK_DIM>())
 #endif
 
 
@@ -993,9 +1017,6 @@ template <typename T, typename L> struct tile_register_t {
 
 #if defined(__CUDA_ARCH__)
         __shared__ Type scratch;
-#else
-        Type scratch;
-#endif
 
         // ensure any previously scheduled threads have finished reading from scratch
         WP_TILE_SYNC();
@@ -1008,6 +1029,28 @@ template <typename T, typename L> struct tile_register_t {
         WP_TILE_SYNC();
 
         return scratch;
+#else
+        if constexpr (WP_TILE_BLOCK_DIM == 1) {
+            return data[linear];
+        } else {
+            wp_block_shared<Type> scratch_holder;
+            Type& scratch = *scratch_holder;
+
+            WP_TILE_SYNC();
+
+            if (WP_TILE_THREAD_IDX == thread) {
+                scratch = data[reg];
+            }
+
+            WP_TILE_SYNC();
+
+            // Copy the result before any fiber releases and reuses the
+            // block-shared scratch allocation.
+            Type result = scratch;
+            WP_TILE_SYNC();
+            return result;
+        }
+#endif
     }
 
 
@@ -1024,6 +1067,7 @@ template <typename T, typename L> struct tile_register_t {
         }
     }
 
+    inline CUDA_CALLABLE void print_from_shared(T* smem) const;
     inline CUDA_CALLABLE void print() const;
 
 
@@ -1213,6 +1257,15 @@ private:
     }
 
 public:
+    static inline void bind(tile_shared_storage_t* storage)
+    {
+#if !defined(__CUDA_ARCH__) && defined(WP_ENABLE_TILES_IN_STACK_MEMORY)
+        shared_tile_storage = storage;
+#else
+        (void)storage;
+#endif
+    }
+
     // cppcheck-suppress uninitMemberVar
     inline CUDA_CALLABLE tile_shared_storage_t()
     {
@@ -1221,6 +1274,13 @@ public:
         // or static variable so it can be accessed from anywhere within a kernel.
         old_value = shared_tile_storage;
         shared_tile_storage = this;
+        if constexpr (WP_TILE_BLOCK_DIM > 1) {
+            // A stack-backed arena can reuse the same address for consecutive
+            // blocks. Clear it so initialized shared values never inherit data
+            // from a preceding block; the one-lane specialization emits none
+            // of this cooperative-block work.
+            __builtin_memset(dynamic_smem_base, 0, sizeof(dynamic_smem_base));
+        }
 #endif
 
         init();
@@ -1239,14 +1299,32 @@ public:
     {
         unsigned int* smem_base = get_smem_base();
 
+#if defined(__CUDA_ARCH__)
         smem_base[WP_TILE_THREAD_IDX] = 0;
+#else
+        if constexpr (WP_TILE_BLOCK_DIM == 1) {
+            smem_base[0] = 0;
+        } else {
+            for (int lane = 0; lane < WP_TILE_BLOCK_DIM; ++lane)
+                smem_base[lane] = 0;
+        }
+#endif
     }
 
     static inline CUDA_CALLABLE void check()
     {
         unsigned int* smem_base = get_smem_base();
 
+#if defined(__CUDA_ARCH__)
         assert(smem_base[WP_TILE_THREAD_IDX] == 0);
+#else
+        if constexpr (WP_TILE_BLOCK_DIM == 1) {
+            assert(smem_base[0] == 0);
+        } else {
+            for (int lane = 0; lane < WP_TILE_BLOCK_DIM; ++lane)
+                assert(smem_base[lane] == 0);
+        }
+#endif
     }
 
     static inline CUDA_CALLABLE void* alloc(int num_bytes)
@@ -1254,17 +1332,53 @@ public:
         unsigned int* smem_base = get_smem_base();
         char* dynamic_smem_base = get_dynamic_smem_base();
 
+#if defined(__CUDA_ARCH__)
+        // Keep this path separate from the checked CPU arithmetic below. NVRTC
+        // targeting sm_89 otherwise fails to hoist repeated shared-memory
+        // address calculations in tiled kernels.
         const unsigned int offset = smem_base[WP_TILE_THREAD_IDX];
 
         // one entry per-thread so no need for synchronization
         smem_base[WP_TILE_THREAD_IDX] += tile_align(num_bytes);
+#else
+        const int thread_idx = WP_TILE_THREAD_IDX;
+        const unsigned int offset = smem_base[thread_idx];
+        const int aligned_num_bytes = tile_align(num_bytes);
 
-#if !defined(__CUDA_ARCH__)
-        assert(smem_base[WP_TILE_THREAD_IDX] <= WP_MAX_CPU_SHARED);
+        // Check the signed next offset before updating the allocator or
+        // forming a pointer beyond the fixed CPU arena.
+        const long long next_offset = static_cast<long long>(offset) + aligned_num_bytes;
+        if (next_offset < 0 || next_offset > WP_MAX_CPU_SHARED) {
+            _wp_assert(
+                "Warp CPU tile shared-memory allocation exceeds the 256 KiB arena", __FILE__, (unsigned int)__LINE__
+            );
+            return nullptr;
+        }
+        smem_base[thread_idx] = static_cast<unsigned int>(next_offset);
 #endif
 
         return &(dynamic_smem_base[offset]);
     }
+};
+
+
+// Give every CPU fiber in a block the same scratch address while retaining a
+// lane-local bump offset. The barriers at call sites bracket its LIFO lifetime.
+template <typename T> struct wp_block_shared {
+    T* ptr;
+
+    inline CUDA_CALLABLE wp_block_shared()
+        : ptr((T*)tile_shared_storage_t::alloc(int(sizeof(T))))
+    {
+    }
+
+    inline CUDA_CALLABLE ~wp_block_shared() { tile_shared_storage_t::alloc(-int(sizeof(T))); }
+
+    inline CUDA_CALLABLE T& operator*() { return *ptr; }
+    inline CUDA_CALLABLE T* operator->() { return ptr; }
+
+    wp_block_shared(const wp_block_shared&) = delete;
+    wp_block_shared& operator=(const wp_block_shared&) = delete;
 };
 
 
@@ -1880,7 +1994,7 @@ template <typename T, typename L, bool Owner_ = true> struct tile_shared_t {
                     char* dest_bytes = reinterpret_cast<char*>(dest.data.data) + base_bytes;
                     float4* dest128 = reinterpret_cast<float4*>(dest_bytes);
                     assert(((uint64_t)data.ptr) % sizeof(float4) == 0 && "shared tile pointer not 16-byte aligned");
-                    const float4* src128 = (const float4*)data.ptr;
+                    const float4* src128 = reinterpret_cast<const float4*>(data.ptr);
 
                     using F4Layout
                         = tile_layout_strided_t<typename tile_shape_f4<typename Layout::Shape, (int)sizeof(T)>::type>;
@@ -2039,7 +2153,7 @@ template <typename T, typename L, bool Owner_ = true> struct tile_shared_t {
                     const char* src_bytes = reinterpret_cast<const char*>(src.data.data) + base_bytes;
                     const float4* src128 = reinterpret_cast<const float4*>(src_bytes);
                     assert(((uint64_t)data.ptr) % sizeof(float4) == 0 && "shared tile pointer not 16-byte aligned");
-                    float4* dest128 = (float4*)data.ptr;
+                    float4* dest128 = reinterpret_cast<float4*>(data.ptr);
 
                     using F4Layout
                         = tile_layout_strided_t<typename tile_shape_f4<typename Layout::Shape, (int)sizeof(T)>::type>;
@@ -2246,15 +2360,8 @@ template <typename T, typename L, bool Owner_ = true> struct tile_shared_t {
 };
 
 
-template <typename T, typename L> CUDA_CALLABLE void tile_register_t<T, L>::print() const
+template <typename T, typename L> inline CUDA_CALLABLE void tile_register_t<T, L>::print_from_shared(T* smem) const
 {
-    // create a temporary shared tile so that
-    // we can print it deterministically
-#if defined(__CUDA_ARCH__)
-    __shared__ T smem[L::Size];
-#else
-    T smem[L::Size];
-#endif
     tile_shared_t<T, tile_layout_strided_t<typename L::Shape>, false> scratch(smem, nullptr);
 
     scratch.assign(*this);
@@ -2275,6 +2382,26 @@ template <typename T, typename L> CUDA_CALLABLE void tile_register_t<T, L>::prin
     }
 
     WP_TILE_SYNC();
+}
+
+template <typename T, typename L> CUDA_CALLABLE void tile_register_t<T, L>::print() const
+{
+    // Create a temporary shared tile so that we can print it deterministically.
+#if defined(__CUDA_ARCH__)
+    __shared__ T smem[L::Size];
+    print_from_shared(smem);
+#else
+    if constexpr (WP_TILE_BLOCK_DIM == 1) {
+        // Preserve the legacy one-lane path without using the shared allocator.
+        T smem[L::Size];
+        print_from_shared(smem);
+    } else {
+        // Register-tile elements are distributed across fibers, so all lanes
+        // must populate the same temporary tile before lane 0 prints it.
+        wp_block_shared<T[L::Size]> smem_holder;
+        print_from_shared(*smem_holder);
+    }
+#endif
 }
 
 // print entry points
@@ -2408,7 +2535,8 @@ template <typename T, typename Shape, typename Strides, bool RequiresGrad> inlin
 
     // initialize tile to quiet nan
     uint32_t qnanbits = 0x7FC00000;
-    float qnan = *(float*)(&qnanbits);
+    float qnan;
+    memcpy(&qnan, &qnanbits, sizeof(qnan));
 
     for (int i = WP_TILE_THREAD_IDX; i < size; i += WP_TILE_BLOCK_DIM)
         data[i] = T(qnan);
@@ -2622,10 +2750,22 @@ template <typename T, unsigned... Shape> inline CUDA_CALLABLE auto tile_from_thr
     // tile variable assignment operator will handle initialization (since lhs could be shared/register tile)
     return scratch;
 #else
-    // On CPU there's only one "thread" per kernel invocation,
-    // so just return the value directly
-    (void)thread_idx;  // unused on CPU
-    return value;
+    assert(thread_idx >= 0 && thread_idx < WP_TILE_BLOCK_DIM);
+
+    if constexpr (WP_TILE_BLOCK_DIM == 1) {
+        return value;
+    } else {
+        wp_block_shared<T> scratch_holder;
+        T& scratch = *scratch_holder;
+
+        WP_TILE_SYNC();
+        if (WP_TILE_THREAD_IDX == thread_idx)
+            scratch = value;
+        WP_TILE_SYNC();
+        T result = scratch;
+        WP_TILE_SYNC();
+        return result;
+    }
 #endif
 }
 
@@ -4099,16 +4239,50 @@ inline CUDA_CALLABLE void adj_tile_map(
     adj_to_tile<Shape>(adj_t8, adj_r8);
 }
 
+// Builtins registered with require_original_output_arg=True (e.g. exp, sqrt, div, pow) have adjoints that also take
+// the forward result, e.g. adj_exp(x, ret, adj_x, adj_ret). These helpers call that form when the adjoint accepts it,
+// recomputing ret as adj_cw_div does below, and otherwise the form without it that user functions and other builtins
+// use. Passing 0 makes overload resolution prefer the `int` overload whenever its return type is well-formed.
+template <typename AdjOp, typename Op, typename T, typename AdjT, typename AdjRet>
+inline CUDA_CALLABLE auto tile_map_call_adj(AdjOp adj_op, Op op, T x, AdjT& adj_x, AdjRet adj_ret, int)
+    -> decltype(adj_op(x, op(x), adj_x, adj_ret), void())
+{
+    adj_op(x, op(x), adj_x, adj_ret);
+}
+
+template <typename AdjOp, typename Op, typename T, typename AdjT, typename AdjRet>
+inline CUDA_CALLABLE void tile_map_call_adj(AdjOp adj_op, Op op, T x, AdjT& adj_x, AdjRet adj_ret, long)
+{
+    adj_op(x, adj_x, adj_ret);
+}
+
+template <typename AdjOp, typename Op, typename T, typename U, typename AdjT, typename AdjU, typename AdjRet>
+inline CUDA_CALLABLE auto
+tile_map_call_adj(AdjOp adj_op, Op op, T x, U y, AdjT& adj_x, AdjU& adj_y, AdjRet adj_ret, int)
+    -> decltype(adj_op(x, y, op(x, y), adj_x, adj_y, adj_ret), void())
+{
+    adj_op(x, y, op(x, y), adj_x, adj_y, adj_ret);
+}
+
+template <typename AdjOp, typename Op, typename T, typename U, typename AdjT, typename AdjU, typename AdjRet>
+inline CUDA_CALLABLE void
+tile_map_call_adj(AdjOp adj_op, Op op, T x, U y, AdjT& adj_x, AdjU& adj_y, AdjRet adj_ret, long)
+{
+    adj_op(x, y, adj_x, adj_y, adj_ret);
+}
+
 // We wrap the operator in a lambda so that we don't have to do overload resolution for things like e.g.: wp.sin()
 // this is important because many of the builtin operators don't follow particular conventions on references for
 // the `adj_ret` parameter, which means it's not possible to figure out the overload we need using simple casting.
 // The return type is automatically deduced from the operation result using decltype.
+// adj_op reaches tile_map_call_adj() through a forwarding lambda whose return type is decltype(adj_op(args...)), so
+// a call with the wrong arguments is a substitution failure rather than a hard error.
 
 #define tile_unary_map(op, a) tile_map([](auto x) { return op(x);}, a)
-#define adj_tile_unary_map(op, a, adj_op, adj_a, adj_ret) adj_tile_map([](auto x) { return op(x);}, a, [](auto x, auto& adj_x, auto adj_ret) { adj_op(x, adj_x, adj_ret);}, adj_a, adj_ret)
+#define adj_tile_unary_map(op, a, adj_op, adj_a, adj_ret) adj_tile_map([](auto x) { return op(x);}, a, [](auto x, auto& adj_x, auto adj_ret) { wp::tile_map_call_adj([](auto&&... args) -> decltype(adj_op(args...)) { return adj_op(args...);}, [](auto x) { return op(x);}, x, adj_x, adj_ret, 0);}, adj_a, adj_ret)
 
 #define tile_binary_map(op, a, b) tile_map([](auto x, auto y) { return op(x, y);}, a, b)
-#define adj_tile_binary_map(op, a, b, adj_op, adj_a, adj_b, adj_ret) adj_tile_map([](auto x, auto y) { return op(x, y);}, a, b, [](auto x, auto y, auto& adj_x, auto& adj_y, auto adj_ret) { adj_op(x, y, adj_x, adj_y, adj_ret);}, adj_a, adj_b, adj_ret)
+#define adj_tile_binary_map(op, a, b, adj_op, adj_a, adj_b, adj_ret) adj_tile_map([](auto x, auto y) { return op(x, y);}, a, b, [](auto x, auto y, auto& adj_x, auto& adj_y, auto adj_ret) { wp::tile_map_call_adj([](auto&&... args) -> decltype(adj_op(args...)) { return adj_op(args...);}, [](auto x, auto y) { return op(x, y);}, x, y, adj_x, adj_y, adj_ret, 0);}, adj_a, adj_b, adj_ret)
 
 // Wrapper for scalar adj_div to match the 5-arg interface expected by adj_tile_binary_map.
 // Scalar adj_div takes 6 args (includes ret), but adj_tile_binary_map only passes 5.
@@ -6012,10 +6186,23 @@ template <typename T, int Capacity> struct tile_stack_t {
     // (cinit allocates, the forward call triggers init via assignment).
     inline CUDA_CALLABLE tile_stack_t& operator=(int)
     {
+#if defined(__CUDA_ARCH__)
         if (WP_TILE_THREAD_IDX == 0)
             *count = 0;
         for (int i = WP_TILE_THREAD_IDX; i < Capacity; i += WP_TILE_BLOCK_DIM)
             data[i] = T {};
+#else
+        // Redundant initialization keeps the stack valid if lane 0, or any
+        // sparse subset of lanes, returned before construction.
+        *count = 0;
+        if constexpr (WP_TILE_BLOCK_DIM == 1) {
+            for (int i = WP_TILE_THREAD_IDX; i < Capacity; i += WP_TILE_BLOCK_DIM)
+                data[i] = T {};
+        } else {
+            for (int i = 0; i < Capacity; ++i)
+                data[i] = T {};
+        }
+#endif
         WP_TILE_SYNC();
         return *this;
     }
@@ -6064,7 +6251,11 @@ inline CUDA_CALLABLE int tile_stack_push(tile_stack_t<T, Capacity>& s, T value, 
     // Non-atomic clamp is safe: the preceding barrier guarantees all atomics are
     // complete, and the following barrier ensures all threads see the clamped value
     // before any subsequent operation.
+#if defined(__CUDA_ARCH__)
     if (WP_TILE_THREAD_IDX == 0 && *s.count > Capacity)
+#else
+    if (*s.count > Capacity)
+#endif
         *s.count = Capacity;
     WP_TILE_SYNC();
     return (has_value && idx >= 0 && idx < Capacity) ? idx : -1;
@@ -6086,7 +6277,11 @@ inline CUDA_CALLABLE void tile_stack_pop(tile_stack_t<T, Capacity>& s, T& out_va
     WP_TILE_SYNC();
     // Count may be deeply negative (all threads decrement atomically).
     // Non-atomic clamp is safe: barriers bracket this write (see push comment).
+#if defined(__CUDA_ARCH__)
     if (WP_TILE_THREAD_IDX == 0 && *s.count < 0)
+#else
+    if (*s.count < 0)
+#endif
         *s.count = 0;
     WP_TILE_SYNC();
 }
@@ -6095,8 +6290,12 @@ template <typename T, int Capacity> inline CUDA_CALLABLE void tile_stack_clear(t
 {
     // Leading barrier: see tile_stack_push comment.
     WP_TILE_SYNC();
+#if defined(__CUDA_ARCH__)
     if (WP_TILE_THREAD_IDX == 0)
         *s.count = 0;
+#else
+    *s.count = 0;
+#endif
     WP_TILE_SYNC();
 }
 

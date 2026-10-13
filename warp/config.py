@@ -83,7 +83,7 @@ Note: Strict and checked modes impact performance.
 """
 
 
-version: str = "1.18.0.dev4"
+version: str = "1.19.0.dev0"
 """Warp version string"""
 
 verify_fp: bool = False
@@ -247,6 +247,14 @@ enable_backward: bool = True
 """Enable compilation of kernel backward passes.
 
 This setting can be overridden at the module level by setting the ``"enable_backward"`` module option.
+"""
+
+enable_cpu_blocks: bool = False
+"""Enable experimental CPU kernel launches with more than one logical thread per block.
+
+When ``False``, CPU launch block dimensions greater than one resolve to one,
+preserving the historical CPU execution model. When ``True``, explicit CPU
+block dimensions from 2 through 1024 run with cooperative fibers.
 """
 
 default_grid_stride: bool = True

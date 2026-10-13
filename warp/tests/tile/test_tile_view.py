@@ -26,7 +26,8 @@ def test_tile_view_kernel(src: wp.array2d[float], dst: wp.array2d[float]):
         wp.tile_store(dst[i], row)
 
 
-def test_tile_view(test, device):
+def test_tile_view_row_copy_forward_and_backward(test, device):
+    """Copy tile rows through views and propagate output gradients."""
     rng = np.random.default_rng(42)
 
     a = wp.array(rng.random((TILE_M, TILE_N), dtype=np.float32), requires_grad=True, device=device)
@@ -1064,7 +1065,26 @@ class TestTileView(unittest.TestCase):
     pass
 
 
-add_function_test(TestTileView, "test_tile_view", test_tile_view, devices=devices)
+add_function_test(
+    TestTileView,
+    "test_tile_view_row_copy_forward_and_backward_cpu_blocks",
+    test_tile_view_row_copy_forward_and_backward,
+    devices=get_cpu_test_devices(),
+    enable_cpu_blocks=True,
+)
+add_function_test(
+    TestTileView,
+    "test_tile_assign_2d_cpu_blocks",
+    test_tile_assign_2d,
+    devices=get_cpu_test_devices(),
+    enable_cpu_blocks=True,
+)
+add_function_test(
+    TestTileView,
+    "test_tile_view_row_copy_forward_and_backward",
+    test_tile_view_row_copy_forward_and_backward,
+    devices=devices,
+)
 add_function_test(TestTileView, "test_tile_view_offset", test_tile_view_offset, devices=devices)
 add_function_test(TestTileView, "test_tile_assign_1d", test_tile_assign_1d, devices=devices)
 add_function_test(TestTileView, "test_tile_assign_2d", test_tile_assign_2d, devices=devices)

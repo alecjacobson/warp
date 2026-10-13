@@ -4311,7 +4311,7 @@ static bool is_valid_child_graph(void* child_graph)
 }
 
 // check if a graph can be used as a conditional body graph
-// https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#condtional-node-body-graph-requirements
+// https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/cuda-graphs.html#conditional-node-body-graph-requirements
 bool wp_cuda_graph_check_conditional_body(void* body_graph)
 {
     static const std::unordered_set<CUgraphNodeType> allowed_nodes {
@@ -5107,7 +5107,12 @@ bool wp_cuda_compile_dot(
     int num_threads,
     int lda,
     int ldb,
-    int ldc
+    int ldc,
+    int alignment_A,
+    int alignment_B,
+    int alignment_C,
+    int enable_static_block_dim,
+    int suppress_errors
 )
 {
 
@@ -5158,10 +5163,31 @@ bool wp_cuda_compile_dot(
         ));
     }
 
+    // any non-positive value leaves cuBLASDx at its default (each value type's natural alignment)
+    if (alignment_A > 0 && alignment_B > 0 && alignment_C > 0) {
+        std::array<long long int, 3> align = { alignment_A, alignment_B, alignment_C };
+        CHECK_CUBLASDX(
+            cublasdxSetOperatorInt64s(h, cublasdxOperatorType::CUBLASDX_OPERATOR_ALIGNMENT, align.size(), align.data())
+        );
+    }
+
+    if (enable_static_block_dim) {
+        CHECK_CUBLASDX(cublasdxSetOperatorInt64(h, cublasdxOperatorType::CUBLASDX_OPERATOR_STATIC_BLOCK_DIM, 1));
+    }
+
     CHECK_CUBLASDX(cublasdxSetOptionStr(h, commondxOption::COMMONDX_OPTION_SYMBOL_NAME, symbol_name));
 
+    // generating the LTO is where cuBLASDx compiles the GEMM; a rejected configuration is
+    // expected when the caller probes an alignment it can fall back from, so do not report it then
     size_t lto_size = 0;
-    CHECK_CUBLASDX(cublasdxGetLTOIRSize(h, &lto_size));
+    commondxStatusType lto_status = cublasdxGetLTOIRSize(h, &lto_size);
+    if (lto_status != commondxStatusType::COMMONDX_SUCCESS) {
+        if (!suppress_errors) {
+            check_cublasdx(lto_status);
+        }
+        cublasdxDestroyDescriptor(h);
+        return false;
+    }
 
     std::vector<char> lto(lto_size);
     CHECK_CUBLASDX(cublasdxGetLTOIR(h, lto.size(), lto.data()));
@@ -5704,10 +5730,10 @@ size_t wp_cuda_launch_kernel(
             if (ndim > APIC_LAUNCH_MAX_DIMS)
                 ndim = APIC_LAUNCH_MAX_DIMS;
 
-            int shape[APIC_LAUNCH_MAX_DIMS] = {};
+            uint32_t shape[APIC_LAUNCH_MAX_DIMS] = {};
             uint64_t launch_size = dim;
             if (args && args[0]) {
-                const int* bounds_shape = static_cast<const int*>(args[0]);
+                const uint32_t* bounds_shape = static_cast<const uint32_t*>(args[0]);
                 for (int d = 0; d < ndim; d++)
                     shape[d] = bounds_shape[d];
 
@@ -5715,7 +5741,7 @@ size_t wp_cuda_launch_kernel(
                 const uint8_t* bounds_bytes = static_cast<const uint8_t*>(args[0]);
                 launch_size = *reinterpret_cast<const size_t*>(bounds_bytes + size_offset);
             } else {
-                shape[0] = (int)dim;
+                shape[0] = static_cast<uint32_t>(dim);
             }
 
             apic_record_kernel_launch(

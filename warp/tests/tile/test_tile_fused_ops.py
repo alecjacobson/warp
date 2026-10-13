@@ -225,8 +225,8 @@ def test_tile_axpy_grad(test, device):
 # ---- tile_dot forward tests ----
 
 
-def test_tile_dot_basic(test, device):
-    """Verify that basic dot product of two tiles returns correct single-element tile."""
+def test_tile_dot_register_shared(test, device):
+    """Compute a dot product between register and shared tiles."""
     N = 64
 
     @wp.kernel(enable_backward=False, module="unique")
@@ -674,6 +674,13 @@ class TestTileFusedOps(unittest.TestCase):
     pass
 
 
+add_function_test(
+    TestTileFusedOps,
+    "test_tile_axpy_shared_register_cpu_blocks",
+    test_tile_axpy_shared_register,
+    devices=get_cpu_test_devices(),
+    enable_cpu_blocks=True,
+)
 add_function_test(TestTileFusedOps, "test_tile_axpy_broadcast_dest", test_tile_axpy_broadcast_dest, devices=devices)
 add_function_test(TestTileFusedOps, "test_tile_axpy_shared_register", test_tile_axpy_shared_register, devices=devices)
 add_function_test(TestTileFusedOps, "test_tile_axpy_shared_shared", test_tile_axpy_shared_shared, devices=devices)
@@ -683,7 +690,7 @@ add_function_test(
 add_function_test(TestTileFusedOps, "test_tile_axpy_zero_alpha", test_tile_axpy_zero_alpha, devices=devices)
 add_function_test(TestTileFusedOps, "test_tile_axpy_1d", test_tile_axpy_1d, devices=devices)
 add_function_test(TestTileFusedOps, "test_tile_axpy_grad", test_tile_axpy_grad, devices=devices)
-add_function_test(TestTileFusedOps, "test_tile_dot_basic", test_tile_dot_basic, devices=devices)
+add_function_test(TestTileFusedOps, "test_tile_dot_register_shared", test_tile_dot_register_shared, devices=devices)
 add_function_test(TestTileFusedOps, "test_tile_dot_nonuniform", test_tile_dot_nonuniform, devices=devices)
 add_function_test(TestTileFusedOps, "test_tile_dot_shared_shared", test_tile_dot_shared_shared, devices=devices)
 add_function_test(TestTileFusedOps, "test_tile_dot_2d", test_tile_dot_2d, devices=devices)

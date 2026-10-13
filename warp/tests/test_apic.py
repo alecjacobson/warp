@@ -48,6 +48,12 @@ def scale_kernel(input: wp.array[float], output: wp.array[float], s: float):
 
 
 @wp.kernel
+def scale_2d_kernel(input: wp.array2d[float], output: wp.array2d[float], s: float):
+    i, j = wp.tid()
+    output[i, j] = input[i, j] * s
+
+
+@wp.kernel
 def add_kernel(a: wp.array[float], b: wp.array[float], output: wp.array[float]):
     i = wp.tid()
     output[i] = a[i] + b[i]
@@ -58,6 +64,11 @@ def fill_reduction_inputs_kernel(a: wp.array[wp.float32], b: wp.array[wp.float32
     i = wp.tid()
     a[i] = float(i + 1)
     b[i] = float(2 * i + 1)
+
+
+@wp.kernel
+def no_tid_kernel():
+    pass
 
 
 @wp.kernel
@@ -76,6 +87,7 @@ class TestApic(unittest.TestCase):
 # Must match APICSectionType in warp/native/apic_types.h.
 _APIC_SECTION_MEMORY = 2
 _APIC_SECTION_OPERATIONS = 3
+_APIC_FORMAT_VERSION = 16
 
 # These layouts mirror the packed structs in warp/native/apic_types.h. "<"
 # selects little-endian standard sizes without implicit alignment; "4s", "i",
@@ -89,11 +101,19 @@ _APIC_SECTION_ENTRY = struct.Struct("<IIQQQ")
 
 # APICMemoryRegionRecord: ID, element size, byte size, initial-data flag, padding.
 _APIC_MEMORY_REGION_RECORD = struct.Struct("<IIQB7x")
+_APIC_OP_HEADER = struct.Struct("<II")
 
 # APICCondRecord: operation type/size, condition region/padding/offset, then each
 # branch's byte size and operation count.
 _APIC_COND_RECORD = struct.Struct("<IIiIQIIII")
+
+# APICMemtileRecord: operation type/size, destination region, inline value size,
+# destination offset, and repetition count.
+_APIC_MEMTILE_RECORD = struct.Struct("<IIiIQQ")
+_APIC_OP_MEMTILE = 10
 _APIC_UINT32 = struct.Struct("<I")  # One serialized uint32_t.
+_APIC_OP_KERNEL_LAUNCH = 1
+_APIC_LAUNCH_SHAPE_OFFSET = _APIC_OP_HEADER.size
 
 
 def _find_apic_section(wrp_data, requested_section_type):
@@ -162,6 +182,35 @@ def _replace_apic_section(path, requested_section_type, replacement):
         wrp_file.truncate()
 
 
+def _set_apic_file_version(path, version):
+    """Replace the WRP header version while preserving the other prefix fields."""
+    with open(path, "r+b") as wrp_file:
+        prefix = list(_APIC_FILE_HEADER_PREFIX.unpack(wrp_file.read(_APIC_FILE_HEADER_PREFIX.size)))
+        prefix[1] = version
+        wrp_file.seek(0)
+        wrp_file.write(_APIC_FILE_HEADER_PREFIX.pack(*prefix))
+
+
+def _replace_first_apic_kernel_shape(path, extent, axis=0):
+    """Replace one extent in the first kernel launch record."""
+    operations = _read_apic_section(path, _APIC_SECTION_OPERATIONS)
+    operation_count = _APIC_UINT32.unpack_from(operations)[0]
+    offset = _APIC_UINT32.size
+    for _ in range(operation_count):
+        operation_type, operation_size = _APIC_OP_HEADER.unpack_from(operations, offset)
+        if operation_type == _APIC_OP_KERNEL_LAUNCH:
+            _APIC_UINT32.pack_into(
+                operations,
+                offset + _APIC_LAUNCH_SHAPE_OFFSET + axis * _APIC_UINT32.size,
+                extent,
+            )
+            _replace_apic_section(path, _APIC_SECTION_OPERATIONS, operations)
+            return
+        offset += operation_size
+
+    raise ValueError("Expected at least one APIC kernel launch")
+
+
 def _append_apic_memory_record(path, record_and_payload):
     """Append one logical memory record to a WRP memory section."""
     memory_section = _read_apic_section(path, _APIC_SECTION_MEMORY)
@@ -223,6 +272,32 @@ def _corrupt_apic_empty_branch_count(path, branch_name):
         conditional[branch_count_index] = 1
         wrp_file.seek(conditional_offset)
         wrp_file.write(_APIC_COND_RECORD.pack(*conditional))
+
+
+def _corrupt_apic_memtile_record(path, *, srcsize=None, count=None):
+    """Corrupt selected fields in a four-byte MEMTILE record."""
+    with open(path, "r+b") as wrp_file:
+        wrp_data = wrp_file.read()
+        section_offset, section_size = _find_apic_section(wrp_data, _APIC_SECTION_OPERATIONS)
+
+        if section_size < _APIC_UINT32.size + _APIC_MEMTILE_RECORD.size:
+            raise ValueError("WRP operations section has no MEMTILE record")
+
+        operation_count = _APIC_UINT32.unpack_from(wrp_data, section_offset)[0]
+        if operation_count != 1:
+            raise ValueError("Expected exactly one operation")
+
+        memtile_offset = section_offset + _APIC_UINT32.size
+        memtile = list(_APIC_MEMTILE_RECORD.unpack_from(wrp_data, memtile_offset))
+        if memtile[0] != _APIC_OP_MEMTILE or memtile[3] != 4:
+            raise ValueError("Expected a four-byte MEMTILE operation")
+
+        if srcsize is not None:
+            memtile[3] = srcsize
+        if count is not None:
+            memtile[5] = count
+        wrp_file.seek(memtile_offset)
+        wrp_file.write(_APIC_MEMTILE_RECORD.pack(*memtile))
 
 
 def test_save_apic_false_error(test, device):
@@ -301,6 +376,34 @@ def test_capture_load_rejects_empty_conditional_branches_with_operations(test, d
                     wp.capture_load(path, device=device)
             finally:
                 wp_context.runtime.core.wp_set_error_output_enabled(saved_error_output_enabled)
+
+
+def test_capture_load_rejects_memtile_span_overflow(test, device):
+    """Reject a MEMTILE whose byte-span multiplication overflows."""
+    values = wp.zeros(4, dtype=wp.float32, device=device)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "memtile_span_overflow.wrp")
+        with wp.ScopedCapture(device=device, apic=True, force_module_load=False) as capture:
+            values.fill_(42.0)
+        wp.capture_save(capture.graph, path, outputs={"values": values})
+        _corrupt_apic_memtile_record(path, count=1 << 62)
+
+        _assert_apic_load_rejected(test, path, device, r"operation stream failed validation")
+
+
+def test_capture_load_rejects_zero_memtile_srcsize(test, device):
+    """Reject a MEMTILE record with a zero-byte source value."""
+    values = wp.zeros(4, dtype=wp.float32, device=device)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "memtile_zero_srcsize.wrp")
+        with wp.ScopedCapture(device=device, apic=True, force_module_load=False) as capture:
+            values.fill_(42.0)
+        wp.capture_save(capture.graph, path, outputs={"values": values})
+        _corrupt_apic_memtile_record(path, srcsize=0)
+
+        _assert_apic_load_rejected(test, path, device, r"operation stream failed validation")
 
 
 def test_capture_load_rejects_malformed_memory_regions(test, device):
@@ -385,7 +488,7 @@ def test_live_hashgrid_capture_does_not_snapshot_inputs(test, device):
 
 
 def test_save_single_kernel(test, device):
-    """Capture, save to .wrp, verify file exists."""
+    """Save a kernel graph and verify its WRP file uses the current format version."""
     n = 256
     a = wp.array(np.arange(n, dtype=np.float32), device=device)
     b = wp.zeros(n, dtype=float, device=device)
@@ -401,6 +504,49 @@ def test_save_single_kernel(test, device):
         wrp_path = path + ".wrp"
         test.assertTrue(os.path.exists(wrp_path), f"WRP file not found: {wrp_path}")
         test.assertGreater(os.path.getsize(wrp_path), 0, "WRP file is empty")
+        with open(wrp_path, "rb") as wrp_file:
+            _, version, _, _, _ = _APIC_FILE_HEADER_PREFIX.unpack_from(wrp_file.read())
+        test.assertEqual(version, _APIC_FORMAT_VERSION)
+
+
+def test_load_rejects_legacy_overflowed_launch_shape(test, device):
+    """Reject ambiguous signed launch extents on every active axis in a version 15 WRP file."""
+    a = wp.ones((1, 1), dtype=float, device=device)
+    b = wp.zeros((1, 1), dtype=float, device=device)
+
+    wp.load_module(device=device)
+    with wp.ScopedCapture(device=device, apic=True, force_module_load=False) as capture:
+        wp.launch(scale_2d_kernel, dim=(1, 1), inputs=[a, b, 1.0], device=device)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for axis in range(2):
+            path = os.path.join(tmpdir, f"legacy_overflowed_shape_axis_{axis}")
+            wp.capture_save(capture.graph, path, inputs={"a": a}, outputs={"b": b})
+            wrp_path = path + ".wrp"
+            _replace_first_apic_kernel_shape(wrp_path, 2**31, axis)
+
+            with test.subTest(axis=axis):
+                _set_apic_file_version(wrp_path, 15)
+                _assert_apic_load_rejected(
+                    test,
+                    wrp_path,
+                    device,
+                    r"operation stream failed validation",
+                )
+
+
+def test_load_accepts_current_oversized_no_tid_launch_shape(test, device):
+    """Accept version 16 oversized extents when the kernel does not use ``wp.tid()``."""
+    wp.load_module(device=device)
+    with wp.ScopedCapture(device=device, apic=True, force_module_load=False) as capture:
+        wp.launch(no_tid_kernel, dim=2**31 + 1, device=device)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "current_oversized_no_tid_shape")
+        wp.capture_save(capture.graph, path)
+
+        loaded = wp.capture_load(path, device=device)
+        test.assertTrue(loaded.is_loaded)
 
 
 def test_save_load_round_trip(test, device):
@@ -772,6 +918,7 @@ def test_array_slicing(test, device):
     # All should map to the same region
     test.assertEqual(region_id_base, region_id_1)
     test.assertEqual(region_id_base, region_id_2)
+    test.assertEqual(set(apic._regions), {("warp", id(base_arr))})
 
     # Offsets
     test.assertEqual(offset_base, 0)
@@ -2719,7 +2866,7 @@ def test_save_load_bsr_mm_reuse_topology_cuda(test, device):
 
 
 def test_capture_with_bsr_transpose(test, device):
-    """Recompute BSR transpose topology during CPU APIC replay.
+    """Recompute compact BSR transpose topology during APIC replay and reload.
 
     Regression: wp.sparse.bsr_transposed on CPU computes the transposed topology
     via a host function (wp_bsr_transpose_host) that was invisible to the APIC byte
@@ -2728,13 +2875,16 @@ def test_capture_with_bsr_transpose(test, device):
     topology."""
     from warp.sparse import bsr_set_from_triplets, bsr_set_transpose, bsr_zeros  # noqa: PLC0415
 
-    n = 6
+    n = 65
     rows = wp.zeros(n, dtype=wp.int32, device=device)
     columns = wp.zeros(n, dtype=wp.int32, device=device)
     values = wp.zeros(n, dtype=wp.float32, device=device)
     A = bsr_zeros(n, n, block_type=wp.float32, device=device)
     At = bsr_zeros(n, n, block_type=wp.float32, device=device)
 
+    if device.is_cuda:
+        bsr_set_from_triplets(A, rows, columns, values)
+        bsr_set_transpose(At, A)
     wp.load_module(device=device)
     with wp.ScopedCapture(device=device, apic=True, force_module_load=False) as capture:
         wp.launch(fill_diag_triplets_kernel, dim=n, inputs=[rows, columns, values], device=device)
@@ -2748,10 +2898,27 @@ def test_capture_with_bsr_transpose(test, device):
     wp.capture_launch(capture.graph)
     wp.synchronize_device(device)
 
-    # Diagonal matrix transposes to itself: nnz=6, columns=[0..5], values=[1..6].
+    # The diagonal matrix transposes to itself.
     test.assertEqual(int(At.offsets.numpy()[n]), n)
     np.testing.assert_array_equal(At.columns.numpy()[:n], np.arange(n, dtype=np.int32))
     np.testing.assert_allclose(At.values.numpy()[:n], np.arange(1, n + 1, dtype=np.float32))
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "bsr_transpose")
+        wp.capture_save(
+            capture.graph, path, outputs={"offsets": At.offsets, "columns": At.columns, "values": At.values}
+        )
+        loaded = wp.capture_load(path, device=device)
+        wp.capture_launch(loaded)
+        offsets_out = wp.zeros_like(At.offsets)
+        columns_out = wp.zeros_like(At.columns)
+        values_out = wp.zeros_like(At.values)
+        loaded.get_param("offsets", offsets_out)
+        loaded.get_param("columns", columns_out)
+        loaded.get_param("values", values_out)
+        np.testing.assert_array_equal(offsets_out.numpy(), np.arange(n + 1, dtype=np.int32))
+        np.testing.assert_array_equal(columns_out.numpy()[:n], np.arange(n, dtype=np.int32))
+        np.testing.assert_array_equal(values_out.numpy()[:n], np.arange(1, n + 1, dtype=np.float32))
 
 
 def test_capture_with_padded_bsr_transpose(test, device):
@@ -3516,6 +3683,18 @@ add_function_test(
 )
 add_function_test(
     TestApic,
+    "test_capture_load_rejects_memtile_span_overflow",
+    test_capture_load_rejects_memtile_span_overflow,
+    devices=[d for d in devices if d.is_cpu],
+)
+add_function_test(
+    TestApic,
+    "test_capture_load_rejects_zero_memtile_srcsize",
+    test_capture_load_rejects_zero_memtile_srcsize,
+    devices=[d for d in devices if d.is_cpu],
+)
+add_function_test(
+    TestApic,
     "test_capture_load_rejects_malformed_memory_regions",
     test_capture_load_rejects_malformed_memory_regions,
     devices=[d for d in devices if d.is_cpu],
@@ -3531,6 +3710,18 @@ add_function_test(
     "test_save_single_kernel",
     test_save_single_kernel,
     devices=devices_with_cuda_graph_module_load,
+)
+add_function_test(
+    TestApic,
+    "test_load_rejects_legacy_overflowed_launch_shape",
+    test_load_rejects_legacy_overflowed_launch_shape,
+    devices=[d for d in devices if d.is_cpu],
+)
+add_function_test(
+    TestApic,
+    "test_load_accepts_current_oversized_no_tid_launch_shape",
+    test_load_accepts_current_oversized_no_tid_launch_shape,
+    devices=[d for d in devices if d.is_cpu],
 )
 add_function_test(
     TestApic,
@@ -3595,9 +3786,7 @@ add_function_test(
     test_cpu_graph_replay_after_array_refs_released,
     devices=[d for d in devices if d.is_cpu],
 )
-add_function_test(
-    TestApic, "test_save_load_fill", test_save_load_fill, devices=get_cuda_test_devices()
-)  # CPU: wp_memtile_host not recorded
+add_function_test(TestApic, "test_save_load_fill", test_save_load_fill, devices=devices)
 add_function_test(
     TestApic, "test_save_load_alloc_only", test_save_load_alloc_only, devices=devices_with_graph_capture_allocation
 )
@@ -3777,7 +3966,7 @@ add_function_test(
     TestApic,
     "test_capture_with_bsr_transpose",
     test_capture_with_bsr_transpose,
-    devices=[d for d in devices if d.is_cpu],
+    devices=devices,
 )
 add_function_test(
     TestApic,

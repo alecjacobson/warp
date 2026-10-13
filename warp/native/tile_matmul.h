@@ -346,7 +346,7 @@ template <
     typename TileC,
     typename Alpha,
     typename Beta>
-TileC& tile_matmul(
+CUDA_CALLABLE TileC& tile_matmul(
     Fwd fun_forward, AdjA fun_backward_A, AdjB fun_backward_B, TileA& A, TileB& B, TileC& C, Alpha& alpha, Beta& beta
 )
 {
@@ -396,7 +396,7 @@ template <
     typename TileC,
     typename Alpha,
     typename Beta>
-TileC& tile_matmul_acc(
+CUDA_CALLABLE TileC& tile_matmul_acc(
     Fwd fun_forward, AdjA fun_backward_A, AdjB fun_backward_B, TileA& A, TileB& B, TileC& C, Alpha& alpha, Beta& beta
 )
 {
@@ -449,7 +449,7 @@ template <
     typename Beta,
     typename AdjAlpha,
     typename AdjBeta>
-void adj_tile_matmul_acc(
+CUDA_CALLABLE void adj_tile_matmul_acc(
     Fwd fun_forward,
     AdjA fun_backward_A,
     AdjB fun_backward_B,
@@ -509,6 +509,11 @@ void adj_tile_matmul_acc(
     }
 #endif
 
+    // The matmuls read several adj_C slots per lane, while beta scaling below
+    // modifies each lane's local slot. Make every read complete before any
+    // cooperative CPU fiber begins the in-place scaling phase.
+    WP_TILE_SYNC();
+
     if (T_C(beta) != T_C(1.0)) {
         for (int i = WP_TILE_THREAD_IDX; i < TileC::Layout::Size; i += WP_TILE_BLOCK_DIM)
             adj_C.grad(i) *= T_C(beta);
@@ -529,7 +534,7 @@ template <
     typename Beta,
     typename AdjAlpha,
     typename AdjBeta>
-void adj_tile_matmul(
+CUDA_CALLABLE void adj_tile_matmul(
     Fwd fun_forward,
     AdjA fun_backward_A,
     AdjB fun_backward_B,

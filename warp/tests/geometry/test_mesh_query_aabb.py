@@ -404,7 +404,7 @@ def test_tile_mesh_query_aabb(test, device):
     indices_wp = wp.array(indices, dtype=int, device=device)
 
     # Cover the cuBQL constructor alongside the default Warp BVH path.
-    if device.is_cpu:
+    if wp.get_device(device).is_cpu:
         constructors = ["sah", "median"]
     else:
         constructors = ["sah", "median", "lbvh"]
@@ -529,7 +529,7 @@ def test_tile_mesh_query_aabb_large(test, device):
         )
 
 
-# Tests for new mesh_query_aabb_tiled() API (primary naming convention)
+# Compatibility tests for the deprecated mesh_query_aabb_tiled() aliases.
 @wp.kernel
 def mesh_query_aabb_tiled_kernel(
     mesh_id: wp.uint64,
@@ -549,7 +549,7 @@ def mesh_query_aabb_tiled_kernel(
 
 
 def test_mesh_query_aabb_tiled(test, device):
-    """Test mesh_query_aabb_tiled() API (new primary naming convention)."""
+    """Test the deprecated mesh_query_aabb_tiled() alias."""
     # Create a simple mesh (two triangles forming a quad)
     points = np.array(
         [
@@ -1008,6 +1008,19 @@ add_function_test(
     TestMeshQueryAABBMethods, "test_mesh_query_erased_func_param", test_mesh_query_erased_func_param, devices=devices
 )
 add_function_test(TestMeshQueryAABBMethods, "test_mesh_get_bvh", test_mesh_get_bvh, devices=devices)
+
+for name, func in (
+    ("test_tile_mesh_query_aabb", test_tile_mesh_query_aabb),
+    ("test_tile_mesh_query_aabb_large", test_tile_mesh_query_aabb_large),
+    ("test_mesh_query_aabb_tiled", test_mesh_query_aabb_tiled),
+):
+    add_function_test(
+        TestMeshQueryAABBMethods,
+        f"{name}_cpu_blocks",
+        func,
+        devices=["cpu"] if wp.is_cpu_available() else [],
+        enable_cpu_blocks=True,
+    )
 
 
 if __name__ == "__main__":

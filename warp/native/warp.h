@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "api.h"
+
 // defines all crt + builtin types
 #include "builtin.h"
 
@@ -835,6 +837,10 @@ WP_API bool wp_cuda_compile_fft(
     int precision,
     int* shared_memory_size
 );
+// alignment_A/B/C: per-operand byte alignment for the cuBLASDx Alignment operator; any value <= 0 leaves
+// every operand at its default. enable_static_block_dim: non-zero enables cublasdx::experimental::StaticBlockDim.
+// suppress_errors: non-zero suppresses the error print when cuBLASDx rejects the configuration (the caller
+// retries without the alignment operator).
 WP_API bool wp_cuda_compile_dot(
     const char* ltoir_output_path,
     const char* symbol_name,
@@ -855,7 +861,12 @@ WP_API bool wp_cuda_compile_dot(
     int num_threads,
     int lda,
     int ldb,
-    int ldc
+    int ldc,
+    int alignment_A,
+    int alignment_B,
+    int alignment_C,
+    int enable_static_block_dim,
+    int suppress_errors
 );
 WP_API bool wp_cuda_compile_solver(
     const char* fatbin_output_path,
@@ -942,7 +953,13 @@ WP_API void wp_cuda_timing_end(timing_result_t* results, int size);
 // graph coloring
 WP_API int wp_graph_coloring(int num_nodes, wp::array_t<int> edges, int algorithm, wp::array_t<int> node_colors);
 WP_API float wp_balance_coloring(
-    int num_nodes, wp::array_t<int> edges, int num_colors, float target_max_min_ratio, wp::array_t<int> node_colors
+    int num_nodes,
+    wp::array_t<int> edges,
+    int num_colors,
+    float target_max_min_ratio,
+    int max_iterations,
+    wp::array_t<int> node_colors,
+    int* iteration_limit_reached
 );
 
 // allocation tracking

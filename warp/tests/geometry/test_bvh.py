@@ -839,7 +839,7 @@ def test_tile_bvh_query_ray(test, device):
         )
 
 
-# Tests for new bvh_query_*_tiled() API (primary naming convention)
+# Compatibility tests for the deprecated bvh_query_*_tiled() aliases.
 @wp.kernel
 def bvh_query_aabb_tiled_kernel(
     bvh_id: wp.uint64,
@@ -877,7 +877,7 @@ def bvh_query_ray_tiled_kernel(
 
 
 def test_bvh_query_aabb_tiled(test, device):
-    """Test bvh_query_aabb_tiled() API (new primary naming convention)."""
+    """Test the deprecated bvh_query_aabb_tiled() alias."""
     rng = np.random.default_rng(456)
 
     num_bounds = 100
@@ -950,7 +950,7 @@ def test_bvh_query_aabb_tiled(test, device):
 
 
 def test_bvh_query_ray_tiled(test, device):
-    """Test bvh_query_ray_tiled() API (new primary naming convention)."""
+    """Test the deprecated bvh_query_ray_tiled() alias."""
     rng = np.random.default_rng(789)
 
     num_bounds = 100
@@ -1104,9 +1104,23 @@ add_function_test(TestBvh, "test_bvh_refit_root_leaves", test_bvh_refit_root_lea
 add_function_test(TestBvh, "test_tile_bvh_query_aabb", test_tile_bvh_query, devices=devices)
 add_function_test(TestBvh, "test_tile_bvh_query_ray", test_tile_bvh_query_ray, devices=devices)
 
-# Tests for new bvh_query_*_tiled() API
+# Compatibility tests for the deprecated bvh_query_*_tiled() aliases.
 add_function_test(TestBvh, "test_bvh_query_aabb_tiled", test_bvh_query_aabb_tiled, devices=devices)
 add_function_test(TestBvh, "test_bvh_query_ray_tiled", test_bvh_query_ray_tiled, devices=devices)
+
+for name, func in (
+    ("test_tile_bvh_query_aabb", test_tile_bvh_query),
+    ("test_tile_bvh_query_ray", test_tile_bvh_query_ray),
+    ("test_bvh_query_aabb_tiled", test_bvh_query_aabb_tiled),
+    ("test_bvh_query_ray_tiled", test_bvh_query_ray_tiled),
+):
+    add_function_test(
+        TestBvh,
+        f"{name}_cpu_blocks",
+        func,
+        devices=["cpu"] if wp.is_cpu_available() else [],
+        enable_cpu_blocks=True,
+    )
 
 add_function_test(TestBvh, "test_capture_bvh_rebuild", test_capture_bvh_rebuild, devices=cuda_devices_with_mempool)
 
