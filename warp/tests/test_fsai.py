@@ -409,6 +409,52 @@ def test_concurrent_streams(test, device):
         np.testing.assert_array_equal(z1.numpy(), x1.numpy())
 
 
+def test_streams_during_unrelated_capture(test, device):
+    """Check that streams stay ordered while another stream captures an unrelated graph."""
+    num_blocks, block_size, iterations = 50_000, 12, 20
+    count = num_blocks * block_size
+    A = sp.bsr_identity(num_blocks, block_type=wp.types.matrix((block_size, block_size), wp.float32), device=device)
+    pre = FSAI(A)
+    stream0 = wp.Stream(device, priority=0)
+    stream1 = wp.Stream(device, priority=-1)
+    capture_stream = wp.Stream(device)
+    x0 = wp.full(count, 1.0, dtype=wp.float32, device=device)
+    x1 = wp.full(count, 2.0, dtype=wp.float32, device=device)
+    outputs0 = [wp.zeros_like(x0) for _ in range(iterations)]
+    outputs1 = [wp.zeros_like(x1) for _ in range(iterations)]
+    pre.matvec(x0, outputs0[0], outputs0[0], 1.0, 0.0)
+    wp.synchronize_device(device)
+    wp.capture_begin(device, stream=capture_stream, force_module_load=False, capture_mode=wp.CaptureMode.RELAXED)
+    try:
+        # The device reports capture, but stream0 and stream1 are not the ones capturing.
+        test.assertTrue(device.is_capturing)
+        for z0, z1 in zip(outputs0, outputs1, strict=True):
+            with wp.ScopedStream(stream0, sync_enter=False, sync_exit=False):
+                z0.zero_()
+                pre.matvec(x0, z0, z0, 1.0, 0.0)
+            with wp.ScopedStream(stream1, sync_enter=False, sync_exit=False):
+                z1.zero_()
+                pre.matvec(x1, z1, z1, 1.0, 0.0)
+    finally:
+        wp.capture_end(device, stream=capture_stream)
+    wp.synchronize_device(device)
+    for z0, z1 in zip(outputs0, outputs1, strict=True):
+        np.testing.assert_array_equal(z0.numpy(), x0.numpy())
+        np.testing.assert_array_equal(z1.numpy(), x1.numpy())
+
+
+def test_refit_growth_order(test, device):
+    """Check that an unchanged matrix refits when sorted pivots differ from growth-order pivots."""
+    b = np.sqrt(0.0179)
+    a = np.array([[1.0, b, 0.0], [b, 1.0, 0.99], [0.0, 0.99, 1.0]])
+    pre = FSAI(_matrix(a, device), max_row_size=3, pivot_floor=0.01, reuse_pattern=True)
+    test.assertEqual(pre.truncated_rows, 0)
+    before = _dense(pre.G)
+    pre.update(_matrix(a, device))
+    np.testing.assert_allclose(_dense(pre.G), before, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(_dense(pre.GT), before.T, rtol=1e-12, atol=1e-12)
+
+
 def test_scaling_and_conversion(test, device):
     """Check badly scaled inputs and factor conversion overflow handling."""
     a = _path(12)
@@ -573,6 +619,7 @@ for dtype in (wp.float32, wp.float64):
 for func in (
     test_narrow_frontier_and_zero_tolerance,
     test_pivot_guard,
+    test_refit_growth_order,
     test_stored_zeros_and_capacity,
     test_padded_input,
     test_empty,
@@ -598,6 +645,12 @@ for dtype in (wp.float32, wp.float64):
         dtype=dtype,
     )
 add_function_test(TestFSAI, "test_concurrent_streams", test_concurrent_streams, devices=get_cuda_test_devices())
+add_function_test(
+    TestFSAI,
+    "test_streams_during_unrelated_capture",
+    test_streams_during_unrelated_capture,
+    devices=get_cuda_test_devices(),
+)
 
 for func in (test_application, test_refit_and_rollback):
     add_function_test(TestFSAI, f"{func.__name__}_float16", func, devices=devices, dtype=wp.float16)

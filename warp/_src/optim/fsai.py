@@ -349,7 +349,7 @@ class FSAI(LinearOperator):
         if diagnostics[2]:
             raise ValueError("FSAI factor lost finite entries or a positive diagonal")
 
-        self.G = _pack_factor(n, max_row_size, cols, vals)
+        self.G, growth_rank = _pack_factor(n, max_row_size, cols, vals)
         if factor_dtype != dtype:
             self.G = sp.bsr_copy(self.G, scalar_type=factor_dtype)
             status.zero_()
@@ -371,7 +371,7 @@ class FSAI(LinearOperator):
         self._refit = None
         self.update_status = None
         if reuse_pattern:
-            self._refit = _RefitPlan(self, A, scalar, max_row_size, pivot_floor)
+            self._refit = _RefitPlan(self, A, scalar, growth_rank, max_row_size, pivot_floor)
             self.update_status = self._refit.status
 
     def update(self, A: sp.BsrMatrix | None = None) -> "FSAI":
@@ -414,9 +414,10 @@ class FSAI(LinearOperator):
         z = z.view(self.scalar_type).flatten()
         y = y.view(self.scalar_type).flatten()
         # Outside graph capture, order this application after the previous one on any
-        # other stream, since both share the scratch vector. Inside capture the
-        # graph's own dependencies apply and events must not be recorded or waited on.
-        stream = x.device.stream if x.device.is_cuda and not x.device.is_capturing else None
+        # other stream, since both share the scratch vector. Inside capture on this
+        # stream the graph's own dependencies apply and events must not be recorded or
+        # waited on; another stream capturing does not exempt this one.
+        stream = x.device.stream if x.device.is_cuda and not x.device.stream.is_capturing else None
         if stream is not None:
             stream.wait_event(self._tmp_event)
         if alpha != 0.0:
@@ -433,10 +434,11 @@ def _pack_kernels(dtype, width):
     vec = wp.types.vector(length=width, dtype=dtype)
 
     @wp.kernel(enable_backward=False, module="unique")
-    def sort_rows(columns: wp.array[int], values: wp.array[dtype], counts: wp.array[int]):
+    def sort_rows(columns: wp.array[int], values: wp.array[dtype], ranks: wp.array[int], counts: wp.array[int]):
         i = wp.tid()
         cols = ivec(-1)
         vals = vec(dtype(0))
+        order = ivec(-1)
         size = int(0)
         for p in range(wp.static(width)):
             c = columns[i * wp.static(width) + p]
@@ -448,46 +450,55 @@ def _pack_kernels(dtype, width):
                         break
                     cols[q] = cols[q - 1]
                     vals[q] = vals[q - 1]
+                    order[q] = order[q - 1]
                     q -= 1
                 cols[q] = c
                 vals[q] = v
+                order[q] = p
                 size += 1
         counts[i + 1] = size
         for p in range(size):
             columns[i * wp.static(width) + p] = cols[p]
             values[i * wp.static(width) + p] = vals[p]
+            ranks[i * wp.static(width) + p] = order[p]
 
     @wp.kernel(enable_backward=False, module="unique")
     def pack(
         offsets: wp.array[int],
         columns: wp.array[int],
         values: wp.array[dtype],
+        ranks: wp.array[int],
         outcols: wp.array[int],
         outvals: wp.array[dtype],
+        outranks: wp.array[int],
     ):
         i = wp.tid()
         for e in range(offsets[i], offsets[i + 1]):
             p = i * wp.static(width) + e - offsets[i]
             outcols[e] = columns[p]
             outvals[e] = values[p]
+            outranks[e] = ranks[p]
 
     return sort_rows, pack
 
 
 def _pack_factor(n, width, columns, values):
+    """Pack rows into sorted BSR storage, also returning each entry's growth rank."""
     result = sp.bsr_zeros(n, n, values.dtype, device=values.device)
     counts = wp.zeros(n + 1, dtype=int, device=values.device)
     sort, pack = _pack_kernels(values.dtype, width)
-    wp.launch(sort, n, [columns, values, counts], device=values.device)
+    ranks = wp.empty(n * width, dtype=int, device=values.device)
+    wp.launch(sort, n, [columns, values, ranks, counts], device=values.device)
     array_scan(counts, result.offsets)
     result.notify_nnz_changed()
+    packed_ranks = wp.empty(result.nnz_sync(), dtype=int, device=values.device)
     wp.launch(
         pack,
         n,
-        [result.offsets, columns, values, result.columns, result.values],
+        [result.offsets, columns, values, ranks, result.columns, result.values, packed_ranks],
         device=values.device,
     )
-    return result
+    return result, packed_ranks
 
 
 @lru_cache(None)
@@ -585,6 +596,7 @@ def _transpose_map(
 def _refit_kernels(dtype, storage, width):
     vec = wp.types.vector(length=width, dtype=dtype)
     mat = wp.types.matrix(shape=(width, width), dtype=dtype)
+    ivec = wp.types.vector(length=width, dtype=int)
 
     @wp.kernel(enable_backward=False, module="unique")
     def gather(source: wp.array[dtype], mapping: wp.array[int], out: wp.array[dtype]):
@@ -598,6 +610,7 @@ def _refit_kernels(dtype, storage, width):
         values: wp.array[dtype],
         goff: wp.array[int],
         gcol: wp.array[int],
+        growth_rank: wp.array[int],
         scale: wp.array[dtype],
         floor: dtype,
         out: wp.array[storage],
@@ -606,46 +619,52 @@ def _refit_kernels(dtype, storage, width):
         i = wp.tid()
         start = goff[i]
         size = goff[i + 1] - start
+        # Factor in the order the support was grown, so pivots (and the floor test)
+        # match construction; sorted storage order can give very different pivots.
+        member = ivec(0)
+        for p in range(size):
+            member[growth_rank[start + p]] = p
         chol = mat(dtype(0))
         valid = bool(True)
-        for p in range(size):
-            r = gcol[start + p]
-            for q in range(p + 1):
-                c = gcol[start + q]
+        for k in range(size):
+            r = gcol[start + member[k]]
+            for m in range(k + 1):
+                c = gcol[start + member[m]]
                 slot = sp.bsr_block_index(r, c, offsets, columns)
                 a = dtype(0)
                 if slot >= 0:
                     a = values[slot] * scale[r] * scale[c]
-                for k in range(q):
-                    a -= chol[p, k] * chol[q, k]
-                if p == q:
+                for t in range(m):
+                    a -= chol[k, t] * chol[m, t]
+                if k == m:
                     if a <= floor or not wp.isfinite(a):
                         valid = False
                         a = dtype(1)
-                    chol[p, q] = wp.sqrt(a)
+                    chol[k, m] = wp.sqrt(a)
                 else:
-                    chol[p, q] = a / chol[q, q]
+                    chol[k, m] = a / chol[m, m]
+        # Growth position 0 is the row's own index.
         z = vec(dtype(0))
-        for p in range(size):
+        for k in range(size):
             a = dtype(0)
-            if gcol[start + p] == i:
+            if k == 0:
                 a = dtype(1)
-            for q in range(p):
-                a -= chol[p, q] * z[q]
-            z[p] = a / chol[p, p]
+            for t in range(k):
+                a -= chol[k, t] * z[t]
+            z[k] = a / chol[k, k]
         for rev in range(size):
-            p = size - 1 - rev
-            a = z[p]
-            for q in range(p + 1, size):
-                a -= chol[q, p] * z[q]
-            z[p] = a / chol[p, p]
-        # Canonical lower-triangular support: the diagonal is last.
-        norm = wp.sqrt(z[size - 1])
+            k = size - 1 - rev
+            a = z[k]
+            for t in range(k + 1, size):
+                a -= chol[t, k] * z[t]
+            z[k] = a / chol[k, k]
+        norm = wp.sqrt(z[0])
         for p in range(size):
-            value = storage(z[p] / norm * scale[gcol[start + p]])
+            value = storage(z[growth_rank[start + p]] / norm * scale[gcol[start + p]])
             out[start + p] = value
             if not wp.isfinite(value):
                 valid = False
+            # Canonical lower-triangular support: the diagonal is last.
             if p == size - 1 and value <= storage(0):
                 valid = False
         if not valid:
@@ -670,7 +689,7 @@ def _refit_kernels(dtype, storage, width):
 
 
 class _RefitPlan:
-    def __init__(self, owner, A, scalar, width, floor):
+    def __init__(self, owner, A, scalar, growth_rank, width, floor):
         self.signature = (A.shape, A.dtype, A.device, A.row_counts is not None)
         # Every size used by an update is fixed here, so updating never reads the
         # block count back from the device and can be captured in a CUDA graph.
@@ -680,6 +699,7 @@ class _RefitPlan:
         if self.nnz:
             self.topology.append(wp.clone(A.columns[: self.nnz]))
         self.scalar = scalar
+        self.growth_rank = growth_rank
         self.floor = floor
         self.gather, self.refit, self.commit = _refit_kernels(A.scalar_type, owner.factor_dtype, width)
         self.mapping = wp.empty(scalar.nnz_sync(), dtype=int, device=A.device)
@@ -749,6 +769,7 @@ class _RefitPlan:
                 self.values,
                 owner.G.offsets,
                 owner.G.columns,
+                self.growth_rank,
                 self.scale,
                 A.scalar_type(self.floor),
                 self.candidate,
