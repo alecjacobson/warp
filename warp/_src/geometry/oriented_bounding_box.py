@@ -529,3 +529,11 @@ def _score_orientations(points, rotations, count, num_chunks, measure_code, devi
         device=device,
     )
     return measures, transforms, extents
+
+
+# register API functions so they appear in the documentation
+
+wp._src.context.register_api_function(
+    super_fibonacci,
+    module="warp.geometry",
+)
