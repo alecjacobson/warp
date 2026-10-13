@@ -5,6 +5,7 @@
 
 import math
 import unittest
+import unittest.mock
 
 import numpy as np
 
@@ -276,6 +277,218 @@ def test_obb_graph_capturable(test, device):
     test.assertAlmostEqual(measure, 1.0, places=5)
 
 
+def _pack(shapes, device, leading=0):
+    """Concatenate point sets and return ``(points, offsets)`` device arrays.
+
+    ``leading`` extra points are placed before the first shape so that ``offsets[0] > 0``.
+    """
+    pieces = [np.zeros((leading, 3), dtype=np.float32), *shapes]
+    sizes = [len(p) for p in shapes]
+    offsets = leading + np.concatenate([[0], np.cumsum(sizes)]).astype(np.int32)
+    points = wp.array(np.concatenate(pieces, axis=0), dtype=wp.vec3, device=device)
+    return points, wp.array(offsets, dtype=wp.int32, device=device)
+
+
+def _batch_shapes(rng):
+    # Sizes straddle ``max_search_points=100`` below so some shapes are subsampled and some are not.
+    return [
+        U.unit_cube()[0],
+        _rod(rng, num_points=30)[0],
+        rng.standard_normal((100, 3)).astype(np.float32),
+        _rod(rng, extents=(1.0, 0.7, 0.2), num_points=700)[0],
+        rng.standard_normal((1, 3)).astype(np.float32),
+        U.icosphere(2)[0],
+    ]
+
+
+_SEARCH = {"num_samples": 96, "max_search_points": 100, "refine_iters": 2, "refine_batch": 32}
+
+
+def test_obbs_match_single_shape_fits(test, device):
+    # Batching must be a pure performance change: each shape gets the same box as a standalone call.
+    # PCA is off because its covariance atomics make even repeated identical calls differ in the last bits.
+    shapes = _batch_shapes(np.random.default_rng(101))
+    points, offsets = _pack(shapes, device)
+    for measure_type in geo.OBBMeasureType:
+        with test.subTest(measure=measure_type.name):
+            transform, extents, measure = geo.oriented_bounding_boxes(
+                points, offsets, measure_type=measure_type, include_pca=False, **_SEARCH
+            )
+            test.assertEqual(transform.shape, (len(shapes),))
+            for i, p_np in enumerate(shapes):
+                single = _host(
+                    geo.oriented_bounding_box(
+                        wp.array(p_np, dtype=wp.vec3, device=device),
+                        measure_type=measure_type,
+                        include_pca=False,
+                        **_SEARCH,
+                    )
+                )
+                np.testing.assert_array_equal(transform.numpy()[i], single[0], err_msg=f"shape {i}")
+                np.testing.assert_array_equal(extents.numpy()[i], single[1], err_msg=f"shape {i}")
+                test.assertEqual(float(measure.numpy()[i]), single[2], msg=f"shape {i}")
+
+
+def test_obbs_match_single_shape_fits_with_pca(test, device):
+    # With PCA the last bits are not reproducible, so compare the achieved measure loosely.
+    shapes = _batch_shapes(np.random.default_rng(103))
+    points, offsets = _pack(shapes, device)
+    _, _, measure = geo.oriented_bounding_boxes(points, offsets, include_pca=True, **_SEARCH)
+    for i, p_np in enumerate(shapes):
+        _, _, single = _host(
+            geo.oriented_bounding_box(wp.array(p_np, dtype=wp.vec3, device=device), include_pca=True, **_SEARCH)
+        )
+        test.assertAlmostEqual(float(measure.numpy()[i]), single, delta=1e-3 * max(single, 1e-3), msg=f"shape {i}")
+
+
+def test_obbs_contain_all_points(test, device):
+    shapes = _batch_shapes(np.random.default_rng(107))
+    points, offsets = _pack(shapes, device)
+    transform, extents, _ = geo.oriented_bounding_boxes(points, offsets, **_SEARCH)
+    for i, p_np in enumerate(shapes):
+        overhang = _to_local(p_np, transform.numpy()[i], extents.numpy()[i]).max()
+        scale = float(np.max(np.asarray(extents.numpy()[i], dtype=np.float64)))
+        test.assertLess(overhang, 1e-5 * max(scale, 1.0), msg=f"shape {i}")
+
+
+def test_obbs_shapes_are_independent(test, device):
+    # A shape's box must not depend on which other shapes share the batch or where it sits in it.
+    rng = np.random.default_rng(109)
+    shapes = _batch_shapes(rng)
+    order = [3, 0, 5, 2, 1, 4]
+    points_a, offsets_a = _pack(shapes, device)
+    points_b, offsets_b = _pack([shapes[j] for j in order], device, leading=17)
+
+    kwargs = {"include_pca": False, **_SEARCH}
+    ta, ea, ma = geo.oriented_bounding_boxes(points_a, offsets_a, **kwargs)
+    tb, eb, mb = geo.oriented_bounding_boxes(points_b, offsets_b, **kwargs)
+    for position, j in enumerate(order):
+        np.testing.assert_array_equal(ta.numpy()[j], tb.numpy()[position], err_msg=f"shape {j}")
+        np.testing.assert_array_equal(ea.numpy()[j], eb.numpy()[position], err_msg=f"shape {j}")
+        test.assertEqual(float(ma.numpy()[j]), float(mb.numpy()[position]), msg=f"shape {j}")
+
+
+def test_obbs_many_small_shapes(test, device):
+    # Enough shapes that the launch budget forces fewer point chunks per orientation than a single fit uses.
+    rng = np.random.default_rng(113)
+    num_shapes = 3000
+    shapes = [rng.standard_normal((int(rng.integers(1, 12)), 3)).astype(np.float32) for _ in range(num_shapes)]
+    points, offsets = _pack(shapes, device)
+    kwargs = {"num_samples": 256, "include_pca": False, "refine_iters": 1, "refine_batch": 16}
+    transform, _, measure = geo.oriented_bounding_boxes(points, offsets, max_points_per_shape=11, **kwargs)
+    for i in rng.choice(num_shapes, size=8, replace=False):
+        single = _host(geo.oriented_bounding_box(wp.array(shapes[i], dtype=wp.vec3, device=device), **kwargs))
+        np.testing.assert_array_equal(transform.numpy()[i], single[0], err_msg=f"shape {i}")
+        test.assertEqual(float(measure.numpy()[i]), single[2], msg=f"shape {i}")
+
+
+def test_obbs_max_points_per_shape_does_not_change_result(test, device):
+    shapes = _batch_shapes(np.random.default_rng(127))
+    points, offsets = _pack(shapes, device)
+    kwargs = {"include_pca": False, **_SEARCH}
+    default = geo.oriented_bounding_boxes(points, offsets, **kwargs)
+    hinted = geo.oriented_bounding_boxes(points, offsets, max_points_per_shape=max(len(p) for p in shapes), **kwargs)
+    for a, b in zip(default, hinted, strict=True):
+        np.testing.assert_array_equal(a.numpy(), b.numpy())
+
+
+def test_obbs_invalid_arguments(test, device):
+    cube = U.unit_cube()[0]
+    points, offsets = _pack([cube, cube], device)
+
+    with test.assertRaisesRegex(ValueError, "num_samples"):
+        geo.oriented_bounding_boxes(points, offsets, num_samples=0)
+    with test.assertRaisesRegex(ValueError, "max_points_per_shape"):
+        geo.oriented_bounding_boxes(points, offsets, max_points_per_shape=0)
+    with test.assertRaisesRegex(TypeError, "int32"):
+        geo.oriented_bounding_boxes(points, wp.array([0, 8, 16], dtype=wp.int64, device=device))
+    with test.assertRaisesRegex(ValueError, "at least two offsets"):
+        geo.oriented_bounding_boxes(points, wp.array([0], dtype=wp.int32, device=device))
+
+    def bad(values):
+        return wp.array(values, dtype=wp.int32, device=device)
+
+    with test.assertRaisesRegex(ValueError, "point set 1 is empty"):
+        geo.oriented_bounding_boxes(points, bad([0, 8, 8, 16]))
+    with test.assertRaisesRegex(ValueError, "non-decreasing"):
+        geo.oriented_bounding_boxes(points, bad([0, 12, 8, 16]))
+    with test.assertRaisesRegex(ValueError, "within `points`"):
+        geo.oriented_bounding_boxes(points, bad([0, 8, 17]))
+    with test.assertRaisesRegex(ValueError, "within `points`"):
+        geo.oriented_bounding_boxes(points, bad([-1, 8, 16]))
+
+
+def test_obbs_empty_shape_without_validation_is_not_finite(test, device):
+    # Skipping validation must not turn an empty point set into a plausible-looking box.
+    cube = U.unit_cube()[0]
+    points, offsets = _pack([cube, cube[:0], cube], device)
+    result = geo.oriented_bounding_boxes(points, offsets, validate=False, **_SEARCH)[1].numpy()
+    test.assertFalse(np.all(np.isfinite(result[1])))
+    np.testing.assert_allclose(result[[0, 2]], np.ones((2, 3)), atol=1e-5)
+
+
+def test_obbs_launch_count_does_not_scale_with_shapes(test, device):
+    # The point of batching: the number of kernel launches is independent of the number of shapes,
+    # whereas fitting shapes one at a time launches a full search per shape. A launch count is a
+    # deterministic proxy for the speedup, which a timing assertion could not give reliably.
+    cube = U.unit_cube()[0]
+    kwargs = {"num_samples": 8, "refine_iters": 2, "refine_batch": 8, "validate": False}
+
+    def count_launches(fit):
+        real_launch = wp.launch
+        with unittest.mock.patch.object(wp, "launch", side_effect=real_launch) as launch:
+            fit()
+        return launch.call_count
+
+    counts = {}
+    for num_shapes in (2, 64):
+        points, offsets = _pack([cube] * num_shapes, device)
+        counts[num_shapes] = count_launches(
+            lambda points=points, offsets=offsets: geo.oriented_bounding_boxes(points, offsets, **kwargs)
+        )
+    test.assertEqual(counts[2], counts[64])
+
+    single_points = wp.array(cube, dtype=wp.vec3, device=device)
+    single_count = count_launches(
+        lambda: geo.oriented_bounding_box(single_points, **{k: v for k, v in kwargs.items() if k != "validate"})
+    )
+    # A batch costs about one fit, plus nothing that grows with its size; 64 single fits cost 64 of them.
+    test.assertLessEqual(counts[64], single_count)
+    test.assertGreater(64 * single_count, 16 * counts[64])
+
+
+def test_obbs_graph_capturable(test, device):
+    cube = U.unit_cube()[0]
+    points, offsets = _pack([cube, cube + 3.0], device)
+    wp.load_module(geo, device=device)
+
+    with wp.ScopedCapture(device=device) as capture:
+        result = geo.oriented_bounding_boxes(points, offsets, num_samples=16, validate=False)
+    wp.capture_launch(capture.graph)
+    wp.synchronize_device(device)
+
+    np.testing.assert_allclose(result[1].numpy(), np.ones((2, 3)), atol=1e-5)
+    np.testing.assert_allclose(result[2].numpy(), np.ones(2), atol=1e-5)
+
+
+def test_obbs_graph_capturable_with_subsampling(test, device):
+    # The subsample's size bookkeeping (a scan over per-shape counts) must also be capturable.
+    rng = np.random.default_rng(131)
+    shapes = [_rod(rng, num_points=200)[0], _rod(rng, num_points=50)[0]]
+    points, offsets = _pack(shapes, device)
+    kwargs = {"num_samples": 32, "max_search_points": 20, "include_pca": False, "refine_iters": 1, "refine_batch": 8}
+    wp.load_module(geo, device=device)
+    expected = geo.oriented_bounding_boxes(points, offsets, **kwargs)
+
+    with wp.ScopedCapture(device=device) as capture:
+        result = geo.oriented_bounding_boxes(points, offsets, validate=False, **kwargs)
+    wp.capture_launch(capture.graph)
+    wp.synchronize_device(device)
+
+    for got, want in zip(result, expected, strict=True):
+        np.testing.assert_array_equal(got.numpy(), want.numpy())
+
+
 devices = get_test_devices()
 cuda_devices = get_selected_cuda_test_devices()
 
@@ -309,6 +522,47 @@ add_function_test(TestGeometryOBB, "test_obb_subsample_boundary", test_obb_subsa
 add_function_test(TestGeometryOBB, "test_obb_refine_tiny_cloud", test_obb_refine_tiny_cloud, devices=devices)
 add_function_test(TestGeometryOBB, "test_obb_invalid_arguments", test_obb_invalid_arguments, devices=devices)
 add_function_test(TestGeometryOBB, "test_obb_graph_capturable", test_obb_graph_capturable, devices=cuda_devices)
+
+add_function_test(
+    TestGeometryOBB, "test_obbs_match_single_shape_fits", test_obbs_match_single_shape_fits, devices=devices
+)
+add_function_test(
+    TestGeometryOBB,
+    "test_obbs_match_single_shape_fits_with_pca",
+    test_obbs_match_single_shape_fits_with_pca,
+    devices=devices,
+)
+add_function_test(TestGeometryOBB, "test_obbs_contain_all_points", test_obbs_contain_all_points, devices=devices)
+add_function_test(
+    TestGeometryOBB, "test_obbs_shapes_are_independent", test_obbs_shapes_are_independent, devices=devices
+)
+add_function_test(TestGeometryOBB, "test_obbs_many_small_shapes", test_obbs_many_small_shapes, devices=devices)
+add_function_test(
+    TestGeometryOBB,
+    "test_obbs_max_points_per_shape_does_not_change_result",
+    test_obbs_max_points_per_shape_does_not_change_result,
+    devices=devices,
+)
+add_function_test(TestGeometryOBB, "test_obbs_invalid_arguments", test_obbs_invalid_arguments, devices=devices)
+add_function_test(
+    TestGeometryOBB,
+    "test_obbs_empty_shape_without_validation_is_not_finite",
+    test_obbs_empty_shape_without_validation_is_not_finite,
+    devices=devices,
+)
+add_function_test(
+    TestGeometryOBB,
+    "test_obbs_launch_count_does_not_scale_with_shapes",
+    test_obbs_launch_count_does_not_scale_with_shapes,
+    devices=devices,
+)
+add_function_test(TestGeometryOBB, "test_obbs_graph_capturable", test_obbs_graph_capturable, devices=cuda_devices)
+add_function_test(
+    TestGeometryOBB,
+    "test_obbs_graph_capturable_with_subsampling",
+    test_obbs_graph_capturable_with_subsampling,
+    devices=cuda_devices,
+)
 
 
 if __name__ == "__main__":

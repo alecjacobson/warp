@@ -41,6 +41,7 @@ from warp._src.geometry.sparse_marching_cubes import (
 )
 from warp._src.geometry import OBBMeasureType as OBBMeasureType
 from warp._src.geometry import oriented_bounding_box as oriented_bounding_box
+from warp._src.geometry import oriented_bounding_boxes as oriented_bounding_boxes
 from warp._src.geometry import super_fibonacci as super_fibonacci
 from warp._src.geometry import SweptVolumeSignMode as SweptVolumeSignMode
 from warp._src.geometry import delaunay_edge_flip as delaunay_edge_flip

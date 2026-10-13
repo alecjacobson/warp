@@ -20,6 +20,7 @@ Python API
    delaunay_edge_flip
    lipschitz_octree
    oriented_bounding_box
+   oriented_bounding_boxes
    sparse_marching_cubes
    sparse_marching_cubes_from_cells
    super_fibonacci
