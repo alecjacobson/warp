@@ -1017,6 +1017,12 @@ class PoissonDiskSampler:
                 f"`radius` ({self.radius}) is too small for the mesh extent: the spatial grid would need "
                 f"{gx} x {gy} x {gz} cells."
             )
+        # Cell ids are flattened into a single int64 key; Python ints are exact here.
+        if gx * gy * gz > np.iinfo(np.int64).max:
+            raise ValueError(
+                f"`radius` ({self.radius}) is too small for the mesh extent: the flattened cell ids for a "
+                f"{gx} x {gy} x {gz} grid would overflow."
+            )
         lo_vec = wp.vec3(float(lo[0]), float(lo[1]), float(lo[2]))
         return inv_mu, gx, gy, gz, lo_vec
 

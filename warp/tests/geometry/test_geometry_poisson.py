@@ -296,6 +296,15 @@ def test_function_matches_class(test, device):
     np.testing.assert_array_equal(uv.numpy(), sampler.uv.numpy())
 
 
+def test_grid_overflow_raises(test, device):
+    """Raise ValueError when the flattened spatial-grid cell ids would overflow int64."""
+    # Each axis fits int32 (about 1.7e9 cells) but their product does not fit int64.
+    points = np.array([[0, 0, 0], [1.0e6, 0, 0], [0, 1.0e6, 1.0e6]], dtype=np.float32)
+    faces = np.array([0, 1, 2], dtype=np.int32)
+    with test.assertRaises(ValueError):
+        geo.poisson_disk_sample(points, faces, radius=1.0e-3, num_candidates=16, device=device)
+
+
 def test_pair_correlation_device_override(test, device):
     """Move points to the requested device when it differs from where they live."""
     points = wp.array(np.random.default_rng(0).random((200, 3)), dtype=wp.vec3, device="cpu")
@@ -446,6 +455,7 @@ add_function_test(
 add_function_test(
     TestGeometryPoisson, "test_geodesic_helps_thin_feature", test_geodesic_helps_thin_feature, devices=devices
 )
+add_function_test(TestGeometryPoisson, "test_grid_overflow_raises", test_grid_overflow_raises, devices=devices)
 add_function_test(
     TestGeometryPoisson, "test_pair_correlation_device_override", test_pair_correlation_device_override, devices=devices
 )
