@@ -577,8 +577,8 @@ def oriented_bounding_boxes(
 
     Note:
         The cost of the search is proportional to the total number of points. Replacing each point set
-        with its convex hull vertices, or with any other conservative subset that never discards a
-        point on the hull, leaves every box unchanged and lowers the cost in proportion to the number
+        with its convex hull vertices, or with any other subset that is known to contain every hull
+        vertex, leaves every box unchanged and lowers the cost in proportion to the number
         of points removed; see :func:`oriented_bounding_box`.
 
         Scratch memory grows with
@@ -604,6 +604,8 @@ def oriented_bounding_boxes(
 
     num_points = points.shape[0]
     device = wp.get_device(device) if device is not None else points.device
+    if device != points.device:
+        raise ValueError(f"`device` ({device}) must match the device of `points` ({points.device}).")
 
     max_shape_points = num_points
     if validate and not device.is_capturing:
@@ -665,7 +667,9 @@ def oriented_bounding_box(
 
     Two further candidates are appended by default. ``include_axis_aligned`` adds the
     identity rotation, which the spiral never contains exactly and which guarantees the
-    result is no worse than the axis-aligned bounding box. ``include_pca`` adds the
+    result is no worse than the axis-aligned bounding box when every point is scored (with
+    ``max_search_points`` the candidates are compared on the subsample only, so a box that wins
+    there can be larger than the axis-aligned box over all points). ``include_pca`` adds the
     principal axes of the point set, obtained from the eigenvectors of its covariance
     matrix. The spiral resolves orientation only to roughly its sample spacing, and on
     a strongly elongated shape a few degrees of error costs a large amount of volume,
@@ -689,8 +693,7 @@ def oriented_bounding_box(
 
     The cost of the search is proportional to the number of points. A bounding box is determined by
     the convex hull of the points, so replacing a very large input with its convex hull vertices, or
-    with any other conservative subset that never discards a point on the hull (for example, the
-    extreme points along a set of directions), leaves the box for every orientation unchanged and
+    with any other subset that is known to contain every hull vertex, leaves the box for every orientation unchanged and
     lowers the cost in proportion to the number of points removed. Unlike ``max_search_points``, this
     does not change which orientation is searched. The PCA candidate is the one exception, since it
     comes from the covariance of whichever points are given.
@@ -762,6 +765,8 @@ def oriented_bounding_box(
         raise ValueError("`points` must contain at least one point, but got an empty array.")
 
     device = wp.get_device(device) if device is not None else points.device
+    if device != points.device:
+        raise ValueError(f"`device` ({device}) must match the device of `points` ({points.device}).")
 
     offsets = wp.empty(2, dtype=wp.int32, device=device)
     wp.launch(
@@ -789,6 +794,16 @@ def oriented_bounding_box(
 def _validate_search_parameters(
     num_samples, num_refine_starts, num_refine_iterations, num_refine_samples, num_spin_samples, max_search_points
 ):
+    for name, value in (
+        ("num_samples", num_samples),
+        ("num_refine_starts", num_refine_starts),
+        ("num_refine_iterations", num_refine_iterations),
+        ("num_refine_samples", num_refine_samples),
+        ("num_spin_samples", num_spin_samples),
+        ("max_search_points", max_search_points),
+    ):
+        if value is not None and not isinstance(value, (int, np.integer)):
+            raise ValueError(f"`{name}` must be an integer, but got {value!r}.")
     if num_samples < 1:
         raise ValueError(f"`num_samples` must be a positive integer, but got {num_samples}.")
     if num_refine_starts < 1:

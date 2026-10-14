@@ -83,6 +83,7 @@ def main(stage_path="example_geometry_oriented_bounding_box.usd", show_polyscope
 
     # Warm up so the reported timings measure the search rather than kernel loading.
     wp.geometry.oriented_bounding_box(points, Measure.VOLUME)
+    wp.synchronize_device()
 
     with wp.ScopedTimer("oriented_bounding_box (volume)", print=False) as timer_vol:
         vol_result = wp.geometry.oriented_bounding_box(points, Measure.VOLUME)
@@ -211,7 +212,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--device", type=str, default=None, help="Override the default Warp device.")
     parser.add_argument(
+        "--stage-path",
         "--stage_path",
+        dest="stage_path",
         type=lambda x: None if x == "None" else str(x),
         default="example_geometry_oriented_bounding_box.usd",
         help="Path to the output USD file.",

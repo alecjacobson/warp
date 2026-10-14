@@ -417,13 +417,30 @@ def test_obb_invalid_arguments(test, device):
         geo.oriented_bounding_box(empty, num_samples=8)
 
 
+def test_obb_rejects_non_integer_parameters(test, device):
+    """Reject non-integer search parameters with a ValueError."""
+    points = wp.array(U.unit_cube()[0], dtype=wp.vec3, device=device)
+    with test.assertRaisesRegex(ValueError, "num_samples.*integer"):
+        geo.oriented_bounding_box(points, num_samples=16.0)
+    with test.assertRaisesRegex(ValueError, "num_refine_iterations.*integer"):
+        geo.oriented_bounding_box(points, num_refine_iterations=1.5)
+
+
+def test_obb_rejects_mismatched_device(test, device):
+    """Reject a ``device`` that differs from the device of the points."""
+    other = "cpu" if device.is_cuda else "cuda:0"
+    points = wp.array(U.unit_cube()[0], dtype=wp.vec3, device=device)
+    with test.assertRaisesRegex(ValueError, "must match the device"):
+        geo.oriented_bounding_box(points, num_samples=16, device=other)
+
+
 def test_obb_graph_capturable(test, device):
     # The whole search -- including the argmin -- runs on the device, so it can be
     # captured into a CUDA graph and replayed without a host synchronization.
     points = wp.array(U.unit_cube()[0], dtype=wp.vec3, device=device)
     wp.load_module(geo, device=device)
 
-    with wp.ScopedCapture(device=device) as capture:
+    with wp.ScopedCapture(device=device, force_module_load=False) as capture:
         result = geo.oriented_bounding_box(points, num_samples=16)
     wp.capture_launch(capture.graph)
     wp.synchronize_device(device)
@@ -626,7 +643,7 @@ def test_obbs_graph_capturable(test, device):
     points, offsets = _pack([cube, cube + 3.0], device)
     wp.load_module(geo, device=device)
 
-    with wp.ScopedCapture(device=device) as capture:
+    with wp.ScopedCapture(device=device, force_module_load=False) as capture:
         result = geo.oriented_bounding_boxes(points, offsets, num_samples=16, validate=False)
     wp.capture_launch(capture.graph)
     wp.synchronize_device(device)
@@ -650,7 +667,7 @@ def test_obbs_graph_capturable_with_subsampling(test, device):
     wp.load_module(geo, device=device)
     expected = geo.oriented_bounding_boxes(points, offsets, **kwargs)
 
-    with wp.ScopedCapture(device=device) as capture:
+    with wp.ScopedCapture(device=device, force_module_load=False) as capture:
         result = geo.oriented_bounding_boxes(points, offsets, validate=False, **kwargs)
     wp.capture_launch(capture.graph)
     wp.synchronize_device(device)
@@ -722,6 +739,12 @@ add_function_test(
     devices=devices,
 )
 add_function_test(TestGeometryOBB, "test_obb_invalid_arguments", test_obb_invalid_arguments, devices=devices)
+add_function_test(
+    TestGeometryOBB, "test_obb_rejects_non_integer_parameters", test_obb_rejects_non_integer_parameters, devices=devices
+)
+add_function_test(
+    TestGeometryOBB, "test_obb_rejects_mismatched_device", test_obb_rejects_mismatched_device, devices=cuda_devices
+)
 add_function_test(TestGeometryOBB, "test_obb_graph_capturable", test_obb_graph_capturable, devices=cuda_devices)
 
 add_function_test(
