@@ -471,7 +471,22 @@ class FSAI(LinearOperator):
         self._tmp = wp.empty(n, dtype=dtype, device=device)
         self._tmp_event = wp.Event(device) if device.is_cuda else None
         self._last_stream = None
+        self._views = {}
         super().__init__(A.shape, A.dtype, device, self._apply)
+
+    def _flat(self, vector):
+        """Return a flat scalar view of ``vector``, cached so repeated applications skip the view setup."""
+        if vector.dtype == self.scalar_type and vector.ndim == 1:
+            return vector
+        key = (vector.ptr, vector.shape, vector.dtype)
+        entry = self._views.get(key)
+        if entry is None:
+            if len(self._views) >= 8:
+                self._views.clear()
+            # The entry keeps ``vector`` alive, so its address cannot be reused while cached.
+            entry = (vector, vector.view(self.scalar_type).flatten())
+            self._views[key] = entry
+        return entry[1]
 
     def update(self, A: sp.BsrMatrix | None = None) -> "FSAI":
         """Refit on the original factor supports, preserving captured apply buffers.
@@ -510,7 +525,7 @@ class FSAI(LinearOperator):
         return self
 
     def _apply(self, x, y, z, alpha, beta):
-        x, y, z = (_flat_view(v, self.scalar_type) for v in (x, y, z))
+        x, y, z = (self._flat(v) for v in (x, y, z))
         # Outside graph capture, order this application after the previous one on any
         # other stream, since both share the scratch vector. Inside capture on this
         # stream the graph's own dependencies apply and events must not be recorded or
@@ -662,31 +677,22 @@ def _deferred_kernels(dtype, storage, width, regularize):
     def publish(
         support_columns: wp.array[int],
         support_counts: wp.array[int],
-        ready: wp.array[int],
-        status: wp.array[int],
-        columns: wp.array[int],
-        row_counts: wp.array[int],
-        n: int,
-    ):
-        e = wp.tid()
-        if pending(ready, status):
-            columns[e] = support_columns[e]
-            if e < n:
-                row_counts[e] = support_counts[e + 1]
-
-    @wp.kernel(enable_backward=False, module="unique")
-    def count(
-        columns: wp.array[int],
-        row_counts: wp.array[int],
         stride: int,
         counts: wp.array[int],
         ready: wp.array[int],
         status: wp.array[int],
+        columns: wp.array[int],
+        row_counts: wp.array[int],
     ):
+        # Copy the selected supports into the factor and count the entries of every column.
         row = wp.tid()
         if pending(ready, status):
-            for p in range(row_counts[row]):
-                wp.atomic_add(counts, columns[row * stride + p] + 1, 1)
+            size = support_counts[row + 1]
+            row_counts[row] = size
+            for p in range(size):
+                column = support_columns[row * stride + p]
+                columns[row * stride + p] = column
+                wp.atomic_add(counts, column + 1, 1)
 
     @wp.kernel(enable_backward=False, module="unique")
     def scan(counts: wp.array[int], offsets: wp.array[int], ready: wp.array[int], status: wp.array[int]):
@@ -715,33 +721,29 @@ def _deferred_kernels(dtype, storage, width, regularize):
                 entries[offsets[column] + wp.atomic_add(cursor, column, 1)] = row * stride + p
 
     @wp.kernel(enable_backward=False, module="unique")
-    def sort_columns(offsets: wp.array[int], entries: wp.array[int], ready: wp.array[int], status: wp.array[int]):
+    def sort_columns(
+        offsets: wp.array[int],
+        entries: wp.array[int],
+        stride: int,
+        columns: wp.array[int],
+        ready: wp.array[int],
+        status: wp.array[int],
+    ):
         # Sorting each column by factor entry makes the transposed sums independent of
-        # the order in which the scatter ran.
+        # the order in which the scatter ran. The sorted entries give the transposed rows.
         column = wp.tid()
         if pending(ready, status):
             begin = offsets[column]
-            for e in range(begin + 1, offsets[column + 1]):
+            end = offsets[column + 1]
+            for e in range(begin + 1, end):
                 key = entries[e]
                 q = e - 1
                 while q >= begin and entries[q] > key:
                     entries[q + 1] = entries[q]
                     q -= 1
                 entries[q + 1] = key
-
-    @wp.kernel(enable_backward=False, module="unique")
-    def extract(
-        entries: wp.array[int],
-        offsets: wp.array[int],
-        stride: int,
-        columns: wp.array[int],
-        ready: wp.array[int],
-        status: wp.array[int],
-        n: int,
-    ):
-        e = wp.tid()
-        if pending(ready, status) and e < offsets[n]:
-            columns[e] = entries[e] // stride
+            for e in range(begin, end):
+                columns[e] = entries[e] // stride
 
     @wp.kernel(enable_backward=False, module="unique")
     def mark_ready(ready: wp.array[int], status: wp.array[int]):
@@ -749,35 +751,29 @@ def _deferred_kernels(dtype, storage, width, regularize):
             ready[0] = 1
 
     @wp.kernel(enable_backward=False, module="unique")
-    def commit_factor(candidate: wp.array[storage], status: wp.array[int], values: wp.array[storage]):
-        e = wp.tid()
-        if accepted(status):
-            values[e] = candidate[e]
-
-    @wp.kernel(enable_backward=False, module="unique")
-    def commit_transpose(
+    def commit(
         candidate: wp.array[storage],
         status: wp.array[int],
         entries: wp.array[int],
         offsets: wp.array[int],
         values: wp.array[storage],
+        transposed: wp.array[storage],
         n: int,
     ):
         e = wp.tid()
-        if accepted(status) and e < offsets[n]:
-            values[e] = candidate[entries[e]]
+        if accepted(status):
+            values[e] = candidate[e]
+            if e < offsets[n]:
+                transposed[e] = candidate[entries[e]]
 
     return types.SimpleNamespace(
         zero=zero,
         publish=publish,
-        count=count,
         scan=scan,
         fill=fill,
         sort_columns=sort_columns,
-        extract=extract,
         mark_ready=mark_ready,
-        commit_factor=commit_factor,
-        commit_transpose=commit_transpose,
+        commit=commit,
     )
 
 
@@ -810,22 +806,30 @@ def _refit_kernels(block_type, dtype, storage, width, regularize):
             size = gcount[i]
         # Factor in the order the support was grown, so pivots (and the floor test)
         # match construction; sorted storage order can give very different pivots.
+        # The local system is padded with identity rows to the static width, which leaves
+        # the solution on the support unchanged and keeps every loop bound constant.
         member = ivec(0)
         for p in range(size):
             member[growth_rank[start + p]] = p
+        local = ivec(-1)
+        for k in range(size):
+            local[k] = gcol[start + member[k]]
         chol = mat(dtype(0))
         valid = bool(True)
         regularized = bool(False)
-        for k in range(size):
-            r = gcol[start + member[k]]
+        for k in range(wp.static(width)):
+            r = local[k]
             for m in range(k + 1):
-                c = gcol[start + member[m]]
+                c = local[m]
                 a = dtype(0)
-                if r == c:
-                    # Equilibrated diagonals are exactly one, as in construction.
+                if k < size:
+                    if r == c:
+                        # Equilibrated diagonals are exactly one, as in construction.
+                        a = dtype(1)
+                    else:
+                        a = entry(offsets, row_counts, columns, values, r, c) * scale[r] * scale[c]
+                elif k == m:
                     a = dtype(1)
-                else:
-                    a = entry(offsets, row_counts, columns, values, r, c) * scale[r] * scale[c]
                 for t in range(m):
                     a -= chol[k, t] * chol[m, t]
                 if k == m:
@@ -845,17 +849,17 @@ def _refit_kernels(block_type, dtype, storage, width, regularize):
                     chol[k, m] = a / chol[m, m]
         # Growth position 0 is the row's own index.
         z = vec(dtype(0))
-        for k in range(size):
+        for k in range(wp.static(width)):
             a = dtype(0)
             if k == 0:
                 a = dtype(1)
             for t in range(k):
                 a -= chol[k, t] * z[t]
             z[k] = a / chol[k, k]
-        for rev in range(size):
-            k = size - 1 - rev
+        for rev in range(wp.static(width)):
+            k = wp.static(width) - 1 - rev
             a = z[k]
-            for t in range(k + 1, size):
+            for t in range(k + 1, wp.static(width)):
                 a -= chol[t, k] * z[t]
             z[k] = a / chol[k, k]
         norm = wp.sqrt(z[0])
@@ -920,6 +924,9 @@ class _PlanBase:
                 self.topology.append(wp.clone(A.columns[: self.nnz]))
         self.floor = floor
         self.regularize = regularize
+        # Only these configurations can report a failure to the host; otherwise an eager
+        # update never needs to synchronize.
+        self.raises = validate_topology or not regularize
         self.diagonal, self.refit, self.commit = _refit_kernels(A.dtype, A.scalar_type, factor_dtype, width, regularize)
         self.scale = wp.empty(n, dtype=A.scalar_type, device=A.device)
         # Counts of [topology mismatches, invalid diagonals, failed local factorizations,
@@ -1006,7 +1013,7 @@ class _RefitPlan(_PlanBase):
             [self.candidate, self.status, self.transpose, owner.G.values, owner.GT.values],
             device=A.device,
         )
-        if not A.device.is_capturing:
+        if not A.device.is_capturing and self.raises:
             self.check()
 
 
@@ -1113,40 +1120,46 @@ class _DeferredPlan(_PlanBase):
         )
         if pending:
             self._publish(owner, device)
-        wp.launch(k.commit_factor, n * width, [self.candidate, self.status, owner.G.values], device=device)
         wp.launch(
-            k.commit_transpose,
-            n * width,
-            [self.candidate, self.status, self.transpose_entries, owner.GT.offsets, owner.GT.values, n],
-            device=device,
-        )
-        if not capturing:
-            self.check()
-            self.published = bool(self.ready.numpy()[0])
-
-    def _publish(self, owner, device):
-        """Publish the selected supports and build the transposed index, once."""
-        n, width, k = self.n, self.width, self.kernels
-        wp.launch(k.zero, n + 1, [self.transpose_counts, self.ready], device=device)
-        wp.launch(k.zero, n, [self.transpose_cursor, self.ready], device=device)
-        wp.launch(
-            k.publish,
+            k.commit,
             n * width,
             [
-                self.support_columns,
-                self.support_counts,
-                self.ready,
+                self.candidate,
                 self.status,
-                owner.G.columns,
-                owner.G.row_counts,
+                self.transpose_entries,
+                owner.GT.offsets,
+                owner.G.values,
+                owner.GT.values,
                 n,
             ],
             device=device,
         )
+        if not capturing:
+            if self.raises:
+                self.check()
+            if not self.published:
+                self.published = bool(self.ready.numpy()[0])
+
+    def _publish(self, owner, device):
+        """Publish the selected supports and build the transposed index, once.
+
+        The counting arrays start at zero and are only touched by an update that completes
+        this build, which also sets the ready flag, so they never need to be cleared.
+        """
+        n, width, k = self.n, self.width, self.kernels
         wp.launch(
-            k.count,
+            k.publish,
             n,
-            [owner.G.columns, owner.G.row_counts, width, self.transpose_counts, self.ready, self.status],
+            [
+                self.support_columns,
+                self.support_counts,
+                width,
+                self.transpose_counts,
+                self.ready,
+                self.status,
+                owner.G.columns,
+                owner.G.row_counts,
+            ],
             device=device,
         )
         wp.launch(k.scan, 1, [self.transpose_counts, owner.GT.offsets, self.ready, self.status], device=device)
@@ -1165,21 +1178,13 @@ class _DeferredPlan(_PlanBase):
             ],
             device=device,
         )
-        wp.launch(k.sort_columns, n, [owner.GT.offsets, self.transpose_entries, self.ready, self.status], device=device)
         wp.launch(
-            k.extract,
-            n * width,
-            [self.transpose_entries, owner.GT.offsets, width, owner.GT.columns, self.ready, self.status, n],
+            k.sort_columns,
+            n,
+            [owner.GT.offsets, self.transpose_entries, width, owner.GT.columns, self.ready, self.status],
             device=device,
         )
         wp.launch(k.mark_ready, 1, [self.ready, self.status], device=device)
-
-
-def _flat_view(vector, scalar_type):
-    """Return a flat array of scalars over ``vector``, without a new view when it already is one."""
-    if vector.dtype == scalar_type and vector.ndim == 1:
-        return vector
-    return vector.view(scalar_type).flatten()
 
 
 @lru_cache(None)

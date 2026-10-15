@@ -766,6 +766,49 @@ def test_block_selection_matches_scalar(test, device, dtype):
             np.testing.assert_array_equal(_dense(deferred.G), _dense(scalar.G))
 
 
+def test_cached_views_follow_arrays(test, device):
+    """Check that cached vector views never serve stale data across many and recycled arrays."""
+    a = _path(12)
+    for block in (1, 3):
+        pre = FSAI(_matrix(a, device, wp.float32, block), max_row_size=5)
+        g = _dense(pre.G).astype(np.float64)
+        expected = g.T @ g
+        vector = wp.float32 if block == 1 else wp.vec3f
+        rng = np.random.default_rng(5)
+        # More arrays than the cache holds, then freed and recreated ones.
+        for _ in range(3):
+            for _ in range(12):
+                values = rng.normal(size=12).astype(np.float32)
+                x = wp.array(values.reshape(-1, block) if block > 1 else values, dtype=vector, device=device)
+                y = wp.zeros_like(x)
+                pre.matvec(x, y, y, 1.0, 0.0)
+                np.testing.assert_allclose(y.numpy().ravel(), expected @ values, rtol=1e-4, atol=1e-5)
+                del x, y
+
+
+def test_eager_update_skips_synchronization(test, device):
+    """Check that eager updates only read the status back when they could raise."""
+    a = _path(12)
+    for options, reads in (({}, 1), ({"validate_topology": False}, 1), ({"regularize_refit": True}, 1)):
+        pre = FSAI(_matrix(a, device), reuse_pattern=True, **options)
+        with mock.patch.object(type(pre._refit), "check", autospec=True) as check:
+            pre.update()
+        test.assertEqual(check.call_count, reads)
+    both = FSAI(_matrix(a, device), reuse_pattern=True, regularize_refit=True, validate_topology=False)
+    with mock.patch.object(type(both._refit), "check", autospec=True) as check:
+        both.update()
+    test.assertEqual(check.call_count, 0)
+    # The deferred first update still has to read the ready flag, later ones need no readback.
+    deferred = FSAI(
+        _matrix(a, device), reuse_pattern=True, defer_pattern=True, regularize_refit=True, validate_topology=False
+    )
+    deferred.update()
+    test.assertTrue(deferred._refit.published)
+    with mock.patch.object(wp.array, "numpy", autospec=True) as numpy:
+        deferred.update()
+    test.assertEqual(numpy.call_count, 0)
+
+
 def test_scaling_and_conversion(test, device):
     """Check badly scaled inputs and factor conversion overflow handling."""
     a = _path(12)
@@ -938,6 +981,8 @@ for func in (
     test_pivot_guard,
     test_refit_growth_order,
     test_skipped_topology_validation,
+    test_cached_views_follow_arrays,
+    test_eager_update_skips_synchronization,
     test_refit_low_precision_diagonal,
     test_stored_zeros_and_capacity,
     test_padded_input,
