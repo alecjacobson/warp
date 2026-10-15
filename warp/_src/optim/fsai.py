@@ -373,6 +373,10 @@ class FSAI(LinearOperator):
         if reuse_pattern:
             self._refit = _RefitPlan(self, A, scalar, growth_rank, max_row_size, pivot_floor)
             self.update_status = self._refit.status
+        if device.is_cuda:
+            # Factor work is asynchronous; finish it so first use on any other stream,
+            # or inside a captured graph, never reads unfinished factors.
+            wp.synchronize_stream(device.stream)
 
     def update(self, A: sp.BsrMatrix | None = None) -> "FSAI":
         """Refit on the original factor supports, preserving captured apply buffers.
@@ -632,7 +636,10 @@ def _refit_kernels(dtype, storage, width):
                 c = gcol[start + member[m]]
                 slot = sp.bsr_block_index(r, c, offsets, columns)
                 a = dtype(0)
-                if slot >= 0:
+                if r == c:
+                    # Equilibrated diagonals are exactly one, as in construction.
+                    a = dtype(1)
+                elif slot >= 0:
                     a = values[slot] * scale[r] * scale[c]
                 for t in range(m):
                     a -= chol[k, t] * chol[m, t]

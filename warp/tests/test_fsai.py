@@ -455,6 +455,16 @@ def test_refit_growth_order(test, device):
     np.testing.assert_allclose(_dense(pre.GT), before.T, rtol=1e-12, atol=1e-12)
 
 
+def test_refit_low_precision_diagonal(test, device):
+    """Check that an unchanged float16 matrix refits when its equilibrated diagonal rounds off one."""
+    a = np.array([[1.0, 3.16015625], [3.16015625, 10.0]])
+    raw = _matrix(a, device, wp.float16)
+    pre = FSAI(raw, reuse_pattern=True)
+    before = _dense(pre.G)
+    pre.update(raw)
+    np.testing.assert_array_equal(_dense(pre.G), before)
+
+
 def test_scaling_and_conversion(test, device):
     """Check badly scaled inputs and factor conversion overflow handling."""
     a = _path(12)
@@ -620,6 +630,7 @@ for func in (
     test_narrow_frontier_and_zero_tolerance,
     test_pivot_guard,
     test_refit_growth_order,
+    test_refit_low_precision_diagonal,
     test_stored_zeros_and_capacity,
     test_padded_input,
     test_empty,
