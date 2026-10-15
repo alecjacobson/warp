@@ -593,11 +593,11 @@ def test_deferred_pattern(test, device, dtype):
         np.testing.assert_array_equal(pre.pattern_ready.numpy(), 0)
         test.assertIsNone(pre.truncated_rows)
         vector = dtype if block == 1 else wp.types.vector(block, dtype)
-        x = wp.ones(12 // block, dtype=vector, device=device)
+        x = wp.array(np.arange(1.0, 13.0).reshape(12 // block, -1).squeeze(), dtype=vector, device=device)
         y = wp.empty_like(x)
-        # Before the first update the preconditioner is the identity.
+        # Before the first update the preconditioner is the identity, which a constant vector cannot show.
         pre.matvec(x, y, y, 1, 0)
-        np.testing.assert_array_equal(y.numpy().ravel(), 1.0)
+        np.testing.assert_array_equal(y.numpy(), x.numpy())
 
         raw.values.assign(_matrix(a, device, dtype, block).values.numpy())
         reference = FSAI(_matrix(a, device, dtype, block), **options)

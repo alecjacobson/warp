@@ -1061,7 +1061,9 @@ class _DeferredPlan(_PlanBase):
         owner.G.notify_nnz_changed(nnz=n * width)
         owner.GT = sp.bsr_zeros(n, n, storage, device=device)
         owner.GT.offsets = wp.array(np.arange(n + 1), dtype=int, device=device)
-        owner.GT.columns = wp.array(np.where(columns >= 0, columns, 0), dtype=int, device=device)
+        transposed_columns = np.zeros(n * width, dtype=np.int32)
+        transposed_columns[:n] = rows
+        owner.GT.columns = wp.array(transposed_columns, dtype=int, device=device)
         transposed_values = np.zeros(n * width, dtype=values.dtype)
         transposed_values[:n] = 1
         owner.GT.values = wp.array(transposed_values, dtype=storage, device=device)
