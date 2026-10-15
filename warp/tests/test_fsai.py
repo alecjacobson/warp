@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import itertools
 import unittest
 from unittest import mock
 
@@ -27,9 +28,11 @@ def _matrix(a, device, dtype=wp.float64, block=1):
 
 def _dense(a):
     offsets, columns, values = a.offsets.numpy(), a.columns.numpy(), a.values.numpy()
+    counts = None if a.row_counts is None else a.row_counts.numpy()
     result = np.zeros(a.shape, dtype=values.dtype)
     for row in range(a.nrow):
-        start, end = offsets[row : row + 2]
+        start = offsets[row]
+        end = offsets[row + 1] if counts is None else start + counts[row]
         result[row, columns[start:end]] = values[start:end]
     return result
 
@@ -573,6 +576,163 @@ def test_skipped_topology_validation(test, device):
         np.testing.assert_array_equal(_dense(unchecked.GT), _dense(checked.GT))
 
 
+def _topology_only(a, device, dtype, block):
+    """Return a matrix with the topology of ``a`` and no assembled values."""
+    result = _matrix(a, device, dtype, block)
+    result.values.zero_()
+    return result
+
+
+def test_deferred_pattern(test, device, dtype):
+    """Check that deferred selection matches construction-time selection and then only refits."""
+    a = _path(12)
+    for block, (width, step, storage) in itertools.product((1, 3), ((5, 1, dtype), (8, 3, dtype), (5, 1, wp.float32))):
+        options = {"max_row_size": width, "max_step_size": step, "reuse_pattern": True, "factor_dtype": storage}
+        raw = _topology_only(a, device, dtype, block)
+        pre = FSAI(raw, defer_pattern=True, **options)
+        np.testing.assert_array_equal(pre.pattern_ready.numpy(), 0)
+        test.assertIsNone(pre.truncated_rows)
+        vector = dtype if block == 1 else wp.types.vector(block, dtype)
+        x = wp.ones(12 // block, dtype=vector, device=device)
+        y = wp.empty_like(x)
+        # Before the first update the preconditioner is the identity.
+        pre.matvec(x, y, y, 1, 0)
+        np.testing.assert_array_equal(y.numpy().ravel(), 1.0)
+
+        raw.values.assign(_matrix(a, device, dtype, block).values.numpy())
+        reference = FSAI(_matrix(a, device, dtype, block), **options)
+        pre.update()
+        np.testing.assert_array_equal(pre.pattern_ready.numpy(), 1)
+        np.testing.assert_array_equal(pre.update_status.numpy(), 0)
+        test.assertEqual(pre.pattern_status.numpy()[1], reference.truncated_rows)
+        np.testing.assert_array_equal(_dense(pre.G), _dense(reference.G))
+        np.testing.assert_array_equal(_dense(pre.GT), _dense(reference.GT))
+        np.testing.assert_array_equal(np.diff(pre.GT.offsets.numpy()), np.diff(reference.GT.offsets.numpy()))
+        expected = FSAI(_matrix(a, device, dtype, block), **options)
+        expected.matvec(x, y, y, 1, 0)
+        pre.matvec(x, y, y, 1, 0)
+        z = wp.empty_like(x)
+        expected.matvec(x, z, z, 1, 0)
+        np.testing.assert_array_equal(y.numpy(), z.numpy())
+
+        # Later updates keep the selected supports and only refit their values.
+        columns = pre.G.columns.numpy().copy()
+        changed = 0.5 * a + np.diag(np.arange(12.0))
+        changed[0, 11] = changed[11, 0] = 0.0
+        reference.update(_matrix(changed, device, dtype, block))
+        raw.values.assign(_matrix(changed, device, dtype, block).values.numpy())
+        with mock.patch.object(wp, "launch", wraps=wp.launch) as launch:
+            pre.update()
+        launched = [call.args[0] for call in launch.call_args_list]
+        test.assertNotIn(pre._refit.select, launched)
+        np.testing.assert_array_equal(pre.G.columns.numpy(), columns)
+        np.testing.assert_array_equal(_dense(pre.G), _dense(reference.G))
+        np.testing.assert_array_equal(_dense(pre.GT), _dense(reference.GT))
+
+
+def test_deferred_pattern_failures(test, device, dtype):
+    """Check that a deferred first update retries after a rejected matrix or regularizes it."""
+    healthy = np.array([[1.0, 0.5], [0.5, 1.0]])
+    good = _pair_matrix(healthy, healthy)
+    bad = _pair_matrix(np.array([[-1.0, 0.5], [0.5, 1.0]]), healthy)
+    options = {"max_row_size": 2, "reuse_pattern": True, "defer_pattern": True}
+
+    raw = _topology_only(good, device, dtype, 1)
+    strict = FSAI(raw, **options)
+    raw.values.assign(_matrix(bad, device, dtype).values.numpy())
+    with test.assertRaisesRegex(ValueError, "positive diagonals"):
+        strict.update()
+    np.testing.assert_array_equal(strict.pattern_ready.numpy(), 0)
+    np.testing.assert_array_equal(_dense(strict.G), np.eye(4))
+    raw.values.assign(_matrix(good, device, dtype).values.numpy())
+    strict.update()
+    np.testing.assert_array_equal(strict.pattern_ready.numpy(), 1)
+    np.testing.assert_array_equal(_dense(strict.G), _dense(FSAI(_matrix(good, device, dtype), max_row_size=2).G))
+
+    # With regularization the unusable row keeps a diagonal-only support and is reported.
+    raw = _topology_only(good, device, dtype, 1)
+    pre = FSAI(raw, regularize_refit=True, **options)
+    raw.values.assign(_matrix(bad, device, dtype).values.numpy())
+    pre.update()
+    np.testing.assert_array_equal(pre.pattern_ready.numpy(), 1)
+    test.assertEqual(pre.update_status.numpy()[1], 1)
+    g = _dense(pre.G)
+    np.testing.assert_array_equal(g[0], [1.0, 0.0, 0.0, 0.0])
+    reference = FSAI(_matrix(good, device, dtype), max_row_size=2)
+    np.testing.assert_array_equal(g[2:, 2:], _dense(reference.G)[2:, 2:])
+    np.testing.assert_array_equal(_dense(pre.GT), g.T)
+
+
+def test_deferred_pattern_graph(test, device, dtype):
+    """Check that a captured first update selects the pattern on replay and later replays only refit."""
+    a = _path(24)
+    options = {"max_row_size": 5, "reuse_pattern": True, "defer_pattern": True}
+    # Load every kernel module eagerly: capture does not load modules.
+    warm = FSAI(_matrix(a, device, dtype), **options)
+    warm.update()
+    x = wp.ones(24, dtype=dtype, device=device)
+    y = wp.empty_like(x)
+    warm.matvec(x, y, y, 1, 0)
+
+    raw = _topology_only(a, device, dtype, 1)
+    pre = FSAI(raw, **options)
+    with wp.ScopedCapture(device=device, force_module_load=False) as cap:
+        pre.update()
+        pre.matvec(x, y, y, 1, 0)
+    values = _matrix(a, device, dtype).values.numpy()
+    reference = FSAI(_matrix(a, device, dtype), max_row_size=5, reuse_pattern=True)
+    for multiplier in (1.0, 2.0, 0.5):
+        raw.values.assign(multiplier * values)
+        reference.update(_matrix(multiplier * a, device, dtype))
+        wp.capture_launch(cap.graph)
+        np.testing.assert_array_equal(pre.pattern_ready.numpy(), 1)
+        np.testing.assert_array_equal(pre.update_status.numpy(), 0)
+        np.testing.assert_array_equal(_dense(pre.G), _dense(reference.G))
+        np.testing.assert_array_equal(_dense(pre.GT), _dense(reference.GT))
+        g = _dense(pre.G)
+        np.testing.assert_allclose(
+            y.numpy(), g.T @ g @ np.ones(24), rtol=1e-5 if dtype == wp.float32 else 1e-12, atol=1e-6
+        )
+
+    # A matrix that would select other supports leaves the published pattern alone.
+    columns = pre.G.columns.numpy().copy()
+    stiff = a + np.eye(24) * 200
+    raw.values.assign(_matrix(stiff, device, dtype).values.numpy())
+    reference.update(_matrix(stiff, device, dtype))
+    wp.capture_launch(cap.graph)
+    np.testing.assert_array_equal(pre.G.columns.numpy(), columns)
+    np.testing.assert_array_equal(_dense(pre.G), _dense(reference.G))
+    np.testing.assert_array_equal(_dense(pre.GT), _dense(reference.GT))
+
+
+def test_deferred_conditional_graph_solve(test, device, dtype):
+    """Check that a deferred preconditioner selects, refits and preconditions in one conditional graph."""
+    if not wp.is_conditional_graph_supported():
+        test.skipTest("conditional CUDA graphs are not supported")
+    a = _path(24)
+    tolerance = 1e-5 if dtype == wp.float32 else 1e-11
+    for solver in (cg, cr):
+        warm_matrix = _matrix(a, device, dtype)
+        warm = FSAI(warm_matrix, reuse_pattern=True, defer_pattern=True)
+        b = wp.ones(24, dtype=dtype, device=device)
+        x = wp.zeros_like(b)
+        with wp.ScopedDevice(device):
+            warm.update()
+            solver(warm_matrix, b, x, M=warm, tol=tolerance, maxiter=100)
+            raw = _topology_only(a, device, dtype, 1)
+            pre = FSAI(raw, reuse_pattern=True, defer_pattern=True)
+            with wp.ScopedCapture(force_module_load=False) as capture:
+                pre.update()
+                solver(raw, b, x, M=pre, tol=tolerance, maxiter=100, check_every=0, use_cuda_graph=True)
+            values = warm_matrix.values.numpy().copy()
+            for multiplier in (2.0, 0.5):
+                raw.values.assign(values * multiplier)
+                x.zero_()
+                wp.capture_launch(capture.graph)
+                np.testing.assert_array_equal(pre.update_status.numpy(), 0)
+                np.testing.assert_allclose(multiplier * a @ x.numpy(), 1.0, atol=4 * tolerance, rtol=0)
+
+
 def test_scaling_and_conversion(test, device):
     """Check badly scaled inputs and factor conversion overflow handling."""
     a = _path(12)
@@ -713,6 +873,8 @@ class TestFSAI(unittest.TestCase):
             FSAI(sp.bsr_zeros(3, 3, wp.bfloat16, device="cpu"))
         with self.assertRaisesRegex(ValueError, "reuse_pattern"):
             FSAI(raw).update()
+        with self.assertRaisesRegex(ValueError, "defer_pattern"):
+            FSAI(raw, defer_pattern=True)
         for diagonal in (0.0, -1.0, float("inf"), float("nan")):
             with self.assertRaisesRegex(ValueError, "positive diagonals"):
                 FSAI(_matrix(np.diag([1.0, diagonal]), "cpu"))
@@ -733,6 +895,8 @@ for dtype in (wp.float32, wp.float64):
         test_solver_integration,
         test_refit_and_rollback,
         test_regularized_refit,
+        test_deferred_pattern,
+        test_deferred_pattern_failures,
     ):
         add_function_test(TestFSAI, f"{func.__name__}_{dtype.__name__}", func, devices=devices, dtype=dtype)
 for func in (
@@ -768,6 +932,11 @@ for dtype in (wp.float32, wp.float64):
 add_function_test(
     TestFSAI, "test_event_only_on_stream_change", test_event_only_on_stream_change, devices=get_cuda_test_devices()
 )
+for dtype in (wp.float32, wp.float64):
+    for func in (test_deferred_pattern_graph, test_deferred_conditional_graph_solve):
+        add_function_test(
+            TestFSAI, f"{func.__name__}_{dtype.__name__}", func, devices=get_cuda_test_devices(), dtype=dtype
+        )
 add_function_test(TestFSAI, "test_concurrent_streams", test_concurrent_streams, devices=get_cuda_test_devices())
 add_function_test(
     TestFSAI,

@@ -12,7 +12,10 @@ See https://hypre.readthedocs.io/en/latest/solvers-fsai.html for the adaptive
 FSAI algorithm. This implementation uses a row-size cap rather than a step cap.
 """
 
+import types
 from functools import lru_cache
+
+import numpy as np
 
 import warp as wp
 from warp._src import sparse as sp
@@ -71,8 +74,11 @@ def _build_kernels(dtype, width, step_size=1):
         cols_out: wp.array[int],
         vals_out: wp.array[dtype],
         status: wp.array[int],
+        ready: wp.array[int],
     ):
         i = wp.tid()
+        if ready[0] != 0:
+            return
         pattern = indices(-1)
         chol = matrix(dtype(0))
         z = vector(dtype(0))
@@ -238,11 +244,29 @@ class FSAI(LinearOperator):
             topology with the original on the device and reject a mismatch. Pass ``False``
             to skip the comparison when the caller guarantees an unchanged topology; a
             changed topology then gives undefined results and may read out of bounds.
+        defer_pattern: Construct from the topology of ``A`` alone, without reading its values,
+            and select the supports on the device during the first successful :meth:`update`.
+            Requires ``reuse_pattern``. Until then the preconditioner is the identity. Every
+            kernel of that selection checks :attr:`pattern_ready` and does nothing once the
+            pattern exists, so a CUDA graph that captured the first update selects the pattern
+            on its first replay and only refits on later replays. ``G`` is then stored with
+            padded rows (``row_counts``), ``GT`` has capacity for ``max_row_size`` entries per
+            row, and an extra scalar copy of block matrices is kept to search for supports.
+            A row with an unusable diagonal keeps a diagonal-only support, which is reported
+            in :attr:`update_status`, if ``regularize_refit`` is set; otherwise the update is
+            rejected and the next one selects again.
 
     Attributes:
         G: Canonical scalar BSR factor with finite entries and a positive diagonal.
         GT: Stored transpose of ``G``, including any storage rounding.
-        truncated_rows: Number of setup rows stopped by the pivot safeguard.
+        truncated_rows: Number of setup rows stopped by the pivot safeguard, or ``None``
+            with ``defer_pattern`` (see :attr:`pattern_status`).
+        pattern_ready: ``None`` without ``defer_pattern``. Otherwise an ``int`` array on the
+            matrix device holding ``1`` once the supports have been selected and published.
+        pattern_status: ``None`` without ``defer_pattern``. Otherwise an ``int`` array on the
+            matrix device with the counts from the most recent support selection: the rows
+            stopped by the pivot safeguard at index 1 and the rows whose factor lost finite
+            entries or a positive diagonal at index 2. Index 0 is unused.
         source: Matrix used by the most recent successful construction or update.
         update_status: ``None`` without ``reuse_pattern``. Otherwise an ``int`` array
             on the matrix device with four counts from the most recent update: the
@@ -253,7 +277,8 @@ class FSAI(LinearOperator):
             unless the topology mismatched.
 
     Note:
-        Construction synchronizes and cannot be captured. :meth:`update` can be
+        Construction synchronizes and cannot be captured, but with ``defer_pattern`` it
+        needs only the topology of the matrix. :meth:`update` can be
         captured in a CUDA graph (see its documentation), and application is
         CUDA graph-capturable after warming up the kernels, including inside the
         conditional graph loop of the iterative solvers. Applications of one instance
@@ -292,6 +317,7 @@ class FSAI(LinearOperator):
         max_step_size: int = 1,
         regularize_refit: bool = False,
         validate_topology: bool = True,
+        defer_pattern: bool = False,
     ):
         if not isinstance(A, sp.BsrMatrix) or A.shape[0] != A.shape[1] or A.block_shape[0] != A.block_shape[1]:
             raise ValueError("FSAI requires a square BSR matrix with square blocks")
@@ -313,6 +339,8 @@ class FSAI(LinearOperator):
             raise ValueError("factor_dtype must be the matrix scalar type, or wp.float32 for a float64 matrix")
         if reuse_pattern and A.row_counts is not None:
             raise ValueError("reuse_pattern requires compact BSR storage; compact with bsr_compress")
+        if defer_pattern and not reuse_pattern:
+            raise ValueError("defer_pattern requires reuse_pattern")
         self.max_row_size = max_row_size
         self.max_step_size = max_step_size
         self.factor_dtype = factor_dtype
@@ -320,6 +348,20 @@ class FSAI(LinearOperator):
         # Settle the source count before scalarization: nnz can otherwise be a
         # very loose assembly upper bound, causing oversized temporary buffers.
         A.nnz_sync()
+        self.pattern_ready = None
+        self.pattern_status = None
+        if defer_pattern:
+            self.truncated_rows = None
+            self._refit = _DeferredPlan(
+                self, A, max_row_size, max_step_size, kap_tolerance, pivot_floor, regularize_refit, validate_topology
+            )
+            self.update_status = self._refit.status
+            self.pattern_ready = self._refit.ready
+            self.pattern_status = self._refit.pattern_status
+            self._init_runtime(A, A.shape[0], A.scalar_type, A.device)
+            if A.device.is_cuda:
+                wp.synchronize_stream(A.device.stream)
+            return
         # Also canonicalizes padded storage. No host matrix staging.
 
         if A.row_counts is not None:
@@ -354,6 +396,7 @@ class FSAI(LinearOperator):
                 cols,
                 vals,
                 status,
+                wp.zeros(1, dtype=int, device=device),
             ],
             device=device,
         )
@@ -377,13 +420,7 @@ class FSAI(LinearOperator):
             if status.numpy()[0]:
                 raise ValueError("factor_dtype conversion lost finite entries or a positive diagonal")
         self.GT = sp.bsr_transposed(self.G)
-        # One persistent scratch vector, so application allocates nothing and can run
-        # inside a conditional graph body. Applications on different CUDA streams are
-        # ordered against each other through an event.
-        self._tmp = wp.empty(n, dtype=dtype, device=device)
-        self._tmp_event = wp.Event(device) if device.is_cuda else None
-        self._last_stream = None
-        super().__init__(A.shape, A.dtype, device, self._apply)
+        self._init_runtime(A, n, dtype, device)
         self._refit = None
         self.update_status = None
         if reuse_pattern:
@@ -396,11 +433,21 @@ class FSAI(LinearOperator):
             # or inside a captured graph, never reads unfinished factors.
             wp.synchronize_stream(device.stream)
 
+    def _init_runtime(self, A, n, dtype, device):
+        # One persistent scratch vector, so application allocates nothing and can run
+        # inside a conditional graph body. Applications on different CUDA streams are
+        # ordered against each other through an event.
+        self._tmp = wp.empty(n, dtype=dtype, device=device)
+        self._tmp_event = wp.Event(device) if device.is_cuda else None
+        self._last_stream = None
+        super().__init__(A.shape, A.dtype, device, self._apply)
+
     def update(self, A: sp.BsrMatrix | None = None) -> "FSAI":
         """Refit on the original factor supports, preserving captured apply buffers.
 
         Requires ``reuse_pattern=True`` and identical compact BSR topology/storage.
-        This is not a new adaptive pattern search. Rebuild when convergence worsens.
+        This is not a new adaptive pattern search, except that with ``defer_pattern``
+        the first successful update selects the supports. Rebuild when convergence worsens.
         Failed validation leaves the previous factors intact.
 
         Outside graph capture, the update synchronizes and raises on failure. During
@@ -458,8 +505,16 @@ def _pack_kernels(dtype, width):
     vec = wp.types.vector(length=width, dtype=dtype)
 
     @wp.kernel(enable_backward=False, module="unique")
-    def sort_rows(columns: wp.array[int], values: wp.array[dtype], ranks: wp.array[int], counts: wp.array[int]):
+    def sort_rows(
+        columns: wp.array[int],
+        values: wp.array[dtype],
+        ranks: wp.array[int],
+        counts: wp.array[int],
+        ready: wp.array[int],
+    ):
         i = wp.tid()
+        if ready[0] != 0:
+            return
         cols = ivec(-1)
         vals = vec(dtype(0))
         order = ivec(-1)
@@ -512,7 +567,9 @@ def _pack_factor(n, width, columns, values):
     counts = wp.zeros(n + 1, dtype=int, device=values.device)
     sort, pack = _pack_kernels(values.dtype, width)
     ranks = wp.empty(n * width, dtype=int, device=values.device)
-    wp.launch(sort, n, [columns, values, ranks, counts], device=values.device)
+    wp.launch(
+        sort, n, [columns, values, ranks, counts, wp.zeros(1, dtype=int, device=values.device)], device=values.device
+    )
     array_scan(counts, result.offsets)
     result.notify_nnz_changed()
     packed_ranks = wp.empty(result.nnz_sync(), dtype=int, device=values.device)
@@ -600,6 +657,177 @@ def _transpose_map(
         mapping[e] = sp.bsr_block_index(columns[e], i, toff, tcol)
 
 
+@wp.kernel(enable_backward=False, module="unique")
+def _source_map(
+    offsets: wp.array[int],
+    columns: wp.array[int],
+    source_offsets: wp.array[int],
+    source_columns: wp.array[int],
+    block_size: int,
+    mapping: wp.array[int],
+):
+    i = wp.tid()
+    for e in range(offsets[i], offsets[i + 1]):
+        j = columns[e]
+        slot = sp.bsr_block_index(i // block_size, j // block_size, source_offsets, source_columns)
+        mapping[e] = slot * block_size * block_size + (i % block_size) * block_size + j % block_size
+
+
+@lru_cache(None)
+def _deferred_kernels(dtype, storage, width, regularize):
+    """Create the kernels that select supports and build the transposed index on the device."""
+
+    @wp.func
+    def pending(ready: wp.array[int], status: wp.array[int]):
+        # The pattern is built only once, and only if the update was accepted.
+        ok = ready[0] == 0 and status[0] == 0
+        if not wp.static(regularize):
+            ok = ok and status[1] == 0 and status[2] == 0
+        return ok
+
+    @wp.func
+    def accepted(status: wp.array[int]):
+        ok = status[0] == 0
+        if not wp.static(regularize):
+            ok = ok and status[1] == 0 and status[2] == 0
+        return ok
+
+    @wp.kernel(enable_backward=False, module="unique")
+    def zero(values: wp.array[int], ready: wp.array[int]):
+        e = wp.tid()
+        if ready[0] == 0:
+            values[e] = 0
+
+    @wp.kernel(enable_backward=False, module="unique")
+    def gather(source: wp.array[dtype], mapping: wp.array[int], out: wp.array[dtype], ready: wp.array[int]):
+        e = wp.tid()
+        if ready[0] == 0:
+            out[e] = source[mapping[e]]
+
+    @wp.kernel(enable_backward=False, module="unique")
+    def publish(
+        support_columns: wp.array[int],
+        support_counts: wp.array[int],
+        ready: wp.array[int],
+        status: wp.array[int],
+        columns: wp.array[int],
+        row_counts: wp.array[int],
+        n: int,
+    ):
+        e = wp.tid()
+        if pending(ready, status):
+            columns[e] = support_columns[e]
+            if e < n:
+                row_counts[e] = support_counts[e + 1]
+
+    @wp.kernel(enable_backward=False, module="unique")
+    def count(
+        columns: wp.array[int],
+        row_counts: wp.array[int],
+        stride: int,
+        counts: wp.array[int],
+        ready: wp.array[int],
+        status: wp.array[int],
+    ):
+        row = wp.tid()
+        if pending(ready, status):
+            for p in range(row_counts[row]):
+                wp.atomic_add(counts, columns[row * stride + p] + 1, 1)
+
+    @wp.kernel(enable_backward=False, module="unique")
+    def scan(counts: wp.array[int], offsets: wp.array[int], ready: wp.array[int], status: wp.array[int]):
+        # One thread, once: the pattern is built a single time.
+        if pending(ready, status):
+            total = int(0)
+            for c in range(offsets.shape[0]):
+                total += counts[c]
+                offsets[c] = total
+
+    @wp.kernel(enable_backward=False, module="unique")
+    def fill(
+        columns: wp.array[int],
+        row_counts: wp.array[int],
+        stride: int,
+        offsets: wp.array[int],
+        cursor: wp.array[int],
+        entries: wp.array[int],
+        ready: wp.array[int],
+        status: wp.array[int],
+    ):
+        row = wp.tid()
+        if pending(ready, status):
+            for p in range(row_counts[row]):
+                column = columns[row * stride + p]
+                entries[offsets[column] + wp.atomic_add(cursor, column, 1)] = row * stride + p
+
+    @wp.kernel(enable_backward=False, module="unique")
+    def sort_columns(offsets: wp.array[int], entries: wp.array[int], ready: wp.array[int], status: wp.array[int]):
+        # Sorting each column by factor entry makes the transposed sums independent of
+        # the order in which the scatter ran.
+        column = wp.tid()
+        if pending(ready, status):
+            begin = offsets[column]
+            for e in range(begin + 1, offsets[column + 1]):
+                key = entries[e]
+                q = e - 1
+                while q >= begin and entries[q] > key:
+                    entries[q + 1] = entries[q]
+                    q -= 1
+                entries[q + 1] = key
+
+    @wp.kernel(enable_backward=False, module="unique")
+    def extract(
+        entries: wp.array[int],
+        offsets: wp.array[int],
+        stride: int,
+        columns: wp.array[int],
+        ready: wp.array[int],
+        status: wp.array[int],
+        n: int,
+    ):
+        e = wp.tid()
+        if pending(ready, status) and e < offsets[n]:
+            columns[e] = entries[e] // stride
+
+    @wp.kernel(enable_backward=False, module="unique")
+    def mark_ready(ready: wp.array[int], status: wp.array[int]):
+        if pending(ready, status):
+            ready[0] = 1
+
+    @wp.kernel(enable_backward=False, module="unique")
+    def commit_factor(candidate: wp.array[storage], status: wp.array[int], values: wp.array[storage]):
+        e = wp.tid()
+        if accepted(status):
+            values[e] = candidate[e]
+
+    @wp.kernel(enable_backward=False, module="unique")
+    def commit_transpose(
+        candidate: wp.array[storage],
+        status: wp.array[int],
+        entries: wp.array[int],
+        offsets: wp.array[int],
+        values: wp.array[storage],
+        n: int,
+    ):
+        e = wp.tid()
+        if accepted(status) and e < offsets[n]:
+            values[e] = candidate[entries[e]]
+
+    return types.SimpleNamespace(
+        zero=zero,
+        gather=gather,
+        publish=publish,
+        count=count,
+        scan=scan,
+        fill=fill,
+        sort_columns=sort_columns,
+        extract=extract,
+        mark_ready=mark_ready,
+        commit_factor=commit_factor,
+        commit_transpose=commit_transpose,
+    )
+
+
 @lru_cache(None)
 def _refit_kernels(block_type, dtype, storage, width, regularize):
     block_size = 1 if block_type == dtype else block_type._shape_[0]
@@ -650,6 +878,7 @@ def _refit_kernels(block_type, dtype, storage, width, regularize):
         values: wp.array[block_type],
         goff: wp.array[int],
         gcol: wp.array[int],
+        gcount: wp.array[int],
         growth_rank: wp.array[int],
         scale: wp.array[dtype],
         floor: dtype,
@@ -659,6 +888,8 @@ def _refit_kernels(block_type, dtype, storage, width, regularize):
         i = wp.tid()
         start = goff[i]
         size = goff[i + 1] - start
+        if gcount:
+            size = gcount[i]
         # Factor in the order the support was grown, so pivots (and the floor test)
         # match construction; sorted storage order can give very different pivots.
         member = ivec(0)
@@ -754,11 +985,14 @@ def _refit_kernels(block_type, dtype, storage, width, regularize):
     return diagonal, refit, commit
 
 
-class _RefitPlan:
-    def __init__(self, owner, A, growth_rank, width, floor, regularize, validate_topology):
+class _PlanBase:
+    """State and validation shared by the refit plans."""
+
+    def __init__(self, A, n, factor_dtype, width, floor, regularize, validate_topology):
         self.signature = (A.shape, A.dtype, A.device, A.row_counts is not None)
         # Every size used by an update is fixed here, so updating never reads the
         # block count back from the device and can be captured in a CUDA graph.
+        self.n = n
         self.nrow = A.nrow
         self.nnz = A.nnz_sync()
         self.topology = None
@@ -766,27 +1000,17 @@ class _RefitPlan:
             self.topology = [wp.clone(A.offsets[: A.nrow + 1])]
             if self.nnz:
                 self.topology.append(wp.clone(A.columns[: self.nnz]))
-        self.growth_rank = growth_rank
         self.floor = floor
         self.regularize = regularize
-        self.diagonal, self.refit, self.commit = _refit_kernels(
-            A.dtype, A.scalar_type, owner.factor_dtype, width, regularize
-        )
-        self.transpose = wp.empty(owner.G.nnz_sync(), dtype=int, device=A.device)
-        wp.launch(
-            _transpose_map,
-            owner.G.nrow,
-            [owner.G.offsets, owner.G.columns, owner.GT.offsets, owner.GT.columns, self.transpose],
-            device=A.device,
-        )
-        self.candidate = wp.empty_like(owner.G.values)
-        self.scale = wp.empty(owner.G.nrow, dtype=A.scalar_type, device=A.device)
+        self.diagonal, self.refit, self.commit = _refit_kernels(A.dtype, A.scalar_type, factor_dtype, width, regularize)
+        self.scale = wp.empty(n, dtype=A.scalar_type, device=A.device)
         # Counts of [topology mismatches, invalid diagonals, failed local factorizations,
         # regularized local factorizations].
         self.status = wp.zeros(4, dtype=int, device=A.device)
         self.topology_status = self.status[0:1]
 
-    def update(self, owner, A):
+    def prepare(self, A):
+        """Validate ``A``, reset the status, and compute the diagonal scaling."""
         if (A.shape, A.dtype, A.device, A.row_counts is not None) != self.signature:
             raise ValueError("FSAI update requires the original shape, dtype, device and topology")
         if A.offsets.size < self.nrow + 1 or A.columns.size < self.nnz or A.values.size < self.nnz:
@@ -806,22 +1030,49 @@ class _RefitPlan:
                     [A.columns[: self.nnz], self.topology[1], self.topology_status],
                     device=A.device,
                 )
-        n = owner.G.nrow
         wp.launch(
             self.diagonal,
-            n,
+            self.n,
             [A.offsets, A.columns, A.values, self.scale, self.status],
             device=A.device,
         )
+
+    def check(self):
+        """Raise if the most recent update was rejected, synchronizing the device."""
+        topology, diagonal, refit, _ = self.status.numpy()
+        if topology:
+            raise ValueError("FSAI update requires identical sparsity; rebuild to change it")
+        if (diagonal or refit) and not self.regularize:
+            raise ValueError("FSAI refit requires finite positive diagonals and SPD local supports")
+
+
+class _RefitPlan(_PlanBase):
+    """Refit on supports selected at construction, with compact factors."""
+
+    def __init__(self, owner, A, growth_rank, width, floor, regularize, validate_topology):
+        super().__init__(A, owner.G.nrow, owner.factor_dtype, width, floor, regularize, validate_topology)
+        self.growth_rank = growth_rank
+        self.transpose = wp.empty(owner.G.nnz_sync(), dtype=int, device=A.device)
+        wp.launch(
+            _transpose_map,
+            owner.G.nrow,
+            [owner.G.offsets, owner.G.columns, owner.GT.offsets, owner.GT.columns, self.transpose],
+            device=A.device,
+        )
+        self.candidate = wp.empty_like(owner.G.values)
+
+    def update(self, owner, A):
+        self.prepare(A)
         wp.launch(
             self.refit,
-            n,
+            self.n,
             [
                 A.offsets,
                 A.columns,
                 A.values,
                 owner.G.offsets,
                 owner.G.columns,
+                None,
                 self.growth_rank,
                 self.scale,
                 A.scalar_type(self.floor),
@@ -839,13 +1090,192 @@ class _RefitPlan:
         if not A.device.is_capturing:
             self.check()
 
-    def check(self):
-        """Raise if the most recent update was rejected, synchronizing the device."""
-        topology, diagonal, refit, _ = self.status.numpy()
-        if topology:
-            raise ValueError("FSAI update requires identical sparsity; rebuild to change it")
-        if (diagonal or refit) and not self.regularize:
-            raise ValueError("FSAI refit requires finite positive diagonals and SPD local supports")
+
+class _DeferredPlan(_PlanBase):
+    """Select the supports on the device at the first successful update.
+
+    Every kernel that builds the pattern or the transposed index first checks the
+    ``ready`` flag and returns if it is set, so a graph that captured the first update
+    selects the pattern on its first replay and only refits on later replays.
+    """
+
+    def __init__(self, owner, A, width, step_size, tolerance, floor, regularize, validate_topology):
+        n = A.shape[0]
+        device, dtype, storage = A.device, A.scalar_type, owner.factor_dtype
+        super().__init__(A, n, storage, width, floor, regularize, validate_topology)
+        self.width = width
+        self.tolerance = tolerance
+        # Scalar structure for the support search; its values follow the matrix.
+        if A.dtype == dtype:
+            self.scalar = A
+            self.mapping = None
+            self.values = None
+        else:
+            self.scalar = _scalarize_compact(A)
+            self.mapping = wp.empty(self.scalar.nnz_sync(), dtype=int, device=device)
+            wp.launch(
+                _source_map,
+                self.scalar.nrow,
+                [self.scalar.offsets, self.scalar.columns, A.offsets, A.columns, A.block_shape[0], self.mapping],
+                device=device,
+            )
+            self.values = wp.empty_like(self.scalar.values)
+        _, self.select = _build_kernels(dtype, width, step_size)
+        self.sort, _ = _pack_kernels(dtype, width)
+        self.kernels = _deferred_kernels(dtype, storage, width, regularize)
+        self.ready = wp.zeros(1, dtype=int, device=device)
+        self.pattern_status = wp.zeros(3, dtype=int, device=device)
+        self.published = False
+        self.support_columns = wp.full(n * width, -1, dtype=int, device=device)
+        self.support_values = wp.zeros(n * width, dtype=dtype, device=device)
+        self.support_ranks = wp.zeros(n * width, dtype=int, device=device)
+        self.support_counts = wp.zeros(n + 1, dtype=int, device=device)
+        self.candidate = wp.zeros(n * width, dtype=storage, device=device)
+        self.transpose_counts = wp.zeros(n + 1, dtype=int, device=device)
+        self.transpose_cursor = wp.zeros(n, dtype=int, device=device)
+        self.transpose_entries = wp.zeros(n * width, dtype=int, device=device)
+
+        # Until the first update the factor is the identity.
+        rows = np.arange(n)
+        columns = np.full(n * width, -1, dtype=np.int32)
+        columns[rows * width] = rows
+        values = np.zeros(n * width, dtype=wp.dtype_to_numpy(storage))
+        values[rows * width] = 1
+        owner.G = sp.bsr_zeros(n, n, storage, device=device, row_capacity=width)
+        owner.G.columns = wp.array(columns, dtype=int, device=device)
+        owner.G.values = wp.array(values, dtype=storage, device=device)
+        owner.G.row_counts = wp.full(n, 1, dtype=int, device=device)
+        owner.G.notify_nnz_changed(nnz=n * width)
+        owner.GT = sp.bsr_zeros(n, n, storage, device=device)
+        owner.GT.offsets = wp.array(np.arange(n + 1), dtype=int, device=device)
+        owner.GT.columns = wp.array(np.where(columns >= 0, columns, 0), dtype=int, device=device)
+        transposed_values = np.zeros(n * width, dtype=values.dtype)
+        transposed_values[:n] = 1
+        owner.GT.values = wp.array(transposed_values, dtype=storage, device=device)
+        owner.GT.notify_nnz_changed(nnz=n * width)
+        self.pattern_ready = self.ready
+
+    def update(self, owner, A):
+        device, n, width = A.device, self.n, self.width
+        k = self.kernels
+        self.prepare(A)
+        capturing = device.is_capturing
+        # Eagerly, a published pattern needs none of the pattern kernels at all.
+        pending = capturing or not self.published
+        if pending:
+            wp.launch(k.zero, self.pattern_status.size, [self.pattern_status, self.ready], device=device)
+            source = self.scalar.values
+            if self.mapping is not None:
+                wp.launch(
+                    k.gather,
+                    self.mapping.size,
+                    [A.values.view(A.scalar_type).flatten(), self.mapping, self.values, self.ready],
+                    device=device,
+                )
+                source = self.values
+            wp.launch(
+                self.select,
+                n,
+                [
+                    self.scalar.offsets,
+                    self.scalar.columns,
+                    source,
+                    self.scale,
+                    A.scalar_type(self.tolerance),
+                    A.scalar_type(self.floor),
+                    self.support_columns,
+                    self.support_values,
+                    self.pattern_status,
+                    self.ready,
+                ],
+                device=device,
+            )
+            wp.launch(
+                self.sort,
+                n,
+                [self.support_columns, self.support_values, self.support_ranks, self.support_counts, self.ready],
+                device=device,
+            )
+        wp.launch(
+            self.refit,
+            n,
+            [
+                A.offsets,
+                A.columns,
+                A.values,
+                owner.G.offsets,
+                self.support_columns,
+                self.support_counts[1:],
+                self.support_ranks,
+                self.scale,
+                A.scalar_type(self.floor),
+                self.candidate,
+                self.status,
+            ],
+            device=device,
+        )
+        if pending:
+            self._publish(owner, device)
+        wp.launch(k.commit_factor, n * width, [self.candidate, self.status, owner.G.values], device=device)
+        wp.launch(
+            k.commit_transpose,
+            n * width,
+            [self.candidate, self.status, self.transpose_entries, owner.GT.offsets, owner.GT.values, n],
+            device=device,
+        )
+        if not capturing:
+            self.check()
+            self.published = bool(self.ready.numpy()[0])
+
+    def _publish(self, owner, device):
+        """Publish the selected supports and build the transposed index, once."""
+        n, width, k = self.n, self.width, self.kernels
+        wp.launch(k.zero, n + 1, [self.transpose_counts, self.ready], device=device)
+        wp.launch(k.zero, n, [self.transpose_cursor, self.ready], device=device)
+        wp.launch(
+            k.publish,
+            n * width,
+            [
+                self.support_columns,
+                self.support_counts,
+                self.ready,
+                self.status,
+                owner.G.columns,
+                owner.G.row_counts,
+                n,
+            ],
+            device=device,
+        )
+        wp.launch(
+            k.count,
+            n,
+            [owner.G.columns, owner.G.row_counts, width, self.transpose_counts, self.ready, self.status],
+            device=device,
+        )
+        wp.launch(k.scan, 1, [self.transpose_counts, owner.GT.offsets, self.ready, self.status], device=device)
+        wp.launch(
+            k.fill,
+            n,
+            [
+                owner.G.columns,
+                owner.G.row_counts,
+                width,
+                owner.GT.offsets,
+                self.transpose_cursor,
+                self.transpose_entries,
+                self.ready,
+                self.status,
+            ],
+            device=device,
+        )
+        wp.launch(k.sort_columns, n, [owner.GT.offsets, self.transpose_entries, self.ready, self.status], device=device)
+        wp.launch(
+            k.extract,
+            n * width,
+            [self.transpose_entries, owner.GT.offsets, width, owner.GT.columns, self.ready, self.status, n],
+            device=device,
+        )
+        wp.launch(k.mark_ready, 1, [self.ready, self.status], device=device)
 
 
 def _flat_view(vector, scalar_type):
