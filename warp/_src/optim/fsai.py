@@ -496,7 +496,9 @@ class FSAI(LinearOperator):
         the first successful update selects the supports. Rebuild when convergence worsens.
         Failed validation leaves the previous factors intact.
 
-        Outside graph capture, the update synchronizes and raises on failure. During
+        Outside graph capture, the update synchronizes and raises on failure, except that
+        with both ``regularize_refit`` and ``validate_topology=False`` nothing can raise, so
+        it does not synchronize. During
         CUDA graph capture, the update performs no host reads and cannot raise
         for numerical failures; after each replay, inspect :attr:`update_status`.
         Run one eager update first so the kernels are loaded before capture, and
