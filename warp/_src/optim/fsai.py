@@ -227,6 +227,13 @@ class FSAI(LinearOperator):
         max_step_size: Maximum distinct largest-residual frontier entries selected
             per growth step, in [1, 64]. Batching reduces searches but can change the
             selected supports. A short batch does not exhaust the row-size budget.
+        regularize_refit: With ``reuse_pattern``, make :meth:`update` refit every row it can
+            instead of rejecting the whole factor when one row fails. A row whose pivot
+            falls to ``pivot_floor`` or below is refit with the pivot raised to the floor and
+            counted as regularized. A row with a nonfinite pivot, an invalid diagonal, or a
+            nonpositive result is replaced by its scaled diagonal and counted as failed. Only a
+            topology mismatch rejects the update. Inspect :attr:`update_status` to see
+            affected rows.
 
     Attributes:
         G: Canonical scalar BSR factor with finite entries and a positive diagonal.
@@ -234,10 +241,12 @@ class FSAI(LinearOperator):
         truncated_rows: Number of setup rows stopped by the pivot safeguard.
         source: Matrix used by the most recent successful construction or update.
         update_status: ``None`` without ``reuse_pattern``. Otherwise an ``int`` array
-            on the matrix device with three counts from the most recent update: the
+            on the matrix device with four counts from the most recent update: the
             topology mismatches against the original matrix, the invalid diagonals,
-            and the local factorizations that failed. The new factors were applied
-            only if all three are zero.
+            the local factorizations that failed, and the rows regularized (always
+            zero unless ``regularize_refit``). By default the new factors were applied
+            only if the first three are zero; with ``regularize_refit`` they were applied
+            unless the topology mismatched.
 
     Note:
         Construction synchronizes and cannot be captured. :meth:`update` can be
@@ -277,6 +286,7 @@ class FSAI(LinearOperator):
         factor_dtype: type | None = None,
         reuse_pattern: bool = False,
         max_step_size: int = 1,
+        regularize_refit: bool = False,
     ):
         if not isinstance(A, sp.BsrMatrix) or A.shape[0] != A.shape[1] or A.block_shape[0] != A.block_shape[1]:
             raise ValueError("FSAI requires a square BSR matrix with square blocks")
@@ -371,7 +381,7 @@ class FSAI(LinearOperator):
         self._refit = None
         self.update_status = None
         if reuse_pattern:
-            self._refit = _RefitPlan(self, A, scalar, growth_rank, max_row_size, pivot_floor)
+            self._refit = _RefitPlan(self, A, scalar, growth_rank, max_row_size, pivot_floor, regularize_refit)
             self.update_status = self._refit.status
         if device.is_cuda:
             # Factor work is asynchronous; finish it so first use on any other stream,
@@ -597,7 +607,7 @@ def _transpose_map(
 
 
 @lru_cache(None)
-def _refit_kernels(dtype, storage, width):
+def _refit_kernels(dtype, storage, width, regularize):
     vec = wp.types.vector(length=width, dtype=dtype)
     mat = wp.types.matrix(shape=(width, width), dtype=dtype)
     ivec = wp.types.vector(length=width, dtype=int)
@@ -618,7 +628,7 @@ def _refit_kernels(dtype, storage, width):
         scale: wp.array[dtype],
         floor: dtype,
         out: wp.array[storage],
-        bad: wp.array[int],
+        status: wp.array[int],
     ):
         i = wp.tid()
         start = goff[i]
@@ -630,6 +640,7 @@ def _refit_kernels(dtype, storage, width):
             member[growth_rank[start + p]] = p
         chol = mat(dtype(0))
         valid = bool(True)
+        regularized = bool(False)
         for k in range(size):
             r = gcol[start + member[k]]
             for m in range(k + 1):
@@ -644,9 +655,17 @@ def _refit_kernels(dtype, storage, width):
                 for t in range(m):
                     a -= chol[k, t] * chol[m, t]
                 if k == m:
-                    if a <= floor or not wp.isfinite(a):
+                    if not wp.isfinite(a):
                         valid = False
                         a = dtype(1)
+                    elif a <= floor:
+                        if wp.static(regularize):
+                            # Raise the pivot to the floor and report the row.
+                            regularized = True
+                            a = floor
+                        else:
+                            valid = False
+                            a = dtype(1)
                     chol[k, m] = wp.sqrt(a)
                 else:
                     chol[k, m] = a / chol[m, m]
@@ -674,8 +693,20 @@ def _refit_kernels(dtype, storage, width):
             # Canonical lower-triangular support: the diagonal is last.
             if p == size - 1 and value <= storage(0):
                 valid = False
+        if wp.static(regularize):
+            # A failed row falls back to its own scaled diagonal (Jacobi), which stays
+            # finite and positive, so one bad row never blocks the others.
+            if not valid:
+                fallback = storage(scale[i])
+                if not (scale[i] > dtype(0) and wp.isfinite(fallback) and fallback > storage(0)):
+                    fallback = storage(1)
+                for p in range(size):
+                    out[start + p] = storage(0)
+                out[start + size - 1] = fallback
         if not valid:
-            wp.atomic_add(bad, 0, 1)
+            wp.atomic_add(status, 2, 1)
+        elif regularized:
+            wp.atomic_add(status, 3, 1)
 
     @wp.kernel(enable_backward=False, module="unique")
     def commit(
@@ -685,10 +716,13 @@ def _refit_kernels(dtype, storage, width):
         values: wp.array[storage],
         transposed: wp.array[storage],
     ):
-        # Publish the refit factor only if every validation passed; otherwise the
-        # previous factor stays in place.
+        # Publish the refit factor only if validation passed; otherwise the previous
+        # factor stays in place. With regularization only a topology mismatch blocks.
         e = wp.tid()
-        if status[0] == 0 and status[1] == 0 and status[2] == 0:
+        accepted = status[0] == 0
+        if not wp.static(regularize):
+            accepted = accepted and status[1] == 0 and status[2] == 0
+        if accepted:
             values[e] = candidate[e]
             transposed[mapping[e]] = candidate[e]
 
@@ -696,7 +730,7 @@ def _refit_kernels(dtype, storage, width):
 
 
 class _RefitPlan:
-    def __init__(self, owner, A, scalar, growth_rank, width, floor):
+    def __init__(self, owner, A, scalar, growth_rank, width, floor, regularize):
         self.signature = (A.shape, A.dtype, A.device, A.row_counts is not None)
         # Every size used by an update is fixed here, so updating never reads the
         # block count back from the device and can be captured in a CUDA graph.
@@ -708,7 +742,8 @@ class _RefitPlan:
         self.scalar = scalar
         self.growth_rank = growth_rank
         self.floor = floor
-        self.gather, self.refit, self.commit = _refit_kernels(A.scalar_type, owner.factor_dtype, width)
+        self.regularize = regularize
+        self.gather, self.refit, self.commit = _refit_kernels(A.scalar_type, owner.factor_dtype, width, regularize)
         self.mapping = wp.empty(scalar.nnz_sync(), dtype=int, device=A.device)
         # Padded source rows need compact search endpoints, not unused slots.
         # _source_map's search is safe for compact input; padded input is rejected
@@ -729,11 +764,11 @@ class _RefitPlan:
         self.values = wp.empty_like(scalar.values)
         self.candidate = wp.empty_like(owner.G.values)
         self.scale = wp.empty(scalar.nrow, dtype=A.scalar_type, device=A.device)
-        # Counts of [topology mismatches, invalid diagonals, failed local factorizations].
-        self.status = wp.zeros(3, dtype=int, device=A.device)
+        # Counts of [topology mismatches, invalid diagonals, failed local factorizations,
+        # regularized local factorizations].
+        self.status = wp.zeros(4, dtype=int, device=A.device)
         self.topology_status = self.status[0:1]
         self.diagonal_status = self.status[1:2]
-        self.refit_status = self.status[2:3]
 
     def update(self, owner, A, diagonal):
         if (A.shape, A.dtype, A.device, A.row_counts is not None) != self.signature:
@@ -780,7 +815,7 @@ class _RefitPlan:
                 self.scale,
                 A.scalar_type(self.floor),
                 self.candidate,
-                self.refit_status,
+                self.status,
             ],
             device=A.device,
         )
@@ -795,10 +830,10 @@ class _RefitPlan:
 
     def check(self):
         """Raise if the most recent update was rejected, synchronizing the device."""
-        topology, diagonal, refit = self.status.numpy()
+        topology, diagonal, refit, _ = self.status.numpy()
         if topology:
             raise ValueError("FSAI update requires identical sparsity; rebuild to change it")
-        if diagonal or refit:
+        if (diagonal or refit) and not self.regularize:
             raise ValueError("FSAI refit requires finite positive diagonals and SPD local supports")
 
 

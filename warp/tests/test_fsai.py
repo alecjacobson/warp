@@ -465,6 +465,71 @@ def test_refit_low_precision_diagonal(test, device):
     np.testing.assert_array_equal(_dense(pre.G), before)
 
 
+def _pair_matrix(first, second):
+    """Return a block diagonal matrix of two 2x2 pairs."""
+    a = np.zeros((4, 4))
+    a[:2, :2] = first
+    a[2:, 2:] = second
+    return a
+
+
+def test_regularized_refit(test, device, dtype):
+    """Check that a regularizing refit keeps updating rows next to a failing one."""
+    healthy = np.array([[1.0, 0.5], [0.5, 1.0]])
+    changed = np.array([[2.0, 0.5], [0.5, 1.0]])
+    singular = np.array([[1.0, 1.0], [1.0, 1.0]])
+    start = _matrix(_pair_matrix(healthy, healthy), device, dtype)
+    tolerance = 1e-5 if dtype == wp.float32 else 1e-12
+
+    def refit(pre, a):
+        pre.source.values.assign(_matrix(a, device, dtype).values.numpy())
+        return pre.update()
+
+    # By default a singular pair rejects the whole update and keeps the old factor.
+    strict = FSAI(start, max_row_size=2, reuse_pattern=True)
+    before = _dense(strict.G)
+    with test.assertRaisesRegex(ValueError, "SPD"):
+        refit(strict, _pair_matrix(singular, changed))
+    np.testing.assert_array_equal(_dense(strict.G), before)
+    test.assertEqual(strict.update_status.numpy()[3], 0)
+
+    # With regularization the healthy pair is refit and the singular row is reported.
+    pre = FSAI(
+        _matrix(_pair_matrix(healthy, healthy), device, dtype),
+        max_row_size=2,
+        reuse_pattern=True,
+        regularize_refit=True,
+    )
+    refit(pre, _pair_matrix(singular, changed))
+    np.testing.assert_array_equal(pre.update_status.numpy(), [0, 0, 0, 1])
+    reference = FSAI(_matrix(_pair_matrix(healthy, changed), device, dtype), max_row_size=2)
+    np.testing.assert_allclose(_dense(pre.G)[2:, 2:], _dense(reference.G)[2:, 2:], rtol=tolerance, atol=tolerance)
+    g = _dense(pre.G)
+    test.assertTrue(np.all(np.isfinite(g)))
+    test.assertTrue(np.all(np.diag(g) > 0))
+    np.testing.assert_array_equal(_dense(pre.GT), g.T)
+
+    # An invalid diagonal falls back to a unit diagonal row and leaves other rows refit.
+    broken = _pair_matrix(healthy, changed)
+    broken[0, 0] = -1.0
+    refit(pre, broken)
+    status = pre.update_status.numpy()
+    test.assertEqual(status[1], 1)
+    test.assertGreaterEqual(status[2], 1)
+    g = _dense(pre.G)
+    np.testing.assert_array_equal(g[0], [1.0, 0.0, 0.0, 0.0])
+    np.testing.assert_allclose(g[2:, 2:], _dense(reference.G)[2:, 2:], rtol=tolerance, atol=tolerance)
+
+    # A topology mismatch still rejects the update and keeps the factor.
+    kept = _dense(pre.G)
+    other = _matrix(
+        _pair_matrix(healthy, healthy) + np.diag([0.0, 0.0, 0.0, 0.0]) + np.eye(4)[::-1] * 0.1, device, dtype
+    )
+    with test.assertRaisesRegex(ValueError, "sparsity"):
+        pre.update(other)
+    np.testing.assert_array_equal(_dense(pre.G), kept)
+
+
 def test_scaling_and_conversion(test, device):
     """Check badly scaled inputs and factor conversion overflow handling."""
     a = _path(12)
@@ -624,6 +689,7 @@ for dtype in (wp.float32, wp.float64):
         test_application,
         test_solver_integration,
         test_refit_and_rollback,
+        test_regularized_refit,
     ):
         add_function_test(TestFSAI, f"{func.__name__}_{dtype.__name__}", func, devices=devices, dtype=dtype)
 for func in (
