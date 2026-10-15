@@ -1409,19 +1409,29 @@ def JetSpace(slots, dtype=None, *, width=None):
             they are Warp types; ``wp.float32`` when ``slots`` is an integer
             or contains only Python ``float``.
         width: Number of derivative directions each jet carries. Defaults to the
-            total number of scalar components in ``slots``, so that a jet carries
-            the full gradient. A smaller value suits directional derivatives,
-            such as a Hessian-vector product with ``width=1``.
+            total number of scalar components in ``slots``, in which case
+            ``seed`` seeds the unit directions and a jet carries the full
+            gradient. A smaller width carries only the directions passed to
+            ``directional``, which is cheaper when only a few projections of the
+            gradient are needed.
 
     Returns:
         A namespace holding the generated types (``scalar``, ``vec2``,
         ``vec3``, ``mat2``, ``mat3``, ``mat32``, ``mat23``, ``coeff``), the
         helpers that construct jets, and ``slots``, the native type of each slot.
 
-    Jets are created inside a kernel with ``seed`` or ``directional``::
+    Jets are created inside a kernel or function with ``seed`` or
+    ``directional``. With ``spring_energy`` an ordinary ``@wp.func`` that is
+    generic over its argument types::
 
-        J = wp.JetSpace((wp.vec3, wp.vec3))
-        a, b = J.seed(x0, x1)
+        J = wp.JetSpace((wp.vec3, wp.vec3))  # two 3D points, width 6
+
+
+        @wp.func
+        def spring_gradient(x0: wp.vec3, x1: wp.vec3):
+            # x0_jet and x1_jet are J.vec3: x0_jet carries directions 0-2, x1_jet 3-5.
+            x0_jet, x1_jet = J.seed(x0, x1)
+            return spring_energy(x0_jet, x1_jet).coeff  # the 6-component gradient
 
     ``seed(*values)`` takes one value per slot and returns one jet per slot,
     with the derivative directions numbered slot by slot in the order the
@@ -1432,15 +1442,17 @@ def JetSpace(slots, dtype=None, *, width=None):
     ``directional(*values, *directions)`` takes the same values, followed by
     ``width * len(slots)`` direction vectors ordered direction-major: direction
     ``q`` of slot ``s`` is argument ``q * len(slots) + s`` after the values. For
-    a width-1 space the directions are one value per slot, and the jets carry the
-    derivative along the combined direction::
+    example, for a width-1 space the directions are one value per slot, and the
+    jets carry the derivative along the combined direction::
 
-        J = wp.JetSpace((wp.vec3, wp.vec3), width=1)
-        a, b = J.directional(x0, x1, v0, v1)
+        J1 = wp.JetSpace((wp.vec3, wp.vec3), width=1)
 
-    Operands are positional arguments because Warp does not propagate adjoints
-    into a tuple argument, which would silently zero the reverse-over-forward
-    derivatives these helpers exist to support.
+
+        @wp.func
+        def spring_directional_derivative(x0: wp.vec3, x1: wp.vec3, v0: wp.vec3, v1: wp.vec3):
+            # Derivative along the combined direction (v0, v1).
+            x0_jet, x1_jet = J1.directional(x0, x1, v0, v1)
+            return spring_energy(x0_jet, x1_jet).coeff[0]
 
     ``variable(x, direction)`` is the underlying scalar primitive: a scalar jet
     with a unit derivative along ``direction``. Use it to seed in a loop, where

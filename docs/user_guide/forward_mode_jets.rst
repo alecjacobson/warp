@@ -112,7 +112,11 @@ slot, in the order the components appear (row-major within a matrix):
 
 .. code-block:: python
 
-    a, b = J.seed(x0, x1)  # a, b are J.vec3; a carries directions 0-2, b directions 3-5
+    @wp.func
+    def spring_gradient(x0: wp.vec3, x1: wp.vec3):
+        # x0_jet and x1_jet are J.vec3: x0_jet carries directions 0-2, x1_jet 3-5.
+        x0_jet, x1_jet = J.seed(x0, x1)
+        return spring_energy(x0_jet, x1_jet).coeff  # the 6-component gradient
 
 Because the arguments are checked against the declared slots by ordinary overload resolution, passing a ``vec2`` to a
 ``vec3`` slot fails to compile instead of numbering the wrong directions. A single-slot space takes and returns the bare
@@ -129,17 +133,15 @@ values followed by the direction to differentiate along:
 
     J1 = wp.JetSpace((wp.vec3, wp.vec3), width=1)
 
-    a, b = J1.directional(x0, x1, v0, v1)  # derivative along the combined direction (v0, v1)
+    @wp.func
+    def spring_directional_derivative(x0: wp.vec3, x1: wp.vec3, v0: wp.vec3, v1: wp.vec3):
+        # Derivative along the combined direction (v0, v1).
+        x0_jet, x1_jet = J1.directional(x0, x1, v0, v1)
+        return spring_energy(x0_jet, x1_jet).coeff[0]
 
 With ``width > 1``, ``directional()`` takes ``width * len(slots)`` directions, ordered direction-major: direction ``q`` of
 slot ``s`` is argument ``q * len(slots) + s`` after the values. ``seed()`` exists only when ``width`` equals the number of
 components; otherwise use ``directional()``.
-
-.. note::
-
-    Operands are positional arguments rather than tuples because Warp does not propagate adjoints into a tuple
-    argument. The call would compile and reverse mode would silently return zeros, which defeats the
-    reverse-over-forward Hessians below.
 
 Seeding inside a loop
 ^^^^^^^^^^^^^^^^^^^^^
