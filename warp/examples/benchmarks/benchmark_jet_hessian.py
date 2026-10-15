@@ -114,7 +114,7 @@ def build(k, dtype=wp.float32):
         i = wp.tid()
 
         acc = Jk.constant(dtype(0.0))
-        prev = Jk.seed(z[i, 0], 0)
+        prev = Jk.variable(z[i, 0], 0)
 
         for b in range(wp.static(outer)):
             for t in range(wp.static(inner)):
@@ -123,7 +123,7 @@ def build(k, dtype=wp.float32):
                 # j == 0 seeds `prev` above; j >= k is padding when k is not a
                 # product of the two factors.
                 if j >= 1 and j < wp.static(k):
-                    cur = Jk.seed(z[i, j], j)
+                    cur = Jk.variable(z[i, j], j)
                     acc = acc + wp.sin(prev * cur) + dtype(0.1) * (prev * prev * prev)
                     prev = cur
 
@@ -159,14 +159,14 @@ def build(k, dtype=wp.float32):
         i = wp.tid()
 
         acc = J2.constant(dtype(0.0))
-        prev = J2.seed(z[i, 0], 0)
+        prev = J2.variable(z[i, 0], 0)
 
         for b in range(wp.static(outer)):
             for t in range(wp.static(inner)):
                 j = b * wp.static(inner) + t
 
                 if j >= 1 and j < wp.static(k):
-                    cur = J2.seed(z[i, j], j)
+                    cur = J2.variable(z[i, j], j)
                     acc = acc + wp.sin(prev * cur) + dtype(0.1) * (prev * prev * prev)
                     prev = cur
 

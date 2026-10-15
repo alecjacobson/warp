@@ -68,8 +68,8 @@ solver.
 ### What `width` is
 
 `width` is the number of derivative directions a jet carries, and it is fixed at
-type-specialization time: `wp.JetSpace(6)` produces types whose `coeff` is a
-6-vector, unrolled into the generated code. It is a **compile-time constant, not
+type-specialization time: `wp.JetSpace((wp.vec3, wp.vec3))` (or `wp.JetSpace(6)`)
+produces types whose `coeff` is a 6-vector, unrolled into the generated code. It is a **compile-time constant, not
 a runtime length**. This is the single most important thing to understand about
 the API, because it decides what jets are and are not for.
 
@@ -80,8 +80,8 @@ The consequences follow directly:
   second-order jet carries `width²`. Nothing is sparse and nothing is skipped,
   so the width you ask for is the width you pay for, in registers and in
   compile time.
-- **Each distinct width is a distinct specialization.** `wp.JetSpace(6)` and
-  `wp.JetSpace(9)` generate separate struct types and separate builtin
+- **Each distinct width is a distinct specialization.** A width-6 and a
+  width-9 space generate separate struct types and separate builtin
   overloads. They coexist fine (R5), but a width chosen per launch, or read
   from data, is not expressible.
 - **This is the right shape for a *local* derivative.** The energies this
@@ -104,8 +104,9 @@ they do not.
 
 ### Approach
 
-`wp.JetSpace(width, dtype)` specializes a family of types at
-code-generation time and returns them in a namespace:
+`wp.JetSpace(slots, dtype)` specializes a family of types at
+code-generation time and returns them in a namespace. `slots` describes the
+inputs being differentiated with respect to -- see [Slots and seeding](#slots-and-seeding):
 
 | Name    | `value`         | `coeff`              |
 | ------- | --------------- | -------------------- |
@@ -127,7 +128,7 @@ The key move is what happens to those overloads: they are **registered as
 overloads of Warp's own builtins**, so user code needs no jet-specific syntax:
 
 ```python
-J = wp.JetSpace(6)
+J = wp.JetSpace((wp.vec3, wp.vec3))
 
 @wp.func
 def spring_energy(x0: J.vec3, x1: J.vec3) -> J.scalar:
@@ -137,6 +138,75 @@ def spring_energy(x0: J.vec3, x1: J.vec3) -> J.scalar:
 ```
 
 `spring_energy` is a plain `@wp.func`. Nothing is imported or installed.
+
+### Slots and seeding
+
+A jet's derivative directions are numbered, and a user has to say which input
+component each direction belongs to. Doing that with raw direction indices --
+`seed_vec3(x0, 0, 1, 2)`, `seed_vec3(x1, 3, 4, 5)` -- makes the user do
+bookkeeping the types already know, and needs one helper per input type. The
+space is therefore described by the *types* of its inputs, called slots:
+
+```python
+J = wp.JetSpace((wp.vec3, wp.vec3))      # width 6
+J = wp.JetSpace((wp.vec2, wp.float32, wp.mat22))  # width 7
+J = wp.JetSpace(4)                       # four scalar slots
+```
+
+Supported slot types are scalars, `vec2`, `vec3`, and the matrix shapes the
+matrix jets cover. An integer `n` means `n` scalar slots. The scalar type is
+inferred from the slots unless `dtype` is given; mixing precisions is an error.
+
+`J.seed(*values)` takes one value per slot and returns one jet per slot, with
+unit directions assigned in slot order (row-major within a matrix):
+
+```python
+a, b = J.seed(x0, x1)     # a, b are J.vec3; directions 0-2 and 3-5
+```
+
+A single call is therefore type-checked against the layout by ordinary overload
+resolution: passing a `vec2` where a `vec3` slot was declared fails to compile
+rather than seeding the wrong directions. Seeding is not a family of
+type-specific helpers; one name covers every slot type.
+
+`J.directional(*values, *directions)` takes the same values followed by the
+directions explicitly, flat and direction-major: direction `q` of slot `s` is
+argument `q * len(slots) + s` after the values. The number of directions is
+`width`, which need not equal the number of components. The default `width` is
+the component count, which makes `seed` the coordinate special case; passing
+`width=1` gives one combined direction, the building block for a
+Hessian-vector product:
+
+```python
+J1 = wp.JetSpace((wp.vec3, wp.vec3), width=1)
+a, b = J1.directional(x0, x1, v0, v1)    # derivative along (v0, v1)
+```
+
+`seed` exists only when `width` equals the component count; otherwise reading
+it raises an error pointing at `directional`.
+
+`J.variable(x, direction)` remains as the scalar primitive, for seeding inside a
+loop where the number of scalars is not a fixed argument list.
+
+**Why positional arguments, not tuples.** Passing the values as one tuple
+(`J.seed((x0, x1))`) and the directions as nested tuples reads more naturally, but
+Warp does not propagate adjoints into a tuple *argument*: the call compiles, and
+reverse mode then returns zero. That is fatal here, because differentiating
+through `seed` is how reverse-over-forward Hessians are computed. Multiple
+*return* values do propagate correctly, so `a, b = J.seed(x0, x1)` is safe.
+Nested tuples are not supported at all. `test_jet_seed_is_differentiable` guards
+the property.
+
+**Why the helpers are generated from source.** The number of arguments depends
+on the layout, so `seed` and `directional` cannot be written once. They are
+generated per layout as source text, registered with `linecache` so Warp's
+codegen can read it back, and cached by `(width, dtype, slots)`. All layouts of
+one width and dtype share the same jet types and arithmetic, so a space declared
+as `(wp.vec3, wp.vec3)` and one declared as `6` interoperate.
+
+**Second-order spaces** take scalar slots only (`wp.JetSpace2(3)`), matching the
+scalar payload of `Jet2Scalar`. `seed(*scalars)` is available; `directional` is
+not, because a second-order jet is seeded along coordinates.
 
 ### Why registration on builtins is necessary
 
@@ -242,7 +312,7 @@ so jet code compares `.value` explicitly; making them dispatch is tracked in
 [#10](https://github.com/alecjacobson/warp/issues/10).
 
 **What stays on the namespace.** Seeding and construction (`seed`,
-`seed_vec3`, `constant`, `directional_vec3`, `make_vec3`, ...) have no builtin
+`directional`, `variable`, `constant`, `make_vec3`, ...) have no builtin
 counterpart, so they remain namespace members. So do `perp` and `cross2`, which
 Warp does not define for `vec2`; adding them as builtin overloads would give
 jets a surface Warp itself lacks.
@@ -275,7 +345,8 @@ def local_energy(a: J.scalar, b: J.scalar) -> J.scalar:
 @wp.kernel
 def local_gradient(z: wp.array2d[float], grad_g: wp.array[J.coeff]):
     i = wp.tid()
-    grad_g[i] = local_energy(J.seed(z[i, 0], 0), J.seed(z[i, 1], 1)).coeff
+    a, b = J.seed(z[i, 0], z[i, 1])
+    grad_g[i] = local_energy(a, b).coeff
 ```
 
 Taping that launch and running one backward pass per gradient component gives
@@ -295,7 +366,7 @@ chain without hand-derivatives. Overloads cover `transpose`, `trace`,
 `determinant`, matmul, and `inverse`. Inverse uses the closed-form differential
 `d(A⁻¹) = -A⁻¹ (dA) A⁻¹`, evaluated per direction from `A⁻¹` computed once. A
 `mat3` deformation gradient is built column-by-column from three seeded `vec3`
-endpoints (`make_mat3`); the rectangular pair supports triangles, whose `3×2`
+endpoints (`make_mat3`), or seeded directly by declaring a `wp.mat33` slot; the rectangular pair supports triangles, whose `3×2`
 `F` and `S = FᵀF` come from `make_mat32` and the `(2×3)(3×2)` product.
 
 These reuse the native `wp.inverse`/`wp.determinant` on the `value` and only
@@ -383,7 +454,14 @@ forward value and gradient; `vec3` geometry through `wp.length` on a spring
 energy with a known closed-form gradient; `v[i]`, `wp.dot`, `wp.cross`,
 `wp.normalize`, `wp.length_sq`; two widths coexisting, asserting the first still
 resolves after the second registers; a `float64` space, asserted to `1e-12`; and
-`JetSpace` caching and width validation.
+`JetSpace` caching and width validation. Seeding by slot is checked directly --
+the coefficient blocks of a `vec2`/scalar/`mat22` layout must come out as
+consecutive identity rows, a single slot takes and returns a bare value,
+`directional` over a coordinate basis must reproduce `seed`, and one combined
+direction must give the gradient contracted with it. A separate test takes the
+Hessian by reverse mode through `seed` and through a width-1 `directional`
+(against a closed form), because Warp silently zeroes adjoints that flow through
+a tuple argument and this is the property that would break first.
 
 **`warp/tests/test_jet_ops.py`** (`TestJetOps`, `TestJetMatrix`). Finite-
 difference checks for the wider op surface: inverse-trig, `pow` variants, and
