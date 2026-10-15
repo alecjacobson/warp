@@ -382,6 +382,7 @@ class FSAI(LinearOperator):
         # ordered against each other through an event.
         self._tmp = wp.empty(n, dtype=dtype, device=device)
         self._tmp_event = wp.Event(device) if device.is_cuda else None
+        self._last_stream = None
         super().__init__(A.shape, A.dtype, device, self._apply)
         self._refit = None
         self.update_status = None
@@ -431,22 +432,24 @@ class FSAI(LinearOperator):
         return self
 
     def _apply(self, x, y, z, alpha, beta):
-        x = x.view(self.scalar_type).flatten()
-        z = z.view(self.scalar_type).flatten()
-        y = y.view(self.scalar_type).flatten()
+        x, y, z = (_flat_view(v, self.scalar_type) for v in (x, y, z))
         # Outside graph capture, order this application after the previous one on any
         # other stream, since both share the scratch vector. Inside capture on this
         # stream the graph's own dependencies apply and events must not be recorded or
         # waited on; another stream capturing does not exempt this one.
         stream = x.device.stream if x.device.is_cuda and not x.device.stream.is_capturing else None
-        if stream is not None:
-            stream.wait_event(self._tmp_event)
+        if stream is not None and stream is not self._last_stream:
+            # Work on one stream is already ordered; only a change of stream needs an
+            # event, recorded on the stream that last used the scratch vector.
+            last = self._last_stream
+            if last is not None and not last.is_capturing:
+                last.record_event(self._tmp_event)
+                stream.wait_event(self._tmp_event)
+            self._last_stream = stream
         if alpha != 0.0:
             _matvec(self.G, x, self._tmp, self._tmp, 1.0, 0.0)
         # x is fully consumed before writing z, including when x, y, z alias.
         _matvec(self.GT, self._tmp, y, z, alpha, beta)
-        if stream is not None:
-            stream.record_event(self._tmp_event)
 
 
 @lru_cache(None)
@@ -845,11 +848,19 @@ class _RefitPlan:
             raise ValueError("FSAI refit requires finite positive diagonals and SPD local supports")
 
 
+def _flat_view(vector, scalar_type):
+    """Return a flat array of scalars over ``vector``, without a new view when it already is one."""
+    if vector.dtype == scalar_type and vector.ndim == 1:
+        return vector
+    return vector.view(scalar_type).flatten()
+
+
 @lru_cache(None)
-def _mixed_kernel(storage_type, dtype):
+def _matvec_kernel(storage_type, dtype):
     @wp.kernel(enable_backward=False, module="unique")
     def mv(
         offsets: wp.array[int],
+        row_counts: wp.array[int],
         columns: wp.array[int],
         values: wp.array[storage_type],
         x: wp.array[dtype],
@@ -861,7 +872,10 @@ def _mixed_kernel(storage_type, dtype):
         row = wp.tid()
         result = dtype(0)
         if alpha != dtype(0):
-            for e in range(offsets[row], offsets[row + 1]):
+            end = offsets[row + 1]
+            if row_counts:
+                end = offsets[row] + row_counts[row]
+            for e in range(offsets[row], end):
                 result += dtype(values[e]) * x[columns[e]]
             result *= alpha
         if beta != dtype(0):
@@ -872,15 +886,10 @@ def _mixed_kernel(storage_type, dtype):
 
 
 def _matvec(a, x, y, z, alpha, beta):
-    """Compute ``z = alpha * a @ x + beta * y`` for a canonical scalar CSR matrix."""
-    if a.scalar_type != x.dtype:
-        wp.launch(
-            _mixed_kernel(a.scalar_type, x.dtype),
-            a.nrow,
-            [a.offsets, a.columns, a.values, x, y, z, x.dtype(alpha), x.dtype(beta)],
-            device=a.device,
-        )
-    else:
-        if beta != 0.0 and z.ptr != y.ptr:
-            wp.copy(z, y)
-        sp.bsr_mv(a, x, z, alpha=alpha, beta=beta)
+    """Compute ``z = alpha * a @ x + beta * y`` for a scalar CSR factor, one thread per row."""
+    wp.launch(
+        _matvec_kernel(a.scalar_type, x.dtype),
+        a.nrow,
+        [a.offsets, a.row_counts, a.columns, a.values, x, y, z, x.dtype(alpha), x.dtype(beta)],
+        device=a.device,
+    )

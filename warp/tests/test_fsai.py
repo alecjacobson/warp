@@ -284,16 +284,20 @@ def test_empty(test, device):
 
 
 def test_apply_dispatch(test, device):
-    """Check that compressed factors use the mixed-storage kernel and others do not."""
+    """Check that application runs the factor kernel for every storage type, never bsr_mv."""
     a = _path(12)
     raw = _matrix(a, device, wp.float64)
     x = wp.ones(12, dtype=wp.float64, device=device)
     y = wp.empty_like(x)
     for storage in (wp.float64, wp.float32):
         pre = FSAI(raw, max_row_size=5, factor_dtype=storage)
-        with mock.patch.object(fsai_module, "_mixed_kernel", wraps=fsai_module._mixed_kernel) as mixed:
+        with (
+            mock.patch.object(fsai_module, "_matvec_kernel", wraps=fsai_module._matvec_kernel) as kernel,
+            mock.patch.object(sp, "bsr_mv") as bsr_mv,
+        ):
             pre.matvec(x, y, y, 1, 0)
-        test.assertEqual(mixed.call_count, 2 if storage == wp.float32 else 0)
+        test.assertEqual([call.args[0] for call in kernel.call_args_list], [storage, storage])
+        test.assertEqual(bsr_mv.call_count, 0)
         g = _dense(pre.G)
         np.testing.assert_allclose(y.numpy(), g.T @ g @ np.ones(12), rtol=1e-6, atol=1e-6)
 
@@ -385,7 +389,7 @@ def test_conditional_graph_solve(test, device, dtype):
 
 def test_concurrent_streams(test, device):
     """Check that one instance applied on concurrent streams never corrupts an output."""
-    num_blocks, block_size = 50_000, 12
+    num_blocks, block_size = 200_000, 12
     count = num_blocks * block_size
     A = sp.bsr_identity(num_blocks, block_type=wp.types.matrix((block_size, block_size), wp.float32), device=device)
     pre = FSAI(A)
@@ -411,7 +415,7 @@ def test_concurrent_streams(test, device):
 
 def test_streams_during_unrelated_capture(test, device):
     """Check that streams stay ordered while another stream captures an unrelated graph."""
-    num_blocks, block_size, iterations = 50_000, 12, 20
+    num_blocks, block_size, iterations = 200_000, 12, 10
     count = num_blocks * block_size
     A = sp.bsr_identity(num_blocks, block_type=wp.types.matrix((block_size, block_size), wp.float32), device=device)
     pre = FSAI(A)
@@ -441,6 +445,26 @@ def test_streams_during_unrelated_capture(test, device):
     for z0, z1 in zip(outputs0, outputs1, strict=True):
         np.testing.assert_array_equal(z0.numpy(), x0.numpy())
         np.testing.assert_array_equal(z1.numpy(), x1.numpy())
+
+
+def test_event_only_on_stream_change(test, device):
+    """Check that stream ordering records events only when the application stream changes."""
+    num_blocks = 1000
+    A = sp.bsr_identity(num_blocks, block_type=wp.types.matrix((3, 3), wp.float32), device=device)
+    pre = FSAI(A)
+    other = wp.Stream(device)
+    x = wp.ones(num_blocks * 3, dtype=wp.float32, device=device)
+    y = wp.zeros_like(x)
+    pre.matvec(x, y, y, 1.0, 0.0)
+    with mock.patch.object(wp.Stream, "record_event", autospec=True, side_effect=wp.Stream.record_event) as record:
+        for _ in range(5):
+            pre.matvec(x, y, y, 1.0, 0.0)
+        test.assertEqual(record.call_count, 0)
+        with wp.ScopedStream(other, sync_enter=False, sync_exit=False):
+            pre.matvec(x, y, y, 1.0, 0.0)
+        test.assertEqual(record.call_count, 1)
+    wp.synchronize_device(device)
+    np.testing.assert_array_equal(y.numpy(), x.numpy())
 
 
 def test_refit_growth_order(test, device):
@@ -741,6 +765,9 @@ for dtype in (wp.float32, wp.float64):
         devices=get_cuda_test_devices(),
         dtype=dtype,
     )
+add_function_test(
+    TestFSAI, "test_event_only_on_stream_change", test_event_only_on_stream_change, devices=get_cuda_test_devices()
+)
 add_function_test(TestFSAI, "test_concurrent_streams", test_concurrent_streams, devices=get_cuda_test_devices())
 add_function_test(
     TestFSAI,
