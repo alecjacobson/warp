@@ -530,6 +530,25 @@ def test_regularized_refit(test, device, dtype):
     np.testing.assert_array_equal(_dense(pre.G), kept)
 
 
+def test_skipped_topology_validation(test, device):
+    """Check that disabling topology validation skips the comparison and keeps refit results."""
+    a = _path(12)
+    for block in (1, 3):
+        raw = _matrix(a, device, block=block)
+        checked = FSAI(raw, max_row_size=5, reuse_pattern=True)
+        unchecked = FSAI(raw, max_row_size=5, reuse_pattern=True, validate_topology=False)
+        updated = _matrix(0.5 * a + np.eye(12), device, block=block)
+        compared = []
+        for pre in (checked, unchecked):
+            with mock.patch.object(wp, "launch", wraps=wp.launch) as launch:
+                pre.update(updated)
+            compared.append(sum(call.args[0] is fsai_module._compare_topology for call in launch.call_args_list))
+        test.assertEqual(compared, [2, 0])
+        np.testing.assert_array_equal(unchecked.update_status.numpy(), 0)
+        np.testing.assert_array_equal(_dense(unchecked.G), _dense(checked.G))
+        np.testing.assert_array_equal(_dense(unchecked.GT), _dense(checked.GT))
+
+
 def test_scaling_and_conversion(test, device):
     """Check badly scaled inputs and factor conversion overflow handling."""
     a = _path(12)
@@ -696,6 +715,7 @@ for func in (
     test_narrow_frontier_and_zero_tolerance,
     test_pivot_guard,
     test_refit_growth_order,
+    test_skipped_topology_validation,
     test_refit_low_precision_diagonal,
     test_stored_zeros_and_capacity,
     test_padded_input,

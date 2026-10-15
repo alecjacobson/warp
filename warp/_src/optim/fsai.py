@@ -234,6 +234,10 @@ class FSAI(LinearOperator):
             nonpositive result is replaced by its scaled diagonal and counted as failed. Only a
             topology mismatch rejects the update. Inspect :attr:`update_status` to see
             affected rows.
+        validate_topology: With ``reuse_pattern``, have :meth:`update` compare the matrix
+            topology with the original on the device and reject a mismatch. Pass ``False``
+            to skip the comparison when the caller guarantees an unchanged topology; a
+            changed topology then gives undefined results and may read out of bounds.
 
     Attributes:
         G: Canonical scalar BSR factor with finite entries and a positive diagonal.
@@ -287,6 +291,7 @@ class FSAI(LinearOperator):
         reuse_pattern: bool = False,
         max_step_size: int = 1,
         regularize_refit: bool = False,
+        validate_topology: bool = True,
     ):
         if not isinstance(A, sp.BsrMatrix) or A.shape[0] != A.shape[1] or A.block_shape[0] != A.block_shape[1]:
             raise ValueError("FSAI requires a square BSR matrix with square blocks")
@@ -319,7 +324,7 @@ class FSAI(LinearOperator):
 
         if A.row_counts is not None:
             scalar = sp.bsr_copy(A, block_shape=(1, 1))
-        elif A.dtype == A.scalar_type and not reuse_pattern:
+        elif A.dtype == A.scalar_type:
             scalar = A
         else:
             scalar = _scalarize_compact(A)
@@ -381,7 +386,9 @@ class FSAI(LinearOperator):
         self._refit = None
         self.update_status = None
         if reuse_pattern:
-            self._refit = _RefitPlan(self, A, scalar, growth_rank, max_row_size, pivot_floor, regularize_refit)
+            self._refit = _RefitPlan(
+                self, A, growth_rank, max_row_size, pivot_floor, regularize_refit, validate_topology
+            )
             self.update_status = self._refit.status
         if device.is_cuda:
             # Factor work is asynchronous; finish it so first use on any other stream,
@@ -419,7 +426,7 @@ class FSAI(LinearOperator):
         A = self.source if A is None else A
         if not isinstance(A, sp.BsrMatrix):
             raise ValueError("update requires a Warp BSR matrix")
-        self._refit.update(self, A, _build_kernels(self.scalar_type, self.max_row_size, self.max_step_size)[0])
+        self._refit.update(self, A)
         self.source = A
         return self
 
@@ -578,22 +585,6 @@ def _compare_topology(a: wp.array[int], b: wp.array[int], bad: wp.array[int]):
 
 
 @wp.kernel(enable_backward=False, module="unique")
-def _source_map(
-    offsets: wp.array[int],
-    columns: wp.array[int],
-    source_offsets: wp.array[int],
-    source_columns: wp.array[int],
-    block_size: int,
-    mapping: wp.array[int],
-):
-    i = wp.tid()
-    for e in range(offsets[i], offsets[i + 1]):
-        j = columns[e]
-        slot = sp.bsr_block_index(i // block_size, j // block_size, source_offsets, source_columns)
-        mapping[e] = slot * block_size * block_size + (i % block_size) * block_size + j % block_size
-
-
-@wp.kernel(enable_backward=False, module="unique")
 def _transpose_map(
     offsets: wp.array[int],
     columns: wp.array[int],
@@ -607,21 +598,53 @@ def _transpose_map(
 
 
 @lru_cache(None)
-def _refit_kernels(dtype, storage, width, regularize):
+def _refit_kernels(block_type, dtype, storage, width, regularize):
+    block_size = 1 if block_type == dtype else block_type._shape_[0]
     vec = wp.types.vector(length=width, dtype=dtype)
     mat = wp.types.matrix(shape=(width, width), dtype=dtype)
     ivec = wp.types.vector(length=width, dtype=int)
 
+    if block_type == dtype:
+
+        @wp.func
+        def entry(offsets: wp.array[int], columns: wp.array[int], values: wp.array[block_type], r: int, c: int):
+            slot = sp.bsr_block_index(r, c, offsets, columns)
+            result = dtype(0)
+            if slot >= 0:
+                result = values[slot]
+            return result
+
+    else:
+
+        @wp.func
+        def entry(offsets: wp.array[int], columns: wp.array[int], values: wp.array[block_type], r: int, c: int):
+            slot = sp.bsr_block_index(r // wp.static(block_size), c // wp.static(block_size), offsets, columns)
+            result = dtype(0)
+            if slot >= 0:
+                result = dtype(values[slot][r % wp.static(block_size), c % wp.static(block_size)])
+            return result
+
     @wp.kernel(enable_backward=False, module="unique")
-    def gather(source: wp.array[dtype], mapping: wp.array[int], out: wp.array[dtype]):
-        e = wp.tid()
-        out[e] = source[mapping[e]]
+    def diagonal(
+        offsets: wp.array[int],
+        columns: wp.array[int],
+        values: wp.array[block_type],
+        scale: wp.array[dtype],
+        status: wp.array[int],
+    ):
+        i = wp.tid()
+        d = entry(offsets, columns, values, i, i)
+        if d > dtype(0) and wp.isfinite(d):
+            scale[i] = dtype(1) / wp.sqrt(d)
+        else:
+            scale[i] = dtype(0)
+            wp.atomic_add(status, 1, 1)
 
     @wp.kernel(enable_backward=False, module="unique")
     def refit(
         offsets: wp.array[int],
         columns: wp.array[int],
-        values: wp.array[dtype],
+        values: wp.array[block_type],
         goff: wp.array[int],
         gcol: wp.array[int],
         growth_rank: wp.array[int],
@@ -645,13 +668,12 @@ def _refit_kernels(dtype, storage, width, regularize):
             r = gcol[start + member[k]]
             for m in range(k + 1):
                 c = gcol[start + member[m]]
-                slot = sp.bsr_block_index(r, c, offsets, columns)
                 a = dtype(0)
                 if r == c:
                     # Equilibrated diagonals are exactly one, as in construction.
                     a = dtype(1)
-                elif slot >= 0:
-                    a = values[slot] * scale[r] * scale[c]
+                else:
+                    a = entry(offsets, columns, values, r, c) * scale[r] * scale[c]
                 for t in range(m):
                     a -= chol[k, t] * chol[m, t]
                 if k == m:
@@ -726,33 +748,26 @@ def _refit_kernels(dtype, storage, width, regularize):
             values[e] = candidate[e]
             transposed[mapping[e]] = candidate[e]
 
-    return gather, refit, commit
+    return diagonal, refit, commit
 
 
 class _RefitPlan:
-    def __init__(self, owner, A, scalar, growth_rank, width, floor, regularize):
+    def __init__(self, owner, A, growth_rank, width, floor, regularize, validate_topology):
         self.signature = (A.shape, A.dtype, A.device, A.row_counts is not None)
         # Every size used by an update is fixed here, so updating never reads the
         # block count back from the device and can be captured in a CUDA graph.
         self.nrow = A.nrow
         self.nnz = A.nnz_sync()
-        self.topology = [wp.clone(A.offsets[: A.nrow + 1])]
-        if self.nnz:
-            self.topology.append(wp.clone(A.columns[: self.nnz]))
-        self.scalar = scalar
+        self.topology = None
+        if validate_topology:
+            self.topology = [wp.clone(A.offsets[: A.nrow + 1])]
+            if self.nnz:
+                self.topology.append(wp.clone(A.columns[: self.nnz]))
         self.growth_rank = growth_rank
         self.floor = floor
         self.regularize = regularize
-        self.gather, self.refit, self.commit = _refit_kernels(A.scalar_type, owner.factor_dtype, width, regularize)
-        self.mapping = wp.empty(scalar.nnz_sync(), dtype=int, device=A.device)
-        # Padded source rows need compact search endpoints, not unused slots.
-        # _source_map's search is safe for compact input; padded input is rejected
-        # explicitly for opt-in reuse, while ordinary construction supports it.
-        wp.launch(
-            _source_map,
-            scalar.nrow,
-            [scalar.offsets, scalar.columns, A.offsets, A.columns, A.block_shape[0], self.mapping],
-            device=A.device,
+        self.diagonal, self.refit, self.commit = _refit_kernels(
+            A.dtype, A.scalar_type, owner.factor_dtype, width, regularize
         )
         self.transpose = wp.empty(owner.G.nnz_sync(), dtype=int, device=A.device)
         wp.launch(
@@ -761,54 +776,47 @@ class _RefitPlan:
             [owner.G.offsets, owner.G.columns, owner.GT.offsets, owner.GT.columns, self.transpose],
             device=A.device,
         )
-        self.values = wp.empty_like(scalar.values)
         self.candidate = wp.empty_like(owner.G.values)
-        self.scale = wp.empty(scalar.nrow, dtype=A.scalar_type, device=A.device)
+        self.scale = wp.empty(owner.G.nrow, dtype=A.scalar_type, device=A.device)
         # Counts of [topology mismatches, invalid diagonals, failed local factorizations,
         # regularized local factorizations].
         self.status = wp.zeros(4, dtype=int, device=A.device)
         self.topology_status = self.status[0:1]
-        self.diagonal_status = self.status[1:2]
 
-    def update(self, owner, A, diagonal):
+    def update(self, owner, A):
         if (A.shape, A.dtype, A.device, A.row_counts is not None) != self.signature:
             raise ValueError("FSAI update requires the original shape, dtype, device and topology")
         if A.offsets.size < self.nrow + 1 or A.columns.size < self.nnz or A.values.size < self.nnz:
             raise ValueError("FSAI update requires storage covering every block of the original matrix")
         self.status.zero_()
-        wp.launch(
-            _compare_topology,
-            self.nrow + 1,
-            [A.offsets[: self.nrow + 1], self.topology[0], self.topology_status],
-            device=A.device,
-        )
-        if self.nnz:
+        if self.topology is not None:
             wp.launch(
                 _compare_topology,
-                self.nnz,
-                [A.columns[: self.nnz], self.topology[1], self.topology_status],
+                self.nrow + 1,
+                [A.offsets[: self.nrow + 1], self.topology[0], self.topology_status],
                 device=A.device,
             )
+            if self.nnz:
+                wp.launch(
+                    _compare_topology,
+                    self.nnz,
+                    [A.columns[: self.nnz], self.topology[1], self.topology_status],
+                    device=A.device,
+                )
+        n = owner.G.nrow
         wp.launch(
-            self.gather,
-            self.mapping.size,
-            [A.values.view(A.scalar_type).flatten(), self.mapping, self.values],
-            device=A.device,
-        )
-        s = self.scalar
-        wp.launch(
-            diagonal,
-            s.nrow,
-            [s.offsets, s.columns, self.values, self.scale, self.diagonal_status],
+            self.diagonal,
+            n,
+            [A.offsets, A.columns, A.values, self.scale, self.status],
             device=A.device,
         )
         wp.launch(
             self.refit,
-            s.nrow,
+            n,
             [
-                s.offsets,
-                s.columns,
-                self.values,
+                A.offsets,
+                A.columns,
+                A.values,
                 owner.G.offsets,
                 owner.G.columns,
                 self.growth_rank,
