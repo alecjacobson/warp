@@ -733,6 +733,39 @@ def test_deferred_conditional_graph_solve(test, device, dtype):
                 np.testing.assert_allclose(multiplier * a @ x.numpy(), 1.0, atol=4 * tolerance, rtol=0)
 
 
+def test_block_selection_matches_scalar(test, device, dtype):
+    """Check that selection on block storage matches selection on the scalar-expanded matrix."""
+    rng = np.random.default_rng(11)
+    for block in (2, 3):
+        count = 9
+        a = np.zeros((count * block, count * block))
+        for i in range(count):
+            for j in range(i):
+                if rng.random() < 0.35:
+                    blk = rng.normal(size=(block, block)) * 0.3
+                    # Entries stored as exact zeros inside a nonzero block must stay harmless.
+                    blk[0, -1] = 0.0
+                    a[i * block : (i + 1) * block, j * block : (j + 1) * block] = blk
+                    a[j * block : (j + 1) * block, i * block : (i + 1) * block] = blk.T
+        a += np.diag(np.abs(a).sum(1) + 1.0)
+        if dtype == wp.float16:
+            a = a.astype(np.float16).astype(np.float64)
+        raw = _matrix(a, device, dtype, block)
+        expanded = sp.bsr_copy(raw, block_shape=(1, 1))
+        for width, step, tolerance in ((3, 1, 1e-3), (8, 3, 1e-3), (12, 1, 0.0)):
+            options = {"max_row_size": width, "max_step_size": step, "kap_tolerance": tolerance}
+            blocked = FSAI(raw, **options)
+            scalar = FSAI(expanded, **options)
+            test.assertEqual(blocked.truncated_rows, scalar.truncated_rows)
+            for name in ("offsets", "columns", "values"):
+                np.testing.assert_array_equal(getattr(blocked.G, name).numpy(), getattr(scalar.G, name).numpy())
+            np.testing.assert_array_equal(blocked.GT.values.numpy(), scalar.GT.values.numpy())
+            deferred = FSAI(_topology_only(a, device, dtype, block), reuse_pattern=True, defer_pattern=True, **options)
+            deferred.source.values.assign(raw.values.numpy())
+            deferred.update()
+            np.testing.assert_array_equal(_dense(deferred.G), _dense(scalar.G))
+
+
 def test_scaling_and_conversion(test, device):
     """Check badly scaled inputs and factor conversion overflow handling."""
     a = _path(12)
@@ -897,6 +930,7 @@ for dtype in (wp.float32, wp.float64):
         test_regularized_refit,
         test_deferred_pattern,
         test_deferred_pattern_failures,
+        test_block_selection_matches_scalar,
     ):
         add_function_test(TestFSAI, f"{func.__name__}_{dtype.__name__}", func, devices=devices, dtype=dtype)
 for func in (
@@ -945,7 +979,7 @@ add_function_test(
     devices=get_cuda_test_devices(),
 )
 
-for func in (test_application, test_refit_and_rollback):
+for func in (test_application, test_refit_and_rollback, test_block_selection_matches_scalar):
     add_function_test(TestFSAI, f"{func.__name__}_float16", func, devices=devices, dtype=wp.float16)
 for func in (test_float16_factors, test_float16_pivot_guard):
     add_function_test(TestFSAI, func.__name__, func, devices=devices)

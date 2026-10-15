@@ -26,48 +26,82 @@ __all__ = ["FSAI"]
 
 
 @lru_cache(None)
-def _build_kernels(dtype, width, step_size=1):
+def _block_kernels(block_type, dtype):
+    """Create scalar-entry access and diagonal scaling that read BSR blocks in place."""
+    block_size = 1 if block_type == dtype else block_type._shape_[0]
+
+    if block_type == dtype:
+
+        @wp.func
+        def entry(
+            offsets: wp.array[int],
+            row_counts: wp.array[int],
+            columns: wp.array[int],
+            values: wp.array[block_type],
+            r: int,
+            c: int,
+        ):
+            slot = sp.bsr_block_index(r, c, offsets, columns, row_counts)
+            result = dtype(0)
+            if slot >= 0:
+                result = values[slot]
+            return result
+
+    else:
+
+        @wp.func
+        def entry(
+            offsets: wp.array[int],
+            row_counts: wp.array[int],
+            columns: wp.array[int],
+            values: wp.array[block_type],
+            r: int,
+            c: int,
+        ):
+            slot = sp.bsr_block_index(
+                r // wp.static(block_size), c // wp.static(block_size), offsets, columns, row_counts
+            )
+            result = dtype(0)
+            if slot >= 0:
+                result = dtype(values[slot][r % wp.static(block_size), c % wp.static(block_size)])
+            return result
+
+    @wp.kernel(enable_backward=False, module="unique")
+    def diagonal(
+        offsets: wp.array[int],
+        row_counts: wp.array[int],
+        columns: wp.array[int],
+        values: wp.array[block_type],
+        scale: wp.array[dtype],
+        status: wp.array[int],
+        counter: int,
+    ):
+        i = wp.tid()
+        d = entry(offsets, row_counts, columns, values, i, i)
+        if d > dtype(0) and wp.isfinite(d):
+            scale[i] = dtype(1) / wp.sqrt(d)
+        else:
+            scale[i] = dtype(0)
+            wp.atomic_add(status, counter, 1)
+
+    return block_size, entry, diagonal
+
+
+@lru_cache(None)
+def _build_kernels(block_type, dtype, width, step_size=1):
+    block_size, entry, _ = _block_kernels(block_type, dtype)
     best_indices = wp.types.vector(length=step_size, dtype=wp.int32)
     best_scores = wp.types.vector(length=step_size, dtype=dtype)
     indices = wp.types.vector(length=width, dtype=wp.int32)
     vector = wp.types.vector(length=width, dtype=dtype)
     matrix = wp.types.matrix(shape=(width, width), dtype=dtype)
 
-    @wp.func
-    def entry(
-        offsets: wp.array[int],
-        columns: wp.array[int],
-        values: wp.array[dtype],
-        i: int,
-        j: int,
-    ):
-        slot = sp.bsr_block_index(i, j, offsets, columns)
-        result = dtype(0)
-        if slot >= 0:
-            result = values[slot]
-        return result
-
-    @wp.kernel(enable_backward=False, module="unique")
-    def diagonal(
-        offsets: wp.array[int],
-        columns: wp.array[int],
-        values: wp.array[dtype],
-        scale: wp.array[dtype],
-        status: wp.array[int],
-    ):
-        i = wp.tid()
-        d = entry(offsets, columns, values, i, i)
-        if d > dtype(0) and wp.isfinite(d):
-            scale[i] = dtype(1) / wp.sqrt(d)
-        else:
-            scale[i] = dtype(0)
-            wp.atomic_add(status, 0, 1)
-
     @wp.kernel(enable_backward=False, module="unique")
     def build(
         offsets: wp.array[int],
+        row_counts: wp.array[int],
         columns: wp.array[int],
-        values: wp.array[dtype],
+        values: wp.array[block_type],
         scale: wp.array[dtype],
         tolerance: dtype,
         pivot_floor: dtype,
@@ -95,31 +129,35 @@ def _build_kernels(dtype, width, step_size=1):
             scores = best_scores(dtype(0))
             for p in range(size):
                 row = pattern[p]
-                for e in range(offsets[row], offsets[row + 1]):
-                    c = columns[e]
-                    selected = bool(c >= i)
-                    for q in range(size):
-                        if pattern[q] == c:
-                            selected = True
-                    for q in range(wp.static(step_size)):
-                        if candidates[q] == c:
-                            selected = True
-                    if not selected:
-                        residual = dtype(0)
+                block_row = row // wp.static(block_size)
+                for e in range(offsets[block_row], sp._bsr_row_end(offsets, row_counts, block_row)):
+                    for k in range(wp.static(block_size)):
+                        c = columns[e] * wp.static(block_size) + k
+                        selected = bool(c >= i)
                         for q in range(size):
-                            j = pattern[q]
-                            residual += entry(offsets, columns, values, c, j) * scale[c] * scale[j] * z[q]
-                        score = wp.abs(residual)
-                        for rank in range(wp.static(step_size)):
-                            if score > scores[rank] or (score == scores[rank] and c < candidates[rank]):
-                                for rev in range(wp.static(step_size - 1)):
-                                    dest = wp.static(step_size - 1) - rev
-                                    if dest > rank:
-                                        candidates[dest] = candidates[dest - 1]
-                                        scores[dest] = scores[dest - 1]
-                                candidates[rank] = c
-                                scores[rank] = score
-                                break
+                            if pattern[q] == c:
+                                selected = True
+                        for q in range(wp.static(step_size)):
+                            if candidates[q] == c:
+                                selected = True
+                        if not selected:
+                            residual = dtype(0)
+                            for q in range(size):
+                                j = pattern[q]
+                                residual += (
+                                    entry(offsets, row_counts, columns, values, c, j) * scale[c] * scale[j] * z[q]
+                                )
+                            score = wp.abs(residual)
+                            for rank in range(wp.static(step_size)):
+                                if score > scores[rank] or (score == scores[rank] and c < candidates[rank]):
+                                    for rev in range(wp.static(step_size - 1)):
+                                        dest = wp.static(step_size - 1) - rev
+                                        if dest > rank:
+                                            candidates[dest] = candidates[dest - 1]
+                                            scores[dest] = scores[dest - 1]
+                                    candidates[rank] = c
+                                    scores[rank] = score
+                                    break
             if candidates[0] < 0:
                 break
             old_z0 = z[0]
@@ -132,7 +170,7 @@ def _build_kernels(dtype, width, step_size=1):
                 w = vector(dtype(0))
                 pivot = dtype(1)
                 for p in range(size):
-                    a = entry(offsets, columns, values, best, pattern[p]) * scale[best] * scale[pattern[p]]
+                    a = entry(offsets, row_counts, columns, values, best, pattern[p]) * scale[best] * scale[pattern[p]]
                     for q in range(p):
                         a -= chol[p, q] * w[q]
                     w[p] = a / chol[p, p]
@@ -177,7 +215,7 @@ def _build_kernels(dtype, width, step_size=1):
         if not valid:
             wp.atomic_add(status, 2, 1)
 
-    return diagonal, build
+    return build
 
 
 @wp.kernel(enable_backward=False, module="unique")
@@ -251,7 +289,7 @@ class FSAI(LinearOperator):
             pattern exists, so a CUDA graph that captured the first update selects the pattern
             on its first replay and only refits on later replays. ``G`` is then stored with
             padded rows (``row_counts``), ``GT`` has capacity for ``max_row_size`` entries per
-            row, and an extra scalar copy of block matrices is kept to search for supports.
+            row.
             A row with an unusable diagonal keeps a diagonal-only support, which is reported
             in :attr:`update_status`, if ``regularize_refit`` is set; otherwise the update is
             rejected and the next one selects again.
@@ -345,9 +383,6 @@ class FSAI(LinearOperator):
         self.max_step_size = max_step_size
         self.factor_dtype = factor_dtype
         self.source = A
-        # Settle the source count before scalarization: nnz can otherwise be a
-        # very loose assembly upper bound, causing oversized temporary buffers.
-        A.nnz_sync()
         self.pattern_ready = None
         self.pattern_status = None
         if defer_pattern:
@@ -362,23 +397,18 @@ class FSAI(LinearOperator):
             if A.device.is_cuda:
                 wp.synchronize_stream(A.device.stream)
             return
-        # Also canonicalizes padded storage. No host matrix staging.
-
-        if A.row_counts is not None:
-            scalar = sp.bsr_copy(A, block_shape=(1, 1))
-        elif A.dtype == A.scalar_type:
-            scalar = A
-        else:
-            scalar = _scalarize_compact(A)
-        n = scalar.nrow
-        dtype, device = scalar.scalar_type, scalar.device
+        # Selection reads the matrix blocks in place, including padded storage; no
+        # scalar copy and no host matrix staging.
+        n = A.shape[0]
+        dtype, device = A.scalar_type, A.device
         scale = wp.empty(n, dtype=dtype, device=device)
         status = wp.zeros(3, dtype=int, device=device)
-        diagonal, build = _build_kernels(dtype, max_row_size, max_step_size)
+        _, _, diagonal = _block_kernels(A.dtype, dtype)
+        build = _build_kernels(A.dtype, dtype, max_row_size, max_step_size)
         wp.launch(
             diagonal,
             n,
-            [scalar.offsets, scalar.columns, scalar.values, scale, status],
+            [A.offsets, A.row_counts, A.columns, A.values, scale, status, 0],
             device=device,
         )
         cols = wp.empty(n * max_row_size, dtype=int, device=device)
@@ -387,9 +417,10 @@ class FSAI(LinearOperator):
             build,
             n,
             [
-                scalar.offsets,
-                scalar.columns,
-                scalar.values,
+                A.offsets,
+                A.row_counts,
+                A.columns,
+                A.values,
                 scale,
                 dtype(kap_tolerance),
                 dtype(pivot_floor),
@@ -582,61 +613,6 @@ def _pack_factor(n, width, columns, values):
     return result, packed_ranks
 
 
-@lru_cache(None)
-def _scalarize_kernel(dtype, block_size):
-    @wp.kernel(enable_backward=False, module="unique")
-    def scalarize(
-        offsets: wp.array[int],
-        columns: wp.array[int],
-        values: wp.array[dtype],
-        outoff: wp.array[int],
-        outcol: wp.array[int],
-        outval: wp.array[dtype],
-    ):
-        i = wp.tid()
-        r = i // wp.static(block_size)
-        component = i % wp.static(block_size)
-        start = offsets[r]
-        count = offsets[r + 1] - start
-        base = start * wp.static(block_size * block_size) + component * count * wp.static(block_size)
-        outoff[i] = base
-        for p in range(count):
-            for c in range(wp.static(block_size)):
-                dest = base + p * wp.static(block_size) + c
-                outcol[dest] = columns[start + p] * wp.static(block_size) + c
-                outval[dest] = values[
-                    (start + p) * wp.static(block_size * block_size) + component * wp.static(block_size) + c
-                ]
-        if i == outoff.shape[0] - 2:
-            outoff[i + 1] = base + count * wp.static(block_size)
-
-    return scalarize
-
-
-def _scalarize_compact(A):
-    """Expand canonical compact square BSR directly, retaining numerical zeros."""
-    b = A.block_shape[0]
-    result = sp.bsr_zeros(A.shape[0], A.shape[1], A.scalar_type, device=A.device)
-    count = A.nnz_sync() * b * b
-    result.columns = wp.empty(count, dtype=int, device=A.device)
-    result.values = wp.empty(count, dtype=A.scalar_type, device=A.device)
-    wp.launch(
-        _scalarize_kernel(A.scalar_type, b),
-        result.nrow,
-        [
-            A.offsets,
-            A.columns,
-            A.values.view(A.scalar_type).flatten(),
-            result.offsets,
-            result.columns,
-            result.values,
-        ],
-        device=A.device,
-    )
-    result.notify_nnz_changed(nnz=count)
-    return result
-
-
 @wp.kernel(enable_backward=False, module="unique")
 def _compare_topology(a: wp.array[int], b: wp.array[int], bad: wp.array[int]):
     i = wp.tid()
@@ -655,22 +631,6 @@ def _transpose_map(
     i = wp.tid()
     for e in range(offsets[i], offsets[i + 1]):
         mapping[e] = sp.bsr_block_index(columns[e], i, toff, tcol)
-
-
-@wp.kernel(enable_backward=False, module="unique")
-def _source_map(
-    offsets: wp.array[int],
-    columns: wp.array[int],
-    source_offsets: wp.array[int],
-    source_columns: wp.array[int],
-    block_size: int,
-    mapping: wp.array[int],
-):
-    i = wp.tid()
-    for e in range(offsets[i], offsets[i + 1]):
-        j = columns[e]
-        slot = sp.bsr_block_index(i // block_size, j // block_size, source_offsets, source_columns)
-        mapping[e] = slot * block_size * block_size + (i % block_size) * block_size + j % block_size
 
 
 @lru_cache(None)
@@ -697,12 +657,6 @@ def _deferred_kernels(dtype, storage, width, regularize):
         e = wp.tid()
         if ready[0] == 0:
             values[e] = 0
-
-    @wp.kernel(enable_backward=False, module="unique")
-    def gather(source: wp.array[dtype], mapping: wp.array[int], out: wp.array[dtype], ready: wp.array[int]):
-        e = wp.tid()
-        if ready[0] == 0:
-            out[e] = source[mapping[e]]
 
     @wp.kernel(enable_backward=False, module="unique")
     def publish(
@@ -815,7 +769,6 @@ def _deferred_kernels(dtype, storage, width, regularize):
 
     return types.SimpleNamespace(
         zero=zero,
-        gather=gather,
         publish=publish,
         count=count,
         scan=scan,
@@ -830,50 +783,15 @@ def _deferred_kernels(dtype, storage, width, regularize):
 
 @lru_cache(None)
 def _refit_kernels(block_type, dtype, storage, width, regularize):
-    block_size = 1 if block_type == dtype else block_type._shape_[0]
+    _, entry, diagonal = _block_kernels(block_type, dtype)
     vec = wp.types.vector(length=width, dtype=dtype)
     mat = wp.types.matrix(shape=(width, width), dtype=dtype)
     ivec = wp.types.vector(length=width, dtype=int)
 
-    if block_type == dtype:
-
-        @wp.func
-        def entry(offsets: wp.array[int], columns: wp.array[int], values: wp.array[block_type], r: int, c: int):
-            slot = sp.bsr_block_index(r, c, offsets, columns)
-            result = dtype(0)
-            if slot >= 0:
-                result = values[slot]
-            return result
-
-    else:
-
-        @wp.func
-        def entry(offsets: wp.array[int], columns: wp.array[int], values: wp.array[block_type], r: int, c: int):
-            slot = sp.bsr_block_index(r // wp.static(block_size), c // wp.static(block_size), offsets, columns)
-            result = dtype(0)
-            if slot >= 0:
-                result = dtype(values[slot][r % wp.static(block_size), c % wp.static(block_size)])
-            return result
-
-    @wp.kernel(enable_backward=False, module="unique")
-    def diagonal(
-        offsets: wp.array[int],
-        columns: wp.array[int],
-        values: wp.array[block_type],
-        scale: wp.array[dtype],
-        status: wp.array[int],
-    ):
-        i = wp.tid()
-        d = entry(offsets, columns, values, i, i)
-        if d > dtype(0) and wp.isfinite(d):
-            scale[i] = dtype(1) / wp.sqrt(d)
-        else:
-            scale[i] = dtype(0)
-            wp.atomic_add(status, 1, 1)
-
     @wp.kernel(enable_backward=False, module="unique")
     def refit(
         offsets: wp.array[int],
+        row_counts: wp.array[int],
         columns: wp.array[int],
         values: wp.array[block_type],
         goff: wp.array[int],
@@ -907,7 +825,7 @@ def _refit_kernels(block_type, dtype, storage, width, regularize):
                     # Equilibrated diagonals are exactly one, as in construction.
                     a = dtype(1)
                 else:
-                    a = entry(offsets, columns, values, r, c) * scale[r] * scale[c]
+                    a = entry(offsets, row_counts, columns, values, r, c) * scale[r] * scale[c]
                 for t in range(m):
                     a -= chol[k, t] * chol[m, t]
                 if k == m:
@@ -1033,7 +951,7 @@ class _PlanBase:
         wp.launch(
             self.diagonal,
             self.n,
-            [A.offsets, A.columns, A.values, self.scale, self.status],
+            [A.offsets, None, A.columns, A.values, self.scale, self.status, 1],
             device=A.device,
         )
 
@@ -1068,6 +986,7 @@ class _RefitPlan(_PlanBase):
             self.n,
             [
                 A.offsets,
+                None,
                 A.columns,
                 A.values,
                 owner.G.offsets,
@@ -1105,22 +1024,7 @@ class _DeferredPlan(_PlanBase):
         super().__init__(A, n, storage, width, floor, regularize, validate_topology)
         self.width = width
         self.tolerance = tolerance
-        # Scalar structure for the support search; its values follow the matrix.
-        if A.dtype == dtype:
-            self.scalar = A
-            self.mapping = None
-            self.values = None
-        else:
-            self.scalar = _scalarize_compact(A)
-            self.mapping = wp.empty(self.scalar.nnz_sync(), dtype=int, device=device)
-            wp.launch(
-                _source_map,
-                self.scalar.nrow,
-                [self.scalar.offsets, self.scalar.columns, A.offsets, A.columns, A.block_shape[0], self.mapping],
-                device=device,
-            )
-            self.values = wp.empty_like(self.scalar.values)
-        _, self.select = _build_kernels(dtype, width, step_size)
+        self.select = _build_kernels(A.dtype, dtype, width, step_size)
         self.sort, _ = _pack_kernels(dtype, width)
         self.kernels = _deferred_kernels(dtype, storage, width, regularize)
         self.ready = wp.zeros(1, dtype=int, device=device)
@@ -1164,22 +1068,14 @@ class _DeferredPlan(_PlanBase):
         pending = capturing or not self.published
         if pending:
             wp.launch(k.zero, self.pattern_status.size, [self.pattern_status, self.ready], device=device)
-            source = self.scalar.values
-            if self.mapping is not None:
-                wp.launch(
-                    k.gather,
-                    self.mapping.size,
-                    [A.values.view(A.scalar_type).flatten(), self.mapping, self.values, self.ready],
-                    device=device,
-                )
-                source = self.values
             wp.launch(
                 self.select,
                 n,
                 [
-                    self.scalar.offsets,
-                    self.scalar.columns,
-                    source,
+                    A.offsets,
+                    None,
+                    A.columns,
+                    A.values,
                     self.scale,
                     A.scalar_type(self.tolerance),
                     A.scalar_type(self.floor),
@@ -1201,6 +1097,7 @@ class _DeferredPlan(_PlanBase):
             n,
             [
                 A.offsets,
+                None,
                 A.columns,
                 A.values,
                 owner.G.offsets,
