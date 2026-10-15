@@ -48,12 +48,12 @@ def build(k, dtype=wp.float32):
         # Forward jet: the value's k coefficients ARE grad g. One launch, no tape.
         i = wp.tid()
         acc = Jk.constant(dtype(0.0))
-        prev = Jk.seed(z[i, 0], 0)
+        prev = Jk.variable(z[i, 0], 0)
         for b in range(wp.static(outer)):
             for t in range(wp.static(inner)):
                 j = b * wp.static(inner) + t
                 if j >= 1 and j < wp.static(k):
-                    cur = Jk.seed(z[i, j], j)
+                    cur = Jk.variable(z[i, j], j)
                     acc = acc + wp.sin(prev * cur) + dtype(0.1) * (prev * prev * prev)
                     prev = cur
         out[i] = (acc + wp.exp(prev)).coeff

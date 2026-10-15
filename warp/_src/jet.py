@@ -14,7 +14,18 @@ arithmetic is itself ordinary Warp code, Warp's reverse-mode autodiff can
 differentiate through it, which makes reverse-over-forward -- and therefore
 Hessians -- available without a second-order tape.
 
-:func:`JetSpace` specializes the types at code-generation time:
+:func:`JetSpace` specializes the types at code-generation time. It is described
+by the inputs being differentiated, called slots:
+
+    ============================ ======= ===================================
+    ``JetSpace(slots)``          width   meaning
+    ============================ ======= ===================================
+    ``(wp.vec3, wp.vec3)``       6       two 3D points
+    ``(wp.vec2, wp.mat22)``      6       a 2D point and a 2x2 matrix
+    ``4``                        4       four scalars
+    ============================ ======= ===================================
+
+and generates:
 
     ========== ================== ====================
     Name       ``value``          ``coeff``
@@ -24,12 +35,13 @@ Hessians -- available without a second-order tape.
     ``vec3``   ``vector(3)``      ``matrix(3, width)``
     ========== ================== ====================
 
-The derivative width is independent of the geometric vector dimension.
+(plus ``mat2``, ``mat3``, ``mat32`` and ``mat23``). The derivative width is
+independent of the geometric vector dimension.
 
 The generated arithmetic is registered as overloads of Warp's own builtins, so
 jets are written with ordinary operator and builtin syntax::
 
-    J = wp.JetSpace(6)
+    J = wp.JetSpace((wp.vec3, wp.vec3))
 
 
     @wp.func
@@ -47,11 +59,9 @@ jets are written with ordinary operator and builtin syntax::
     ):
         i = wp.tid()
 
-        # Six local scalar variables:
-        # x0.x/y/z -> directions 0/1/2
-        # x1.x/y/z -> directions 3/4/5
-        a = J.seed_vec3(x0[i], 0, 1, 2)
-        b = J.seed_vec3(x1[i], 3, 4, 5)
+        # Six local scalar variables: x0.x/y/z -> directions 0/1/2 and
+        # x1.x/y/z -> directions 3/4/5.
+        a, b = J.seed(x0[i], x1[i])
 
         grad[i] = spring_energy(a, b).coeff
 
@@ -73,6 +83,10 @@ Warp does not define for ``vec2``.
 # which evaluates them against module globals. Deferred annotations would turn
 # them into strings that no longer resolve.
 
+import itertools
+import linecache
+import numbers
+import operator
 from types import SimpleNamespace
 
 import warp as wp
@@ -158,7 +172,7 @@ def _make_jet_space(width: int, dtype):
         return JetScalar(x, coeff)
 
     @wp.func
-    def scalar_seed(x: dtype, direction: int) -> JetScalar:
+    def scalar_variable(x: dtype, direction: int) -> JetScalar:
         c = Coeff()
         c[direction] = dtype(1.0)
         return JetScalar(x, c)
@@ -412,38 +426,6 @@ def _make_jet_space(width: int, dtype):
             c[1, q] = y.coeff[q]
             c[2, q] = z.coeff[q]
         return JetVec3(NativeVec3(x.value, y.value, z.value), c)
-
-    @wp.func
-    def seed_vec2(v: NativeVec2, i0: int, i1: int) -> JetVec2:
-        c = CoeffMat2()
-        c[0, i0] = dtype(1.0)
-        c[1, i1] = dtype(1.0)
-        return JetVec2(v, c)
-
-    @wp.func
-    def seed_vec3(v: NativeVec3, i0: int, i1: int, i2: int) -> JetVec3:
-        c = CoeffMat3()
-        c[0, i0] = dtype(1.0)
-        c[1, i1] = dtype(1.0)
-        c[2, i2] = dtype(1.0)
-        return JetVec3(v, c)
-
-    @wp.func
-    def directional_vec2(v: NativeVec2, dv: NativeVec2) -> JetVec2:
-        # Convenience for HVPs with width=1. If width>1, only direction 0
-        # is populated and the remaining directions stay zero.
-        c = CoeffMat2()
-        c[0, 0] = dv[0]
-        c[1, 0] = dv[1]
-        return JetVec2(v, c)
-
-    @wp.func
-    def directional_vec3(v: NativeVec3, dv: NativeVec3) -> JetVec3:
-        c = CoeffMat3()
-        c[0, 0] = dv[0]
-        c[1, 0] = dv[1]
-        c[2, 0] = dv[2]
-        return JetVec3(v, c)
 
     # ------------------------------------------------------------------
     # Component access
@@ -1163,40 +1145,306 @@ def _make_jet_space(width: int, dtype):
         coeff_mat3=CoeffMat3,
         constant=scalar_constant,
         with_coeff=scalar_with_coeff,
-        seed=scalar_seed,
+        variable=scalar_variable,
         make_vec2=vec2_from_scalars,
         make_vec3=vec3_from_scalars,
         constant_vec2=vec2_constant,
         constant_vec3=vec3_constant,
-        seed_vec2=seed_vec2,
-        seed_vec3=seed_vec3,
-        directional_vec2=directional_vec2,
-        directional_vec3=directional_vec3,
         make_mat2=mat2_from_cols,
         make_mat3=mat3_from_cols,
         make_mat32=mat32_from_cols,
         perp=jet_perp,
         cross2=jet_cross2,
+        _slot_jet_types={
+            "scalar": (JetScalar, Coeff),
+            "vec2": (JetVec2, CoeffMat2),
+            "vec3": (JetVec3, CoeffMat3),
+            "mat2": (JetMat2, CoeffMat4),
+            "mat3": (JetMat3, CoeffMat9),
+            "mat32": (JetMat32, CoeffMat6),
+            "mat23": (JetMat23, CoeffMat6),
+        },
     )
 
 
-def JetSpace(width: int, dtype=wp.float32):
-    """Return the jet types and helpers for a given derivative width.
+# Shape of each supported slot kind, and the order of the components it
+# contributes to the derivative directions: row-major for matrices.
+_SLOT_SHAPES = {
+    "scalar": (),
+    "vec2": (2,),
+    "vec3": (3,),
+    "mat2": (2, 2),
+    "mat3": (3, 3),
+    "mat32": (3, 2),
+    "mat23": (2, 3),
+}
+_SHAPE_TO_KIND = {shape: kind for kind, shape in _SLOT_SHAPES.items()}
 
-    The first call for a ``(width, dtype)`` pair generates the types and
+_SLOT_SUMMARY = "scalar, vec2, vec3, mat22, mat33, mat32 and mat23"
+
+# Layout-specific namespaces (what JetSpace and JetSpace2 return), keyed
+# by (order, width, dtype, slot kinds). Types and arithmetic live in _CACHE and
+# _CACHE2 and are shared by every layout of the same width and dtype.
+_CACHE_LAYOUT = {}
+
+_GENERATED_IDS = itertools.count()
+
+
+class _JetNamespace(SimpleNamespace):
+    """Namespace of a jet space that explains the helpers it deliberately lacks."""
+
+    def __getattr__(self, name):
+        # Only reached when normal lookup fails.
+        if name == "seed":
+            raise AttributeError(
+                f"seed() needs one derivative direction per component of the slots, "
+                f"but this space has width {self.width} for {self.slot_components} components. "
+                "Use directional() to supply the directions explicitly."
+            )
+        raise AttributeError(name)
+
+
+def _slot_components(kind: str):
+    """Return the index tuples of the components a slot of ``kind`` contributes."""
+    shape = _SLOT_SHAPES[kind]
+    if len(shape) == 0:
+        return [()]
+    if len(shape) == 1:
+        return [(i,) for i in range(shape[0])]
+    return [(r, c) for r in range(shape[0]) for c in range(shape[1])]
+
+
+def _classify_slot(slot):
+    """Return ``(kind, scalar_dtype)`` for a slot type.
+
+    ``scalar_dtype`` is ``None`` for Python ``float``, which does not commit to a precision.
+    """
+    if slot is float:
+        return "scalar", None
+    if slot in float_types:
+        return "scalar", slot
+
+    shape = getattr(slot, "_shape_", None)
+    scalar_dtype = getattr(slot, "_wp_scalar_type_", None)
+    if shape is not None and scalar_dtype is not None and tuple(shape) in _SHAPE_TO_KIND:
+        if scalar_dtype not in float_types:
+            raise TypeError(f"Jet slot {slot.__name__} must have a floating-point scalar type")
+        return _SHAPE_TO_KIND[tuple(shape)], scalar_dtype
+
+    raise TypeError(
+        f"Unsupported jet slot type {getattr(slot, '__name__', slot)!r}. Supported slot types are {_SLOT_SUMMARY}."
+    )
+
+
+def _normalize_slots(slots, dtype):
+    """Resolve the ``slots`` argument of :func:`JetSpace` into ``(kinds, dtype)``."""
+    if isinstance(slots, numbers.Integral) and not isinstance(slots, bool):
+        count = int(slots)
+        if count <= 0:
+            raise ValueError("Jet width must be positive")
+        return ("scalar",) * count, wp.float32 if dtype is None else dtype
+
+    if not isinstance(slots, (tuple, list)):
+        slots = (slots,)
+    if len(slots) == 0:
+        raise ValueError("A jet space needs at least one slot")
+
+    kinds = []
+    inferred = set()
+    for slot in slots:
+        kind, scalar_dtype = _classify_slot(slot)
+        kinds.append(kind)
+        if scalar_dtype is not None:
+            inferred.add(scalar_dtype)
+
+    if len(inferred) > 1:
+        names = ", ".join(sorted(t.__name__ for t in inferred))
+        raise TypeError(f"Jet slots mix scalar types ({names}); all slots must share one precision")
+    if dtype is not None and inferred and dtype not in inferred:
+        raise TypeError(
+            f"dtype={dtype.__name__} conflicts with the slot types, which are {next(iter(inferred)).__name__}"
+        )
+
+    if dtype is None:
+        dtype = next(iter(inferred)) if inferred else wp.float32
+    return tuple(kinds), dtype
+
+
+def _native_slot_type(kind: str, dtype):
+    shape = _SLOT_SHAPES[kind]
+    if len(shape) == 0:
+        return dtype
+    if len(shape) == 1:
+        return vector(shape[0], dtype)
+    return matrix(shape, dtype)
+
+
+def _define_generated(name: str, source: str, namespace: dict):
+    """Compile ``source`` as a Warp function named ``name``.
+
+    The number of slots varies per space, so the signature and body of the
+    helpers below cannot be written out once. The source is registered with
+    :mod:`linecache` so Warp's codegen can read it back like any other function.
+    """
+    filename = f"<warp-jet-{name}>"
+    linecache.cache[filename] = (len(source), None, source.splitlines(True), filename)
+    namespace = {"__name__": __name__, "wp": wp, **namespace}
+    exec(compile(source, filename, "exec"), namespace)
+    return namespace[name]
+
+
+def _coeff_assignment(kind: str, component: int, column: int, value: str, var: str) -> str:
+    # A scalar slot's coefficient is a vector over directions; every other slot's is
+    # a (components, directions) matrix, with matrices flattened row-major.
+    if kind == "scalar":
+        return f"{var}[{column}] = {value}"
+    return f"{var}[{component}, {column}] = {value}"
+
+
+def _build_slot_helpers(base, kinds, width: int, dtype, second_order: bool, include_directional: bool):
+    """Generate ``seed`` (and ``directional``) for one slot layout.
+
+    ``seed`` places a unit direction on every component of every slot, in order.
+    ``directional`` takes the directions explicitly, so ``width`` may be smaller
+    than the number of components -- one direction gives a Hessian-vector product.
+
+    Both take their operands as separate positional arguments rather than as
+    tuples. Warp does not propagate adjoints into a tuple argument, which would
+    silently zero the reverse-over-forward derivatives these helpers exist to
+    support.
+    """
+    uid = next(_GENERATED_IDS)
+    nslots = len(kinds)
+
+    natives = tuple(_native_slot_type(kind, dtype) for kind in kinds)
+
+    namespace = {"dtype": dtype}
+    for kind, (jet_type, coeff_type) in base._slot_jet_types.items():
+        namespace[f"Jet_{kind}"] = jet_type
+        namespace[f"Coeff_{kind}"] = coeff_type
+    if second_order:
+        namespace["Hess"] = base.hess
+
+    # Annotation types are passed by name so the source stays readable.
+    for s_, native in enumerate(natives):
+        namespace[f"Native_{s_}"] = native
+
+    value_params = [f"v{s}: Native_{s}" for s in range(nslots)]
+
+    def construct(slot: int) -> str:
+        kind = kinds[slot]
+        extra = ", Hess()" if second_order else ""
+        return f"    j{slot} = Jet_{kind}(v{slot}, c{slot}{extra})"
+
+    def returns():
+        return "    return " + ", ".join(f"j{s}" for s in range(nslots))
+
+    # seed: component k of every slot gets its own unit direction.
+    lines = ["@wp.func", f"def jet_seed_{uid}({', '.join(value_params)}):"]
+    offset = 0
+    for s, kind in enumerate(kinds):
+        lines.append(f"    c{s} = Coeff_{kind}()")
+        for k, _ in enumerate(_slot_components(kind)):
+            lines.append("    " + _coeff_assignment(kind, k, offset + k, "dtype(1.0)", f"c{s}"))
+        lines.append(construct(s))
+        offset += len(_slot_components(kind))
+    lines.append(returns())
+
+    total = offset
+    seed = _define_generated(f"jet_seed_{uid}", "\n".join(lines) + "\n", namespace) if total == width else None
+
+    directional = None
+    if include_directional:
+        # One direction per column. After the values come the directions, flat and
+        # direction-major: argument d{q * nslots + s} is slot s's value along
+        # direction q.
+        direction_params = [f"d{q * nslots + s}: Native_{s}" for q in range(width) for s in range(nslots)]
+
+        lines = ["@wp.func", f"def jet_directional_{uid}({', '.join(value_params + direction_params)}):"]
+        for s, kind in enumerate(kinds):
+            lines.append(f"    c{s} = Coeff_{kind}()")
+            for q in range(width):
+                for k, component in enumerate(_slot_components(kind)):
+                    access = f"d{q * nslots + s}" + (f"[{', '.join(map(str, component))}]" if component else "")
+                    lines.append("    " + _coeff_assignment(kind, k, q, access, f"c{s}"))
+            lines.append(construct(s))
+        lines.append(returns())
+        directional = _define_generated(f"jet_directional_{uid}", "\n".join(lines) + "\n", namespace)
+
+    return seed, directional, natives, total
+
+
+def _layout_namespace(base, kinds, width: int, dtype, second_order: bool):
+    key = (second_order, width, dtype, kinds)
+    J = _CACHE_LAYOUT.get(key)
+    if J is None:
+        seed, directional, natives, total = _build_slot_helpers(
+            base, kinds, width, dtype, second_order, include_directional=not second_order
+        )
+        members = {k: v for k, v in vars(base).items() if not k.startswith("_")}
+        members.update(slots=natives, slot_components=total)
+        if directional is not None:
+            members["directional"] = directional
+        if seed is not None:
+            members["seed"] = seed
+        J = _JetNamespace(**members)
+        _CACHE_LAYOUT[key] = J
+    return J
+
+
+def JetSpace(slots, dtype=None, *, width=None):
+    """Return the jet types and helpers for a set of differentiated inputs.
+
+    The first call for a given width and scalar type generates the types and
     registers their arithmetic as overloads of Warp's builtins; later calls
-    return the same cached namespace.
+    return a namespace over the same types.
 
     Args:
-        width: Number of simultaneous forward-mode directions. This is the
-            number of scalar variables differentiated with respect to, not the
-            dimension of ``vec2``/``vec3``.
-        dtype: Scalar type the jets are built on.
+        slots: The inputs differentiated with respect to. Either an integer
+            ``n``, meaning ``n`` scalar inputs, or a sequence of types, one per
+            input: ``wp.float32``, ``wp.vec2``, ``wp.vec3``, ``wp.mat22``,
+            ``wp.mat33``, ``wp.mat32`` or ``wp.mat23``. A spring over two nodes
+            is ``(wp.vec3, wp.vec3)``.
+        dtype: Scalar type the jets are built on. Inferred from ``slots`` when
+            they are Warp types; ``wp.float32`` when ``slots`` is an integer
+            or contains only Python ``float``.
+        width: Number of derivative directions each jet carries. Defaults to the
+            total number of scalar components in ``slots``, so that a jet carries
+            the full gradient. A smaller value suits directional derivatives,
+            such as a Hessian-vector product with ``width=1``.
 
     Returns:
         A namespace holding the generated types (``scalar``, ``vec2``,
-        ``vec3``, ``coeff``) and the seeding and construction helpers that have
-        no builtin counterpart.
+        ``vec3``, ``mat2``, ``mat3``, ``mat32``, ``mat23``, ``coeff``), the
+        helpers that construct jets, and ``slots``, the native type of each slot.
+
+    Jets are created inside a kernel with ``seed`` or ``directional``::
+
+        J = wp.JetSpace((wp.vec3, wp.vec3))
+        a, b = J.seed(x0, x1)
+
+    ``seed(*values)`` takes one value per slot and returns one jet per slot,
+    with the derivative directions numbered slot by slot in the order the
+    components appear (row-major for matrices). With a single slot it takes and
+    returns the bare value. It is available only when ``width`` equals the
+    number of components; otherwise use ``directional``.
+
+    ``directional(*values, *directions)`` takes the same values, followed by
+    ``width * len(slots)`` direction vectors ordered direction-major: direction
+    ``q`` of slot ``s`` is argument ``q * len(slots) + s`` after the values. For
+    a width-1 space the directions are one value per slot, and the jets carry the
+    derivative along the combined direction::
+
+        J = wp.JetSpace((wp.vec3, wp.vec3), width=1)
+        a, b = J.directional(x0, x1, v0, v1)
+
+    Operands are positional arguments because Warp does not propagate adjoints
+    into a tuple argument, which would silently zero the reverse-over-forward
+    derivatives these helpers exist to support.
+
+    ``variable(x, direction)`` is the underlying scalar primitive: a scalar jet
+    with a unit derivative along ``direction``. Use it to seed in a loop, where
+    the number of scalars is not a fixed argument list.
 
     ``width`` is fixed when the types are specialized, not when a kernel runs:
     it becomes the length of ``coeff`` and is unrolled into the generated code.
@@ -1206,29 +1454,34 @@ def JetSpace(width: int, dtype=wp.float32):
     independent specializations that may coexist in one process.
 
     This makes jets suited to *local* derivatives of fixed arity -- a spring
-    over two ``vec3`` nodes is ``width=6``, a triangle ``width=9``, a
-    tetrahedron ``width=12`` -- where the width is known where the kernel is
-    written and the dense local gradient or Hessian block is scattered into a
-    sparse global matrix. They are not suited to differentiating with respect to
-    an unbounded or runtime number of variables: a problem-sized width cannot
-    specialize a type, and even when it could, forward mode would cost one
-    direction per variable against reverse mode's single backward pass. Use
-    :class:`warp.Tape` or :func:`warp.grad` for that outer derivative, and jets
-    for the fixed-arity term inside it.
+    over two ``vec3`` nodes has width 6, a triangle 9, a tetrahedron 12 -- where
+    the layout is known where the kernel is written and the dense local gradient
+    or Hessian block is scattered into a sparse global matrix. They are not
+    suited to differentiating with respect to an unbounded or runtime number of
+    variables: a problem-sized width cannot specialize a type, and even when it
+    could, forward mode would cost one direction per variable against reverse
+    mode's single backward pass. Use :class:`warp.Tape` or :func:`warp.grad` for
+    that outer derivative, and jets for the fixed-arity term inside it.
 
     Registering the arithmetic mutates Warp's global builtin overload table,
     which is what lets ``a * b`` resolve on jets from any module. The effect is
     additive and lasts for the lifetime of the process.
     """
-    width = int(width)
+    kinds, dtype = _normalize_slots(slots, dtype)
+    total = sum(len(_slot_components(kind)) for kind in kinds)
+
+    if width is None:
+        width = total
+    else:
+        width = operator.index(width)
+
     key = (width, dtype)
+    base = _CACHE.get(key)
+    if base is None:
+        base = _make_jet_space(width, dtype)
+        _CACHE[key] = base
 
-    J = _CACHE.get(key)
-    if J is None:
-        J = _make_jet_space(width, dtype)
-        _CACHE[key] = J
-
-    return J
+    return _layout_namespace(base, kinds, width, dtype, second_order=False)
 
 
 # ==========================================================================
@@ -1267,7 +1520,7 @@ def _make_jet_space2(width: int, dtype):
         return Jet2Scalar(x, Grad(), Hess())
 
     @wp.func
-    def scalar_seed(x: dtype, direction: int) -> Jet2Scalar:
+    def scalar_variable(x: dtype, direction: int) -> Jet2Scalar:
         g = Grad()
         g[direction] = dtype(1.0)
         return Jet2Scalar(x, g, Hess())
@@ -1572,12 +1825,13 @@ def _make_jet_space2(width: int, dtype):
         grad=Grad,
         hess=Hess,
         constant=scalar_constant,
-        seed=scalar_seed,
+        variable=scalar_variable,
+        _slot_jet_types={"scalar": (Jet2Scalar, Grad)},
     )
 
 
-def JetSpace2(width: int, dtype=wp.float32):
-    """Return second-order (forward-over-forward) jet types for a given width.
+def JetSpace2(slots, dtype=None):
+    """Return second-order (forward-over-forward) jet types for a set of scalars.
 
     A width-k second-order jet tracks value, gradient, and the full k x k
     Hessian; propagating it through a scalar function in one forward pass yields
@@ -1585,9 +1839,18 @@ def JetSpace2(width: int, dtype=wp.float32):
     this suits small k. Scalars only.
 
     Args:
-        width: Number of variables differentiated with respect to. Fixed when
-            the types are specialized, not when a kernel runs.
-        dtype: Scalar type the jets are built on.
+        slots: Number of scalar variables differentiated with respect to, or a
+            sequence of scalar types, one per variable. Fixed when the types are
+            specialized, not when a kernel runs.
+        dtype: Scalar type the jets are built on; ``wp.float32`` by default.
+
+    Returns:
+        A namespace holding the generated type (``scalar``) and the helpers that
+        construct jets.
+
+    ``seed(*values)`` takes one scalar per variable and returns one jet per
+    variable, each with a unit derivative along its own direction.
+    ``variable(x, direction)`` seeds a single scalar, for use in a loop.
 
     As with :func:`warp.JetSpace`, the width is a compile-time constant and the
     types are for local derivatives of fixed, statically known arity. The
@@ -1596,12 +1859,15 @@ def JetSpace2(width: int, dtype=wp.float32):
     jet with a reverse sweep over it (via :class:`warp.Tape`, or in-kernel with
     :func:`warp.grad`), which reaches the same Hessian with linear state.
     """
-    width = int(width)
+    kinds, dtype = _normalize_slots(slots, dtype)
+    if any(kind != "scalar" for kind in kinds):
+        raise TypeError("Second-order jets support scalar slots only")
+    width = len(kinds)
+
     key = (width, dtype)
+    base = _CACHE2.get(key)
+    if base is None:
+        base = _make_jet_space2(width, dtype)
+        _CACHE2[key] = base
 
-    J = _CACHE2.get(key)
-    if J is None:
-        J = _make_jet_space2(width, dtype)
-        _CACHE2[key] = J
-
-    return J
+    return _layout_namespace(base, kinds, width, dtype, second_order=True)

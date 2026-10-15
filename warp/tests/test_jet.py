@@ -13,7 +13,7 @@ from warp.tests.unittest_utils import *
 J2 = wp.JetSpace(2)
 
 # Six directions: two 3D endpoints.
-J6 = wp.JetSpace(6)
+J6 = wp.JetSpace((wp.vec3, wp.vec3))
 
 # A second width at the same dtype, to check that spaces coexist.
 J3 = wp.JetSpace(3)
@@ -40,8 +40,8 @@ def local_gradient(z: wp.array2d[float], grad_g: wp.array[J2.coeff]):
     i = wp.tid()
 
     # Identity seed: dz0 = [1,0], dz1 = [0,1]
-    z0 = J2.seed(z[i, 0], 0)
-    z1 = J2.seed(z[i, 1], 1)
+    z0 = J2.variable(z[i, 0], 0)
+    z1 = J2.variable(z[i, 1], 1)
 
     grad_g[i] = local_energy(z0, z1).coeff
 
@@ -49,7 +49,7 @@ def local_gradient(z: wp.array2d[float], grad_g: wp.array[J2.coeff]):
 @wp.kernel
 def local_value(z: wp.array2d[float], out: wp.array[float]):
     i = wp.tid()
-    out[i] = local_energy(J2.seed(z[i, 0], 0), J2.seed(z[i, 1], 1)).value
+    out[i] = local_energy(J2.variable(z[i, 0], 0), J2.variable(z[i, 1], 1)).value
 
 
 Z_NP = np.array(
@@ -207,8 +207,7 @@ def spring_gradient(
 ):
     i = wp.tid()
 
-    a = J6.seed_vec3(x0[i], 0, 1, 2)
-    b = J6.seed_vec3(x1[i], 3, 4, 5)
+    a, b = J6.seed(x0[i], x1[i])
 
     grad[i] = spring_energy(a, b).coeff
 
@@ -241,8 +240,7 @@ def test_jet_spring_gradient(test, device):
 
 @wp.kernel
 def extract_and_geometry(out: wp.array[float]):
-    v = J6.seed_vec3(wp.vec3(3.0, 5.0, 0.0), 0, 1, 2)
-    w = J6.seed_vec3(wp.vec3(0.0, 2.0, 4.0), 3, 4, 5)
+    v, w = J6.seed(wp.vec3(3.0, 5.0, 0.0), wp.vec3(0.0, 2.0, 4.0))
 
     # v[i] resolves through the extract builtin
     p = v[0] * v[1]
@@ -295,7 +293,7 @@ def width3_energy(a: J3.scalar, b: J3.scalar) -> J3.scalar:
 
 @wp.kernel
 def width3_kernel(out: wp.array[float]):
-    g = width3_energy(J3.seed(2.0, 0), J3.seed(3.0, 1))
+    g = width3_energy(J3.variable(2.0, 0), J3.variable(3.0, 1))
     out[0] = g.value
     out[1] = g.coeff[0]
     out[2] = g.coeff[1]
@@ -322,7 +320,7 @@ def energy_f64(a: J2D.scalar, b: J2D.scalar) -> J2D.scalar:
 
 @wp.kernel
 def kernel_f64(out: wp.array[wp.float64]):
-    g = energy_f64(J2D.seed(wp.float64(0.7), 0), J2D.seed(wp.float64(-0.4), 1))
+    g = energy_f64(J2D.variable(wp.float64(0.7), 0), J2D.variable(wp.float64(-0.4), 1))
     out[0] = g.value
     out[1] = g.coeff[0]
     out[2] = g.coeff[1]
@@ -381,6 +379,63 @@ class TestJetSpace(unittest.TestCase):
         self.assertEqual(wp.types.type_size(J2.coeff), 2)
         self.assertEqual(wp.types.type_size(J6.coeff), 6)
 
+    def test_jet_space_slots_set_width(self):
+        """Check the width defaults to the number of scalar components in the slots."""
+        self.assertEqual(wp.JetSpace((wp.vec3, wp.vec3)).width, 6)
+        self.assertEqual(wp.JetSpace((wp.vec2, wp.float32, wp.mat22)).width, 7)
+        self.assertEqual(wp.JetSpace((wp.vec3,) * 4).width, 12)
+        self.assertEqual(wp.JetSpace(wp.mat33).width, 9)
+        self.assertEqual(wp.JetSpace((wp.vec3, wp.vec3), width=1).width, 1)
+
+    def test_jet_space_layouts_share_types(self):
+        """Check layouts of one width and dtype share jet types and are cached."""
+        nodes = wp.JetSpace((wp.vec3, wp.vec3))
+        self.assertIs(nodes, J6)
+        self.assertIs(wp.JetSpace((wp.vec2, wp.vec2, wp.float32, wp.float32)).scalar, wp.JetSpace(6).scalar)
+        self.assertIs(nodes.scalar, wp.JetSpace(6).scalar)
+        self.assertIsNot(nodes, wp.JetSpace(6))
+
+    def test_jet_space_infers_dtype_from_slots(self):
+        """Check the scalar type comes from the slot types when dtype is omitted."""
+        self.assertIs(wp.JetSpace((wp.vec3d, wp.vec3d)).dtype, wp.float64)
+        self.assertIs(wp.JetSpace((wp.vec3, wp.vec3)).dtype, wp.float32)
+        self.assertIs(wp.JetSpace(float).dtype, wp.float32)
+        self.assertIs(wp.JetSpace(2, dtype=wp.float64).dtype, wp.float64)
+
+    def test_jet_space_rejects_mismatched_dtype(self):
+        """Check slot types that disagree with each other or with dtype are rejected."""
+        with self.assertRaises(TypeError):
+            wp.JetSpace((wp.vec3, wp.vec3d))
+
+        with self.assertRaises(TypeError):
+            wp.JetSpace((wp.vec3, wp.vec3), dtype=wp.float64)
+
+    def test_jet_space_rejects_unsupported_slots(self):
+        """Check slot types without a jet type are rejected, as is an empty layout."""
+        for slot in (wp.vec4, wp.vec3i, wp.quat, int, "vec3"):
+            with self.subTest(slot=slot), self.assertRaises(TypeError):
+                wp.JetSpace((slot, wp.vec3))
+
+        with self.assertRaises(ValueError):
+            wp.JetSpace(())
+
+    def test_jet_space_seed_requires_full_width(self):
+        """Check seed() is withheld, with an explanation, when width differs from the component count."""
+        narrow = wp.JetSpace((wp.vec3, wp.vec3), width=1)
+        self.assertFalse(hasattr(narrow, "seed"))
+        with self.assertRaisesRegex(AttributeError, "directional"):
+            getattr(narrow, "seed")  # noqa: B009
+
+        self.assertTrue(hasattr(narrow, "directional"))
+
+    def test_jet_space2_slots(self):
+        """Check second-order spaces take scalar slots only."""
+        self.assertIs(wp.JetSpace2((wp.float32, wp.float32)), wp.JetSpace2(2))
+        self.assertEqual(wp.JetSpace2(3).width, 3)
+
+        with self.assertRaises(TypeError):
+            wp.JetSpace2((wp.vec3, wp.vec3))
+
 
 # ===========================================================================
 # Second-order (forward-over-forward) jets: value, gradient, and Hessian from a
@@ -400,8 +455,8 @@ def jet2_value_grad_hess(
 ):
     # Same energy as local_energy: sin(a*b) + 0.1*a^3 + exp(b).
     i = wp.tid()
-    a = J2_2ND.seed(z[i, 0], 0)
-    b = J2_2ND.seed(z[i, 1], 1)
+    a = J2_2ND.variable(z[i, 0], 0)
+    b = J2_2ND.variable(z[i, 1], 1)
     r = wp.sin(a * b) + 0.1 * (a * a * a) + wp.exp(b)
     val[i] = r.value
     for p in range(2):
@@ -425,8 +480,8 @@ def jet2_g2(
     hess: wp.array3d[float],
 ):
     i = wp.tid()
-    a = J2_2ND.seed(z[i, 0], 0)
-    b = J2_2ND.seed(z[i, 1], 1)
+    a = J2_2ND.variable(z[i, 0], 0)
+    b = J2_2ND.variable(z[i, 1], 1)
     r = wp.log(a * a + b * b + 1.5) + wp.sqrt(a * a + 1.0) + a / (b * b + 2.0) + wp.cos(a * b)
     val[i] = r.value
     for p in range(2):
@@ -502,6 +557,316 @@ def test_jet2_div_log_sqrt(test, device):
     np.testing.assert_allclose(hess, np.transpose(hess, (0, 2, 1)), rtol=1.0e-6, atol=1.0e-7)
 
 
+# ----------------------------------------------------------------------------
+# Seeding by slot: seed() and directional() build jets from the slot layout.
+# ----------------------------------------------------------------------------
+
+# A vec2, a scalar and a 2x2 matrix: 2 + 1 + 4 = 7 directions, numbered in order
+# with matrices row-major.
+J_MIXED = wp.JetSpace((wp.vec2, wp.float32, wp.mat22))
+
+# One slot, so seed() takes and returns the bare value.
+J_SINGLE = wp.JetSpace(wp.vec3)
+
+# The same two vec3 endpoints as J6, but one direction: a directional derivative.
+J_DIR = wp.JetSpace((wp.vec3, wp.vec3), width=1)
+
+
+@wp.kernel
+def seed_mixed_slots(out_v: wp.array2d[float], out_s: wp.array[float], out_m: wp.array2d[float]):
+    v, s, m = J_MIXED.seed(wp.vec2(1.0, 2.0), 3.0, wp.mat22(4.0, 5.0, 6.0, 7.0))
+
+    for r in range(2):
+        for q in range(7):
+            out_v[r, q] = v.coeff[r, q]
+    for q in range(7):
+        out_s[q] = s.coeff[q]
+    for r in range(4):
+        for q in range(7):
+            out_m[r, q] = m.coeff[r, q]
+
+
+def test_jet_seed_mixed_slots(test, device):
+    """Check seed() numbers directions slot by slot, with matrices row-major."""
+    out_v = wp.zeros((2, 7), dtype=float, device=device)
+    out_s = wp.zeros(7, dtype=float, device=device)
+    out_m = wp.zeros((4, 7), dtype=float, device=device)
+    wp.launch(seed_mixed_slots, dim=1, inputs=[], outputs=[out_v, out_s, out_m], device=device)
+
+    identity = np.eye(7, dtype=np.float32)
+    np.testing.assert_array_equal(out_v.numpy(), identity[0:2])
+    np.testing.assert_array_equal(out_s.numpy(), identity[2])
+    np.testing.assert_array_equal(out_m.numpy(), identity[3:7])
+
+
+@wp.kernel
+def seed_single_slot(out: wp.array2d[float]):
+    p = J_SINGLE.seed(wp.vec3(1.0, 2.0, 3.0))
+
+    for r in range(3):
+        for q in range(3):
+            out[r, q] = p.coeff[r, q]
+
+
+def test_jet_seed_single_slot(test, device):
+    """Check a single-slot space takes and returns the bare value."""
+    out = wp.zeros((3, 3), dtype=float, device=device)
+    wp.launch(seed_single_slot, dim=1, inputs=[], outputs=[out], device=device)
+
+    np.testing.assert_array_equal(out.numpy(), np.eye(3, dtype=np.float32))
+
+
+@wp.func
+def spring_energy_dir(x0: J_DIR.vec3, x1: J_DIR.vec3) -> J_DIR.scalar:
+    d = x1 - x0
+    r = wp.length(d) - 1.0
+    return 0.5 * r * r
+
+
+@wp.kernel
+def spring_directional(
+    x0: wp.array[wp.vec3],
+    x1: wp.array[wp.vec3],
+    d0: wp.array[wp.vec3],
+    d1: wp.array[wp.vec3],
+    out: wp.array[float],
+):
+    i = wp.tid()
+
+    # One combined direction (d0, d1) over both endpoints.
+    a, b = J_DIR.directional(x0[i], x1[i], d0[i], d1[i])
+
+    out[i] = spring_energy_dir(a, b).coeff[0]
+
+
+@wp.kernel
+def spring_directional_basis(
+    x0: wp.array[wp.vec3],
+    x1: wp.array[wp.vec3],
+    grad: wp.array[J6.coeff],
+):
+    i = wp.tid()
+
+    ex = wp.vec3(1.0, 0.0, 0.0)
+    ey = wp.vec3(0.0, 1.0, 0.0)
+    ez = wp.vec3(0.0, 0.0, 1.0)
+    zero = wp.vec3(0.0)
+
+    # Direction-major: for each direction, the vector given to slot 0 then slot 1.
+    a, b = J6.directional(x0[i], x1[i], ex, zero, ey, zero, ez, zero, zero, ex, zero, ey, zero, ez)
+
+    grad[i] = spring_energy(a, b).coeff
+
+
+def test_jet_directional(test, device):
+    """Check directional() reproduces seed() for a basis and contracts the gradient for one direction."""
+    x0_np = np.array([[0.0, 0.0, 0.0], [1.0, 2.0, -1.0]], dtype=np.float32)
+    x1_np = np.array([[2.0, 0.0, 0.0], [1.0, 2.0, 2.0]], dtype=np.float32)
+    d0_np = np.array([[1.0, -2.0, 0.5], [0.0, 1.0, 1.0]], dtype=np.float32)
+    d1_np = np.array([[0.5, 0.5, 0.0], [-1.0, 2.0, 3.0]], dtype=np.float32)
+
+    x0 = wp.array(x0_np, dtype=wp.vec3, device=device)
+    x1 = wp.array(x1_np, dtype=wp.vec3, device=device)
+    d0 = wp.array(d0_np, dtype=wp.vec3, device=device)
+    d1 = wp.array(d1_np, dtype=wp.vec3, device=device)
+
+    # Six explicit coordinate directions match the six seeded ones.
+    grad_basis = wp.zeros(2, dtype=J6.coeff, device=device)
+    grad_seed = wp.zeros(2, dtype=J6.coeff, device=device)
+    wp.launch(spring_directional_basis, dim=2, inputs=[x0, x1], outputs=[grad_basis], device=device)
+    wp.launch(spring_gradient, dim=2, inputs=[x0, x1], outputs=[grad_seed], device=device)
+    np.testing.assert_array_equal(grad_basis.numpy(), grad_seed.numpy())
+
+    # One combined direction gives the gradient contracted with that direction.
+    out = wp.zeros(2, dtype=float, device=device)
+    wp.launch(spring_directional, dim=2, inputs=[x0, x1, d0, d1], outputs=[out], device=device)
+
+    expected = np.sum(grad_seed.numpy() * np.concatenate((d0_np, d1_np), axis=1), axis=1)
+    np.testing.assert_allclose(out.numpy(), expected, rtol=1.0e-5, atol=1.0e-6)
+
+
+@wp.kernel
+def spring_gradient_wrt_inputs(
+    x0: wp.array[wp.vec3],
+    x1: wp.array[wp.vec3],
+    grad: wp.array[J6.coeff],
+):
+    i = wp.tid()
+
+    a, b = J6.seed(x0[i], x1[i])
+
+    grad[i] = spring_energy(a, b).coeff
+
+
+@wp.kernel
+def spring_directional_wrt_inputs(
+    x0: wp.array[wp.vec3],
+    x1: wp.array[wp.vec3],
+    d0: wp.array[wp.vec3],
+    d1: wp.array[wp.vec3],
+    out: wp.array[float],
+):
+    i = wp.tid()
+
+    a, b = J_DIR.directional(x0[i], x1[i], d0[i], d1[i])
+
+    out[i] = spring_energy_dir(a, b).coeff[0]
+
+
+def _spring_hessian_np(x0, x1):
+    """Return the 6x6 Hessian of the spring energy at one pair of endpoints, in closed form."""
+    d = (x1 - x0).astype(np.float64)
+    length = np.linalg.norm(d)
+    dhat = d / length
+    block = np.outer(dhat, dhat) + (1.0 - 1.0 / length) * (np.eye(3) - np.outer(dhat, dhat))
+    return np.block([[block, -block], [-block, block]])
+
+
+def test_jet_seed_is_differentiable(test, device):
+    """Check reverse mode differentiates through seed() and directional() to give the Hessian."""
+    x0_np = np.array([[0.0, 0.0, 0.0], [1.0, 2.0, -1.0]], dtype=np.float32)
+    x1_np = np.array([[2.0, 0.0, 0.0], [1.0, 2.0, 2.0]], dtype=np.float32)
+    d0_np = np.array([[1.0, -2.0, 0.5], [0.0, 1.0, 1.0]], dtype=np.float32)
+    d1_np = np.array([[0.5, 0.5, 0.0], [-1.0, 2.0, 3.0]], dtype=np.float32)
+    m = x0_np.shape[0]
+
+    hess_np = np.stack([_spring_hessian_np(x0_np[i], x1_np[i]) for i in range(m)])
+
+    # Width-6 jets: one backward sweep per row gives the rows of the Hessian.
+    x0 = wp.array(x0_np, dtype=wp.vec3, device=device, requires_grad=True)
+    x1 = wp.array(x1_np, dtype=wp.vec3, device=device, requires_grad=True)
+    grad = wp.zeros(m, dtype=J6.coeff, device=device, requires_grad=True)
+
+    tape = wp.Tape()
+    with tape:
+        wp.launch(spring_gradient_wrt_inputs, dim=m, inputs=[x0, x1], outputs=[grad], device=device)
+
+    hess = np.zeros((m, 6, 6))
+    for row in range(6):
+        row_seed = np.zeros((m, 6), dtype=np.float32)
+        row_seed[:, row] = 1.0
+        tape.backward(grads={grad: wp.array(row_seed, dtype=J6.coeff, device=device)})
+        hess[:, row, :] = np.concatenate((x0.grad.numpy(), x1.grad.numpy()), axis=1)
+        tape.zero()
+
+    np.testing.assert_allclose(hess, hess_np, rtol=1.0e-4, atol=1.0e-5)
+
+    # A width-1 jet over a combined direction: one backward sweep gives H d.
+    x0 = wp.array(x0_np, dtype=wp.vec3, device=device, requires_grad=True)
+    x1 = wp.array(x1_np, dtype=wp.vec3, device=device, requires_grad=True)
+    d0 = wp.array(d0_np, dtype=wp.vec3, device=device)
+    d1 = wp.array(d1_np, dtype=wp.vec3, device=device)
+    out = wp.zeros(m, dtype=float, device=device, requires_grad=True)
+
+    tape = wp.Tape()
+    with tape:
+        wp.launch(spring_directional_wrt_inputs, dim=m, inputs=[x0, x1, d0, d1], outputs=[out], device=device)
+    tape.backward(grads={out: wp.ones(m, dtype=float, device=device)})
+
+    direction = np.concatenate((d0_np, d1_np), axis=1)
+    expected = np.einsum("mij,mj->mi", hess_np, direction)
+    np.testing.assert_allclose(
+        np.concatenate((x0.grad.numpy(), x1.grad.numpy()), axis=1), expected, rtol=1.0e-4, atol=1.0e-5
+    )
+
+
+@wp.func
+def spring_directional_derivative(x0: wp.vec3, x1: wp.vec3, d0: wp.vec3, d1: wp.vec3):
+    a, b = J_DIR.directional(x0, x1, d0, d1)
+    return spring_energy_dir(a, b).coeff[0]
+
+
+@wp.func
+def spring_seeded_gradient_dot(x0: wp.vec3, x1: wp.vec3, w: J6.coeff):
+    a, b = J6.seed(x0, x1)
+    return wp.dot(spring_energy(a, b).coeff, w)
+
+
+@wp.kernel(enable_backward=False)
+def spring_hessian_vector_in_kernel(
+    x0: wp.array[wp.vec3],
+    x1: wp.array[wp.vec3],
+    d0: wp.array[wp.vec3],
+    d1: wp.array[wp.vec3],
+    hv_directional: wp.array2d[wp.vec3],
+    hv_seeded: wp.array2d[wp.vec3],
+):
+    i = wp.tid()
+
+    # Reverse mode taken inside the kernel over a first-order jet: no tape and no
+    # global .grad array.
+    g0, g1, _a, _b = wp.grad(spring_directional_derivative)(x0[i], x1[i], d0[i], d1[i])
+    hv_directional[i, 0] = g0
+    hv_directional[i, 1] = g1
+
+    # The same product from the width-6 gradient contracted with the direction.
+    w = J6.coeff(d0[i][0], d0[i][1], d0[i][2], d1[i][0], d1[i][1], d1[i][2])
+    h0, h1, _w = wp.grad(spring_seeded_gradient_dot)(x0[i], x1[i], w)
+    hv_seeded[i, 0] = h0
+    hv_seeded[i, 1] = h1
+
+
+def test_jet_in_kernel_grad_hessian_vector(test, device):
+    """Check wp.grad inside a kernel over first-order jets gives the Hessian-vector product."""
+    x0_np = np.array([[0.0, 0.0, 0.0], [1.0, 2.0, -1.0]], dtype=np.float32)
+    x1_np = np.array([[2.0, 0.0, 0.0], [1.0, 2.0, 2.0]], dtype=np.float32)
+    d0_np = np.array([[1.0, -2.0, 0.5], [0.0, 1.0, 1.0]], dtype=np.float32)
+    d1_np = np.array([[0.5, 0.5, 0.0], [-1.0, 2.0, 3.0]], dtype=np.float32)
+    m = x0_np.shape[0]
+
+    hess_np = np.stack([_spring_hessian_np(x0_np[i], x1_np[i]) for i in range(m)])
+    expected = np.einsum("mij,mj->mi", hess_np, np.concatenate((d0_np, d1_np), axis=1))
+
+    arrays = [wp.array(a, dtype=wp.vec3, device=device) for a in (x0_np, x1_np, d0_np, d1_np)]
+    hv_directional = wp.zeros((m, 2), dtype=wp.vec3, device=device)
+    hv_seeded = wp.zeros((m, 2), dtype=wp.vec3, device=device)
+    wp.launch(
+        spring_hessian_vector_in_kernel,
+        dim=m,
+        inputs=arrays,
+        outputs=[hv_directional, hv_seeded],
+        device=device,
+    )
+
+    np.testing.assert_allclose(hv_directional.numpy().reshape(m, 6), expected, rtol=1.0e-4, atol=1.0e-5)
+    np.testing.assert_allclose(hv_seeded.numpy().reshape(m, 6), expected, rtol=1.0e-4, atol=1.0e-5)
+
+
+@wp.kernel
+def jet2_seed(
+    z: wp.array2d[float],
+    val: wp.array[float],
+    grad: wp.array2d[float],
+    hess: wp.array3d[float],
+):
+    i = wp.tid()
+
+    a, b = J2_2ND.seed(z[i, 0], z[i, 1])
+    g = wp.sin(a * b) + 0.1 * (a * a * a) + wp.exp(b)
+
+    val[i] = g.value
+    for p in range(2):
+        grad[i, p] = g.grad[p]
+        for q in range(2):
+            hess[i, p, q] = g.hess[p, q]
+
+
+def test_jet2_seed(test, device):
+    """Check second-order seed() over scalars matches the analytic Hessian."""
+    z64 = Z_NP.astype(np.float64)
+    m = Z_NP.shape[0]
+
+    z = wp.array(Z_NP, dtype=float, device=device)
+    val = wp.zeros(m, dtype=float, device=device)
+    grad = wp.zeros((m, 2), dtype=float, device=device)
+    hess = wp.zeros((m, 2, 2), dtype=float, device=device)
+    wp.launch(jet2_seed, dim=m, inputs=[z], outputs=[val, grad, hess], device=device)
+
+    np.testing.assert_allclose(val.numpy(), g_np(z64), rtol=1.0e-5, atol=1.0e-6)
+    np.testing.assert_allclose(grad.numpy(), grad_np(z64), rtol=1.0e-5, atol=1.0e-6)
+    np.testing.assert_allclose(hess.numpy(), hessian_np(z64), rtol=1.0e-4, atol=1.0e-5)
+
+
 devices = get_test_devices()
 
 
@@ -520,6 +885,14 @@ add_function_test(TestJet, "test_jet_float64", test_jet_float64, devices=devices
 add_function_test(TestJet, "test_jet2_value_grad_hessian", test_jet2_value_grad_hessian, devices=devices)
 add_function_test(TestJet, "test_jet2_hessian_symmetric", test_jet2_hessian_symmetric, devices=devices)
 add_function_test(TestJet, "test_jet2_div_log_sqrt", test_jet2_div_log_sqrt, devices=devices)
+add_function_test(TestJet, "test_jet_seed_mixed_slots", test_jet_seed_mixed_slots, devices=devices)
+add_function_test(TestJet, "test_jet_seed_single_slot", test_jet_seed_single_slot, devices=devices)
+add_function_test(TestJet, "test_jet_directional", test_jet_directional, devices=devices)
+add_function_test(TestJet, "test_jet_seed_is_differentiable", test_jet_seed_is_differentiable, devices=devices)
+add_function_test(
+    TestJet, "test_jet_in_kernel_grad_hessian_vector", test_jet_in_kernel_grad_hessian_vector, devices=devices
+)
+add_function_test(TestJet, "test_jet2_seed", test_jet2_seed, devices=devices)
 
 
 if __name__ == "__main__":

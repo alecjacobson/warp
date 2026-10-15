@@ -47,8 +47,11 @@ _REST = wp.constant(1.0)
 _MU = wp.constant(1.0)
 _LAM = wp.constant(1.0)
 
-J1 = wp.JetSpace(1)  # width-1 dual, for the directional derivatives
-JK = {6: wp.JetSpace(6), 9: wp.JetSpace(9), 12: wp.JetSpace(12)}
+# One jet per node (a spring has two, a triangle three, a tetrahedron four).
+# JK carries the full local gradient; JD is the width-1 dual for the directional
+# derivatives, over the same nodes.
+JK = {k: wp.JetSpace((wp.vec3,) * (k // 3)) for k in (6, 9, 12)}
+JD = {k: wp.JetSpace((wp.vec3,) * (k // 3), width=1) for k in (6, 9, 12)}
 J2K = {6: wp.JetSpace2(6), 9: wp.JetSpace2(9), 12: wp.JetSpace2(12)}  # forward-2
 
 
@@ -182,20 +185,24 @@ def sample(k, m, seed=0):
 
 def build_spring():
     Jk = JK[6]
+    J1 = JD[6]
 
     @wp.kernel
     def grad_wide(x: wp.array2d[wp.vec3], g: wp.array[Jk.coeff]):
         i = wp.tid()
-        g[i] = spring_energy(Jk.seed_vec3(x[i, 0], 0, 1, 2), Jk.seed_vec3(x[i, 1], 3, 4, 5)).coeff
+        a, b = Jk.seed(x[i, 0], x[i, 1])
+        g[i] = spring_energy(a, b).coeff
 
     @wp.kernel
     def directional(x: wp.array2d[wp.vec3], d: wp.array2d[wp.vec3], dv: wp.array[wp.float32]):
         i = wp.tid()
-        dv[i] = spring_energy(J1.directional_vec3(x[i, 0], d[i, 0]), J1.directional_vec3(x[i, 1], d[i, 1])).coeff[0]
+        a, b = J1.directional(x[i, 0], x[i, 1], d[i, 0], d[i, 1])
+        dv[i] = spring_energy(a, b).coeff[0]
 
     @wp.func
     def dirderiv(a: wp.vec3, b: wp.vec3, da: wp.vec3, db: wp.vec3):
-        return spring_energy(J1.directional_vec3(a, da), J1.directional_vec3(b, db)).coeff[0]
+        ja, jb = J1.directional(a, b, da, db)
+        return spring_energy(ja, jb).coeff[0]
 
     @wp.kernel(enable_backward=False)
     def hess_w1(x: wp.array2d[wp.vec3], out: wp.array3d[wp.float32]):
@@ -220,7 +227,12 @@ def build_spring():
         i = wp.tid()
         a, b = x[i, 0], x[i, 1]
         h = spring_energy_s(
-            J2.seed(a[0], 0), J2.seed(a[1], 1), J2.seed(a[2], 2), J2.seed(b[0], 3), J2.seed(b[1], 4), J2.seed(b[2], 5)
+            J2.variable(a[0], 0),
+            J2.variable(a[1], 1),
+            J2.variable(a[2], 2),
+            J2.variable(b[0], 3),
+            J2.variable(b[1], 4),
+            J2.variable(b[2], 5),
         ).hess
         for p in range(6):
             for q in range(6):
@@ -231,28 +243,24 @@ def build_spring():
 
 def build_triangle():
     Jk = JK[9]
+    J1 = JD[9]
 
     @wp.kernel
     def grad_wide(x: wp.array2d[wp.vec3], g: wp.array[Jk.coeff]):
         i = wp.tid()
-        g[i] = triangle_energy(
-            Jk.seed_vec3(x[i, 0], 0, 1, 2), Jk.seed_vec3(x[i, 1], 3, 4, 5), Jk.seed_vec3(x[i, 2], 6, 7, 8)
-        ).coeff
+        a, b, c = Jk.seed(x[i, 0], x[i, 1], x[i, 2])
+        g[i] = triangle_energy(a, b, c).coeff
 
     @wp.kernel
     def directional(x: wp.array2d[wp.vec3], d: wp.array2d[wp.vec3], dv: wp.array[wp.float32]):
         i = wp.tid()
-        dv[i] = triangle_energy(
-            J1.directional_vec3(x[i, 0], d[i, 0]),
-            J1.directional_vec3(x[i, 1], d[i, 1]),
-            J1.directional_vec3(x[i, 2], d[i, 2]),
-        ).coeff[0]
+        a, b, c = J1.directional(x[i, 0], x[i, 1], x[i, 2], d[i, 0], d[i, 1], d[i, 2])
+        dv[i] = triangle_energy(a, b, c).coeff[0]
 
     @wp.func
     def dirderiv(p0: wp.vec3, p1: wp.vec3, p2: wp.vec3, d0: wp.vec3, d1: wp.vec3, d2: wp.vec3):
-        return triangle_energy(
-            J1.directional_vec3(p0, d0), J1.directional_vec3(p1, d1), J1.directional_vec3(p2, d2)
-        ).coeff[0]
+        a, b, c = J1.directional(p0, p1, p2, d0, d1, d2)
+        return triangle_energy(a, b, c).coeff[0]
 
     @wp.kernel(enable_backward=False)
     def hess_w1(x: wp.array2d[wp.vec3], out: wp.array3d[wp.float32]):
@@ -281,15 +289,15 @@ def build_triangle():
         i = wp.tid()
         p0, p1, p2 = x[i, 0], x[i, 1], x[i, 2]
         h = triangle_energy_s(
-            J2.seed(p0[0], 0),
-            J2.seed(p0[1], 1),
-            J2.seed(p0[2], 2),
-            J2.seed(p1[0], 3),
-            J2.seed(p1[1], 4),
-            J2.seed(p1[2], 5),
-            J2.seed(p2[0], 6),
-            J2.seed(p2[1], 7),
-            J2.seed(p2[2], 8),
+            J2.variable(p0[0], 0),
+            J2.variable(p0[1], 1),
+            J2.variable(p0[2], 2),
+            J2.variable(p1[0], 3),
+            J2.variable(p1[1], 4),
+            J2.variable(p1[2], 5),
+            J2.variable(p2[0], 6),
+            J2.variable(p2[1], 7),
+            J2.variable(p2[2], 8),
         ).hess
         for p in range(9):
             for q in range(9):
@@ -300,37 +308,26 @@ def build_triangle():
 
 def build_tet():
     Jk = JK[12]
+    J1 = JD[12]
 
     @wp.kernel
     def grad_wide(x: wp.array2d[wp.vec3], g: wp.array[Jk.coeff]):
         i = wp.tid()
-        g[i] = tet_energy(
-            Jk.seed_vec3(x[i, 0], 0, 1, 2),
-            Jk.seed_vec3(x[i, 1], 3, 4, 5),
-            Jk.seed_vec3(x[i, 2], 6, 7, 8),
-            Jk.seed_vec3(x[i, 3], 9, 10, 11),
-        ).coeff
+        a, b, c, d = Jk.seed(x[i, 0], x[i, 1], x[i, 2], x[i, 3])
+        g[i] = tet_energy(a, b, c, d).coeff
 
     @wp.kernel
     def directional(x: wp.array2d[wp.vec3], d: wp.array2d[wp.vec3], dv: wp.array[wp.float32]):
         i = wp.tid()
-        dv[i] = tet_energy(
-            J1.directional_vec3(x[i, 0], d[i, 0]),
-            J1.directional_vec3(x[i, 1], d[i, 1]),
-            J1.directional_vec3(x[i, 2], d[i, 2]),
-            J1.directional_vec3(x[i, 3], d[i, 3]),
-        ).coeff[0]
+        a, b, c, e = J1.directional(x[i, 0], x[i, 1], x[i, 2], x[i, 3], d[i, 0], d[i, 1], d[i, 2], d[i, 3])
+        dv[i] = tet_energy(a, b, c, e).coeff[0]
 
     @wp.func
     def dirderiv(
         p0: wp.vec3, p1: wp.vec3, p2: wp.vec3, p3: wp.vec3, d0: wp.vec3, d1: wp.vec3, d2: wp.vec3, d3: wp.vec3
     ):
-        return tet_energy(
-            J1.directional_vec3(p0, d0),
-            J1.directional_vec3(p1, d1),
-            J1.directional_vec3(p2, d2),
-            J1.directional_vec3(p3, d3),
-        ).coeff[0]
+        a, b, c, e = J1.directional(p0, p1, p2, p3, d0, d1, d2, d3)
+        return tet_energy(a, b, c, e).coeff[0]
 
     @wp.kernel(enable_backward=False)
     def hess_w1(x: wp.array2d[wp.vec3], out: wp.array3d[wp.float32]):
@@ -363,18 +360,18 @@ def build_tet():
         i = wp.tid()
         p0, p1, p2, p3 = x[i, 0], x[i, 1], x[i, 2], x[i, 3]
         h = tet_energy_s(
-            J2.seed(p0[0], 0),
-            J2.seed(p0[1], 1),
-            J2.seed(p0[2], 2),
-            J2.seed(p1[0], 3),
-            J2.seed(p1[1], 4),
-            J2.seed(p1[2], 5),
-            J2.seed(p2[0], 6),
-            J2.seed(p2[1], 7),
-            J2.seed(p2[2], 8),
-            J2.seed(p3[0], 9),
-            J2.seed(p3[1], 10),
-            J2.seed(p3[2], 11),
+            J2.variable(p0[0], 0),
+            J2.variable(p0[1], 1),
+            J2.variable(p0[2], 2),
+            J2.variable(p1[0], 3),
+            J2.variable(p1[1], 4),
+            J2.variable(p1[2], 5),
+            J2.variable(p2[0], 6),
+            J2.variable(p2[1], 7),
+            J2.variable(p2[2], 8),
+            J2.variable(p3[0], 9),
+            J2.variable(p3[1], 10),
+            J2.variable(p3[2], 11),
         ).hess
         for p in range(12):
             for q in range(12):

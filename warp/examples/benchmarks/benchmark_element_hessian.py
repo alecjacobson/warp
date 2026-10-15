@@ -204,12 +204,12 @@ def build_spring(with_forward2=True):
     def spring_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff]):
         i = wp.tid()
         out[i] = spring_energy(
-            Jk.seed(z[i, 0], 0),
-            Jk.seed(z[i, 1], 1),
-            Jk.seed(z[i, 2], 2),
-            Jk.seed(z[i, 3], 3),
-            Jk.seed(z[i, 4], 4),
-            Jk.seed(z[i, 5], 5),
+            Jk.variable(z[i, 0], 0),
+            Jk.variable(z[i, 1], 1),
+            Jk.variable(z[i, 2], 2),
+            Jk.variable(z[i, 3], 3),
+            Jk.variable(z[i, 4], 4),
+            Jk.variable(z[i, 5], 5),
         ).coeff
 
     @wp.kernel
@@ -228,12 +228,12 @@ def build_spring(with_forward2=True):
     def spring_hess_forward(z: wp.array2d[wp.float32], out: wp.array3d[wp.float32]):
         i = wp.tid()
         h = spring_energy(
-            J2.seed(z[i, 0], 0),
-            J2.seed(z[i, 1], 1),
-            J2.seed(z[i, 2], 2),
-            J2.seed(z[i, 3], 3),
-            J2.seed(z[i, 4], 4),
-            J2.seed(z[i, 5], 5),
+            J2.variable(z[i, 0], 0),
+            J2.variable(z[i, 1], 1),
+            J2.variable(z[i, 2], 2),
+            J2.variable(z[i, 3], 3),
+            J2.variable(z[i, 4], 4),
+            J2.variable(z[i, 5], 5),
         ).hess
         for p in range(6):
             for q in range(6):
@@ -249,15 +249,15 @@ def build_triangle(with_forward2=True):
     def triangle_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff]):
         i = wp.tid()
         out[i] = triangle_energy(
-            Jk.seed(z[i, 0], 0),
-            Jk.seed(z[i, 1], 1),
-            Jk.seed(z[i, 2], 2),
-            Jk.seed(z[i, 3], 3),
-            Jk.seed(z[i, 4], 4),
-            Jk.seed(z[i, 5], 5),
-            Jk.seed(z[i, 6], 6),
-            Jk.seed(z[i, 7], 7),
-            Jk.seed(z[i, 8], 8),
+            Jk.variable(z[i, 0], 0),
+            Jk.variable(z[i, 1], 1),
+            Jk.variable(z[i, 2], 2),
+            Jk.variable(z[i, 3], 3),
+            Jk.variable(z[i, 4], 4),
+            Jk.variable(z[i, 5], 5),
+            Jk.variable(z[i, 6], 6),
+            Jk.variable(z[i, 7], 7),
+            Jk.variable(z[i, 8], 8),
         ).coeff
 
     @wp.kernel
@@ -276,15 +276,15 @@ def build_triangle(with_forward2=True):
     def triangle_hess_forward(z: wp.array2d[wp.float32], out: wp.array3d[wp.float32]):
         i = wp.tid()
         h = triangle_energy(
-            J2.seed(z[i, 0], 0),
-            J2.seed(z[i, 1], 1),
-            J2.seed(z[i, 2], 2),
-            J2.seed(z[i, 3], 3),
-            J2.seed(z[i, 4], 4),
-            J2.seed(z[i, 5], 5),
-            J2.seed(z[i, 6], 6),
-            J2.seed(z[i, 7], 7),
-            J2.seed(z[i, 8], 8),
+            J2.variable(z[i, 0], 0),
+            J2.variable(z[i, 1], 1),
+            J2.variable(z[i, 2], 2),
+            J2.variable(z[i, 3], 3),
+            J2.variable(z[i, 4], 4),
+            J2.variable(z[i, 5], 5),
+            J2.variable(z[i, 6], 6),
+            J2.variable(z[i, 7], 7),
+            J2.variable(z[i, 8], 8),
         ).hess
         for p in range(9):
             for q in range(9):
@@ -300,18 +300,18 @@ def build_tet(with_forward2=True):
     def tet_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff]):
         i = wp.tid()
         out[i] = tet_energy(
-            Jk.seed(z[i, 0], 0),
-            Jk.seed(z[i, 1], 1),
-            Jk.seed(z[i, 2], 2),
-            Jk.seed(z[i, 3], 3),
-            Jk.seed(z[i, 4], 4),
-            Jk.seed(z[i, 5], 5),
-            Jk.seed(z[i, 6], 6),
-            Jk.seed(z[i, 7], 7),
-            Jk.seed(z[i, 8], 8),
-            Jk.seed(z[i, 9], 9),
-            Jk.seed(z[i, 10], 10),
-            Jk.seed(z[i, 11], 11),
+            Jk.variable(z[i, 0], 0),
+            Jk.variable(z[i, 1], 1),
+            Jk.variable(z[i, 2], 2),
+            Jk.variable(z[i, 3], 3),
+            Jk.variable(z[i, 4], 4),
+            Jk.variable(z[i, 5], 5),
+            Jk.variable(z[i, 6], 6),
+            Jk.variable(z[i, 7], 7),
+            Jk.variable(z[i, 8], 8),
+            Jk.variable(z[i, 9], 9),
+            Jk.variable(z[i, 10], 10),
+            Jk.variable(z[i, 11], 11),
         ).coeff
 
     @wp.kernel
@@ -343,18 +343,18 @@ def build_tet(with_forward2=True):
     def tet_hess_forward(z: wp.array2d[wp.float32], out: wp.array3d[wp.float32]):
         i = wp.tid()
         h = tet_energy(
-            J2.seed(z[i, 0], 0),
-            J2.seed(z[i, 1], 1),
-            J2.seed(z[i, 2], 2),
-            J2.seed(z[i, 3], 3),
-            J2.seed(z[i, 4], 4),
-            J2.seed(z[i, 5], 5),
-            J2.seed(z[i, 6], 6),
-            J2.seed(z[i, 7], 7),
-            J2.seed(z[i, 8], 8),
-            J2.seed(z[i, 9], 9),
-            J2.seed(z[i, 10], 10),
-            J2.seed(z[i, 11], 11),
+            J2.variable(z[i, 0], 0),
+            J2.variable(z[i, 1], 1),
+            J2.variable(z[i, 2], 2),
+            J2.variable(z[i, 3], 3),
+            J2.variable(z[i, 4], 4),
+            J2.variable(z[i, 5], 5),
+            J2.variable(z[i, 6], 6),
+            J2.variable(z[i, 7], 7),
+            J2.variable(z[i, 8], 8),
+            J2.variable(z[i, 9], 9),
+            J2.variable(z[i, 10], 10),
+            J2.variable(z[i, 11], 11),
         ).hess
         for p in range(12):
             for q in range(12):

@@ -70,8 +70,8 @@ def smooth_np(z):
 @wp.kernel(enable_backward=False)
 def jet_smooth(z: wp.array2d[float], val: wp.array[float], grad: wp.array[J2.coeff]):
     i = wp.tid()
-    a = J2.seed(z[i, 0], 0)
-    b = J2.seed(z[i, 1], 1)
+    a = J2.variable(z[i, 0], 0)
+    b = J2.variable(z[i, 1], 1)
     e = (
         wp.asin(0.4 * a)
         + wp.acos(0.3 * b)
@@ -93,8 +93,8 @@ def branch_np(z):
 @wp.kernel(enable_backward=False)
 def jet_branch(z: wp.array2d[float], val: wp.array[float], grad: wp.array[J2.coeff]):
     i = wp.tid()
-    a = J2.seed(z[i, 0], 0)
-    b = J2.seed(z[i, 1], 1)
+    a = J2.variable(z[i, 0], 0)
+    b = J2.variable(z[i, 1], 1)
     e = wp.min(a, b) + wp.max(a, b) + wp.clamp(a, -0.5, 0.5) + wp.where(a.value > 0.0, a, b) + wp.abs(a)
     val[i] = e.value
     grad[i] = e.coeff
@@ -121,8 +121,8 @@ def g3_np(z):
 @wp.kernel(enable_backward=False)
 def jet2_g3(z: wp.array2d[float], val: wp.array[float], grad: wp.array2d[float], hess: wp.array3d[float]):
     i = wp.tid()
-    a = J2_2ND.seed(z[i, 0], 0)
-    b = J2_2ND.seed(z[i, 1], 1)
+    a = J2_2ND.variable(z[i, 0], 0)
+    b = J2_2ND.variable(z[i, 1], 1)
     r = (
         wp.atan2(a, b + 2.0)
         + wp.pow(a + 2.0, b)  # pow(jet, jet)
@@ -147,8 +147,8 @@ def branch2_np(z):
 @wp.kernel(enable_backward=False)
 def jet2_branch(z: wp.array2d[float], val: wp.array[float], grad: wp.array2d[float], hess: wp.array3d[float]):
     i = wp.tid()
-    a = J2_2ND.seed(z[i, 0], 0)
-    b = J2_2ND.seed(z[i, 1], 1)
+    a = J2_2ND.variable(z[i, 0], 0)
+    b = J2_2ND.variable(z[i, 1], 1)
     r = wp.min(a * a, b * b + 5.0) + wp.max(a * a * a, b) + wp.where(a.value > 0.0, a * a, b * b)
     val[i] = r.value
     for p in range(2):
@@ -188,8 +188,8 @@ def _run_hess(kernel, z_np, device):
 @wp.kernel
 def jet_pow_jet_exponent(z: wp.array2d[float], grad: wp.array[J2.coeff]):
     i = wp.tid()
-    a = J2.seed(z[i, 0], 0)
-    b = J2.seed(z[i, 1], 1)
+    a = J2.variable(z[i, 0], 0)
+    b = J2.variable(z[i, 1], 1)
     grad[i] = wp.pow(a, b).coeff
 
 
@@ -198,7 +198,7 @@ def jet_pow_const_exponent(z: wp.array[float], grad: wp.array2d[float]):
     # Degenerate constant exponents at a zero base: p * a**(p-1) and
     # p (p-1) a**(p-2) are 0 * inf there for p == 0 and p == 1.
     i = wp.tid()
-    a = J2.seed(z[i], 0)
+    a = J2.variable(z[i], 0)
     grad[i, 0] = wp.pow(a, 0.0).coeff[0]
     grad[i, 1] = wp.pow(a, 1.0).coeff[0]
     grad[i, 2] = wp.pow(a, 2.0).coeff[0]
@@ -209,7 +209,7 @@ def jet_pow_const_exponent(z: wp.array[float], grad: wp.array2d[float]):
 @wp.kernel
 def jet2_pow_const_exponent(z: wp.array[float], grad: wp.array2d[float], hess: wp.array2d[float]):
     i = wp.tid()
-    a = J2_2ND.seed(z[i], 0)
+    a = J2_2ND.variable(z[i], 0)
     e0 = wp.pow(a, 0)
     grad[i, 0] = e0.grad[0]
     hess[i, 0] = e0.hess[0, 0]
@@ -230,8 +230,8 @@ def jet2_pow_const_exponent(z: wp.array[float], grad: wp.array2d[float], hess: w
 @wp.kernel
 def jet2_pow_jet_exponent(z: wp.array2d[float], grad: wp.array2d[float], hess: wp.array3d[float]):
     i = wp.tid()
-    a = J2_2ND.seed(z[i, 0], 0)
-    b = J2_2ND.seed(z[i, 1], 1)
+    a = J2_2ND.variable(z[i, 0], 0)
+    b = J2_2ND.variable(z[i, 1], 1)
     e = wp.pow(a, b)
     for p in range(2):
         grad[i, p] = e.grad[p]
@@ -262,7 +262,7 @@ def mixed_scalar_np(z):
 @wp.kernel
 def jet_mixed(z: wp.array2d[float], val: wp.array[float], grad: wp.array[J2.coeff]):
     i = wp.tid()
-    e = mixed_scalar_ops(J2.seed(z[i, 0], 0), J2.seed(z[i, 1], 1))
+    e = mixed_scalar_ops(J2.variable(z[i, 0], 0), J2.variable(z[i, 1], 1))
     val[i] = e.value
     grad[i] = e.coeff
 
@@ -270,7 +270,7 @@ def jet_mixed(z: wp.array2d[float], val: wp.array[float], grad: wp.array[J2.coef
 @wp.kernel
 def jet2_mixed(z: wp.array2d[float], val: wp.array[float], grad: wp.array2d[float], hess: wp.array3d[float]):
     i = wp.tid()
-    e = mixed_scalar_ops2(J2_2ND.seed(z[i, 0], 0), J2_2ND.seed(z[i, 1], 1))
+    e = mixed_scalar_ops2(J2_2ND.variable(z[i, 0], 0), J2_2ND.variable(z[i, 1], 1))
     val[i] = e.value
     for p in range(2):
         grad[i, p] = e.grad[p]
@@ -284,7 +284,8 @@ def jet2_mixed(z: wp.array2d[float], val: wp.array[float], grad: wp.array2d[floa
 
 J4 = wp.JetSpace(4)
 J9 = wp.JetSpace(9)
-J12 = wp.JetSpace(12)
+J9_nodes = wp.JetSpace((wp.vec3,) * 3)  # a triangle's three nodes; shares J9's types
+J12 = wp.JetSpace((wp.vec3,) * 4)  # a tetrahedron's four nodes
 
 
 # --------------------------------------------------------------------------
@@ -297,8 +298,8 @@ def jet_mat2_matmul(z: wp.array2d[float], out: wp.array[J4.coeff]):
     i = wp.tid()
     # A = [[z0, z2], [z1, z3]], built from its two seeded columns. Both
     # mat2 * mat2 and mat2 * vec2 appear in (A A) v.
-    c0 = J4.make_vec2(J4.seed(z[i, 0], 0), J4.seed(z[i, 1], 1))
-    c1 = J4.make_vec2(J4.seed(z[i, 2], 2), J4.seed(z[i, 3], 3))
+    c0 = J4.make_vec2(J4.variable(z[i, 0], 0), J4.variable(z[i, 1], 1))
+    c1 = J4.make_vec2(J4.variable(z[i, 2], 2), J4.variable(z[i, 3], 3))
     a = J4.make_mat2(c0, c1)
     v = J4.make_vec2(J4.constant(1.0), J4.constant(-2.0))
     w = (a * a) * v
@@ -320,8 +321,8 @@ def mat2_matmul_np(z):
 def jet_mat2_detrace(a: wp.array2d[float], det_g: wp.array[J4.coeff], tr_g: wp.array[J4.coeff]):
     # Seed the four entries (row-major m00,m01,m10,m11) to directions 0..3.
     i = wp.tid()
-    c0 = J4.seed_vec2(wp.vec2(a[i, 0], a[i, 2]), 0, 2)  # column 0 = (m00, m10)
-    c1 = J4.seed_vec2(wp.vec2(a[i, 1], a[i, 3]), 1, 3)  # column 1 = (m01, m11)
+    c0 = J4.make_vec2(J4.variable(a[i, 0], 0), J4.variable(a[i, 2], 2))  # column 0 = (m00, m10)
+    c1 = J4.make_vec2(J4.variable(a[i, 1], 1), J4.variable(a[i, 3], 3))  # column 1 = (m01, m11)
     m = J4.make_mat2(c0, c1)
     det_g[i] = wp.determinant(m).coeff
     tr_g[i] = wp.trace(m).coeff
@@ -338,10 +339,12 @@ def tet_np(z):
 @wp.kernel(enable_backward=False)
 def jet_tet(z: wp.array2d[float], grad: wp.array[J12.coeff]):
     i = wp.tid()
-    p0 = J12.seed_vec3(wp.vec3(z[i, 0], z[i, 1], z[i, 2]), 0, 1, 2)
-    p1 = J12.seed_vec3(wp.vec3(z[i, 3], z[i, 4], z[i, 5]), 3, 4, 5)
-    p2 = J12.seed_vec3(wp.vec3(z[i, 6], z[i, 7], z[i, 8]), 6, 7, 8)
-    p3 = J12.seed_vec3(wp.vec3(z[i, 9], z[i, 10], z[i, 11]), 9, 10, 11)
+    p0, p1, p2, p3 = J12.seed(
+        wp.vec3(z[i, 0], z[i, 1], z[i, 2]),
+        wp.vec3(z[i, 3], z[i, 4], z[i, 5]),
+        wp.vec3(z[i, 6], z[i, 7], z[i, 8]),
+        wp.vec3(z[i, 9], z[i, 10], z[i, 11]),
+    )
     f = J12.make_mat3(p1 - p0, p2 - p0, p3 - p0)  # deformation gradient
     i1 = wp.trace(wp.transpose(f) * f)  # matmul -> trace = sum of squares
     logj = wp.log(wp.determinant(f))
@@ -353,9 +356,9 @@ def jet_tet(z: wp.array2d[float], grad: wp.array[J12.coeff]):
 def jet_mat3_inverse(a: wp.array2d[float], out: wp.array3d[float]):
     # Seed the 3x3 entries (row-major dirs 0..8); write d(inv[r,c])/d(entry k).
     i = wp.tid()
-    c0 = J9.seed_vec3(wp.vec3(a[i, 0], a[i, 3], a[i, 6]), 0, 3, 6)  # column 0
-    c1 = J9.seed_vec3(wp.vec3(a[i, 1], a[i, 4], a[i, 7]), 1, 4, 7)
-    c2 = J9.seed_vec3(wp.vec3(a[i, 2], a[i, 5], a[i, 8]), 2, 5, 8)
+    c0 = J9.make_vec3(J9.variable(a[i, 0], 0), J9.variable(a[i, 3], 3), J9.variable(a[i, 6], 6))  # column 0
+    c1 = J9.make_vec3(J9.variable(a[i, 1], 1), J9.variable(a[i, 4], 4), J9.variable(a[i, 7], 7))
+    c2 = J9.make_vec3(J9.variable(a[i, 2], 2), J9.variable(a[i, 5], 5), J9.variable(a[i, 8], 8))
     inv = wp.inverse(J9.make_mat3(c0, c1, c2))
     for r in range(3):
         for c in range(3):
@@ -377,9 +380,9 @@ def triangle_rect_np(z):
 def jet_triangle_rect(z: wp.array2d[float], grad: wp.array[J9.coeff]):
     # 3x2 deformation gradient F, then S = F^T F (2x3 * 3x2 = 2x2), symmetric Dirichlet.
     i = wp.tid()
-    p0 = J9.seed_vec3(wp.vec3(z[i, 0], z[i, 1], z[i, 2]), 0, 1, 2)
-    p1 = J9.seed_vec3(wp.vec3(z[i, 3], z[i, 4], z[i, 5]), 3, 4, 5)
-    p2 = J9.seed_vec3(wp.vec3(z[i, 6], z[i, 7], z[i, 8]), 6, 7, 8)
+    p0, p1, p2 = J9_nodes.seed(
+        wp.vec3(z[i, 0], z[i, 1], z[i, 2]), wp.vec3(z[i, 3], z[i, 4], z[i, 5]), wp.vec3(z[i, 6], z[i, 7], z[i, 8])
+    )
     f = J9.make_mat32(p1 - p0, p2 - p0)
     s = wp.transpose(f) * f
     tr = wp.trace(s)

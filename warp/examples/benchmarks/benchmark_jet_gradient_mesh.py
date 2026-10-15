@@ -53,9 +53,9 @@ _REST = wp.constant(1.0)  # spring rest length
 _MU = wp.constant(1.0)
 _LAM = wp.constant(1.0)
 
-J6 = wp.JetSpace(6)
-J9 = wp.JetSpace(9)
-J12 = wp.JetSpace(12)
+J6 = wp.JetSpace((wp.vec3,) * 2)  # spring: two nodes
+J9 = wp.JetSpace((wp.vec3,) * 3)  # triangle: three nodes
+J12 = wp.JetSpace((wp.vec3,) * 4)  # tetrahedron: four nodes
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +103,8 @@ def tet_energy(p0: Any, p1: Any, p2: Any, p3: Any):
 def spring_jet(x: wp.array[wp.vec3], elem: wp.array[wp.vec2i], g: wp.array[wp.vec3]):
     t = wp.tid()
     e = elem[t]
-    c = spring_energy(J6.seed_vec3(x[e[0]], 0, 1, 2), J6.seed_vec3(x[e[1]], 3, 4, 5)).coeff
+    a, b = J6.seed(x[e[0]], x[e[1]])
+    c = spring_energy(a, b).coeff
     wp.atomic_add(g, e[0], wp.vec3(c[0], c[1], c[2]))
     wp.atomic_add(g, e[1], wp.vec3(c[3], c[4], c[5]))
 
@@ -119,11 +120,8 @@ def spring_scalar(x: wp.array[wp.vec3], elem: wp.array[wp.vec2i], en: wp.array[w
 def triangle_jet(x: wp.array[wp.vec3], elem: wp.array[wp.vec3i], g: wp.array[wp.vec3]):
     t = wp.tid()
     e = elem[t]
-    c = triangle_energy(
-        J9.seed_vec3(x[e[0]], 0, 1, 2),
-        J9.seed_vec3(x[e[1]], 3, 4, 5),
-        J9.seed_vec3(x[e[2]], 6, 7, 8),
-    ).coeff
+    a, b, c3 = J9.seed(x[e[0]], x[e[1]], x[e[2]])
+    c = triangle_energy(a, b, c3).coeff
     wp.atomic_add(g, e[0], wp.vec3(c[0], c[1], c[2]))
     wp.atomic_add(g, e[1], wp.vec3(c[3], c[4], c[5]))
     wp.atomic_add(g, e[2], wp.vec3(c[6], c[7], c[8]))
@@ -140,12 +138,8 @@ def triangle_scalar(x: wp.array[wp.vec3], elem: wp.array[wp.vec3i], en: wp.array
 def tet_jet(x: wp.array[wp.vec3], elem: wp.array[wp.vec4i], g: wp.array[wp.vec3]):
     t = wp.tid()
     e = elem[t]
-    c = tet_energy(
-        J12.seed_vec3(x[e[0]], 0, 1, 2),
-        J12.seed_vec3(x[e[1]], 3, 4, 5),
-        J12.seed_vec3(x[e[2]], 6, 7, 8),
-        J12.seed_vec3(x[e[3]], 9, 10, 11),
-    ).coeff
+    a, b, c3, d = J12.seed(x[e[0]], x[e[1]], x[e[2]], x[e[3]])
+    c = tet_energy(a, b, c3, d).coeff
     wp.atomic_add(g, e[0], wp.vec3(c[0], c[1], c[2]))
     wp.atomic_add(g, e[1], wp.vec3(c[3], c[4], c[5]))
     wp.atomic_add(g, e[2], wp.vec3(c[6], c[7], c[8]))

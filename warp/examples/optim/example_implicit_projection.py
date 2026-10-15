@@ -46,8 +46,8 @@ _BLOBS = (
     (0.30, 0.90, 0.40**2, 0.99),
 )
 
-J1 = wp.JetSpace(2)  # first-order: value + gradient
-J2 = wp.JetSpace2(2)  # second-order: value + gradient + Hessian
+J1 = wp.JetSpace(wp.vec2)  # first-order: value + gradient, over one 2D point
+J2 = wp.JetSpace2(2)  # second-order: value + gradient + Hessian, over two scalars
 
 # Tiny guard so the projection step is finite at exact grad(f) = 0 (measure zero),
 # where it evaluates to 0 -- matching the Moore-Penrose inverse. Not damping: both
@@ -80,7 +80,8 @@ def projection_rhs(x: wp.vec2):
     # (.coeff). The step is the Moore-Penrose pseudo-inverse of the 1x2 constraint
     # Jacobian grad(f)^T applied to -f -- the min-norm solution of grad(f) . dx = -f,
     # which for a row vector is exactly -f grad(f) / ||grad(f)||^2.
-    e = field(J1.seed(x[0], 0), J1.seed(x[1], 1))
+    p = J1.seed(x)
+    e = field(p[0], p[1])
     g = wp.vec2(e.coeff[0], e.coeff[1])
     return -(e.value / (wp.dot(g, g) + _EPS)) * g
 
@@ -90,7 +91,8 @@ def closest_point_rhs(z: wp.vec3, p0: wp.vec2):
     # SECOND-order jet: evaluating the field over J2 gives f, grad(f), AND the 2x2
     # Hessian H in a single forward pass -- and H is exactly what the KKT Jacobian
     # needs (its I + lambda*H block). No hand-written second derivatives.
-    e = field(J2.seed(z[0], 0), J2.seed(z[1], 1))
+    a, b = J2.seed(z[0], z[1])
+    e = field(a, b)
     g0, g1 = e.grad[0], e.grad[1]
     lam = z[2]
     r = wp.vec3(z[0] - p0[0] + lam * g0, z[1] - p0[1] + lam * g1, e.value)
