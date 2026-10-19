@@ -428,6 +428,34 @@ def test_pair_correlation_device_override(test, device):
     np.testing.assert_allclose(g, g_cpu, rtol=1e-3, atol=1e-3)
 
 
+def test_pair_correlation_far_from_origin(test, device):
+    """Count each pair once per direction when the points are far from the origin."""
+    # Offsets are multiples of 2**-14, which float32 represents exactly near +/-1000, so the
+    # point set is identical wherever it is translated. Two clusters of three points
+    # whose separations fall in bins 1, 2 and 3; the clusters are 1 apart, beyond r_max.
+    lattice = 2.0**-14
+    offsets = np.array([0, 2, 6], dtype=np.float64) * lattice
+    r_max, num_bins, area = 5.0e-4, 5, 1.0
+    for axis in range(3):
+        for origin in (0.0, -1000.0):
+            along = np.concatenate([origin + offsets, origin + 1.0 + offsets])
+            points_np = np.zeros((6, 3), dtype=np.float32)
+            points_np[:, axis] = along
+            points = wp.array(points_np, dtype=wp.vec3, device=device)
+
+            radii, g = geo.pair_correlation(points, area, r_max=r_max, num_bins=num_bins)
+
+            # Brute-force reference in float32, matching the distances the kernel sees.
+            diff = points_np[:, None, :] - points_np[None, :, :]
+            dist = np.sqrt((diff * diff).sum(axis=-1, dtype=np.float32))
+            within = (dist < np.float32(r_max)) & ~np.eye(6, dtype=bool)
+            bins = (dist[within] * np.float32(num_bins / r_max)).astype(np.int64)
+            counts = np.bincount(bins, minlength=num_bins).astype(np.float64)
+            expected = 6 * (6 / area) * 2.0 * np.pi * radii * (r_max / num_bins)
+            np.testing.assert_array_equal(counts, [0, 4, 4, 4, 0])
+            np.testing.assert_allclose(g, counts / expected, rtol=1.0e-6, err_msg=f"axis={axis} origin={origin}")
+
+
 def test_pair_correlation_invalid_r_max_raises(test, device):
     points, faces, _ = _plane(24, 1.0)
     sampler = geo.PoissonDiskSampler(points, faces, radius=0.1, device=device)
@@ -601,6 +629,12 @@ add_function_test(
 add_function_test(TestGeometryPoisson, "test_grid_overflow_raises", test_grid_overflow_raises, devices=devices)
 add_function_test(
     TestGeometryPoisson, "test_pair_correlation_device_override", test_pair_correlation_device_override, devices=devices
+)
+add_function_test(
+    TestGeometryPoisson,
+    "test_pair_correlation_far_from_origin",
+    test_pair_correlation_far_from_origin,
+    devices=devices,
 )
 add_function_test(
     TestGeometryPoisson,
