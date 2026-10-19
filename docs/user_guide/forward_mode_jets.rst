@@ -308,6 +308,11 @@ That makes jets a good fit for a *local* derivative of statically known arity. A
 width 6, a triangle width 9 and a tetrahedron width 12, and the dense local block is what a Newton solver scatters into a
 sparse global matrix. A good test is whether the width can be written as a literal next to the function that uses it.
 
+Jets also win when a function has *many outputs* of a few inputs, i.e. a tall Jacobian :math:`r : \mathbb{R}^k \to
+\mathbb{R}^m` with :math:`m \gg k`. Reverse mode needs one backward sweep per output, while one width-``k`` jet carries all
+``k`` directions through a single forward pass, and any work shared by the outputs runs once (see
+:ref:`the Jacobian benchmark below <jets_jacobian_performance>`).
+
 They are the wrong tool for differentiating with respect to a problem-sized or runtime number of variables. A width of
 :math:`n` cannot specialize a type, and even where it could, forward mode would cost :math:`n` directions against reverse
 mode's single backward pass. Use :class:`Tape` or :func:`grad` for the outer derivative, and jets for the fixed-arity
@@ -388,6 +393,54 @@ state is :math:`O(k^2)` and NVCC compile time is super-linear in ``k``. For the 
 tetrahedron compiles in seconds, but a longer scalar-form energy at ``k = 12`` can take minutes on a cold cache
 (``benchmark_element_hessian.py`` measures this). When compile time matters, in-kernel ``wp.grad`` over a first-order jet
 gives the same Hessian with state that grows linearly in ``k``.
+
+.. _jets_jacobian_performance:
+
+**Jacobian of a many-output function** (``benchmark_jet_jacobian.py``). Take a forward model with ``k = 3`` parameters
+that integrates a damped pendulum for 16 steps and then reads out ``m`` values of the final state, at 200,000 points. The
+integration is shared by all ``m`` readouts. The jet runs it once on a width-3 jet and evaluates every readout on that
+jet. The in-kernel ``wp.grad`` route calls ``wp.grad(residual)(x, j)`` once per output, which re-runs the integration for
+every row. The tape route is the per-row ``tape.backward`` loop described in :doc:`differentiability`, timed
+on its backward sweeps alone.
+
+.. list-table::
+    :header-rows: 1
+
+    * - Outputs ``m``
+      - Width-3 jet (ms)
+      - ``wp.grad`` in kernel (ms)
+      - ``m`` tape sweeps (ms)
+    * - 4
+      - 0.025
+      - 0.074
+      - 0.41
+    * - 16
+      - 0.037
+      - 0.284
+      - 6.1
+    * - 32
+      - 0.152
+      - 0.575
+      - 28.7
+    * - 64
+      - 0.211
+      - 1.15
+      - not run
+    * - 128
+      - 0.412
+      - 2.28
+      - not run
+
+The jet is 3 to 8 times faster than in-kernel ``wp.grad`` for ``m >= 4`` and hundreds of times faster than the tape,
+which launches ``m`` backward passes and rewrites an :math:`n \times m` seed each time. The tape was not run beyond
+``m = 32`` because its seeds need memory proportional to :math:`n m^2`. Small ``m`` times are close to the launch
+floor. The advantage over ``wp.grad`` comes from the shared integration and shrinks as the readouts become the larger
+share of the work, because each readout costs ``k + 1`` times more on a jet. It also shrinks as ``k`` grows, since the
+jet's cost scales with ``k`` and reverse mode's does not.
+
+Store the Jacobian output-major, ``jac[j * n + i]``, so that neighbouring threads write neighbouring elements. Storing it
+point-major, ``jac[i * m + j]``, made the jet about five times slower at ``m = 64`` (1.32 ms against 0.25 ms) and left
+the ``wp.grad`` route nearly unchanged, because the jet is fast enough to be bound by those strided stores.
 
 Limitations
 -----------
