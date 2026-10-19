@@ -102,7 +102,6 @@ class Example:
         self.samples = self.sampler.points.numpy()
 
         r, g = self.sampler.pair_correlation(num_bins=48)
-        wp.synchronize_device()
         inside = float(g[r < 0.85 * radius].mean())
         print(
             f"radius={radius:.4g}  samples={self.sampler.num_samples}  "

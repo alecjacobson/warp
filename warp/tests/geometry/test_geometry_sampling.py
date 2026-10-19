@@ -230,6 +230,75 @@ def test_zero_area_mesh_raises(test, device):
         geo.UniformSampler(points, np.array([0, 1, 2], dtype=np.int32), device=device)
 
 
+def test_cdf_resolves_equal_areas_on_large_mesh(test, device):
+    """Keep the area distribution accurate to double precision on a mesh with many triangles."""
+    n = 500
+    xs = np.arange(n + 1, dtype=np.float32)
+    xv, yv = np.meshgrid(xs, xs, indexing="ij")
+    points = np.stack([xv, yv, np.zeros_like(xv)], axis=-1).reshape(-1, 3)
+    i, j = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
+    a = (i * (n + 1) + j).ravel()
+    faces = np.stack([a, a + n + 1, a + n + 2, a, a + n + 2, a + 1], axis=-1).ravel().astype(np.int32)
+
+    sampler = geo.UniformSampler(points, faces, device=device)
+    cdf = sampler.cdf.numpy()
+    num_triangles = faces.shape[0] // 3
+    test.assertEqual(cdf.dtype, np.float64)
+    # Equal-area triangles: every CDF step is 1 / num_triangles. A float32 CDF would be
+    # off by about ``num_triangles * 6e-8`` (3% here) in relative terms.
+    steps = np.diff(cdf, prepend=0.0) * num_triangles
+    np.testing.assert_allclose(steps, 1.0, rtol=1.0e-9)
+
+
+def test_update_matches_rebuild(test, device):
+    """Rebuild the area distribution from vertices that moved in place."""
+    points, faces = _two_triangles()
+    vertices = wp.array(points, dtype=wp.vec3, device=device)
+    sampler = geo.UniformSampler(vertices, faces, device=device)
+
+    moved = points.copy()
+    moved[4] = [5.0, 0.0, 0.0]  # triangle 1 collapses to a zero-area sliver
+    moved[1] = [3.0, 0.0, 0.0]  # triangle 0 grows from area 1 to 3
+    vertices.assign(moved)
+    sampler.update()
+
+    rebuilt = geo.UniformSampler(moved, faces, device=device)
+    np.testing.assert_allclose(sampler.cdf.numpy(), rebuilt.cdf.numpy(), rtol=1.0e-12)
+    # Every draw lands on triangle 0 now that triangle 1 has no area.
+    draws, _ = sampler.sample(2000, seed=4)
+    test.assertTrue(np.all(draws.numpy() == 0))
+
+
+def test_update_in_cuda_graph(test, device):
+    """Replay a captured update on vertices that have moved."""
+    points, faces = _two_triangles()
+    vertices = wp.array(points, dtype=wp.vec3, device=device)
+    sampler = geo.UniformSampler(vertices, faces, device=device)
+
+    with wp.ScopedCapture(device=device) as capture:
+        sampler.update()
+
+    moved = points.copy()
+    moved[1] = [3.0, 0.0, 0.0]
+    vertices.assign(moved)
+    wp.capture_launch(capture.graph)
+
+    rebuilt = geo.UniformSampler(moved, faces, device=device)
+    np.testing.assert_allclose(sampler.cdf.numpy(), rebuilt.cdf.numpy(), rtol=1.0e-12)
+
+
+def test_update_reports_zero_area_on_check(test, device):
+    """Raise ValueError from check_error after an update collapses the whole mesh."""
+    points, faces = _two_triangles()
+    vertices = wp.array(points, dtype=wp.vec3, device=device)
+    sampler = geo.UniformSampler(vertices, faces, device=device)
+
+    vertices.zero_()
+    sampler.update()
+    with test.assertRaises(ValueError):
+        sampler.check_error()
+
+
 def test_empty_faces_raises(test, device):
     points = np.zeros((3, 3), dtype=np.float32)
     with test.assertRaises(ValueError):
@@ -289,6 +358,7 @@ def test_face_areas_negative_or_nonfinite_raises(test, device):
 
 
 devices = get_test_devices()
+cuda_devices_with_mempool = get_cuda_test_devices_with_mempool()
 
 
 class TestGeometrySampling(unittest.TestCase):
@@ -306,6 +376,22 @@ add_function_test(TestGeometrySampling, "test_within_triangle_uniform", test_wit
 add_function_test(TestGeometrySampling, "test_sample_points_on_surface", test_sample_points_on_surface, devices=devices)
 add_function_test(TestGeometrySampling, "test_seed_behavior", test_seed_behavior, devices=devices)
 add_function_test(TestGeometrySampling, "test_draw_sample_in_kernel", test_draw_sample_in_kernel, devices=devices)
+add_function_test(
+    TestGeometrySampling,
+    "test_cdf_resolves_equal_areas_on_large_mesh",
+    test_cdf_resolves_equal_areas_on_large_mesh,
+    devices=devices,
+)
+add_function_test(TestGeometrySampling, "test_update_matches_rebuild", test_update_matches_rebuild, devices=devices)
+add_function_test(
+    TestGeometrySampling, "test_update_in_cuda_graph", test_update_in_cuda_graph, devices=cuda_devices_with_mempool
+)
+add_function_test(
+    TestGeometrySampling,
+    "test_update_reports_zero_area_on_check",
+    test_update_reports_zero_area_on_check,
+    devices=devices,
+)
 add_function_test(TestGeometrySampling, "test_zero_area_mesh_raises", test_zero_area_mesh_raises, devices=devices)
 add_function_test(TestGeometrySampling, "test_empty_faces_raises", test_empty_faces_raises, devices=devices)
 add_function_test(

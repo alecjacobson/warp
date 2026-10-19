@@ -34,6 +34,10 @@ Surface sampling draws points on triangle meshes:
   metric (``geodesic=True``). :func:`pair_correlation` measures the resulting
   blue-noise spectrum on the surface.
 
+Both samplers can follow a mesh whose vertices move in place while its triangles stay
+fixed: ``UniformSampler.update`` and ``PoissonDiskSampler.update`` rebuild the samples
+without host synchronization or allocation, so they can be captured in a CUDA graph.
+
 The Poisson-disk sampler and its spectrum analysis implement Bowers, Wang, Wei
 and Maletz, "Parallel Poisson Disk Sampling with Spectrum Analysis on Surfaces"
 (ACM Transactions on Graphics 29(6), SIGGRAPH Asia 2010; doi:10.1145/1882261.1866188).
@@ -72,7 +76,6 @@ from warp._src.geometry import UniformSampler as UniformSampler
 from warp._src.geometry import UniformSamplerState as UniformSamplerState
 from warp._src.geometry import pair_correlation as pair_correlation
 from warp._src.geometry import poisson_disk_sample as poisson_disk_sample
-from warp._src.geometry import sample_barycentrics as sample_barycentrics
 from warp._src.geometry import uniformly_sample as uniformly_sample
 
 # category: Kernel API
@@ -80,3 +83,4 @@ from warp._src.geometry import uniformly_sample as uniformly_sample
 from warp._src.geometry import find_triangle_neighbor_edge_index as find_triangle_neighbor_edge_index
 from warp._src.geometry import swept_volume_sdf as swept_volume_sdf
 from warp._src.geometry import draw_sample as draw_sample
+from warp._src.geometry import sample_barycentrics as sample_barycentrics

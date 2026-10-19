@@ -24,7 +24,6 @@ Python API
    lipschitz_octree
    pair_correlation
    poisson_disk_sample
-   sample_barycentrics
    sparse_marching_cubes
    sparse_marching_cubes_from_cells
    swept_volume_bounds
@@ -42,4 +41,5 @@ Kernel API
 
    draw_sample
    find_triangle_neighbor_edge_index
+   sample_barycentrics
    swept_volume_sdf

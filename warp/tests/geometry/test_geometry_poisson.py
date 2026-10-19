@@ -305,6 +305,104 @@ def test_grid_overflow_raises(test, device):
         geo.poisson_disk_sample(points, faces, radius=1.0e-3, num_candidates=16, device=device)
 
 
+def _moved(points, scale, shift):
+    """Return ``points`` scaled by ``scale`` and translated by ``shift``."""
+    return (np.asarray(points) * scale + np.asarray(shift)).astype(np.float32)
+
+
+def test_priority_is_independent_of_face_selection(test, device):
+    """Keep accepted samples centered in their grid cells, not biased by face order."""
+    # Faces of a row-major plane are ordered by position, so a priority that reused the
+    # random number selecting each face would favor candidates at one side of every cell.
+    points, faces, _ = _plane(128, 1.0)
+    radius = 0.01
+    sampler = geo.PoissonDiskSampler(points, faces, radius, seed=0, device=device)
+    samples = sampler.points.numpy().astype(np.float64)
+    cell = radius / np.sqrt(3.0)
+    fraction = ((samples[:, :2] - points[:, :2].min(axis=0)) / cell) % 1.0
+    np.testing.assert_allclose(fraction.mean(axis=0), [0.5, 0.5], atol=0.035)
+
+
+def test_separated_components_keep_spacing(test, device):
+    """Keep samples at least the radius apart on components that are far from each other."""
+    square = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], dtype=np.float32)
+    offset = np.array([-1.0e6, 0.0, 0.0], dtype=np.float32)
+    points = np.vstack([square, square + offset]).astype(np.float32)
+    faces = np.array([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7], dtype=np.int32)
+    radius = 0.05
+    sampler = geo.PoissonDiskSampler(points, faces, radius, num_candidates=12000, seed=0, device=device)
+    samples = sampler.points.numpy().astype(np.float64)
+    distances = np.linalg.norm(samples[:, None] - samples[None, :], axis=-1)
+    np.fill_diagonal(distances, np.inf)
+    test.assertEqual(np.count_nonzero(distances < radius - 1.0e-6), 0)
+
+
+def test_update_matches_rebuild(test, device):
+    """Match a freshly built sampler after the vertices move in place."""
+    points, faces, _ = _plane(48, 2.0)
+    vertices = wp.array(points, dtype=wp.vec3, device=device)
+    sampler = geo.PoissonDiskSampler(vertices, faces, 0.1, num_candidates=6000, seed=3, device=device)
+
+    moved = _moved(points, 1.5, [0.25, -1.0, 2.0])
+    vertices.assign(moved)
+    sampler.update()
+
+    rebuilt = geo.PoissonDiskSampler(moved, faces, 0.1, num_candidates=6000, seed=3, device=device)
+    test.assertEqual(sampler.num_samples, rebuilt.num_samples)
+    np.testing.assert_array_equal(sampler.faces.numpy(), rebuilt.faces.numpy())
+    np.testing.assert_allclose(sampler.points.numpy(), rebuilt.points.numpy(), atol=1.0e-6)
+
+
+def test_update_in_cuda_graph(test, device):
+    """Replay a captured update on vertices that have moved, matching a rebuild."""
+    points, faces, _ = _plane(48, 2.0)
+    vertices = wp.array(points, dtype=wp.vec3, device=device)
+    sampler = geo.PoissonDiskSampler(vertices, faces, 0.1, num_candidates=6000, seed=3, device=device)
+
+    with wp.ScopedCapture(device=device) as capture:
+        sampler.update()
+
+    for scale in (1.5, 0.75):
+        moved = _moved(points, scale, [0.25, -1.0, 2.0])
+        vertices.assign(moved)
+        wp.capture_launch(capture.graph)
+
+        rebuilt = geo.PoissonDiskSampler(moved, faces, 0.1, num_candidates=6000, seed=3, device=device)
+        test.assertEqual(sampler.num_samples, rebuilt.num_samples)
+        np.testing.assert_array_equal(sampler.faces.numpy(), rebuilt.faces.numpy())
+        np.testing.assert_allclose(sampler.points.numpy(), rebuilt.points.numpy(), atol=1.0e-6)
+
+
+def test_update_reports_invalid_vertices_on_read(test, device):
+    """Raise ValueError when a vertex becomes non-finite, on the next host read."""
+    points, faces, _ = _plane(16, 1.0)
+    vertices = wp.array(points, dtype=wp.vec3, device=device)
+    sampler = geo.PoissonDiskSampler(vertices, faces, 0.1, num_candidates=1000, device=device)
+
+    broken = points.copy()
+    broken[5, 0] = np.nan
+    vertices.assign(broken)
+    sampler.update()
+    with test.assertRaises(ValueError):
+        _ = sampler.num_samples
+
+    vertices.assign(points)
+    sampler.update()
+    test.assertGreater(sampler.num_samples, 0)
+
+
+def test_sample_buffers_match_host_views(test, device):
+    """Expose the valid prefix of the fixed-capacity buffers through the host attributes."""
+    points, faces, _ = _plane(32, 1.0)
+    sampler = geo.PoissonDiskSampler(points, faces, 0.1, device=device)
+    count = int(sampler.sample_count.numpy()[0])
+    test.assertEqual(count, sampler.num_samples)
+    test.assertEqual(sampler.points_buffer.shape[0], sampler.num_candidates)
+    np.testing.assert_array_equal(sampler.points_buffer.numpy()[:count], sampler.points.numpy())
+    np.testing.assert_array_equal(sampler.faces_buffer.numpy()[:count], sampler.faces.numpy())
+    np.testing.assert_array_equal(sampler.uv_buffer.numpy()[:count], sampler.uv.numpy())
+
+
 def test_pair_correlation_device_override(test, device):
     """Move points to the requested device when it differs from where they live."""
     points = wp.array(np.random.default_rng(0).random((200, 3)), dtype=wp.vec3, device="cpu")
@@ -419,6 +517,7 @@ def test_scale_regression(test, device):
 
 
 devices = get_test_devices()
+cuda_devices_with_mempool = get_cuda_test_devices_with_mempool()
 
 
 class TestGeometryPoisson(unittest.TestCase):
@@ -454,6 +553,31 @@ add_function_test(
 )
 add_function_test(
     TestGeometryPoisson, "test_geodesic_helps_thin_feature", test_geodesic_helps_thin_feature, devices=devices
+)
+add_function_test(
+    TestGeometryPoisson,
+    "test_priority_is_independent_of_face_selection",
+    test_priority_is_independent_of_face_selection,
+    devices=devices,
+)
+add_function_test(
+    TestGeometryPoisson,
+    "test_separated_components_keep_spacing",
+    test_separated_components_keep_spacing,
+    devices=devices,
+)
+add_function_test(TestGeometryPoisson, "test_update_matches_rebuild", test_update_matches_rebuild, devices=devices)
+add_function_test(
+    TestGeometryPoisson, "test_update_in_cuda_graph", test_update_in_cuda_graph, devices=cuda_devices_with_mempool
+)
+add_function_test(
+    TestGeometryPoisson,
+    "test_update_reports_invalid_vertices_on_read",
+    test_update_reports_invalid_vertices_on_read,
+    devices=devices,
+)
+add_function_test(
+    TestGeometryPoisson, "test_sample_buffers_match_host_views", test_sample_buffers_match_host_views, devices=devices
 )
 add_function_test(TestGeometryPoisson, "test_grid_overflow_raises", test_grid_overflow_raises, devices=devices)
 add_function_test(
