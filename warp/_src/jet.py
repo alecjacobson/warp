@@ -1395,6 +1395,14 @@ def _layout_namespace(base, kinds, width: int, dtype, second_order: bool):
 def JetSpace(slots, dtype=None, *, width=None):
     """Return the jet types and helpers for a set of differentiated inputs.
 
+    A jet is a value paired with its first derivatives along a fixed set of
+    directions. Arithmetic on jets updates the derivatives alongside the value,
+    so evaluating a function on jets computes its derivatives in the same pass.
+    This is forward-mode automatic differentiation, in contrast to the
+    reverse-mode differentiation of :func:`warp.grad` and :class:`warp.Tape`.
+    Jets are ordinary Warp types, so reverse mode can also differentiate through
+    code that uses them.
+
     The first call for a given width and scalar type generates the types and
     registers their arithmetic as overloads of Warp's builtins; later calls
     return a namespace over the same types.

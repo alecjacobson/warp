@@ -5,10 +5,10 @@ Forward-Mode Jets
 
 .. currentmodule:: warp
 
-Warp differentiates in reverse mode: :class:`wp.Tape <Tape>` and :func:`wp.grad <grad>` record or replay a computation
+Warp's :class:`wp.Tape <Tape>` and :func:`wp.grad <grad>` differentiate in reverse mode: they replay a computation
 backwards and deliver the gradient of one output with respect to every input in a single sweep (see
-:ref:`differentiability`). That is the right tool for a loss over a large state, but it has no second-order counterpart.
-Simulation code often needs a *local Hessian*: the second derivative of a small energy, such as a spring, a triangle or a
+:ref:`differentiability`). That is the right tool for a loss over a large state, but reverse mode cannot be applied to
+its own output, so it does not produce second derivatives on its own. Simulation code often needs a *local Hessian*: the second derivative of a small energy, such as a spring, a triangle or a
 tetrahedron, with respect to the handful of values it reads.
 
 Forward-mode *jets* fill that gap. A jet carries a value together with its derivatives along a fixed number of
@@ -22,7 +22,8 @@ a side effect, with no hand-written gradient or Hessian:
 where :math:`w` is the jet's *width*. :func:`wp.JetSpace <JetSpace>` creates first-order jets, and
 :func:`wp.JetSpace2 <JetSpace2>` creates second-order scalar jets that also carry a dense Hessian.
 
-Jets do not replace reverse mode. They handle the fixed-arity term inside a sum; reverse mode handles the sum. See
+Jets do not replace reverse mode but complement it, with different trade-offs in memory access, operation count and
+compile time. See
 :ref:`jets_when_to_use` below.
 
 A First Example
