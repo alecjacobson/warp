@@ -359,7 +359,10 @@ def test_update_in_cuda_graph(test, device):
     vertices = wp.array(points, dtype=wp.vec3, device=device)
     sampler = geo.PoissonDiskSampler(vertices, faces, 0.1, num_candidates=6000, seed=3, device=device)
 
-    with wp.ScopedCapture(device=device) as capture:
+    # Load the module that holds the captured kernels up front; loading during capture
+    # crashes on CUDA drivers older than 12.3.
+    wp.load_module("warp.geometry.sampling", device=device)
+    with wp.ScopedCapture(device=device, force_module_load=False) as capture:
         sampler.update()
 
     for scale in (1.5, 0.75):
