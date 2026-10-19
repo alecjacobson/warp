@@ -394,6 +394,19 @@ def test_update_reports_invalid_vertices_on_read(test, device):
     test.assertGreater(sampler.num_samples, 0)
 
 
+def test_total_area_device_follows_update(test, device):
+    """Refresh the device-side total area on update, leaving the host snapshot unchanged."""
+    points, faces, area = _plane(16, 1.0)
+    vertices = wp.array(points, dtype=wp.vec3, device=device)
+    sampler = geo.PoissonDiskSampler(vertices, faces, 0.1, num_candidates=1000, device=device)
+    np.testing.assert_allclose(sampler.total_area_device.numpy(), [area], rtol=1.0e-6)
+
+    vertices.assign(_moved(points, 2.0, [0.0, 0.0, 0.0]))
+    sampler.update()
+    np.testing.assert_allclose(sampler.total_area_device.numpy(), [4.0 * area], rtol=1.0e-6)
+    test.assertAlmostEqual(sampler.total_area, area, places=6)
+
+
 def test_sample_buffers_match_host_views(test, device):
     """Expose the valid prefix of the fixed-capacity buffers through the host attributes."""
     points, faces, _ = _plane(32, 1.0)
@@ -578,6 +591,9 @@ add_function_test(
     "test_update_reports_invalid_vertices_on_read",
     test_update_reports_invalid_vertices_on_read,
     devices=devices,
+)
+add_function_test(
+    TestGeometryPoisson, "test_total_area_device_follows_update", test_total_area_device_follows_update, devices=devices
 )
 add_function_test(
     TestGeometryPoisson, "test_sample_buffers_match_host_views", test_sample_buffers_match_host_views, devices=devices

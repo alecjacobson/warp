@@ -264,6 +264,10 @@ def test_update_matches_rebuild(test, device):
 
     rebuilt = geo.UniformSampler(moved, faces, device=device)
     np.testing.assert_allclose(sampler.cdf.numpy(), rebuilt.cdf.numpy(), rtol=1.0e-12)
+    # The device-side area follows the update, while the host snapshot keeps its value.
+    np.testing.assert_allclose(sampler.total_area_device.numpy(), [rebuilt.total_area], rtol=1.0e-12)
+    test.assertAlmostEqual(sampler.total_area, 4.0, places=6)
+    test.assertAlmostEqual(rebuilt.total_area, 3.0, places=6)
     # Every draw lands on triangle 0 now that triangle 1 has no area.
     draws, _ = sampler.sample(2000, seed=4)
     test.assertTrue(np.all(draws.numpy() == 0))
@@ -288,6 +292,7 @@ def test_update_in_cuda_graph(test, device):
 
     rebuilt = geo.UniformSampler(moved, faces, device=device)
     np.testing.assert_allclose(sampler.cdf.numpy(), rebuilt.cdf.numpy(), rtol=1.0e-12)
+    np.testing.assert_allclose(sampler.total_area_device.numpy(), [rebuilt.total_area], rtol=1.0e-12)
 
 
 def test_update_reports_zero_area_on_check(test, device):

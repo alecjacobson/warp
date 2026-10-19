@@ -240,6 +240,11 @@ def _normalize_cdf_kernel(
 
 
 @wp.kernel(enable_backward=False)
+def _store_total_area_kernel(cumulative: wp.array[wp.float64], out_total_area: wp.array[wp.float64]):
+    out_total_area[0] = cumulative[cumulative.shape[0] - 1]
+
+
+@wp.kernel(enable_backward=False)
 def _draw_kernel(
     state: UniformSamplerState,
     seed: wp.int32,
@@ -336,8 +341,12 @@ class UniformSampler:
             device.
 
     Attributes:
-        total_area: Total surface area of the mesh when the sampler was built.
-            Not refreshed by :meth:`update`, which never reads back to the host.
+        total_area: Total surface area of the mesh when the sampler was built, as a
+            host ``float``. Not refreshed by :meth:`update`, which never reads back to
+            the host.
+        total_area_device: :class:`warp.array` of :class:`warp.float64` and shape
+            ``(1,)`` holding the current total surface area. :meth:`update` refreshes it
+            on the device, so device code and CUDA graphs can read it without a sync.
     """
 
     def __init__(self, points, faces, *, face_areas=None, device: DeviceLike | None = None):
@@ -371,6 +380,7 @@ class UniformSampler:
         self._areas = wp.empty(self.num_triangles, dtype=wp.float64, device=self.device)
         self._cumulative = wp.empty(self.num_triangles, dtype=wp.float64, device=self.device)
         self.cdf = wp.empty(self.num_triangles, dtype=wp.float64, device=self.device)
+        self.total_area_device = wp.zeros(1, dtype=wp.float64, device=self.device)
         self._error = wp.zeros(1, dtype=wp.int32, device=self.device)
 
         self.state = UniformSamplerState()
@@ -380,9 +390,8 @@ class UniformSampler:
         self.update()
         self.check_error()
 
-        # The inclusive scan's final entry is the total surface area, handy for
-        # sizing candidate pools (e.g. Poisson-disk sampling).
-        self.total_area = float(self._cumulative[self.num_triangles - 1 :].numpy()[0])
+        # Handy for sizing candidate pools (e.g. Poisson-disk sampling).
+        self.total_area = float(self.total_area_device.numpy()[0])
 
     def check_error(self) -> None:
         """Raise ``ValueError`` if the last :meth:`update` found invalid input.
@@ -401,7 +410,8 @@ class UniformSampler:
         It launches only device work and allocates nothing, so it can be captured
         in a CUDA graph. Invalid input, such as non-finite areas or a zero total
         area, is recorded on the device and raised by :meth:`check_error`.
-        :attr:`total_area` keeps the value from construction.
+        :attr:`total_area_device` holds the new total area; :attr:`total_area`
+        keeps the value from construction.
         """
         self._error.zero_()
         if self._face_areas is None:
@@ -426,6 +436,13 @@ class UniformSampler:
             dim=self.num_triangles,
             inputs=[self._cumulative],
             outputs=[self.cdf, self._error],
+            device=self.device,
+        )
+        wp.launch(
+            _store_total_area_kernel,
+            dim=1,
+            inputs=[self._cumulative],
+            outputs=[self.total_area_device],
             device=self.device,
         )
 
@@ -1071,7 +1088,8 @@ class PoissonDiskSampler:
 
     Attributes:
         radius: The minimum-distance radius used.
-        total_area: Total surface area of the mesh when the sampler was built.
+        total_area: Total surface area of the mesh when the sampler was built, as a host
+            ``float``. Not refreshed by :meth:`update`.
         points_buffer: Fixed-capacity :class:`warp.array` of :class:`warp.vec3` backing
             :attr:`points`, with length ``num_candidates``. Only the first
             ``sample_count[0]`` entries are valid.
@@ -1441,6 +1459,11 @@ class PoissonDiskSampler:
         return int(self.sample_count.numpy()[0])
 
     @property
+    def total_area_device(self) -> wp.array:
+        """Current total surface area as a device array of shape ``(1,)``, refreshed by :meth:`update`."""
+        return self._sampler.total_area_device
+
+    @property
     def num_samples(self) -> int:
         """Number of samples after the latest solve. Reading it synchronizes the device."""
         return self._read_sample_count()
@@ -1463,8 +1486,10 @@ class PoissonDiskSampler:
     def pair_correlation(self, *, r_max: float | None = None, num_bins: int = 64) -> tuple[np.ndarray, np.ndarray]:
         """Pair-correlation function of this sampler's points (see :func:`pair_correlation`).
 
-        Uses the sampler's own :attr:`total_area` for the density normalization.
-        For a Poisson-disk set, ``g(r)`` is near zero below :attr:`radius`.
+        Uses :attr:`total_area`, the area when the sampler was built, for the density
+        normalization. After :meth:`update` has changed the mesh area, call the module-level
+        :func:`pair_correlation` with the current area instead. For a Poisson-disk set,
+        ``g(r)`` is near zero below :attr:`radius`.
         """
         return pair_correlation(self.points, self.total_area, r_max=r_max, num_bins=num_bins, device=self.device)
 
