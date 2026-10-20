@@ -13,8 +13,8 @@ amber faces participate in candidates, and red faces participate in confirmed
 intersections. Display offsets do not affect the intersection calculation.
 
 Hash triangle bounding-sphere centers and query with the source radius plus the
-largest target radius, then filter by sphere overlap. The existing native
-``wp.intersect_tri_tri`` is the narrow phase for now. Dense pair masks intentionally
+largest target radius, then filter by sphere overlap. The pure Warp
+``wp.geometry.intersect_tri_tri`` is the narrow phase. Dense pair masks intentionally
 limit this testbed to small models. Surface intersections do not detect containment.
 Polyscope is an optional dependency, imported only when rendering.
 """
@@ -26,6 +26,7 @@ from pathlib import Path
 import numpy as np
 
 import warp as wp
+import warp.geometry
 
 
 @wp.kernel
@@ -56,8 +57,7 @@ def triangle_pair_intersects(
     i: int,
     j: int,
 ):
-    # The replacement point for future pure Warp narrow-phase routines.
-    return wp.intersect_tri_tri(
+    return wp.geometry.intersect_tri_tri(
         vertices_a[faces_a[i, 0]],
         vertices_a[faces_a[i, 1]],
         vertices_a[faces_a[i, 2]],

@@ -73,9 +73,11 @@ in B, followed by a per-pair sphere-overlap filter. This accounts for triangles
 spanning multiple cells. A small `1e-5` padding handles roundoff in these unit-scale
 fixtures.
 
-The narrow phase still uses the existing native `wp.intersect_tri_tri()`, through
-an example-local `@wp.func` replacement point. No new geometry API or pure Warp
-intersection predicate has been added.
+The narrow phase now calls [`warp.geometry.intersect_tri_tri()`](../warp/_src/geometry/intersect.py),
+implemented entirely with Warp functions. It supports `vec3` and `vec3d`, retains
+the native builtin's coplanar handling and plane tolerance, and makes no call to
+native `intersect_tri_tri`. The existing `wp.intersect_tri_tri()` remains unchanged
+and serves as the independent reference.
 
 The [tests](../warp/tests/geometry/test_mesh_intersect_hash.py) compare every
 intersection pair with an independent exhaustive kernel calling the existing
@@ -91,8 +93,57 @@ uv run -m unittest -v \
   warp.tests.test_closest_point_edge_edge
 ```
 
-**86 tests passed across CPU and GPU.** Pre-commit checks passed.
+**92 tests passed across CPU and GPU**, including randomized pairs, all three
+coplanar projection planes, vertex permutations, swapped triangles, contact cases,
+and plane-tolerance boundaries in both precisions. Pre-commit checks passed.
+The API documentation build completed without warnings.
 
 This small testbed intentionally uses dense pair masks, so its output memory is
 quadratic in mesh triangle counts. It detects surface intersections; a fully
 contained mesh can have no intersecting triangles.
+
+
+## Pure Warp versus native performance
+
+Measured on the GPU above with
+[`benchmark_intersect_tri_tri.py`](../warp/examples/benchmarks/benchmark_intersect_tri_tri.py).
+These are per-launch GPU times for 262,144 pairs, using the median of 21 samples.
+Each sample times a CUDA graph of 30 repeated launches; native/pure measurement
+order alternates. Compilation, data preparation, transfers, and the hash broad
+phase are excluded. All benchmark outputs are checked against the native builtin
+before timing. Timings apply to this machine and workload, not every GPU or input.
+
+| Precision | Workload | Native (µs) | Pure Warp (µs) | Speedup |
+| --- | --- | ---: | ---: | ---: |
+| float32 | random | 31.59 | 19.46 | 1.623× |
+| float32 | separated | 30.92 | 19.16 | 1.613× |
+| float32 | coplanar | 32.79 | 21.17 | 1.549× |
+| float32 | mesh candidates | 31.25 | 19.36 | 1.614× |
+| float64 | random | 213.64 | 181.32 | 1.178× |
+| float64 | separated | 137.97 | 132.28 | 1.043× |
+| float64 | coplanar | 497.45 | 483.06 | 1.030× |
+| float64 | mesh candidates | 203.92 | 176.87 | 1.153× |
+
+The random workload samples both triangles in the same unit box; separated pairs
+translate the second triangle by 4 along X; coplanar pairs share Z=0; mesh
+candidates repeat shuffled candidate pairs from the screenshot scene. The latter
+is a throughput workload with repeated geometry, not an end-to-end broad-phase
+measurement.
+
+Additional batch sizes also showed parity or improvement in all measured cases:
+
+| Pairs | float32 speedup range | float64 speedup range | Raw samples |
+| --- | --- | --- | --- |
+| 8,192 | 1.001–1.024× | 1.032–1.156× | [small](benchmark-small.json) |
+| 1,048,576 | 1.025–1.027× | 1.014–1.169× | [large](benchmark-large.json) |
+
+The smallest float32 cases are effectively tied at about 3 µs per launch; differences
+near 1× should be treated as timing noise. Larger batches can be limited by memory
+bandwidth. No timing-based assertions are added to the test suite.
+
+Main-run samples: [benchmark.json](benchmark.json). Reproduce with:
+
+```bash
+uv run -m warp.examples.benchmarks.benchmark_intersect_tri_tri \
+  --samples 21 --repeats 30 --output intersection-preview/benchmark.json
+```
