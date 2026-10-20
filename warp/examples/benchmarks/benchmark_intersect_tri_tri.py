@@ -28,8 +28,10 @@ def make_kernel(pure):
     def evaluate(points: wp.array2d[Any], result: wp.array[int]):
         i = wp.tid()
         if wp.static(pure):
-            result[i] = wp.geometry.intersect_tri_tri(
-                points[i, 0], points[i, 1], points[i, 2], points[i, 3], points[i, 4], points[i, 5]
+            result[i] = int(
+                wp.geometry.intersect_tri_tri(
+                    points[i, 0], points[i, 1], points[i, 2], points[i, 3], points[i, 4], points[i, 5]
+                )
             )
         else:
             result[i] = wp.intersect_tri_tri(

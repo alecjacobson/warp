@@ -74,7 +74,7 @@ spanning multiple cells. A small `1e-5` padding handles roundoff in these unit-s
 fixtures.
 
 The narrow phase now calls [`warp.geometry.intersect_tri_tri()`](../warp/_src/geometry/intersect.py),
-implemented entirely with Warp functions. It supports `vec3` and `vec3d`, retains
+implemented entirely with Warp functions. It returns `bool`, supports `vec3` and `vec3d`, retains
 the native builtin's coplanar handling and plane tolerance, and makes no call to
 native `intersect_tri_tri`. The existing `wp.intersect_tri_tri()` remains unchanged
 and serves as the independent reference.

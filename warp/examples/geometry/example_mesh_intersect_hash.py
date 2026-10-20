@@ -89,7 +89,7 @@ def intersect_hashed(
         # Hash collisions can return distant points; explicitly filter them.
         if wp.length(centers_a[i] - centers_b[j]) <= radii_a[i] + radii_b[j] + padding:
             candidates[i, j] += 1
-            hits[i, j] = triangle_pair_intersects(vertices_a, faces_a, vertices_b, faces_b, i, j)
+            hits[i, j] = int(triangle_pair_intersects(vertices_a, faces_a, vertices_b, faces_b, i, j))
 
 
 def make_box(subdivisions=3, scale=1.0, translation=(0.0, 0.0, 0.0), angle=0.0):

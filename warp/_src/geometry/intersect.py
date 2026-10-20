@@ -99,28 +99,28 @@ def _coplanar_tri_tri(n: Any, v0: Any, v1: Any, v2: Any, u0: Any, u1: Any, u2: A
         j = 2
 
     if _edge_edge(v0, v1, u0, u1, i, j):
-        return 1
+        return True
     if _edge_edge(v0, v1, u1, u2, i, j):
-        return 1
+        return True
     if _edge_edge(v0, v1, u2, u0, i, j):
-        return 1
+        return True
     if _edge_edge(v1, v2, u0, u1, i, j):
-        return 1
+        return True
     if _edge_edge(v1, v2, u1, u2, i, j):
-        return 1
+        return True
     if _edge_edge(v1, v2, u2, u0, i, j):
-        return 1
+        return True
     if _edge_edge(v2, v0, u0, u1, i, j):
-        return 1
+        return True
     if _edge_edge(v2, v0, u1, u2, i, j):
-        return 1
+        return True
     if _edge_edge(v2, v0, u2, u0, i, j):
-        return 1
+        return True
     if _point_in_triangle(v0, u0, u1, u2, i, j):
-        return 1
+        return True
     if _point_in_triangle(u0, v0, v1, v2, i, j):
-        return 1
-    return 0
+        return True
+    return False
 
 
 @wp.func(inline=True)
@@ -177,7 +177,7 @@ def _intersect_tri_tri(v0: Any, v1: Any, v2: Any, u0: Any, u1: Any, u2: Any):
     du1 = _plane_distance(n1, u1, offset1)
     du2 = _plane_distance(n1, u2, offset1)
     if du0 * du1 > zero and du0 * du2 > zero:
-        return 0
+        return False
 
     n2 = wp.cross(u1 - u0, u2 - u0)
     offset2 = (n2[0] * u0[0] + n2[1] * u0[1]) + n2[2] * u0[2]
@@ -185,7 +185,7 @@ def _intersect_tri_tri(v0: Any, v1: Any, v2: Any, u0: Any, u1: Any, u2: Any):
     dv1 = _plane_distance(n2, v1, offset2)
     dv2 = _plane_distance(n2, v2, offset2)
     if dv0 * dv1 > zero and dv0 * dv2 > zero:
-        return 0
+        return False
 
     if dv0 == zero or du0 == zero:
         # Most noncoplanar pairs avoid the remaining four zero comparisons.
@@ -211,12 +211,12 @@ def _intersect_tri_tri(v0: Any, v1: Any, v2: Any, u0: Any, u1: Any, u2: Any):
     q0 = d * xxyy + e * xx * y1
     q1 = d * xxyy + f * xx * y0
     if wp.max(p0, p1) < wp.min(q0, q1) or wp.max(q0, q1) < wp.min(p0, p1):
-        return 0
-    return 1
+        return False
+    return True
 
 
 @wp.func(inline=True)
-def intersect_tri_tri(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3, u0: wp.vec3, u1: wp.vec3, u2: wp.vec3) -> int:
+def intersect_tri_tri(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3, u0: wp.vec3, u1: wp.vec3, u2: wp.vec3) -> bool:
     """Test whether two triangles intersect using a pure Warp implementation of Möller's method.
 
     All vertices must have the same type (``vec3`` or ``vec3d``) and be in the same
@@ -239,17 +239,17 @@ def intersect_tri_tri(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3, u0: wp.vec3, u1: wp
         u2: Third vertex of the second triangle.
 
     Returns:
-        ``1`` if the triangles intersect, or ``0`` otherwise.
+        ``True`` if the triangles intersect, or ``False`` otherwise.
     """
     return _intersect_tri_tri(v0, v1, v2, u0, u1, u2)
 
 
 @wp.func(inline=True)
-def intersect_tri_tri(v0: wp.vec3d, v1: wp.vec3d, v2: wp.vec3d, u0: wp.vec3d, u1: wp.vec3d, u2: wp.vec3d) -> int:
+def intersect_tri_tri(v0: wp.vec3d, v1: wp.vec3d, v2: wp.vec3d, u0: wp.vec3d, u1: wp.vec3d, u2: wp.vec3d) -> bool:
     """Double-precision overload of :func:`warp.geometry.intersect_tri_tri`.
 
-    Use the same coordinate space for all six vertices. Return ``1`` for an
-    intersection, including coplanar overlap, or ``0`` otherwise. The plane
+    Use the same coordinate space for all six vertices. Return ``True`` for an
+    intersection, including coplanar overlap, or ``False`` otherwise. The plane
     tolerance and limitations are the same as for the single-precision overload.
     """
     return _intersect_tri_tri(v0, v1, v2, u0, u1, u2)

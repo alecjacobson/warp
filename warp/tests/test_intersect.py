@@ -23,7 +23,7 @@ def intersect_tri(
     result_double_precision: wp.array[int],
 ):
     result_single_precision[0] = wp.intersect_tri_tri(v0, v1, v2, u0, u1, u2)
-    result_single_precision[1] = wp.geometry.intersect_tri_tri(v0, v1, v2, u0, u1, u2)
+    result_single_precision[1] = int(wp.geometry.intersect_tri_tri(v0, v1, v2, u0, u1, u2))
 
     u0_d = wp.vec3d(u0)
     u1_d = wp.vec3d(u1)
@@ -34,7 +34,7 @@ def intersect_tri(
     v2_d = wp.vec3d(v2)
 
     result_double_precision[0] = wp.intersect_tri_tri(v0_d, v1_d, v2_d, u0_d, u1_d, u2_d)
-    result_double_precision[1] = wp.geometry.intersect_tri_tri(v0_d, v1_d, v2_d, u0_d, u1_d, u2_d)
+    result_double_precision[1] = int(wp.geometry.intersect_tri_tri(v0_d, v1_d, v2_d, u0_d, u1_d, u2_d))
 
 
 def test_intersect_tri(test, device):
@@ -79,7 +79,7 @@ def test_intersect_tri(test, device):
 
 
 @wp.kernel
-def compare_triangles(points: wp.array2d[Any], native: wp.array[int], geometry: wp.array[int]):
+def compare_triangles(points: wp.array2d[Any], native: wp.array[int], geometry: wp.array[bool]):
     i = wp.tid()
     native[i] = wp.intersect_tri_tri(points[i, 0], points[i, 1], points[i, 2], points[i, 3], points[i, 4], points[i, 5])
     geometry[i] = wp.geometry.intersect_tri_tri(
@@ -92,7 +92,7 @@ def check_triangles(test, device, points, expected=None):
         with test.subTest(dtype=dtype):
             inputs = wp.array(points, dtype=dtype, device=device)
             native = wp.empty(len(points), dtype=int, device=device)
-            geometry = wp.empty_like(native)
+            geometry = wp.empty(len(points), dtype=bool, device=device)
             wp.launch(compare_triangles, dim=len(points), inputs=[inputs, native, geometry], device=device)
             np.testing.assert_array_equal(geometry.numpy(), native.numpy())
             if expected is not None:
