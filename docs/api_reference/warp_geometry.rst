@@ -34,5 +34,6 @@ Kernel API
    :toctree: _generated
 
    find_triangle_neighbor_edge_index
+   intersect_seg_tri
    intersect_tri_tri
    swept_volume_sdf

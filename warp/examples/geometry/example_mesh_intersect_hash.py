@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Visualize hashed triangle-pair candidates with headless Polyscope.
+"""Visualize hashed intersection candidates with headless Polyscope.
 
 Run from the repository root::
 
@@ -12,9 +12,14 @@ copies of A and B in the middle and right. Gray faces have no candidate pairs,
 amber faces participate in candidates, and red faces participate in confirmed
 intersections. Display offsets do not affect the intersection calculation.
 
-Hash triangle bounding-sphere centers and query with the source radius plus the
-largest target radius, then filter by sphere overlap. The pure Warp
-``wp.geometry.intersect_tri_tri`` is the narrow phase. Dense pair masks intentionally
+Use ``--segments`` to replace model A with its unique geometric edge segments,
+including triangulation diagonals. Colors then classify segments in A and faces
+in B. Exactly coincident vertices and duplicate undirected edges are merged.
+
+Hash primitive bounding-sphere centers and query with the source radius plus the
+largest target radius, then filter by sphere overlap. The pure Warp predicates
+``wp.geometry.intersect_tri_tri`` and ``wp.geometry.intersect_seg_tri`` provide
+the narrow phase. Dense pair masks intentionally
 limit this testbed to small models. Surface intersections do not detect containment.
 Polyscope is an optional dependency, imported only when rendering.
 """
@@ -30,7 +35,7 @@ import warp.geometry
 
 
 @wp.kernel
-def triangle_bounds(
+def primitive_bounds(
     vertices: wp.array[wp.vec3],
     faces: wp.array2d[int],
     centers: wp.array[wp.vec3],
@@ -40,16 +45,19 @@ def triangle_bounds(
     i = wp.tid()
     a = vertices[faces[i, 0]]
     b = vertices[faces[i, 1]]
-    c = vertices[faces[i, 2]]
-    center = (a + b + c) / 3.0
-    radius = wp.max(wp.length(a - center), wp.max(wp.length(b - center), wp.length(c - center)))
+    center = (a + b) * 0.5
+    radius = wp.max(wp.length(a - center), wp.length(b - center))
+    if faces.shape[1] == 3:
+        c = vertices[faces[i, 2]]
+        center = (a + b + c) / 3.0
+        radius = wp.max(wp.length(a - center), wp.max(wp.length(b - center), wp.length(c - center)))
     centers[i] = center
     radii[i] = radius
     wp.atomic_max(max_radius, 0, radius)
 
 
 @wp.func
-def triangle_pair_intersects(
+def primitive_pair_intersects(
     vertices_a: wp.array[wp.vec3],
     faces_a: wp.array2d[int],
     vertices_b: wp.array[wp.vec3],
@@ -57,6 +65,14 @@ def triangle_pair_intersects(
     i: int,
     j: int,
 ):
+    if faces_a.shape[1] == 2:
+        return wp.geometry.intersect_seg_tri(
+            vertices_a[faces_a[i, 0]],
+            vertices_a[faces_a[i, 1]],
+            vertices_b[faces_b[j, 0]],
+            vertices_b[faces_b[j, 1]],
+            vertices_b[faces_b[j, 2]],
+        )
     return wp.geometry.intersect_tri_tri(
         vertices_a[faces_a[i, 0]],
         vertices_a[faces_a[i, 1]],
@@ -89,7 +105,7 @@ def intersect_hashed(
         # Hash collisions can return distant points; explicitly filter them.
         if wp.length(centers_a[i] - centers_b[j]) <= radii_a[i] + radii_b[j] + padding:
             candidates[i, j] += 1
-            hits[i, j] = int(triangle_pair_intersects(vertices_a, faces_a, vertices_b, faces_b, i, j))
+            hits[i, j] = int(primitive_pair_intersects(vertices_a, faces_a, vertices_b, faces_b, i, j))
 
 
 def make_box(subdivisions=3, scale=1.0, translation=(0.0, 0.0, 0.0), angle=0.0):
@@ -117,10 +133,22 @@ def make_box(subdivisions=3, scale=1.0, translation=(0.0, 0.0, 0.0), angle=0.0):
     return vertices.astype(np.float32), np.asarray(faces, dtype=np.int32)
 
 
+def mesh_edges(model):
+    """Extract unique undirected edges, merging exactly coincident vertices."""
+    vertices, faces = model
+    vertices, inverse = np.unique(vertices, axis=0, return_inverse=True)
+    faces = inverse[faces]
+    edges = np.concatenate((faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]))
+    edges = np.unique(np.sort(edges, axis=1), axis=0)
+    return vertices, edges.astype(np.int32)
+
+
 def intersect_models(model_a, model_b, device, *, cell_size=0.5, grid_dim=16):
-    """Return dense candidate-count and intersection masks for two small meshes."""
+    """Intersect A's triangles or segments with B's triangles using a spatial hash."""
     if cell_size <= 0.0 or grid_dim < 1:
         raise ValueError("Cell size and grid dimensions must be positive.")
+    if model_a[1].shape[1] not in (2, 3) or model_b[1].shape[1] != 3:
+        raise ValueError("Model A must contain segments or triangles, and model B must contain triangles.")
     arrays = []
     bounds = []
     for vertices, faces in (model_a, model_b):
@@ -130,7 +158,7 @@ def intersect_models(model_a, model_b, device, *, cell_size=0.5, grid_dim=16):
         radii = wp.empty(len(faces), dtype=float, device=device)
         max_radius = wp.zeros(1, dtype=float, device=device)
         wp.launch(
-            triangle_bounds,
+            primitive_bounds,
             dim=len(faces),
             inputs=[vertex_array, face_array, centers, radii, max_radius],
             device=device,
@@ -181,6 +209,11 @@ def render_screenshot(model_a, model_b, candidates, hits, path):
                 ("isolated", np.array((0.0 if index == 0 else 3.5, 0.0, 0.0)) - center),
             )
             for view, offset in offsets:
+                if faces.shape[1] == 2:
+                    network = ps.register_curve_network(f"{view}: segments A", vertices + offset, faces, material="wax")
+                    network.set_radius(0.012, relative=False)
+                    network.add_color_quantity("segment classification", colors, defined_on="edges", enabled=True)
+                    continue
                 mesh = ps.register_surface_mesh(
                     f"{view}: mesh {'A' if index == 0 else 'B'}",
                     vertices + offset,
@@ -192,7 +225,9 @@ def render_screenshot(model_a, model_b, candidates, hits, path):
                 )
                 mesh.add_color_quantity("triangle classification", colors, defined_on="faces", enabled=True)
 
-        ps.look_at((-0.4, -12.0, 7.0), (-0.4, 0.0, 0.0))
+        # Oblique view avoids superimposing opposite wireframe faces.
+        eye_x = -4.4 if model_a[1].shape[1] == 2 else -0.4
+        ps.look_at((eye_x, -12.0, 7.0), (-0.4, 0.0, 0.0))
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         ps.screenshot(str(path), transparent_bg=False)
@@ -209,6 +244,7 @@ def main():
     )
     parser.add_argument("--cell-size", type=float, default=0.5, help="Spatial hash cell width.")
     parser.add_argument("--grid-dim", type=int, default=16, help="Hash bucket count per axis.")
+    parser.add_argument("--segments", action="store_true", help="Replace model A with its unique mesh-edge segments.")
     parser.add_argument("--screenshot", type=Path, default=Path("outputs/mesh_intersect_hash.png"))
     parser.add_argument("--stats", type=Path, default=Path("outputs/mesh_intersect_hash.json"))
     args = parser.parse_args()
@@ -219,6 +255,8 @@ def main():
 
     device = wp.get_device(args.device)
     model_a = make_box(subdivisions=args.subdivisions)
+    if args.segments:
+        model_a = mesh_edges(model_a)
     model_b = make_box(subdivisions=args.subdivisions, translation=(0.7, 0.3, 0.2), angle=0.31)
     candidates, hits = intersect_models(model_a, model_b, device, cell_size=args.cell_size, grid_dim=args.grid_dim)
     candidate_count = int(np.count_nonzero(candidates))
@@ -243,6 +281,11 @@ def main():
         "intersecting_faces_b": int(np.count_nonzero(np.any(hits, axis=0))),
         "screenshot": str(args.screenshot),
     }
+    if args.segments:
+        stats["mode"] = "segment_triangle"
+        stats["segments_a"] = stats.pop("triangles_a")
+        stats["candidate_segments_a"] = stats.pop("candidate_faces_a")
+        stats["intersecting_segments_a"] = stats.pop("intersecting_faces_a")
     stats.update(render_screenshot(model_a, model_b, candidates, hits, args.screenshot))
     args.stats.parent.mkdir(parents=True, exist_ok=True)
     args.stats.write_text(json.dumps(stats, indent=2) + "\n")

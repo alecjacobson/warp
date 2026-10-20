@@ -1,0 +1,1 @@
+Add `warp.geometry.intersect_seg_tri()`, a pure Warp boolean segment–triangle predicate supporting single and double precision, coplanar overlap, and boundary contact. Add `--segments` to the spatial-hash intersection example to visualize mesh-edge segments against triangles.

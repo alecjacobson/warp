@@ -11,7 +11,8 @@ import unittest
 import numpy as np
 
 import warp as wp
-from warp.examples.geometry.example_mesh_intersect_hash import intersect_models, make_box
+from warp.examples.geometry.example_mesh_intersect_hash import intersect_models, make_box, mesh_edges
+from warp.tests.test_intersect import segment_triangle_reference
 from warp.tests.unittest_utils import add_function_test, get_test_devices
 
 
@@ -101,8 +102,69 @@ def test_triangle_contacts(test, device):
             test.assertEqual(hits, expected_hits)
 
 
+def test_segment_models(test, device):
+    # Match the screenshot scene, plus coarse triangles and hash collisions.
+    for subdivisions, shift, cell_size, grid_dim in (
+        (6, 0.0, 0.5, 16),
+        (1, -10.0, 0.125, 2),
+    ):
+        with test.subTest(subdivisions=subdivisions):
+            model_a = mesh_edges(make_box(subdivisions=6, translation=(shift,) * 3))
+            model_b = make_box(
+                subdivisions=subdivisions, translation=(shift + 0.7, shift + 0.3, shift + 0.2), angle=0.31
+            )
+            candidates, hits = intersect_models(model_a, model_b, device, cell_size=cell_size, grid_dim=grid_dim)
+            segments = model_a[0][model_a[1]].astype(np.float64)
+            triangles = model_b[0][model_b[1]].astype(np.float64)
+            # Exhaustive, independent NumPy reference, including pairs rejected
+            # by the spatial hash. Neither model shares coplanar primitives.
+            points = np.concatenate(
+                (
+                    np.broadcast_to(segments[:, None], (len(segments), len(triangles), 2, 3)),
+                    np.broadcast_to(triangles[None], (len(segments), len(triangles), 3, 3)),
+                ),
+                axis=2,
+            ).reshape(-1, 5, 3)
+            reference = segment_triangle_reference(points).reshape(hits.shape)
+            np.testing.assert_array_equal(hits, reference)
+            test.assertTrue(np.all(candidates[reference] == 1), "Broad phase missed or duplicated a segment hit")
+            test.assertLessEqual(int(candidates.max()), 1)
+            test.assertGreater(int(reference.sum()), 0)
+            test.assertLess(int(candidates.sum()), candidates.size)
+
+
+def test_segment_contacts(test, device):
+    model_b = (np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float32), np.array([[0, 1, 2]], dtype=np.int32))
+    segments = np.array(
+        [
+            [[0.25, 0.25, -1], [0.25, 0.25, 1]],
+            [[-1, 0.25, 0], [2, 0.25, 0]],
+            [[-1, 0, 0], [0, 0, 0]],
+            [[0, 0, 0], [1, 0, 0]],
+            [[0.25, 0.25, 0], [0.25, 0.25, 0]],
+            [[2, 2, 0], [3, 3, 0]],
+            [[0.25, 0.25, 1], [0.5, 0.25, 1]],
+        ],
+        dtype=np.float32,
+    )
+    model_a = (segments.reshape(-1, 3), np.arange(segments.shape[0] * 2, dtype=np.int32).reshape(-1, 2))
+    candidates, hits = intersect_models(model_a, model_b, device, cell_size=0.125, grid_dim=2)
+    expected = np.array([[1], [1], [1], [1], [1], [0], [0]])
+    np.testing.assert_array_equal(hits, expected)
+    test.assertTrue(np.all(candidates[expected != 0] == 1))
+    test.assertLessEqual(int(candidates.max()), 1)
+
+
 class TestMeshIntersectHash(unittest.TestCase):
-    pass
+    def test_unique_mesh_edges(self):
+        for subdivisions in (1, 3, 6):
+            with self.subTest(subdivisions=subdivisions):
+                vertices, edges = mesh_edges(make_box(subdivisions=subdivisions))
+                # A triangulated sphere has E=3F/2 and V=E-F+2.
+                self.assertEqual(len(edges), 18 * subdivisions**2)
+                self.assertEqual(len(vertices), 6 * subdivisions**2 + 2)
+                self.assertTrue(np.all(edges[:, 0] < edges[:, 1]))
+                self.assertEqual(len(np.unique(edges, axis=0)), len(edges))
 
 
 devices = get_test_devices()
@@ -110,6 +172,8 @@ add_function_test(TestMeshIntersectHash, "test_box_meshes", test_box_meshes, dev
 add_function_test(TestMeshIntersectHash, "test_hash_collisions", test_hash_collisions, devices=devices)
 add_function_test(TestMeshIntersectHash, "test_screenshot_models", test_screenshot_models, devices=devices)
 add_function_test(TestMeshIntersectHash, "test_triangle_contacts", test_triangle_contacts, devices=devices)
+add_function_test(TestMeshIntersectHash, "test_segment_models", test_segment_models, devices=devices)
+add_function_test(TestMeshIntersectHash, "test_segment_contacts", test_segment_contacts, devices=devices)
 
 
 if __name__ == "__main__":

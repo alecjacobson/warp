@@ -49,6 +49,64 @@ NVIDIA OpenGL 3.3.0, driver 595.58.03.
 
 The reduction above is a pair-count comparison, not a measured timing speedup.
 
+## Segment–triangle mode
+
+Pass `--segments` to replace model A with all its unique geometric mesh edges,
+including triangulation diagonals. Exactly coincident vertices are merged before
+deduplicating undirected edges, so shared edges appear only once.
+Model B remains a triangle mesh.
+
+![Spatial-hash candidate segments and confirmed segment–triangle intersections](segments.png)
+
+Left: the original configuration. Middle: the segments of A alone. Right: B alone.
+Gray means no candidate, amber means candidate but no confirmed hit, and red means
+at least one confirmed hit. Colors apply per segment on A and per face on B; they
+do not mark the precise intersection points. A slightly oblique camera reveals
+the wireframe's depth.
+
+The renderer uses Polyscope's
+[curve networks with per-edge colors](https://polyscope.run/py/structures/curve_network/color_quantities/).
+The GPU result is checked against an exhaustive, independent NumPy
+Möller–Trumbore reference for every segment–triangle pair in this scene.
+Raw results: [segments-stats.json](segments-stats.json).
+
+| Metric | Value |
+| --- | ---: |
+| Unique segments in A / triangles in B | 648 / 432 |
+| Exhaustive cross-model pairs | 279,936 |
+| Broad-phase candidate pairs | 3,648 |
+| Confirmed intersecting pairs | 60 |
+| Candidates rejected by narrow phase | 3,588 |
+| Reduction in narrow-phase calls versus all pairs | 98.70% |
+| Segments participating in candidates / intersections | 423 / 60 |
+| Faces participating in candidates / intersections | 285 / 36 |
+
+```bash
+env -u DISPLAY uv run --with polyscope==2.6.1 \
+  -m warp.examples.geometry.example_mesh_intersect_hash \
+  --device cuda:0 --segments \
+  --screenshot intersection-preview/segments.png \
+  --stats intersection-preview/segments-stats.json
+```
+
+The new pure Warp `warp.geometry.intersect_seg_tri(p0, p1, v0, v1, v2)` returns
+`bool` for `vec3` and `vec3d`. It clips the segment's parameter interval against
+the triangle plane and projected edge half-planes. Endpoint, edge, vertex,
+coplanar, and collinear overlap count as hits; zero-length segments are points,
+and zero-area triangles return `False`.
+It uses the existing tri–tri predicate's absolute `1e-6` tolerance on unnormalized
+plane equations; projected edge comparisons have no additional tolerance.
+This is not an exact predicate or a uniform world-space tolerance.
+
+**29 tests passed on CPU/GPU** in `warp.tests.test_intersect` and
+`warp.tests.geometry.test_mesh_intersect_hash` after adding this mode. They cover
+both precisions, segment reversal, all triangle vertex permutations, all three
+projection planes, multiple scales, boundary and degenerate cases, plane-tolerance
+boundaries, random 3D pairs against an independent NumPy reference, and 1,000
+coplanar segment fixtures against an exact rational reference. Example tests
+also verify edge deduplication and exhaustive pair agreement under hash collisions.
+Pre-commit checks passed, and the API documentation built without warnings.
+
 ## Reproduce
 
 From the repository root, with Warp already built:

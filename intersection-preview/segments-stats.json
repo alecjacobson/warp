@@ -1,0 +1,28 @@
+{
+  "warp_version": "1.19.0.dev1",
+  "device": "cuda:0",
+  "device_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+  "subdivisions": 6,
+  "triangles_b": 432,
+  "cell_size": 0.5,
+  "grid_dimensions": [
+    16,
+    16,
+    16
+  ],
+  "all_pairs": 279936,
+  "candidate_pairs": 3648,
+  "intersecting_pairs": 60,
+  "candidate_pairs_rejected_by_narrow_phase": 3588,
+  "pair_reduction_percent": 98.69684499314128,
+  "candidate_faces_b": 285,
+  "intersecting_faces_b": 36,
+  "screenshot": "intersection-preview/segments.png",
+  "mode": "segment_triangle",
+  "segments_a": 648,
+  "candidate_segments_a": 423,
+  "intersecting_segments_a": 60,
+  "polyscope_version": "2.6.1",
+  "headless": true,
+  "backend": "openGL3_egl"
+}

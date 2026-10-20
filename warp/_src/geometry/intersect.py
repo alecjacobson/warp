@@ -259,3 +259,129 @@ def intersect_tri_tri(v0: wp.vec3d, v1: wp.vec3d, v2: wp.vec3d, u0: wp.vec3d, u1
 # otherwise replaces __doc__ with the second Python function's shorter docstring.
 intersect_tri_tri.__doc__ = intersect_tri_tri.doc
 register_api_function(intersect_tri_tri, module="warp.geometry", differentiable=False)
+
+
+@wp.func(inline=True)
+def _orient_projected(a: Any, b: Any, p: Any, i: int, j: int):
+    return (_component(b, i) - _component(a, i)) * (_component(p, j) - _component(a, j)) - (
+        _component(b, j) - _component(a, j)
+    ) * (_component(p, i) - _component(a, i))
+
+
+@wp.func(inline=True)
+def _clip_segment_edge(d0: Any, d1: Any, lower: Any, upper: Any):
+    # Clip the segment parameter interval against one closed half-plane.
+    zero = type(d0)(0.0)
+    if d0 < zero and d1 < zero:
+        return type(d0)(1.0), zero
+    if d0 < zero:
+        lower = wp.max(lower, d0 / (d0 - d1))
+    elif d1 < zero:
+        upper = wp.min(upper, d0 / (d0 - d1))
+    return lower, upper
+
+
+@wp.func(inline=True)
+def _intersect_seg_tri(p0: Any, p1: Any, v0: Any, v1: Any, v2: Any):
+    zero = type(p0[0])(0.0)
+    one = type(p0[0])(1.0)
+    n = wp.cross(v1 - v0, v2 - v0)
+    a = wp.abs(n)
+    # Project onto the coordinate plane with the largest triangle area.
+    i = int(0)
+    j = int(1)
+    if a[0] > a[1]:
+        if a[0] > a[2]:
+            i = 1
+            j = 2
+    elif a[2] <= a[1]:
+        j = 2
+    area = _orient_projected(v0, v1, v2, i, j)
+    if area == zero:
+        return False
+
+    offset = (n[0] * v0[0] + n[1] * v0[1]) + n[2] * v0[2]
+    d0 = _plane_distance(n, p0, offset)
+    d1 = _plane_distance(n, p1, offset)
+    if (d0 > zero and d1 > zero) or (d0 < zero and d1 < zero):
+        return False
+
+    lower = zero
+    upper = one
+    if d0 != zero or d1 != zero:
+        # A noncoplanar segment can intersect the plane at only one parameter.
+        lower = d0 / (d0 - d1)
+        upper = lower
+    orientation = one
+    if area < zero:
+        orientation = -one
+    lower, upper = _clip_segment_edge(
+        orientation * _orient_projected(v0, v1, p0, i, j),
+        orientation * _orient_projected(v0, v1, p1, i, j),
+        lower,
+        upper,
+    )
+    if lower > upper:
+        return False
+    lower, upper = _clip_segment_edge(
+        orientation * _orient_projected(v1, v2, p0, i, j),
+        orientation * _orient_projected(v1, v2, p1, i, j),
+        lower,
+        upper,
+    )
+    if lower > upper:
+        return False
+    lower, upper = _clip_segment_edge(
+        orientation * _orient_projected(v2, v0, p0, i, j),
+        orientation * _orient_projected(v2, v0, p1, i, j),
+        lower,
+        upper,
+    )
+    return lower <= upper
+
+
+@wp.func(inline=True)
+def intersect_seg_tri(p0: wp.vec3, p1: wp.vec3, v0: wp.vec3, v1: wp.vec3, v2: wp.vec3) -> bool:
+    """Test whether a closed segment intersects a triangle using pure Warp.
+
+    All points must have the same type (``vec3`` or ``vec3d``) and be in the same
+    coordinate space. Endpoint, edge, vertex, and coplanar contact count as
+    intersections. A zero-length segment is treated as a point. A zero-area
+    triangle returns ``False``.
+
+    Like :func:`warp.geometry.intersect_tri_tri`, plane equation values with
+    absolute magnitude below ``1e-6`` are treated as zero. This tolerance applies
+    to unnormalized plane equations and depends on triangle scale. Endpoints
+    within this tolerance are treated as lying in the triangle's plane; the
+    dominant-axis projection determines their position within that plane.
+    Projected edge tests use inclusive comparisons without an added tolerance.
+
+    This floating-point predicate is not exact and may be inaccurate near
+    degeneracy. Use ``vec3d`` for greater precision. The result is not
+    differentiable.
+
+    Args:
+        p0: First endpoint of the segment.
+        p1: Second endpoint of the segment.
+        v0: First vertex of the triangle.
+        v1: Second vertex of the triangle.
+        v2: Third vertex of the triangle.
+
+    Returns:
+        ``True`` if the segment intersects the triangle, or ``False`` otherwise.
+    """
+    return _intersect_seg_tri(p0, p1, v0, v1, v2)
+
+
+@wp.func(inline=True)
+def intersect_seg_tri(p0: wp.vec3d, p1: wp.vec3d, v0: wp.vec3d, v1: wp.vec3d, v2: wp.vec3d) -> bool:
+    """Double-precision overload of :func:`warp.geometry.intersect_seg_tri`.
+
+    Return ``True`` for an intersection, including boundary and coplanar contact.
+    The tolerance and limitations are the same as for the single-precision overload.
+    """
+    return _intersect_seg_tri(p0, p1, v0, v1, v2)
+
+
+intersect_seg_tri.__doc__ = intersect_seg_tri.doc
+register_api_function(intersect_seg_tri, module="warp.geometry", differentiable=False)
