@@ -47,6 +47,9 @@ from warp._src.geometry.sampling import (
     draw_sample as draw_sample,
 )
 from warp._src.geometry.sampling import (
+    eval_sample_position as eval_sample_position,
+)
+from warp._src.geometry.sampling import (
     pair_correlation as pair_correlation,
 )
 from warp._src.geometry.sampling import (

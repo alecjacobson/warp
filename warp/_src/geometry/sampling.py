@@ -25,9 +25,7 @@ if TYPE_CHECKING:
 class MeshSample:
     """A point sampled on a triangle mesh, expressed as a face and barycentric coordinates.
 
-    The layout mirrors what the ``wp.mesh_query_*`` builtins return: a triangle
-    index plus barycentric coordinates. Recover the world-space position with
-    ``wp.mesh_eval_position(mesh, sample.face, sample.uv[0], sample.uv[1])``.
+    Recover the world-space position with :func:`eval_sample_position`.
     """
 
     face: wp.int32
@@ -42,16 +40,40 @@ class MeshSample:
 class UniformSamplerState:
     """Device-side state of a :class:`UniformSampler`, passed to :func:`draw_sample`.
 
-    It bundles the mesh identifier with the cumulative area distribution needed
-    to pick a triangle with probability proportional to its area. Obtain an
-    instance from ``UniformSampler.state`` and pass it as a kernel argument.
+    It bundles the mesh vertices and triangle indices with the cumulative area
+    distribution needed to pick a triangle with probability proportional to its
+    area. Obtain an instance from ``UniformSampler.state`` and pass it as a
+    kernel argument.
     """
 
-    mesh: wp.uint64
-    """Identifier of the :class:`warp.Mesh` being sampled."""
+    points: wp.array[wp.vec3]
+    """Vertex positions of the mesh being sampled."""
+
+    indices: wp.array[wp.int32]
+    """Flat triangle vertex indices of the mesh, three per face."""
 
     cdf: wp.array[wp.float64]
     """Normalized cumulative distribution over triangle areas, ending at ``1``."""
+
+
+@wp.func
+def eval_sample_position(state: UniformSamplerState, sample: MeshSample) -> wp.vec3:
+    """Evaluate the world-space position of a sample drawn by :func:`draw_sample`.
+
+    Args:
+        state: Sampler state, as passed to :func:`draw_sample`.
+        sample: Sample to evaluate, holding a face index and barycentric coordinates.
+
+    Returns:
+        The position of ``sample`` on the surface, using the current vertex
+        positions in ``state``.
+    """
+    p0 = state.points[state.indices[3 * sample.face]]
+    p1 = state.points[state.indices[3 * sample.face + 1]]
+    p2 = state.points[state.indices[3 * sample.face + 2]]
+    u = sample.uv[0]
+    v = sample.uv[1]
+    return p0 * (1.0 - u - v) + p1 * u + p2 * v
 
 
 @wp.func
@@ -169,6 +191,11 @@ def draw_sample(state: UniformSamplerState, rng: wp.uint32) -> MeshSample:
 # register API functions so they appear in the documentation
 
 wp._src.context.register_api_function(
+    eval_sample_position,
+    module="warp.geometry",
+    differentiable=False,
+)
+wp._src.context.register_api_function(
     sample_barycentrics,
     module="warp.geometry",
     differentiable=False,
@@ -267,6 +294,7 @@ def _as_vec3_array(points, device) -> wp.array:
 def _as_index_array(faces, device) -> wp.array:
     if isinstance(faces, wp.array):
         arr = faces if faces.dtype == wp.int32 else wp.array(faces.numpy(), dtype=wp.int32, device=faces.device)
+        arr = arr if arr.ndim == 1 else arr.flatten()
         return arr.to(device) if arr.device != device else arr
     return wp.array(np.asarray(faces, dtype=np.int32).reshape(-1), dtype=wp.int32, device=device)
 
@@ -364,8 +392,6 @@ class UniformSampler:
         if self.num_triangles == 0:
             raise ValueError("`faces` must describe at least one triangle.")
 
-        self.mesh = wp.Mesh(points=self.points, indices=self.indices)
-
         self._face_areas = None
         if face_areas is not None:
             self._face_areas = _as_float_array(face_areas, self.device)
@@ -384,7 +410,8 @@ class UniformSampler:
         self._error = wp.zeros(1, dtype=wp.int32, device=self.device)
 
         self.state = UniformSamplerState()
-        self.state.mesh = self.mesh.id
+        self.state.points = self.points
+        self.state.indices = self.indices
         self.state.cdf = self.cdf
 
         self.update()
@@ -510,7 +537,7 @@ class UniformSampler:
         wp.launch(
             _eval_positions_kernel,
             dim=num_samples,
-            inputs=[self.mesh.id, faces, uv],
+            inputs=[self.state, faces, uv],
             outputs=[positions],
             device=self.device,
         )
@@ -519,14 +546,16 @@ class UniformSampler:
 
 @wp.kernel(enable_backward=False)
 def _eval_positions_kernel(
-    mesh: wp.uint64,
+    state: UniformSamplerState,
     faces: wp.array[wp.int32],
     uv: wp.array[wp.vec2],
     out_positions: wp.array[wp.vec3],
 ):
     tid = wp.tid()
-    p = uv[tid]
-    out_positions[tid] = wp.mesh_eval_position(mesh, faces[tid], p[0], p[1])
+    sample = MeshSample()
+    sample.face = faces[tid]
+    sample.uv = uv[tid]
+    out_positions[tid] = eval_sample_position(state, sample)
 
 
 def uniformly_sample(
@@ -933,12 +962,17 @@ def _poisson_phase_max_geodesic_kernel(
 
 @wp.kernel(enable_backward=False)
 def _eval_normals_kernel(
-    mesh: wp.uint64,
+    points: wp.array[wp.vec3],
+    indices: wp.array[wp.int32],
     faces: wp.array[wp.int32],
     out_normals: wp.array[wp.vec3],
 ):
     tid = wp.tid()
-    out_normals[tid] = wp.mesh_eval_face_normal(mesh, faces[tid])
+    f = faces[tid]
+    p0 = points[indices[3 * f]]
+    p1 = points[indices[3 * f + 1]]
+    p2 = points[indices[3 * f + 2]]
+    out_normals[tid] = wp.normalize(wp.cross(p1 - p0, p2 - p0))
 
 
 @wp.kernel(enable_backward=False)
@@ -1245,7 +1279,7 @@ class PoissonDiskSampler:
         wp.launch(
             _eval_positions_kernel,
             dim=n,
-            inputs=[sampler.mesh.id, self._cand_faces, self._cand_uv],
+            inputs=[sampler.state, self._cand_faces, self._cand_uv],
             outputs=[self._cand_points],
             device=device,
         )
@@ -1277,7 +1311,7 @@ class PoissonDiskSampler:
             wp.launch(
                 _eval_normals_kernel,
                 dim=n,
-                inputs=[sampler.mesh.id, self._sorted_faces],
+                inputs=[sampler.points, sampler.indices, self._sorted_faces],
                 outputs=[self._sorted_normals],
                 device=device,
             )

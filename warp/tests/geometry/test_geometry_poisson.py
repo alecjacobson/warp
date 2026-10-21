@@ -192,7 +192,7 @@ def test_maximal_coverage(test, device):
     sampler = geo.PoissonDiskSampler(points, faces, radius=radius, seed=2, device=device)
     f, uv = geo.uniformly_sample(points, faces, 20000, seed=99, device=device)
     probe = wp.empty(20000, dtype=wp.vec3, device=device)
-    wp.launch(_eval_probe, dim=20000, inputs=[sampler._sampler.mesh.id, f, uv], outputs=[probe], device=device)
+    wp.launch(_eval_probe, dim=20000, inputs=[sampler._sampler.state, f, uv], outputs=[probe], device=device)
 
     S = sampler.points.numpy()
     U = probe.numpy()
@@ -208,14 +208,16 @@ def test_maximal_coverage(test, device):
 
 @wp.kernel(enable_backward=False)
 def _eval_probe(
-    mesh: wp.uint64,
+    state: geo.UniformSamplerState,
     faces: wp.array[wp.int32],
     uv: wp.array[wp.vec2],
     out: wp.array[wp.vec3],
 ):
     i = wp.tid()
-    p = uv[i]
-    out[i] = wp.mesh_eval_position(mesh, faces[i], p[0], p[1])
+    sample = geo.MeshSample()
+    sample.face = faces[i]
+    sample.uv = uv[i]
+    out[i] = geo.eval_sample_position(state, sample)
 
 
 def test_determinism(test, device):

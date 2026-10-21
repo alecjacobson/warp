@@ -65,7 +65,7 @@ def sample_points_kernel(
 
     # Draw one uniform surface sample and evaluate its world-space position.
     s = warp.geometry.draw_sample(sampler, rng)
-    out_points[tid] = wp.mesh_eval_position(sampler.mesh, s.face, s.uv[0], s.uv[1])
+    out_points[tid] = warp.geometry.eval_sample_position(sampler, s)
 
 
 class Example:
@@ -104,8 +104,8 @@ class Example:
             self.renderer.begin_frame(self.frame / self.fps)
             self.renderer.render_mesh(
                 name="mesh",
-                points=self.sampler.mesh.points.numpy(),
-                indices=self.sampler.mesh.indices.numpy(),
+                points=self.sampler.points.numpy(),
+                indices=self.sampler.indices.numpy(),
                 colors=(0.35, 0.55, 0.9),
             )
             self.renderer.render_points(name="samples", points=self.points.numpy(), radius=0.01, colors=(0.9, 0.4, 0.2))

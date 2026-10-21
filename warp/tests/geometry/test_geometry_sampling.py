@@ -151,6 +151,35 @@ def test_sample_output_on_other_device_raises(test, device):
         )
 
 
+def test_eval_sample_position_matches_barycentric_interpolation(test, device):
+    """Evaluate sample positions by barycentric interpolation of the triangle vertices."""
+    points, faces = _two_triangles()
+    sampler = geo.UniformSampler(points, faces, device=device)
+    f, uv = sampler.sample(1000, seed=4)
+    positions = sampler.sample_points(1000, seed=4).numpy()
+
+    f = f.numpy()
+    uv = uv.numpy()
+    tri = np.asarray(faces).reshape(-1, 3)[f]
+    pts = np.asarray(points, dtype=np.float32)
+    expected = pts[tri[:, 0]] * (1.0 - uv[:, :1] - uv[:, 1:]) + pts[tri[:, 1]] * uv[:, :1] + pts[tri[:, 2]] * uv[:, 1:]
+    np.testing.assert_allclose(positions, expected, atol=1e-6)
+
+    # The device state follows vertices that move in place.
+    sampler.points.assign(sampler.points.numpy() + np.array([0.0, 0.0, 1.0], dtype=np.float32))
+    moved = sampler.sample_points(1000, seed=4).numpy()
+    np.testing.assert_allclose(moved, positions + np.array([0.0, 0.0, 1.0]), atol=1e-6)
+
+
+def test_faces_as_2d_array(test, device):
+    """Accept triangle indices as a (num_triangles, 3) Warp array."""
+    points, faces = _two_triangles()
+    faces_2d = wp.array(np.asarray(faces, dtype=np.int32).reshape(-1, 3), dtype=wp.int32, device=device)
+    sampler = geo.UniformSampler(points, faces_2d, device=device)
+    test.assertEqual(sampler.num_triangles, len(np.asarray(faces).reshape(-1, 3)))
+    test.assertEqual(sampler.sample_points(16).shape, (16,))
+
+
 def test_sample_points_on_surface(test, device):
     # Points sampled on a planar mesh must lie in that plane.
     points, faces = _two_triangles()
@@ -377,6 +406,13 @@ add_function_test(
     test_sample_output_on_other_device_raises,
     devices=devices,
 )
+add_function_test(
+    TestGeometrySampling,
+    "test_eval_sample_position_matches_barycentric_interpolation",
+    test_eval_sample_position_matches_barycentric_interpolation,
+    devices=devices,
+)
+add_function_test(TestGeometrySampling, "test_faces_as_2d_array", test_faces_as_2d_array, devices=devices)
 add_function_test(TestGeometrySampling, "test_seed_behavior", test_seed_behavior, devices=devices)
 add_function_test(TestGeometrySampling, "test_draw_sample_in_kernel", test_draw_sample_in_kernel, devices=devices)
 add_function_test(
