@@ -409,6 +409,11 @@ add_example_test(
     devices=test_devices,
     test_options_cpu={"num_frames": 1},
 )
+add_example_test(
+    TestGeometryExamples,
+    name="geometry.example_poisson_disk_sampling",
+    devices=test_devices,
+)
 
 
 if __name__ == "__main__":
