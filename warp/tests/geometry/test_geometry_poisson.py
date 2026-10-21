@@ -161,7 +161,6 @@ def _min_pairwise_distance(pts: np.ndarray, radius: float) -> float:
 def test_returns_valid_output(test, device):
     points, faces, _ = _plane(48, 2.0)
     f, uv, pos = geo.poisson_disk_sample(points, faces, radius=0.12, seed=0, device=device)
-    wp.synchronize_device()
 
     test.assertEqual(f.dtype, wp.int32)
     test.assertEqual(uv.dtype, wp.vec2)
@@ -181,7 +180,6 @@ def test_minimum_distance(test, device):
     points, faces, _ = _plane(64, 2.0)
     radius = 0.1
     _, _, pos = geo.poisson_disk_sample(points, faces, radius=radius, seed=3, device=device)
-    wp.synchronize_device()
     mind = _min_pairwise_distance(pos.numpy(), radius)
     test.assertGreaterEqual(mind, radius - 1e-4)
 
@@ -195,7 +193,6 @@ def test_maximal_coverage(test, device):
     f, uv = geo.uniformly_sample(points, faces, 20000, seed=99, device=device)
     probe = wp.empty(20000, dtype=wp.vec3, device=device)
     wp.launch(_eval_probe, dim=20000, inputs=[sampler._sampler.mesh.id, f, uv], outputs=[probe], device=device)
-    wp.synchronize_device()
 
     S = sampler.points.numpy()
     U = probe.numpy()
@@ -226,7 +223,6 @@ def test_determinism(test, device):
     a = geo.PoissonDiskSampler(points, faces, radius=0.12, seed=7, device=device)
     b = geo.PoissonDiskSampler(points, faces, radius=0.12, seed=7, device=device)
     c = geo.PoissonDiskSampler(points, faces, radius=0.12, seed=8, device=device)
-    wp.synchronize_device()
 
     test.assertEqual(a.num_samples, b.num_samples)
     np.testing.assert_array_equal(a.points.numpy(), b.points.numpy())
@@ -239,7 +235,6 @@ def test_radius_controls_count(test, device):
     points, faces, _ = _plane(64, 2.0)
     n_big = geo.PoissonDiskSampler(points, faces, radius=0.2, seed=0, device=device).num_samples
     n_small = geo.PoissonDiskSampler(points, faces, radius=0.1, seed=0, device=device).num_samples
-    wp.synchronize_device()
     test.assertGreater(n_small, n_big)
     # Count tracks 1/radius^2; expect roughly 4x within a generous band.
     test.assertGreater(n_small / n_big, 2.5)
@@ -251,7 +246,6 @@ def test_count_near_theoretical(test, device):
     points, faces, area = _plane(80, 2.0)
     radius = 0.08
     n = geo.PoissonDiskSampler(points, faces, radius=radius, seed=1, device=device).num_samples
-    wp.synchronize_device()
     n_max = area / (0.8660254 * radius * radius)
     ratio = n / n_max
     test.assertGreater(ratio, 0.4)
@@ -263,7 +257,6 @@ def test_pair_correlation_blue_noise(test, device):
     radius = 0.08
     sampler = geo.PoissonDiskSampler(points, faces, radius=radius, seed=5, device=device)
     r, g = sampler.pair_correlation(num_bins=40)
-    wp.synchronize_device()
 
     # No pairs closer than the radius: g is ~0 well inside the Poisson disk.
     inside = g[r < 0.85 * radius]
@@ -290,7 +283,6 @@ def test_function_matches_class(test, device):
     points, faces, _ = _plane(48, 2.0)
     f, uv, pos = geo.poisson_disk_sample(points, faces, radius=0.12, seed=1, device=device)
     sampler = geo.PoissonDiskSampler(points, faces, radius=0.12, seed=1, device=device)
-    wp.synchronize_device()
     np.testing.assert_array_equal(f.numpy(), sampler.faces.numpy())
     np.testing.assert_array_equal(pos.numpy(), sampler.points.numpy())
     np.testing.assert_array_equal(uv.numpy(), sampler.uv.numpy())
@@ -477,7 +469,6 @@ def test_geodesic_distance_exact_on_sphere(test, device):
     n2 = wp.array(b.astype(np.float32), dtype=wp.vec3, device=device)
     out = wp.empty(2000, dtype=wp.float32, device=device)
     wp.launch(_geodesic_distance_kernel, dim=2000, inputs=[p1, n1, p2, n2], outputs=[out], device=device)
-    wp.synchronize_device()
 
     true_geodesic = R * np.arccos(np.clip(np.sum(a * b, axis=1), -1.0, 1.0))
     np.testing.assert_allclose(out.numpy(), true_geodesic, rtol=2e-5, atol=1e-4)
@@ -489,7 +480,6 @@ def test_geodesic_flat_equals_euclidean(test, device):
     points, faces, _ = _plane(48, 2.0)
     e = geo.PoissonDiskSampler(points, faces, radius=0.12, seed=3, geodesic=False, device=device)
     g = geo.PoissonDiskSampler(points, faces, radius=0.12, seed=3, geodesic=True, device=device)
-    wp.synchronize_device()
     test.assertEqual(e.num_samples, g.num_samples)
     np.testing.assert_array_equal(e.points.numpy(), g.points.numpy())
 
@@ -501,7 +491,6 @@ def test_geodesic_spacing_on_sphere(test, device):
     verts, faces = _icosphere(subdiv=4, radius=R)
     radius = 0.35
     sampler = geo.PoissonDiskSampler(verts, faces, radius=radius, seed=0, geodesic=True, device=device)
-    wp.synchronize_device()
     P = sampler.points.numpy()
     test.assertGreater(sampler.num_samples, 0)
     dirs = P / np.linalg.norm(P, axis=1, keepdims=True)
@@ -522,7 +511,6 @@ def test_geodesic_helps_thin_feature(test, device):
     points, faces = _two_sheets(n=40, size=1.0, gap=0.065)
     n_eucl = geo.PoissonDiskSampler(points, faces, radius=radius, seed=0, geodesic=False, device=device).num_samples
     n_geo = geo.PoissonDiskSampler(points, faces, radius=radius, seed=0, geodesic=True, device=device).num_samples
-    wp.synchronize_device()
     test.assertGreaterEqual(n_geo, n_eucl)
 
 
@@ -536,7 +524,6 @@ def test_face_areas_forwarded(test, device):
 
     default = geo.PoissonDiskSampler(points, faces, radius=0.12, seed=0, device=device)
     provided = geo.PoissonDiskSampler(points, faces, radius=0.12, seed=0, face_areas=areas, device=device)
-    wp.synchronize_device()
     test.assertEqual(default.num_samples, provided.num_samples)
     np.testing.assert_array_equal(default.points.numpy(), provided.points.numpy())
 
@@ -549,7 +536,6 @@ def test_scale_regression(test, device):
     points, faces, area = _plane(n, 4.0)
 
     sampler = geo.PoissonDiskSampler(points, faces, radius=radius, seed=0, device=device)
-    wp.synchronize_device()
 
     num = sampler.num_samples
     n_max = area / (0.8660254 * radius * radius)

@@ -22,25 +22,9 @@ that launch kernels over a whole mesh or grid. The kernel API includes Warp
 functions, such as :func:`swept_volume_sdf`, that evaluate a single point and may
 be called from your own :func:`warp.kernel` definitions and other Warp functions.
 
-Surface sampling draws points on triangle meshes:
-
-* **Uniform sampling** (:func:`uniformly_sample`, :class:`UniformSampler`) draws
-  points spread evenly across a mesh regardless of how finely it is tessellated,
-  and the device function :func:`draw_sample` samples a single point from within your
-  own :func:`warp.kernel` definitions.
-* **Poisson-disk sampling** (:func:`poisson_disk_sample`,
-  :class:`PoissonDiskSampler`) draws blue-noise point sets in which no two
-  samples are closer than a given radius, with an optional on-surface distance
-  metric (``geodesic=True``). :func:`pair_correlation` measures the resulting
-  blue-noise spectrum on the surface.
-
-Both samplers can follow a mesh whose vertices move in place while its triangles stay
-fixed: ``UniformSampler.update`` and ``PoissonDiskSampler.update`` rebuild the samples
-without host synchronization or allocation, so they can be captured in a CUDA graph.
-
-The Poisson-disk sampler and its spectrum analysis implement Bowers, Wang, Wei
-and Maletz, "Parallel Poisson Disk Sampling with Spectrum Analysis on Surfaces"
-(ACM Transactions on Graphics 29(6), SIGGRAPH Asia 2010; doi:10.1145/1882261.1866188).
+Surface sampling draws points on triangle meshes, either uniformly by area
+(:func:`uniformly_sample`, :class:`UniformSampler`) or as Poisson-disk
+blue-noise sets (:func:`poisson_disk_sample`, :class:`PoissonDiskSampler`).
 
 Usage:
     This module must be explicitly imported::

@@ -477,6 +477,12 @@ class UniformSampler:
         if out_uv is None:
             out_uv = wp.empty(num_samples, dtype=wp.vec2, device=self.device)
 
+        for name, out in (("out_faces", out_faces), ("out_uv", out_uv)):
+            if out.shape != (num_samples,):
+                raise ValueError(f"{name} must have shape ({num_samples},), got {out.shape}")
+            if out.device != self.device:
+                raise ValueError(f"{name} must be on device {self.device}, got {out.device}")
+
         wp.launch(
             _draw_kernel,
             dim=num_samples,

@@ -55,76 +55,35 @@ def _icosahedron():
     verts /= np.linalg.norm(verts, axis=1, keepdims=True)
     faces = np.array(
         [
-            0,
-            11,
-            5,
-            0,
-            5,
-            1,
-            0,
-            1,
-            7,
-            0,
-            7,
-            10,
-            0,
-            10,
-            11,
-            1,
-            5,
-            9,
-            5,
-            11,
-            4,
-            11,
-            10,
-            2,
-            10,
-            7,
-            6,
-            7,
-            1,
-            8,
-            3,
-            9,
-            4,
-            3,
-            4,
-            2,
-            3,
-            2,
-            6,
-            3,
-            6,
-            8,
-            3,
-            8,
-            9,
-            4,
-            9,
-            5,
-            2,
-            4,
-            11,
-            6,
-            2,
-            10,
-            8,
-            6,
-            7,
-            9,
-            8,
-            1,
+            [0, 11, 5],
+            [0, 5, 1],
+            [0, 1, 7],
+            [0, 7, 10],
+            [0, 10, 11],
+            [1, 5, 9],
+            [5, 11, 4],
+            [11, 10, 2],
+            [10, 7, 6],
+            [7, 1, 8],
+            [3, 9, 4],
+            [3, 4, 2],
+            [3, 2, 6],
+            [3, 6, 8],
+            [3, 8, 9],
+            [4, 9, 5],
+            [2, 4, 11],
+            [6, 2, 10],
+            [8, 6, 7],
+            [9, 8, 1],
         ],
         dtype=np.int32,
-    )
+    ).reshape(-1)
     return verts, faces
 
 
 def test_returns_valid_faces_and_barycentrics(test, device):
     points, faces = _two_triangles()
     tri, uv = geo.uniformly_sample(points, faces, 4096, seed=0, device=device)
-    wp.synchronize_device()
 
     tri_np = tri.numpy()
     uv_np = uv.numpy()
@@ -143,7 +102,6 @@ def test_area_weighting(test, device):
     # A triangle should be selected with probability proportional to its area.
     points, faces = _two_triangles()
     tri, _ = geo.uniformly_sample(points, faces, 400000, seed=123, device=device)
-    wp.synchronize_device()
 
     frac_face1 = float(np.mean(tri.numpy() == 1))
     # Expected 3/4; allow a small statistical margin.
@@ -155,10 +113,42 @@ def test_within_triangle_uniform(test, device):
     points = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float32)
     faces = np.array([0, 1, 2], dtype=np.int32)
     _, uv = geo.uniformly_sample(points, faces, 500000, seed=5, device=device)
-    wp.synchronize_device()
 
     means = uv.numpy().mean(axis=0)
     np.testing.assert_allclose(means, [1.0 / 3.0, 1.0 / 3.0], atol=0.005)
+
+
+def test_sample_wrong_output_shape_raises(test, device):
+    """Raise ValueError when output arrays do not match the number of samples."""
+    points = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float32)
+    sampler = geo.UniformSampler(points, np.array([0, 1, 2], dtype=np.int32), device=device)
+
+    buffer = wp.full(64, -1, dtype=wp.int32, device=device)
+    out_uv = wp.empty(64, dtype=wp.vec2, device=device)
+
+    with test.assertRaisesRegex(ValueError, "out_faces"):
+        sampler.sample(64, out_faces=buffer[:4], out_uv=out_uv)
+    with test.assertRaisesRegex(ValueError, "out_uv"):
+        sampler.sample(8, out_faces=wp.empty(8, dtype=wp.int32, device=device), out_uv=out_uv)
+
+    # Nothing may have been written past the short view.
+    np.testing.assert_array_equal(buffer.numpy(), -1)
+
+
+def test_sample_output_on_other_device_raises(test, device):
+    """Raise ValueError when an output array lives on a different device."""
+    points = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float32)
+    sampler = geo.UniformSampler(points, np.array([0, 1, 2], dtype=np.int32), device=device)
+
+    other = "cpu" if wp.get_device(device).is_cuda else "cuda:0"
+    if not wp.is_device_available(other):
+        test.skipTest("No second device available")
+    with test.assertRaisesRegex(ValueError, "out_faces"):
+        sampler.sample(
+            4,
+            out_faces=wp.empty(4, dtype=wp.int32, device=other),
+            out_uv=wp.empty(4, dtype=wp.vec2, device=device),
+        )
 
 
 def test_sample_points_on_surface(test, device):
@@ -166,7 +156,6 @@ def test_sample_points_on_surface(test, device):
     points, faces = _two_triangles()
     sampler = geo.UniformSampler(points, faces, device=device)
     pos = sampler.sample_points(10000, seed=2).numpy()
-    wp.synchronize_device()
 
     test.assertEqual(pos.shape, (10000, 3))
     np.testing.assert_allclose(pos[:, 2], 0.0, atol=1e-6)
@@ -175,7 +164,6 @@ def test_sample_points_on_surface(test, device):
     verts, ico_faces = _icosahedron()
     sampler = geo.UniformSampler(verts, ico_faces, device=device)
     pos = sampler.sample_points(10000, seed=4).numpy()
-    wp.synchronize_device()
     radii = np.linalg.norm(pos, axis=1)
     # Points sit on flat faces inscribed in the sphere, so radius <= 1.
     test.assertTrue(np.all(radii <= 1.0 + 1e-5))
@@ -189,7 +177,6 @@ def test_seed_behavior(test, device):
     a_tri, a_uv = sampler.sample(1000, seed=42)
     b_tri, b_uv = sampler.sample(1000, seed=42)
     _c_tri, c_uv = sampler.sample(1000, seed=43)
-    wp.synchronize_device()
 
     # Same seed reproduces the same samples.
     np.testing.assert_array_equal(a_tri.numpy(), b_tri.numpy())
@@ -216,7 +203,6 @@ def test_draw_sample_in_kernel(test, device):
 
     out_faces = wp.empty(4096, dtype=wp.int32, device=device)
     wp.launch(sample_faces_kernel, dim=4096, inputs=[sampler.state, 9], outputs=[out_faces], device=device)
-    wp.synchronize_device()
 
     f = out_faces.numpy()
     test.assertTrue(np.all((f == 0) | (f == 1)))
@@ -325,7 +311,6 @@ def test_face_areas_match_computed(test, device):
     as_wp = geo.UniformSampler(
         points, faces, face_areas=wp.array(areas, dtype=wp.float32, device=device), device=device
     )
-    wp.synchronize_device()
 
     np.testing.assert_allclose(default.total_area, 4.0)
     np.testing.assert_allclose(provided.total_area, 4.0)
@@ -334,7 +319,6 @@ def test_face_areas_match_computed(test, device):
 
     df, du = default.sample(4096, seed=5)
     pf, pu = provided.sample(4096, seed=5)
-    wp.synchronize_device()
     np.testing.assert_array_equal(df.numpy(), pf.numpy())
     np.testing.assert_array_equal(du.numpy(), pu.numpy())
 
@@ -346,7 +330,6 @@ def test_face_areas_override_weighting(test, device):
     tri, _ = geo.uniformly_sample(points, faces, 200000, seed=1, device=device)  # geometric weighting -> ~3/4 face 1
     sampler = geo.UniformSampler(points, faces, face_areas=np.array([1.0, 1.0], dtype=np.float32), device=device)
     eq_tri, _ = sampler.sample(200000, seed=1)
-    wp.synchronize_device()
 
     np.testing.assert_allclose(float(np.mean(tri.numpy() == 1)), 0.75, atol=0.01)
     np.testing.assert_allclose(float(np.mean(eq_tri.numpy() == 1)), 0.5, atol=0.01)
@@ -382,6 +365,18 @@ add_function_test(
 add_function_test(TestGeometrySampling, "test_area_weighting", test_area_weighting, devices=devices)
 add_function_test(TestGeometrySampling, "test_within_triangle_uniform", test_within_triangle_uniform, devices=devices)
 add_function_test(TestGeometrySampling, "test_sample_points_on_surface", test_sample_points_on_surface, devices=devices)
+add_function_test(
+    TestGeometrySampling,
+    "test_sample_wrong_output_shape_raises",
+    test_sample_wrong_output_shape_raises,
+    devices=devices,
+)
+add_function_test(
+    TestGeometrySampling,
+    "test_sample_output_on_other_device_raises",
+    test_sample_output_on_other_device_raises,
+    devices=devices,
+)
 add_function_test(TestGeometrySampling, "test_seed_behavior", test_seed_behavior, devices=devices)
 add_function_test(TestGeometrySampling, "test_draw_sample_in_kernel", test_draw_sample_in_kernel, devices=devices)
 add_function_test(
