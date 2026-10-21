@@ -217,7 +217,7 @@ def _eval_probe(
     sample = geo.MeshSample()
     sample.face = faces[i]
     sample.uv = uv[i]
-    out[i] = geo.eval_sample_position(state, sample)
+    out[i] = geo.embed_sample(state, sample)
 
 
 def test_determinism(test, device):

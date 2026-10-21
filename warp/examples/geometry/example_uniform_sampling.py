@@ -65,7 +65,7 @@ def sample_points_kernel(
 
     # Draw one uniform surface sample and evaluate its world-space position.
     s = warp.geometry.draw_sample(sampler, rng)
-    out_points[tid] = warp.geometry.eval_sample_position(sampler, s)
+    out_points[tid] = warp.geometry.embed_sample(sampler, s)
 
 
 class Example:

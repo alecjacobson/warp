@@ -151,7 +151,7 @@ def test_sample_output_on_other_device_raises(test, device):
         )
 
 
-def test_eval_sample_position_matches_barycentric_interpolation(test, device):
+def test_embed_sample_matches_barycentric_interpolation(test, device):
     """Evaluate sample positions by barycentric interpolation of the triangle vertices."""
     points, faces = _two_triangles()
     sampler = geo.UniformSampler(points, faces, device=device)
@@ -414,8 +414,8 @@ add_function_test(
 )
 add_function_test(
     TestGeometrySampling,
-    "test_eval_sample_position_matches_barycentric_interpolation",
-    test_eval_sample_position_matches_barycentric_interpolation,
+    "test_embed_sample_matches_barycentric_interpolation",
+    test_embed_sample_matches_barycentric_interpolation,
     devices=devices,
 )
 add_function_test(TestGeometrySampling, "test_faces_as_2d_array", test_faces_as_2d_array, devices=devices)

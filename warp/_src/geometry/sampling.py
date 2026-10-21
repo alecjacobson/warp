@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 class MeshSample:
     """A point sampled on a triangle mesh, expressed as a face and barycentric coordinates.
 
-    Recover the world-space position with :func:`eval_sample_position`.
+    Recover the world-space position with :func:`embed_sample`.
     """
 
     face: wp.int32
@@ -57,8 +57,12 @@ class UniformSamplerState:
 
 
 @wp.func
-def eval_sample_position(state: UniformSamplerState, sample: MeshSample) -> wp.vec3:
-    """Evaluate the world-space position of a sample drawn by :func:`draw_sample`.
+def embed_sample(state: UniformSamplerState, sample: MeshSample) -> wp.vec3:
+    """Return the 3D position of a sample drawn by :func:`draw_sample`.
+
+    A sample is an intrinsic location on the surface, a face plus barycentric
+    coordinates. This maps it to where that point lies in space for the current
+    vertex positions.
 
     Args:
         state: Sampler state, as passed to :func:`draw_sample`.
@@ -191,7 +195,7 @@ def draw_sample(state: UniformSamplerState, rng: wp.uint32) -> MeshSample:
 # register API functions so they appear in the documentation
 
 wp._src.context.register_api_function(
-    eval_sample_position,
+    embed_sample,
     module="warp.geometry",
     differentiable=False,
 )
@@ -565,7 +569,7 @@ def _eval_positions_kernel(
     sample = MeshSample()
     sample.face = faces[tid]
     sample.uv = uv[tid]
-    out_positions[tid] = eval_sample_position(state, sample)
+    out_positions[tid] = embed_sample(state, sample)
 
 
 def uniformly_sample(

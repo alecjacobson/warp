@@ -41,7 +41,7 @@ Kernel API
    :toctree: _generated
 
    draw_sample
-   eval_sample_position
+   embed_sample
    find_triangle_neighbor_edge_index
    sample_barycentrics
    swept_volume_sdf

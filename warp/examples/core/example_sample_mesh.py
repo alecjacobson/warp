@@ -115,7 +115,7 @@ def sample_mesh(
     s = warp.geometry.draw_sample(sampler, rng)
 
     # Evaluate the world-space position from the sampled face and barycentrics.
-    out_points[tid] = warp.geometry.eval_sample_position(sampler, s)
+    out_points[tid] = warp.geometry.embed_sample(sampler, s)
 
 
 class Example:

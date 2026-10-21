@@ -68,5 +68,5 @@ from warp._src.geometry import uniformly_sample as uniformly_sample
 from warp._src.geometry import find_triangle_neighbor_edge_index as find_triangle_neighbor_edge_index
 from warp._src.geometry import swept_volume_sdf as swept_volume_sdf
 from warp._src.geometry import draw_sample as draw_sample
-from warp._src.geometry import eval_sample_position as eval_sample_position
+from warp._src.geometry import embed_sample as embed_sample
 from warp._src.geometry import sample_barycentrics as sample_barycentrics
