@@ -49,8 +49,8 @@ class UniformSamplerState:
     points: wp.array[wp.vec3]
     """Vertex positions of the mesh being sampled."""
 
-    indices: wp.array[wp.int32]
-    """Flat triangle vertex indices of the mesh, three per face."""
+    indices: wp.array2d[wp.int32]
+    """Triangle vertex indices of the mesh, with shape ``(num_triangles, 3)``."""
 
     cdf: wp.array[wp.float64]
     """Normalized cumulative distribution over triangle areas, ending at ``1``."""
@@ -68,9 +68,9 @@ def eval_sample_position(state: UniformSamplerState, sample: MeshSample) -> wp.v
         The position of ``sample`` on the surface, using the current vertex
         positions in ``state``.
     """
-    p0 = state.points[state.indices[3 * sample.face]]
-    p1 = state.points[state.indices[3 * sample.face + 1]]
-    p2 = state.points[state.indices[3 * sample.face + 2]]
+    p0 = state.points[state.indices[sample.face, 0]]
+    p1 = state.points[state.indices[sample.face, 1]]
+    p2 = state.points[state.indices[sample.face, 2]]
     u = sample.uv[0]
     v = sample.uv[1]
     return p0 * (1.0 - u - v) + p1 * u + p2 * v
@@ -224,14 +224,14 @@ _ERROR_INVALID_AREAS = 4
 @wp.kernel(enable_backward=False)
 def _triangle_areas_kernel(
     points: wp.array[wp.vec3],
-    indices: wp.array[wp.int32],
+    indices: wp.array2d[wp.int32],
     out_areas: wp.array[wp.float64],
     out_error: wp.array[wp.int32],
 ):
     tri = wp.tid()
-    v0 = points[indices[tri * 3 + 0]]
-    v1 = points[indices[tri * 3 + 1]]
-    v2 = points[indices[tri * 3 + 2]]
+    v0 = points[indices[tri, 0]]
+    v1 = points[indices[tri, 1]]
+    v2 = points[indices[tri, 2]]
     area = 0.5 * wp.length(wp.cross(v1 - v0, v2 - v0))
     if not wp.isfinite(area):
         wp.atomic_max(out_error, 0, 4)  # _ERROR_INVALID_AREAS
@@ -292,11 +292,25 @@ def _as_vec3_array(points, device) -> wp.array:
 
 
 def _as_index_array(faces, device) -> wp.array:
+    """Return triangle indices as an ``int32`` array of shape ``(num_triangles, 3)`` on ``device``."""
     if isinstance(faces, wp.array):
         arr = faces if faces.dtype == wp.int32 else wp.array(faces.numpy(), dtype=wp.int32, device=faces.device)
-        arr = arr if arr.ndim == 1 else arr.flatten()
-        return arr.to(device) if arr.device != device else arr
-    return wp.array(np.asarray(faces, dtype=np.int32).reshape(-1), dtype=wp.int32, device=device)
+        arr = arr.to(device) if arr.device != device else arr
+        shape = arr.shape
+    else:
+        arr = np.asarray(faces, dtype=np.int32)
+        shape = arr.shape
+    if len(shape) == 2:
+        valid = shape[1] == 3
+    else:
+        valid = len(shape) == 1 and shape[0] % 3 == 0
+    if not valid:
+        raise ValueError(
+            f"`faces` must contain a multiple of 3 indices (flat or (num_triangles, 3)), got shape {tuple(shape)}."
+        )
+    if isinstance(faces, wp.array):
+        return arr if len(shape) == 2 else arr.reshape((-1, 3))
+    return wp.array(arr.reshape(-1, 3), dtype=wp.int32, device=device)
 
 
 def _as_float_array(values, device) -> wp.array:
@@ -355,9 +369,9 @@ class UniformSampler:
     Args:
         points: Vertex positions, either a :class:`warp.array` of
             :class:`warp.vec3` or an array-like of shape ``(num_vertices, 3)``.
-        faces: Triangle vertex indices, either a flat :class:`warp.array` of
-            :class:`warp.int32` (length ``3 * num_triangles``) or an array-like
-            reshapeable to ``(num_triangles, 3)``.
+        faces: Triangle vertex indices, as a :class:`warp.array` of
+            :class:`warp.int32` or an array-like, either with shape
+            ``(num_triangles, 3)`` or flat with length ``3 * num_triangles``.
         face_areas: Optional per-triangle areas of length ``num_triangles``,
             either a :class:`warp.array` of :class:`warp.float32` or an array-like.
             Supply them to reuse areas the caller already has; when ``None`` they
@@ -384,11 +398,7 @@ class UniformSampler:
 
         self.points = _as_vec3_array(points, self.device)
         self.indices = _as_index_array(faces, self.device)
-        if self.indices.ndim != 1 or self.indices.shape[0] % 3 != 0:
-            raise ValueError(
-                f"`faces` must contain a multiple of 3 indices (flat or (num_triangles, 3)), got shape {self.indices.shape}."
-            )
-        self.num_triangles = self.indices.shape[0] // 3
+        self.num_triangles = self.indices.shape[0]
         if self.num_triangles == 0:
             raise ValueError("`faces` must describe at least one triangle.")
 
@@ -577,9 +587,9 @@ def uniformly_sample(
     Args:
         points: Vertex positions, either a :class:`warp.array` of
             :class:`warp.vec3` or an array-like of shape ``(num_vertices, 3)``.
-        faces: Triangle vertex indices, either a flat :class:`warp.array` of
-            :class:`warp.int32` (length ``3 * num_triangles``) or an array-like
-            reshapeable to ``(num_triangles, 3)``.
+        faces: Triangle vertex indices, as a :class:`warp.array` of
+            :class:`warp.int32` or an array-like, either with shape
+            ``(num_triangles, 3)`` or flat with length ``3 * num_triangles``.
         num_samples: Number of points to draw.
         seed: Seed for the random number generator.
         device: Device on which to run. Defaults to the device of ``points``.
@@ -963,15 +973,15 @@ def _poisson_phase_max_geodesic_kernel(
 @wp.kernel(enable_backward=False)
 def _eval_normals_kernel(
     points: wp.array[wp.vec3],
-    indices: wp.array[wp.int32],
+    indices: wp.array2d[wp.int32],
     faces: wp.array[wp.int32],
     out_normals: wp.array[wp.vec3],
 ):
     tid = wp.tid()
     f = faces[tid]
-    p0 = points[indices[3 * f]]
-    p1 = points[indices[3 * f + 1]]
-    p2 = points[indices[3 * f + 2]]
+    p0 = points[indices[f, 0]]
+    p1 = points[indices[f, 1]]
+    p2 = points[indices[f, 2]]
     out_normals[tid] = wp.normalize(wp.cross(p1 - p0, p2 - p0))
 
 
@@ -1105,9 +1115,9 @@ class PoissonDiskSampler:
     Args:
         points: Vertex positions, either a :class:`warp.array` of
             :class:`warp.vec3` or an array-like of shape ``(num_vertices, 3)``.
-        faces: Triangle vertex indices, either a flat :class:`warp.array` of
-            :class:`warp.int32` (length ``3 * num_triangles``) or an array-like
-            reshapeable to ``(num_triangles, 3)``.
+        faces: Triangle vertex indices, as a :class:`warp.array` of
+            :class:`warp.int32` or an array-like, either with shape
+            ``(num_triangles, 3)`` or flat with length ``3 * num_triangles``.
         radius: Minimum distance between any two samples (Euclidean, or geodesic
             when ``geodesic`` is set).
         num_candidates: Size of the candidate pool. If ``None``, it is set to
@@ -1557,9 +1567,9 @@ def poisson_disk_sample(
     Args:
         points: Vertex positions, either a :class:`warp.array` of
             :class:`warp.vec3` or an array-like of shape ``(num_vertices, 3)``.
-        faces: Triangle vertex indices, either a flat :class:`warp.array` of
-            :class:`warp.int32` (length ``3 * num_triangles``) or an array-like
-            reshapeable to ``(num_triangles, 3)``.
+        faces: Triangle vertex indices, as a :class:`warp.array` of
+            :class:`warp.int32` or an array-like, either with shape
+            ``(num_triangles, 3)`` or flat with length ``3 * num_triangles``.
         radius: Minimum distance between any two samples (Euclidean, or geodesic
             when ``geodesic`` is set).
         num_candidates: Size of the candidate pool. If ``None``, it is set to

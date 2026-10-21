@@ -179,6 +179,12 @@ def test_faces_as_2d_array(test, device):
     test.assertEqual(sampler.num_triangles, len(np.asarray(faces).reshape(-1, 3)))
     test.assertEqual(sampler.sample_points(16).shape, (16,))
 
+    # Invalid shapes are rejected.
+    with test.assertRaisesRegex(ValueError, "multiple of 3"):
+        geo.UniformSampler(points, np.zeros((2, 4), dtype=np.int32), device=device)
+    with test.assertRaisesRegex(ValueError, "multiple of 3"):
+        geo.UniformSampler(points, np.zeros(5, dtype=np.int32), device=device)
+
 
 def test_sample_points_on_surface(test, device):
     # Points sampled on a planar mesh must lie in that plane.

@@ -163,7 +163,7 @@ class Example:
             self.renderer.render_mesh(
                 name="mesh",
                 points=self.sampler.points.numpy(),
-                indices=self.sampler.indices.numpy(),
+                indices=self.sampler.indices.numpy().reshape(-1),
                 colors=(0.35, 0.55, 0.9),
             )
             self.renderer.render_points(name="points", points=self.points.numpy(), radius=0.05, colors=(0.8, 0.3, 0.2))
