@@ -63,34 +63,25 @@ warp/examples/core
            :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_raycast.py
       - .. image:: ./img/examples/core_raymarch.png
            :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_raymarch.py
-      - .. image:: ./img/examples/core_sample_mesh.png
-           :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_sample_mesh.py
+      - .. image:: ./img/examples/core_sph.png
+           :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_sph.py
     * - nvdb
       - raycast
       - raymarch
-      - sample_mesh
-    * - .. image:: ./img/examples/core_sph.png
-           :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_sph.py
-      - .. image:: ./img/examples/core_torch.png
+      - sph
+    * - .. image:: ./img/examples/core_torch.png
            :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_torch.py
       - .. image:: ./img/examples/core_wave.png
            :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_wave.py
       - .. image:: ./img/examples/core_fft_poisson_navier_stokes_2d.png
            :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_fft_poisson_navier_stokes_2d.py
-    * - sph
-      - torch
+      - .. image:: ./img/examples/core_fdtd_3d.png
+           :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_fdtd_3d.py
+    * - torch
       - wave
       - 2-D incompressible turbulence in a periodic box
-    * - .. image:: ./img/examples/core_fdtd_3d.png
-           :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_fdtd_3d.py
-      -
-      -
-      -
-    * - | 3-D FDTD Luneburg lens
+      - | 3-D FDTD Luneburg lens
         | `single GPU <https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_fdtd_3d.py>`__ · `multi GPU <https://github.com/NVIDIA/warp/blob/main/warp/examples/distributed/example_fdtd_3d_nccl.py>`__
-      -
-      -
-      -
 
 warp/examples/geometry
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -103,13 +94,14 @@ warp/examples/geometry
            :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_isosurface.py
       - .. image:: ./img/examples/geometry_sparse_marching_cubes.png
            :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_sparse_marching_cubes.py
+      - .. image:: ./img/examples/geometry_uniform_sampling.png
+           :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_uniform_sampling.py
       - .. image:: ./img/examples/geometry_poisson_disk_sampling.png
            :target: https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_poisson_disk_sampling.py
-      -
     * - isosurface
       - sparse marching cubes
+      - uniform sampling
       - parallel Poisson-disk sampling
-      -
 
 warp/examples/fem
 ^^^^^^^^^^^^^^^^^

@@ -133,30 +133,24 @@ python -m warp.examples.browse
             <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_nvdb.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/core_nvdb.png"></a></td>
             <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_raycast.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/core_raycast.png"></a></td>
             <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_raymarch.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/core_raymarch.png"></a></td>
-            <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_sample_mesh.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/core_sample_mesh.png"></a></td>
+            <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_sph.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/core_sph.png"></a></td>
         </tr>
         <tr>
             <td align="center">nvdb</td>
             <td align="center">raycast</td>
             <td align="center">raymarch</td>
-            <td align="center">sample mesh</td>
+            <td align="center">sph</td>
         </tr>
         <tr>
-            <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_sph.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/core_sph.png"></a></td>
             <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_torch.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/core_torch.png"></a></td>
             <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_wave.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/core_wave.png"></a></td>
             <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_fft_poisson_navier_stokes_2d.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/core_fft_poisson_navier_stokes_2d.png"></a></td>
-        </tr>
-        <tr>
-            <td align="center">sph</td>
-            <td align="center">torch</td>
-            <td align="center">wave</td>
-            <td align="center">2-D incompressible turbulence in a periodic box</td>
-        </tr>
-        <tr>
             <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_fdtd_3d.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/core_fdtd_3d.png"></a></td>
         </tr>
         <tr>
+            <td align="center">torch</td>
+            <td align="center">wave</td>
+            <td align="center">2-D incompressible turbulence in a periodic box</td>
             <td align="center">3-D FDTD Luneburg lens<br><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/core/example_fdtd_3d.py">single GPU</a> · <a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/distributed/example_fdtd_3d_nccl.py">multi GPU</a></td>
         </tr>
     </tbody>
@@ -169,10 +163,14 @@ python -m warp.examples.browse
         <tr>
             <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_isosurface.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/geometry_isosurface.png"></a></td>
             <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_sparse_marching_cubes.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/geometry_sparse_marching_cubes.png"></a></td>
+            <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_uniform_sampling.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/geometry_uniform_sampling.png"></a></td>
+            <td width="25%"><a href="https://github.com/NVIDIA/warp/blob/main/warp/examples/geometry/example_poisson_disk_sampling.py"><img src="https://media.githubusercontent.com/media/NVIDIA/warp/refs/heads/main/docs/img/examples/geometry_poisson_disk_sampling.png"></a></td>
         </tr>
         <tr>
             <td align="center">isosurface</td>
             <td align="center">sparse marching cubes</td>
+            <td align="center">uniform sampling</td>
+            <td align="center">parallel Poisson-disk sampling</td>
         </tr>
     </tbody>
 </table>
