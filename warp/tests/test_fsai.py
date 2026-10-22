@@ -766,6 +766,39 @@ def test_block_selection_matches_scalar(test, device, dtype):
             np.testing.assert_array_equal(_dense(deferred.G), _dense(scalar.G))
 
 
+def test_strided_block_values(test, device, dtype):
+    """Scalar views must preserve block strides through construction and captured refits."""
+    dense = _path(12)
+    for block in (1, 2, 3):
+        raw = _matrix(dense, device, dtype, block)
+        values = raw.values.numpy().copy()
+        backing = wp.array(np.repeat(values, 2, axis=0), dtype=raw.dtype, device=device)
+        raw.values = backing[::2]
+        test.assertFalse(raw.values.is_contiguous)
+        options = {"max_row_size": 8, "max_step_size": 3, "reuse_pattern": True}
+        pre = FSAI(raw, **options)
+        reference = FSAI(_matrix(dense, device, dtype), **options)
+        _check_local_solves(test, pre, dense, rtol=3e-5, atol=1e-6)
+        pre.update()
+        graph = None
+        if wp.get_device(device).is_cuda:
+            with wp.ScopedCapture(device=device) as capture:
+                pre.update()
+            graph = capture.graph
+        scalar_values = reference.source.values.numpy().copy()
+        for scale in (1.0, 1.5, 0.75):
+            raw.values.assign(values * scale)
+            reference.source.values.assign(scalar_values * scale)
+            reference.update()
+            if graph is None:
+                pre.update()
+            else:
+                wp.capture_launch(graph)
+            np.testing.assert_array_equal(pre.update_status.numpy(), 0)
+            np.testing.assert_array_equal(_dense(pre.G), _dense(reference.G))
+            np.testing.assert_array_equal(_dense(pre.GT), _dense(reference.GT))
+
+
 def test_cached_views_follow_arrays(test, device):
     """Check that cached vector views never serve stale data across many and recycled arrays."""
     a = _path(12)
@@ -974,6 +1007,7 @@ for dtype in (wp.float32, wp.float64):
         test_deferred_pattern,
         test_deferred_pattern_failures,
         test_block_selection_matches_scalar,
+        test_strided_block_values,
     ):
         add_function_test(TestFSAI, f"{func.__name__}_{dtype.__name__}", func, devices=devices, dtype=dtype)
 for func in (
