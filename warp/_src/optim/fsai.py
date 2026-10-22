@@ -30,14 +30,14 @@ def _block_kernels(block_type, dtype):
     """Create scalar-entry access and diagonal scaling that read BSR blocks in place."""
     block_size = 1 if block_type == dtype else block_type._shape_[0]
 
-    if block_type == dtype:
+    if block_size == 1:
 
         @wp.func
         def entry(
             offsets: wp.array[int],
             row_counts: wp.array[int],
             columns: wp.array[int],
-            values: wp.array[block_type],
+            values: wp.array(dtype=dtype, ndim=1 if block_type == dtype or block_type._shape_ == (1, 1) else 3),
             r: int,
             c: int,
         ):
@@ -54,7 +54,7 @@ def _block_kernels(block_type, dtype):
             offsets: wp.array[int],
             row_counts: wp.array[int],
             columns: wp.array[int],
-            values: wp.array[block_type],
+            values: wp.array(dtype=dtype, ndim=1 if block_type == dtype or block_type._shape_ == (1, 1) else 3),
             r: int,
             c: int,
         ):
@@ -63,7 +63,7 @@ def _block_kernels(block_type, dtype):
             )
             result = dtype(0)
             if slot >= 0:
-                result = dtype(values[slot][r % wp.static(block_size), c % wp.static(block_size)])
+                result = values[slot, r % wp.static(block_size), c % wp.static(block_size)]
             return result
 
     @wp.kernel(enable_backward=False, module="unique")
@@ -71,7 +71,7 @@ def _block_kernels(block_type, dtype):
         offsets: wp.array[int],
         row_counts: wp.array[int],
         columns: wp.array[int],
-        values: wp.array[block_type],
+        values: wp.array(dtype=dtype, ndim=1 if block_type == dtype or block_type._shape_ == (1, 1) else 3),
         scale: wp.array[dtype],
         status: wp.array[int],
         counter: int,
@@ -94,14 +94,14 @@ def _build_kernels(block_type, dtype, width, step_size=1):
     best_scores = wp.types.vector(length=step_size, dtype=dtype)
     indices = wp.types.vector(length=width, dtype=wp.int32)
     vector = wp.types.vector(length=width, dtype=dtype)
-    matrix = wp.types.matrix(shape=(width, width), dtype=dtype)
+    packed = wp.types.vector(length=width * (width + 1) // 2, dtype=dtype)
 
     @wp.kernel(enable_backward=False, module="unique")
     def build(
         offsets: wp.array[int],
         row_counts: wp.array[int],
         columns: wp.array[int],
-        values: wp.array[block_type],
+        values: wp.array(dtype=dtype, ndim=1 if block_type == dtype or block_type._shape_ == (1, 1) else 3),
         scale: wp.array[dtype],
         tolerance: dtype,
         pivot_floor: dtype,
@@ -114,11 +114,11 @@ def _build_kernels(block_type, dtype, width, step_size=1):
         if ready[0] != 0:
             return
         pattern = indices(-1)
-        chol = matrix(dtype(0))
+        chol = packed(dtype(0))
         z = vector(dtype(0))
         v = vector(dtype(0))
         pattern[0] = i
-        chol[0, 0] = dtype(1)
+        chol[0 * (0 + 1) // 2 + 0] = dtype(1)
         z[0] = dtype(1)
         v[0] = dtype(1)
         size = int(1)
@@ -172,8 +172,8 @@ def _build_kernels(block_type, dtype, width, step_size=1):
                 for p in range(size):
                     a = entry(offsets, row_counts, columns, values, best, pattern[p]) * scale[best] * scale[pattern[p]]
                     for q in range(p):
-                        a -= chol[p, q] * w[q]
-                    w[p] = a / chol[p, p]
+                        a -= chol[p * (p + 1) // 2 + q] * w[q]
+                    w[p] = a / chol[p * (p + 1) // 2 + p]
                     pivot -= w[p] * w[p]
                 if pivot <= pivot_floor or not wp.isfinite(pivot):
                     wp.atomic_add(status, 1, 1)
@@ -181,21 +181,21 @@ def _build_kernels(block_type, dtype, width, step_size=1):
                     break
                 pattern[size] = best
                 for p in range(size):
-                    chol[size, p] = w[p]
-                chol[size, size] = wp.sqrt(pivot)
+                    chol[size * (size + 1) // 2 + p] = w[p]
+                chol[size * (size + 1) // 2 + size] = wp.sqrt(pivot)
                 # Existing forward-solve entries are unchanged by bordering L.
                 rhs = dtype(0)
                 for p in range(size):
                     rhs -= w[p] * v[p]
-                v[size] = rhs / chol[size, size]
+                v[size] = rhs / chol[size * (size + 1) // 2 + size]
                 size += 1
             # A[S,S] z = e_0; no global factorization or triangular dependency.
             for rev in range(size):
                 p = size - 1 - rev
                 a = v[p]
                 for q in range(p + 1, size):
-                    a -= chol[q, p] * z[q]
-                z[p] = a / chol[p, p]
+                    a -= chol[q * (q + 1) // 2 + p] * z[q]
+                z[p] = a / chol[p * (p + 1) // 2 + p]
             # psi=1/z[0]. Relative reduction is 1-old_z0/new_z0.
             if stopped or (tolerance > dtype(0) and dtype(1) - old_z0 / z[0] <= tolerance):
                 break
@@ -408,7 +408,7 @@ class FSAI(LinearOperator):
         wp.launch(
             diagonal,
             n,
-            [A.offsets, A.row_counts, A.columns, A.values, scale, status, 0],
+            [A.offsets, A.row_counts, A.columns, A.values.view(A.scalar_type), scale, status, 0],
             device=device,
         )
         cols = wp.empty(n * max_row_size, dtype=int, device=device)
@@ -420,7 +420,7 @@ class FSAI(LinearOperator):
                 A.offsets,
                 A.row_counts,
                 A.columns,
-                A.values,
+                A.values.view(A.scalar_type),
                 scale,
                 dtype(kap_tolerance),
                 dtype(pivot_floor),
@@ -783,7 +783,7 @@ def _deferred_kernels(dtype, storage, width, regularize):
 def _refit_kernels(block_type, dtype, storage, width, regularize):
     _, entry, diagonal = _block_kernels(block_type, dtype)
     vec = wp.types.vector(length=width, dtype=dtype)
-    mat = wp.types.matrix(shape=(width, width), dtype=dtype)
+    packed = wp.types.vector(length=width * (width + 1) // 2, dtype=dtype)
     ivec = wp.types.vector(length=width, dtype=int)
 
     @wp.kernel(enable_backward=False, module="unique")
@@ -791,7 +791,7 @@ def _refit_kernels(block_type, dtype, storage, width, regularize):
         offsets: wp.array[int],
         row_counts: wp.array[int],
         columns: wp.array[int],
-        values: wp.array[block_type],
+        values: wp.array(dtype=dtype, ndim=1 if block_type == dtype or block_type._shape_ == (1, 1) else 3),
         goff: wp.array[int],
         gcol: wp.array[int],
         gcount: wp.array[int],
@@ -816,7 +816,7 @@ def _refit_kernels(block_type, dtype, storage, width, regularize):
         local = ivec(-1)
         for k in range(size):
             local[k] = gcol[start + member[k]]
-        chol = mat(dtype(0))
+        chol = packed(dtype(0))
         valid = bool(True)
         regularized = bool(False)
         for k in range(wp.static(width)):
@@ -833,7 +833,7 @@ def _refit_kernels(block_type, dtype, storage, width, regularize):
                 elif k == m:
                     a = dtype(1)
                 for t in range(m):
-                    a -= chol[k, t] * chol[m, t]
+                    a -= chol[k * (k + 1) // 2 + t] * chol[m * (m + 1) // 2 + t]
                 if k == m:
                     if not wp.isfinite(a):
                         valid = False
@@ -846,9 +846,9 @@ def _refit_kernels(block_type, dtype, storage, width, regularize):
                         else:
                             valid = False
                             a = dtype(1)
-                    chol[k, m] = wp.sqrt(a)
+                    chol[k * (k + 1) // 2 + m] = wp.sqrt(a)
                 else:
-                    chol[k, m] = a / chol[m, m]
+                    chol[k * (k + 1) // 2 + m] = a / chol[m * (m + 1) // 2 + m]
         # Growth position 0 is the row's own index.
         z = vec(dtype(0))
         for k in range(wp.static(width)):
@@ -856,14 +856,14 @@ def _refit_kernels(block_type, dtype, storage, width, regularize):
             if k == 0:
                 a = dtype(1)
             for t in range(k):
-                a -= chol[k, t] * z[t]
-            z[k] = a / chol[k, k]
+                a -= chol[k * (k + 1) // 2 + t] * z[t]
+            z[k] = a / chol[k * (k + 1) // 2 + k]
         for rev in range(wp.static(width)):
             k = wp.static(width) - 1 - rev
             a = z[k]
             for t in range(k + 1, wp.static(width)):
-                a -= chol[t, k] * z[t]
-            z[k] = a / chol[k, k]
+                a -= chol[t * (t + 1) // 2 + k] * z[t]
+            z[k] = a / chol[k * (k + 1) // 2 + k]
         norm = wp.sqrt(z[0])
         for p in range(size):
             value = storage(z[growth_rank[start + p]] / norm * scale[gcol[start + p]])
@@ -960,7 +960,7 @@ class _PlanBase:
         wp.launch(
             self.diagonal,
             self.n,
-            [A.offsets, None, A.columns, A.values, self.scale, self.status, 1],
+            [A.offsets, None, A.columns, A.values.view(A.scalar_type), self.scale, self.status, 1],
             device=A.device,
         )
 
@@ -997,7 +997,7 @@ class _RefitPlan(_PlanBase):
                 A.offsets,
                 None,
                 A.columns,
-                A.values,
+                A.values.view(A.scalar_type),
                 owner.G.offsets,
                 owner.G.columns,
                 None,
@@ -1086,7 +1086,7 @@ class _DeferredPlan(_PlanBase):
                     A.offsets,
                     None,
                     A.columns,
-                    A.values,
+                    A.values.view(A.scalar_type),
                     self.scale,
                     A.scalar_type(self.tolerance),
                     A.scalar_type(self.floor),
@@ -1110,7 +1110,7 @@ class _DeferredPlan(_PlanBase):
                 A.offsets,
                 None,
                 A.columns,
-                A.values,
+                A.values.view(A.scalar_type),
                 owner.G.offsets,
                 self.support_columns,
                 self.support_counts[1:],
