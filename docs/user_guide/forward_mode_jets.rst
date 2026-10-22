@@ -7,13 +7,14 @@ Forward-Mode Jets
 
 Warp's :class:`wp.Tape <Tape>` and :func:`wp.grad <grad>` differentiate in reverse mode: they replay a computation
 backwards and deliver the gradient of one output with respect to every input in a single sweep (see
-:ref:`differentiability`). That is the right tool for a loss over a large state, but reverse mode cannot be applied to
-its own output, so it does not produce second derivatives on its own. Simulation code often needs a *local Hessian*: the second derivative of a small energy, such as a spring, a triangle or a
-tetrahedron, with respect to the handful of values it reads.
+:ref:`differentiability`). That is the right tool for a loss over a large state, but it has limitations. For one,
+reverse mode in Warp currently cannot be applied to its own output, so on its own it is limited to first derivatives.
+For another, reverse mode needs a backward sweep for each output it differentiates, so it scales poorly for Jacobian
+matrices of many-output functions and for Jacobian-vector products.
 
-Forward-mode *jets* fill that gap. A jet carries a value together with its derivatives along a fixed number of
-directions. Evaluating an ordinary :func:`@wp.func <func>` over jets, instead of over floats, returns its derivatives as
-a side effect, with no hand-written gradient or Hessian:
+Forward-mode *jets* fill these gaps. A jet carries a value together with its derivatives along a fixed number of
+directions. A :func:`@wp.func <func>` written generically over its argument types can be evaluated over jets instead
+of floats, returning its derivatives along with its value, with no hand-written gradient or Hessian:
 
 .. math::
 
@@ -451,6 +452,8 @@ Limitations
 * Branching builtins (``min``, ``max``, ``clamp``, ``where``, ``abs``, ``sign``) carry the derivative of the branch they
   take. At a switch point that is a one-sided derivative, and jets do not smooth the kink. Comparisons such as ``a < b``
   do not overload on jets, so branch on ``.value``.
+* Only builtins with jet overloads accept jets. Others, such as spatial queries like
+  :func:`wp.mesh_query_point() <warp._src.lang.mesh_query_point>`, operate on floats only and need manual integration.
 * Second-order jets carry a scalar payload only. Vector and matrix second derivatives decompose into per-component
   scalar jets.
 * Jet dtypes must be floating point. Quaternion slots are not supported.
