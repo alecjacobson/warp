@@ -32,8 +32,9 @@ class MeshSample:
     """Index of the sampled triangle (a face of the mesh)."""
 
     uv: wp.vec2
-    """Barycentric coordinates ``(u, v)`` of the sample within :attr:`face`. The
-    third coordinate is ``1 - u - v``."""
+    """Barycentric coordinates ``(u, v)`` of the sample within :attr:`face`. They
+    weight the first and second vertex of the triangle, and the third vertex has
+    weight ``1 - u - v``, as in :func:`warp.mesh_eval_position`."""
 
 
 @wp.struct
@@ -77,7 +78,7 @@ def embed_sample(state: UniformSamplerState, sample: MeshSample) -> wp.vec3:
     p2 = state.points[state.indices[sample.face, 2]]
     u = sample.uv[0]
     v = sample.uv[1]
-    return p0 * (1.0 - u - v) + p1 * u + p2 * v
+    return p0 * u + p1 * v + p2 * (1.0 - u - v)
 
 
 @wp.func

@@ -162,13 +162,39 @@ def test_embed_sample_matches_barycentric_interpolation(test, device):
     uv = uv.numpy()
     tri = np.asarray(faces).reshape(-1, 3)[f]
     pts = np.asarray(points, dtype=np.float32)
-    expected = pts[tri[:, 0]] * (1.0 - uv[:, :1] - uv[:, 1:]) + pts[tri[:, 1]] * uv[:, :1] + pts[tri[:, 2]] * uv[:, 1:]
+    expected = pts[tri[:, 0]] * uv[:, :1] + pts[tri[:, 1]] * uv[:, 1:] + pts[tri[:, 2]] * (1.0 - uv[:, :1] - uv[:, 1:])
     np.testing.assert_allclose(positions, expected, atol=1e-6)
 
     # The device state follows vertices that move in place.
     sampler.points.assign(sampler.points.numpy() + np.array([0.0, 0.0, 1.0], dtype=np.float32))
     moved = sampler.sample_points(1000, seed=4).numpy()
     np.testing.assert_allclose(moved, positions + np.array([0.0, 0.0, 1.0]), atol=1e-6)
+
+
+@wp.kernel(enable_backward=False)
+def _mesh_builtin_positions_kernel(
+    mesh: wp.uint64,
+    faces: wp.array[wp.int32],
+    uv: wp.array[wp.vec2],
+    out: wp.array[wp.vec3],
+):
+    i = wp.tid()
+    out[i] = wp.mesh_eval_position(mesh, faces[i], uv[i][0], uv[i][1])
+
+
+def test_embed_sample_matches_mesh_eval_position(test, device):
+    """Match the barycentric convention of wp.mesh_eval_position."""
+    points, faces = _two_triangles()
+    sampler = geo.UniformSampler(points, faces, device=device)
+    f, uv = sampler.sample(1000, seed=4)
+
+    mesh = wp.Mesh(
+        points=sampler.points, indices=wp.array(np.asarray(faces).reshape(-1), dtype=wp.int32, device=device)
+    )
+    expected = wp.empty(1000, dtype=wp.vec3, device=device)
+    wp.launch(_mesh_builtin_positions_kernel, dim=1000, inputs=[mesh.id, f, uv], outputs=[expected], device=device)
+
+    np.testing.assert_allclose(sampler.sample_points(1000, seed=4).numpy(), expected.numpy(), atol=1e-6)
 
 
 def test_faces_as_2d_array(test, device):
@@ -416,6 +442,12 @@ add_function_test(
     TestGeometrySampling,
     "test_embed_sample_matches_barycentric_interpolation",
     test_embed_sample_matches_barycentric_interpolation,
+    devices=devices,
+)
+add_function_test(
+    TestGeometrySampling,
+    "test_embed_sample_matches_mesh_eval_position",
+    test_embed_sample_matches_mesh_eval_position,
     devices=devices,
 )
 add_function_test(TestGeometrySampling, "test_faces_as_2d_array", test_faces_as_2d_array, devices=devices)
