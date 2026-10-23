@@ -393,6 +393,30 @@ def _make_jet_space(width: int, dtype):
         return a
 
     @wp.func
+    def jet_min(a: JetScalar, b: dtype) -> JetScalar:
+        if a.value <= b:
+            return a
+        return JetScalar(b, Coeff())
+
+    @wp.func
+    def jet_min(a: dtype, b: JetScalar) -> JetScalar:
+        if a <= b.value:
+            return JetScalar(a, Coeff())
+        return b
+
+    @wp.func
+    def jet_max(a: JetScalar, b: dtype) -> JetScalar:
+        if a.value >= b:
+            return a
+        return JetScalar(b, Coeff())
+
+    @wp.func
+    def jet_max(a: dtype, b: JetScalar) -> JetScalar:
+        if a >= b.value:
+            return JetScalar(a, Coeff())
+        return b
+
+    @wp.func
     def jet_where(cond: bool, a: JetScalar, b: JetScalar) -> JetScalar:
         if cond:
             return a
@@ -506,8 +530,34 @@ def _make_jet_space(width: int, dtype):
         return JetVec2(s.value * a.value, c)
 
     @wp.func
+    def jet_mul(a: NativeVec2, s: JetScalar) -> JetVec2:
+        c = CoeffMat2()
+        for q in range(wp.static(width)):
+            c[0, q] = a[0] * s.coeff[q]
+            c[1, q] = a[1] * s.coeff[q]
+        return JetVec2(a * s.value, c)
+
+    @wp.func
+    def jet_mul(s: JetScalar, a: NativeVec2) -> JetVec2:
+        c = CoeffMat2()
+        for q in range(wp.static(width)):
+            c[0, q] = s.coeff[q] * a[0]
+            c[1, q] = s.coeff[q] * a[1]
+        return JetVec2(s.value * a, c)
+
+    @wp.func
     def jet_div(a: JetVec2, s: dtype) -> JetVec2:
         return JetVec2(a.value / s, a.coeff / s)
+
+    @wp.func
+    def jet_div(a: NativeVec2, s: JetScalar) -> JetVec2:
+        inv_s = dtype(1.0) / s.value
+        value = a * inv_s
+        c = CoeffMat2()
+        for q in range(wp.static(width)):
+            c[0, q] = -value[0] * s.coeff[q] * inv_s
+            c[1, q] = -value[1] * s.coeff[q] * inv_s
+        return JetVec2(value, c)
 
     @wp.func
     def jet_div(a: JetVec2, s: JetScalar) -> JetVec2:
@@ -582,8 +632,37 @@ def _make_jet_space(width: int, dtype):
         return JetVec3(s.value * a.value, c)
 
     @wp.func
+    def jet_mul(a: NativeVec3, s: JetScalar) -> JetVec3:
+        c = CoeffMat3()
+        for q in range(wp.static(width)):
+            c[0, q] = a[0] * s.coeff[q]
+            c[1, q] = a[1] * s.coeff[q]
+            c[2, q] = a[2] * s.coeff[q]
+        return JetVec3(a * s.value, c)
+
+    @wp.func
+    def jet_mul(s: JetScalar, a: NativeVec3) -> JetVec3:
+        c = CoeffMat3()
+        for q in range(wp.static(width)):
+            c[0, q] = s.coeff[q] * a[0]
+            c[1, q] = s.coeff[q] * a[1]
+            c[2, q] = s.coeff[q] * a[2]
+        return JetVec3(s.value * a, c)
+
+    @wp.func
     def jet_div(a: JetVec3, s: dtype) -> JetVec3:
         return JetVec3(a.value / s, a.coeff / s)
+
+    @wp.func
+    def jet_div(a: NativeVec3, s: JetScalar) -> JetVec3:
+        inv_s = dtype(1.0) / s.value
+        value = a * inv_s
+        c = CoeffMat3()
+        for q in range(wp.static(width)):
+            c[0, q] = -value[0] * s.coeff[q] * inv_s
+            c[1, q] = -value[1] * s.coeff[q] * inv_s
+            c[2, q] = -value[2] * s.coeff[q] * inv_s
+        return JetVec3(value, c)
 
     @wp.func
     def jet_div(a: JetVec3, s: JetScalar) -> JetVec3:
@@ -904,20 +983,76 @@ def _make_jet_space(width: int, dtype):
         return JetMat2(a.value * b.value, m)
 
     @wp.func
+    def jet_mul(a: JetMat23, b: NativeMat32) -> JetMat2:
+        m = CoeffMat4()
+        for i in range(2):
+            for j in range(2):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for k in range(3):
+                        acc += a.coeff[i * 3 + k, q] * b[k, j]
+                    m[i * 2 + j, q] = acc
+        return JetMat2(a.value * b, m)
+
+    @wp.func
+    def jet_mul(a: NativeMat23, b: JetMat32) -> JetMat2:
+        m = CoeffMat4()
+        for i in range(2):
+            for j in range(2):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for k in range(3):
+                        acc += a[i, k] * b.coeff[k * 2 + j, q]
+                    m[i * 2 + j, q] = acc
+        return JetMat2(a * b.value, m)
+
+    @wp.func
     def jet_add(a: JetMat2, b: JetMat2) -> JetMat2:
         return JetMat2(a.value + b.value, a.coeff + b.coeff)
+
+    @wp.func
+    def jet_add(a: JetMat2, b: NativeMat2) -> JetMat2:
+        return JetMat2(a.value + b, a.coeff)
+
+    @wp.func
+    def jet_add(a: NativeMat2, b: JetMat2) -> JetMat2:
+        return JetMat2(a + b.value, b.coeff)
 
     @wp.func
     def jet_add(a: JetMat3, b: JetMat3) -> JetMat3:
         return JetMat3(a.value + b.value, a.coeff + b.coeff)
 
     @wp.func
+    def jet_add(a: JetMat3, b: NativeMat3) -> JetMat3:
+        return JetMat3(a.value + b, a.coeff)
+
+    @wp.func
+    def jet_add(a: NativeMat3, b: JetMat3) -> JetMat3:
+        return JetMat3(a + b.value, b.coeff)
+
+    @wp.func
     def jet_sub(a: JetMat2, b: JetMat2) -> JetMat2:
         return JetMat2(a.value - b.value, a.coeff - b.coeff)
 
     @wp.func
+    def jet_sub(a: JetMat2, b: NativeMat2) -> JetMat2:
+        return JetMat2(a.value - b, a.coeff)
+
+    @wp.func
+    def jet_sub(a: NativeMat2, b: JetMat2) -> JetMat2:
+        return JetMat2(a - b.value, -b.coeff)
+
+    @wp.func
     def jet_sub(a: JetMat3, b: JetMat3) -> JetMat3:
         return JetMat3(a.value - b.value, a.coeff - b.coeff)
+
+    @wp.func
+    def jet_sub(a: JetMat3, b: NativeMat3) -> JetMat3:
+        return JetMat3(a.value - b, a.coeff)
+
+    @wp.func
+    def jet_sub(a: NativeMat3, b: JetMat3) -> JetMat3:
+        return JetMat3(a - b.value, -b.coeff)
 
     @wp.func
     def jet_mul(a: JetMat2, s: dtype) -> JetMat2:
@@ -978,6 +1113,54 @@ def _make_jet_space(width: int, dtype):
         return JetMat2(a.value * b.value, m)
 
     @wp.func
+    def jet_mul(a: JetMat3, b: NativeMat3) -> JetMat3:
+        m = CoeffMat9()
+        for i in range(3):
+            for j in range(3):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for k in range(3):
+                        acc += a.coeff[i * 3 + k, q] * b[k, j]
+                    m[i * 3 + j, q] = acc
+        return JetMat3(a.value * b, m)
+
+    @wp.func
+    def jet_mul(a: NativeMat3, b: JetMat3) -> JetMat3:
+        m = CoeffMat9()
+        for i in range(3):
+            for j in range(3):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for k in range(3):
+                        acc += a[i, k] * b.coeff[k * 3 + j, q]
+                    m[i * 3 + j, q] = acc
+        return JetMat3(a * b.value, m)
+
+    @wp.func
+    def jet_mul(a: JetMat2, b: NativeMat2) -> JetMat2:
+        m = CoeffMat4()
+        for i in range(2):
+            for j in range(2):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for k in range(2):
+                        acc += a.coeff[i * 2 + k, q] * b[k, j]
+                    m[i * 2 + j, q] = acc
+        return JetMat2(a.value * b, m)
+
+    @wp.func
+    def jet_mul(a: NativeMat2, b: JetMat2) -> JetMat2:
+        m = CoeffMat4()
+        for i in range(2):
+            for j in range(2):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for k in range(2):
+                        acc += a[i, k] * b.coeff[k * 2 + j, q]
+                    m[i * 2 + j, q] = acc
+        return JetMat2(a * b.value, m)
+
+    @wp.func
     def jet_mul(a: JetMat2, v: JetVec2) -> JetVec2:
         c = CoeffMat2()
         for i in range(2):
@@ -998,6 +1181,50 @@ def _make_jet_space(width: int, dtype):
                     acc += a.coeff[i * 3 + k, q] * v.value[k] + a.value[i, k] * v.coeff[k, q]
                 c[i, q] = acc
         return JetVec3(a.value * v.value, c)
+
+    @wp.func
+    def jet_mul(a: JetMat2, v: NativeVec2) -> JetVec2:
+        c = CoeffMat2()
+        for i in range(2):
+            for q in range(wp.static(width)):
+                acc = dtype(0.0)
+                for k in range(2):
+                    acc += a.coeff[i * 2 + k, q] * v[k]
+                c[i, q] = acc
+        return JetVec2(a.value * v, c)
+
+    @wp.func
+    def jet_mul(a: NativeMat2, v: JetVec2) -> JetVec2:
+        c = CoeffMat2()
+        for i in range(2):
+            for q in range(wp.static(width)):
+                acc = dtype(0.0)
+                for k in range(2):
+                    acc += a[i, k] * v.coeff[k, q]
+                c[i, q] = acc
+        return JetVec2(a * v.value, c)
+
+    @wp.func
+    def jet_mul(a: JetMat3, v: NativeVec3) -> JetVec3:
+        c = CoeffMat3()
+        for i in range(3):
+            for q in range(wp.static(width)):
+                acc = dtype(0.0)
+                for k in range(3):
+                    acc += a.coeff[i * 3 + k, q] * v[k]
+                c[i, q] = acc
+        return JetVec3(a.value * v, c)
+
+    @wp.func
+    def jet_mul(a: NativeMat3, v: JetVec3) -> JetVec3:
+        c = CoeffMat3()
+        for i in range(3):
+            for q in range(wp.static(width)):
+                acc = dtype(0.0)
+                for k in range(3):
+                    acc += a[i, k] * v.coeff[k, q]
+                c[i, q] = acc
+        return JetVec3(a * v.value, c)
 
     @wp.func
     def jet_trace(a: JetMat3) -> JetScalar:
@@ -1793,9 +2020,33 @@ def _make_jet_space2(width: int, dtype):
         return b
 
     @wp.func
+    def jet_min(a: Jet2Scalar, b: dtype) -> Jet2Scalar:
+        if a.value <= b:
+            return a
+        return Jet2Scalar(b, Grad(), Hess())
+
+    @wp.func
+    def jet_min(a: dtype, b: Jet2Scalar) -> Jet2Scalar:
+        if a <= b.value:
+            return Jet2Scalar(a, Grad(), Hess())
+        return b
+
+    @wp.func
     def jet_max(a: Jet2Scalar, b: Jet2Scalar) -> Jet2Scalar:
         if a.value >= b.value:
             return a
+        return b
+
+    @wp.func
+    def jet_max(a: Jet2Scalar, b: dtype) -> Jet2Scalar:
+        if a.value >= b:
+            return a
+        return Jet2Scalar(b, Grad(), Hess())
+
+    @wp.func
+    def jet_max(a: dtype, b: Jet2Scalar) -> Jet2Scalar:
+        if a >= b.value:
+            return Jet2Scalar(a, Grad(), Hess())
         return b
 
     @wp.func

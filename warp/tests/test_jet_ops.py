@@ -13,6 +13,7 @@
 # by the jet benchmarks' finite-difference gates.
 
 import unittest
+from typing import Any
 
 import numpy as np
 
@@ -582,6 +583,272 @@ class TestJetOps(unittest.TestCase):
 
             np.testing.assert_allclose(g1, np.stack([da, db], axis=1), rtol=1.0e-5, atol=1.0e-6)
             np.testing.assert_allclose(g2.numpy(), np.stack([da, db], axis=1), rtol=1.0e-5, atol=1.0e-6)
+
+
+# --------------------------------------------------------------------------
+# Mixed jet/plain operands. Each overload is checked against the jet/jet
+# overload with the plain operand lifted to a constant jet, which carries the
+# same value and a zero derivative, so the two must agree to rounding. The
+# overloads do not depend on the width, so width-2 directional jets keep the
+# kernels small; the directions are arbitrary functions of the inputs.
+# --------------------------------------------------------------------------
+
+mat23 = wp.types.matrix(shape=(2, 3), dtype=float)
+mat32 = wp.types.matrix(shape=(3, 2), dtype=float)
+
+JV = wp.JetSpace(1, width=2)
+JM2 = wp.JetSpace((wp.mat22, wp.vec2), width=2)
+JM3 = wp.JetSpace((wp.mat33, wp.vec3), width=2)
+JR = wp.JetSpace((mat23, mat32), width=2)
+
+
+@wp.func
+def scalar_err(a: Any, b: Any) -> float:
+    dc = a.coeff - b.coeff
+    return (a.value - b.value) * (a.value - b.value) + wp.dot(dc, dc)
+
+
+@wp.func
+def vec_err(a: Any, b: Any) -> float:
+    dv = a.value - b.value
+    return wp.dot(dv, dv) + wp.ddot(a.coeff - b.coeff, a.coeff - b.coeff)
+
+
+@wp.func
+def mat_err(a: Any, b: Any) -> float:
+    return wp.ddot(a.value - b.value, a.value - b.value) + wp.ddot(a.coeff - b.coeff, a.coeff - b.coeff)
+
+
+@wp.kernel(enable_backward=False)
+def mixed_vec_kernel(
+    s_in: wp.array[float],
+    p2: wp.array[wp.vec2],
+    p3: wp.array[wp.vec3],
+    c: wp.array[float],
+    err: wp.array2d[float],
+):
+    i = wp.tid()
+    s = JV.directional(s_in[i], 1.0, 0.5 * s_in[i] - 0.25)
+    l2 = JV.constant_vec2(p2[i])
+    l3 = JV.constant_vec3(p3[i])
+    lc = JV.constant(c[i])
+
+    err[i, 0] = vec_err(s * p2[i], s * l2)
+    err[i, 1] = vec_err(p2[i] * s, l2 * s)
+    err[i, 2] = vec_err(s * p3[i], s * l3)
+    err[i, 3] = vec_err(p3[i] * s, l3 * s)
+    err[i, 4] = vec_err(p2[i] / s, l2 / s)
+    err[i, 5] = vec_err(p3[i] / s, l3 / s)
+    err[i, 6] = scalar_err(wp.min(s, c[i]), wp.min(s, lc))
+    err[i, 7] = scalar_err(wp.min(c[i], s), wp.min(lc, s))
+    err[i, 8] = scalar_err(wp.max(s, c[i]), wp.max(s, lc))
+    err[i, 9] = scalar_err(wp.max(c[i], s), wp.max(lc, s))
+
+
+@wp.kernel(enable_backward=False)
+def mixed_mat2_kernel(
+    a_in: wp.array[wp.mat22],
+    v_in: wp.array[wp.vec2],
+    pm: wp.array[wp.mat22],
+    pv: wp.array[wp.vec2],
+    err: wp.array2d[float],
+):
+    i = wp.tid()
+    a, v = JM2.directional(a_in[i], v_in[i], pm[i], pv[i], wp.transpose(a_in[i]), -v_in[i])
+    lm = JM2.mat2()
+    lm.value = pm[i]
+    lv = JM2.constant_vec2(pv[i])
+
+    err[i, 0] = mat_err(a * pm[i], a * lm)
+    err[i, 1] = mat_err(pm[i] * a, lm * a)
+    err[i, 2] = vec_err(a * pv[i], a * lv)
+    err[i, 3] = vec_err(pm[i] * v, lm * v)
+    err[i, 4] = mat_err(a + pm[i], a + lm)
+    err[i, 5] = mat_err(pm[i] + a, lm + a)
+    err[i, 6] = mat_err(a - pm[i], a - lm)
+    err[i, 7] = mat_err(pm[i] - a, lm - a)
+
+
+@wp.kernel(enable_backward=False)
+def mixed_mat3_kernel(
+    a_in: wp.array[wp.mat33],
+    v_in: wp.array[wp.vec3],
+    pm: wp.array[wp.mat33],
+    pv: wp.array[wp.vec3],
+    err: wp.array2d[float],
+):
+    i = wp.tid()
+    a, v = JM3.directional(a_in[i], v_in[i], pm[i], pv[i], wp.transpose(a_in[i]), -v_in[i])
+    lm = JM3.mat3()
+    lm.value = pm[i]
+    lv = JM3.constant_vec3(pv[i])
+
+    err[i, 0] = mat_err(a * pm[i], a * lm)
+    err[i, 1] = mat_err(pm[i] * a, lm * a)
+    err[i, 2] = vec_err(a * pv[i], a * lv)
+    err[i, 3] = vec_err(pm[i] * v, lm * v)
+    err[i, 4] = mat_err(a + pm[i], a + lm)
+    err[i, 5] = mat_err(pm[i] + a, lm + a)
+    err[i, 6] = mat_err(a - pm[i], a - lm)
+    err[i, 7] = mat_err(pm[i] - a, lm - a)
+
+
+@wp.kernel(enable_backward=False)
+def mixed_rect_kernel(
+    a_in: wp.array[mat23],
+    b_in: wp.array[mat32],
+    p23: wp.array[mat23],
+    p32: wp.array[mat32],
+    err: wp.array2d[float],
+):
+    i = wp.tid()
+    a, b = JR.directional(a_in[i], b_in[i], p23[i], p32[i], wp.transpose(b_in[i]), wp.transpose(a_in[i]))
+    l23 = JR.mat23()
+    l23.value = p23[i]
+    l32 = JR.mat32()
+    l32.value = p32[i]
+
+    err[i, 0] = mat_err(a * p32[i], a * l32)
+    err[i, 1] = mat_err(p23[i] * b, l23 * b)
+
+
+@wp.kernel
+def mixed_mat3_adjoint_kernel(
+    a_in: wp.array[wp.mat33],
+    v_in: wp.array[wp.vec3],
+    pm: wp.array[wp.mat33],
+    pv: wp.array[wp.vec3],
+    da: wp.array2d[wp.mat33],
+    dv: wp.array2d[wp.vec3],
+    w: wp.array[wp.vec3],
+    weights: wp.array[JM3.coeff_mat3],
+    out: wp.array[float],
+):
+    i = wp.tid()
+    a, v = JM3.directional(a_in[i], v_in[i], da[i, 0], dv[i, 0], da[i, 1], dv[i, 1])
+    y = a * pv[i] + pm[i] * v
+    out[i] = wp.dot(y.value, w[i]) + wp.ddot(y.coeff, weights[i])
+
+
+def _random(rng, shape):
+    return rng.uniform(-1.0, 1.0, size=shape).astype(np.float32)
+
+
+class TestJetMixedOperands(unittest.TestCase):
+    def _assert_agree(self, err):
+        # Squared differences of values and coefficients against the lifted form.
+        np.testing.assert_allclose(err, 0.0, atol=1.0e-10)
+
+    def test_scalar_vector_and_selection(self):
+        """Check jet-scalar times, and plain vector over, jet-scalar against lifted constants."""
+        rng = np.random.default_rng(1)
+        m = 6
+        s = rng.uniform(0.5, 1.5, size=m).astype(np.float32) * np.where(np.arange(m) % 2, 1.0, -1.0).astype(np.float32)
+        # Thresholds on both sides of s so min and max take each branch.
+        c = (s + np.where(np.arange(m) % 3 == 0, 0.25, -0.25)).astype(np.float32)
+        for device in DEVICES:
+            err = wp.zeros((m, 10), dtype=float, device=device)
+            wp.launch(
+                mixed_vec_kernel,
+                dim=m,
+                inputs=[
+                    wp.array(s, dtype=float, device=device),
+                    wp.array(_random(rng, (m, 2)), dtype=wp.vec2, device=device),
+                    wp.array(_random(rng, (m, 3)), dtype=wp.vec3, device=device),
+                    wp.array(c, dtype=float, device=device),
+                ],
+                outputs=[err],
+                device=device,
+            )
+            self._assert_agree(err.numpy())
+
+    def test_square_matrix(self):
+        """Check mat2 and mat3 products and sums with one plain operand against lifted constants."""
+        rng = np.random.default_rng(2)
+        m = 4
+        for device in DEVICES:
+            for kernel, mat, vec, n in (
+                (mixed_mat2_kernel, wp.mat22, wp.vec2, 2),
+                (mixed_mat3_kernel, wp.mat33, wp.vec3, 3),
+            ):
+                err = wp.zeros((m, 8), dtype=float, device=device)
+                wp.launch(
+                    kernel,
+                    dim=m,
+                    inputs=[
+                        wp.array(_random(rng, (m, n, n)), dtype=mat, device=device),
+                        wp.array(_random(rng, (m, n)), dtype=vec, device=device),
+                        wp.array(_random(rng, (m, n, n)), dtype=mat, device=device),
+                        wp.array(_random(rng, (m, n)), dtype=vec, device=device),
+                    ],
+                    outputs=[err],
+                    device=device,
+                )
+                self._assert_agree(err.numpy())
+
+    def test_rectangular_matrix(self):
+        """Check mat23 times mat32 with either operand plain against lifted constants."""
+        rng = np.random.default_rng(3)
+        m = 4
+        for device in DEVICES:
+            err = wp.zeros((m, 2), dtype=float, device=device)
+            wp.launch(
+                mixed_rect_kernel,
+                dim=m,
+                inputs=[
+                    wp.array(_random(rng, (m, 2, 3)), dtype=mat23, device=device),
+                    wp.array(_random(rng, (m, 3, 2)), dtype=mat32, device=device),
+                    wp.array(_random(rng, (m, 2, 3)), dtype=mat23, device=device),
+                    wp.array(_random(rng, (m, 3, 2)), dtype=mat32, device=device),
+                ],
+                outputs=[err],
+                device=device,
+            )
+            self._assert_agree(err.numpy())
+
+    def test_plain_operand_adjoints(self):
+        """Check that reverse mode through mixed products reaches the plain operands."""
+        rng = np.random.default_rng(4)
+        m = 3
+        a_np = _random(rng, (m, 3, 3))
+        v_np = _random(rng, (m, 3))
+        pm_np = _random(rng, (m, 3, 3))
+        pv_np = _random(rng, (m, 3))
+        da_np = _random(rng, (m, 2, 3, 3))
+        dv_np = _random(rng, (m, 2, 3))
+        w_np = _random(rng, (m, 3))
+        weights_np = _random(rng, (m, 3, 2))
+
+        # y = A pv + Pm v carries y.coeff[:, q] = dA_q pv + Pm dv_q along direction q.
+        pv_grad = np.einsum("mrk,mr->mk", a_np, w_np) + np.einsum("mqrk,mrq->mk", da_np, weights_np)
+        pm_grad = np.einsum("mr,mk->mrk", w_np, v_np) + np.einsum("mrq,mqk->mrk", weights_np, dv_np)
+
+        for device in DEVICES:
+            pm = wp.array(pm_np, dtype=wp.mat33, requires_grad=True, device=device)
+            pv = wp.array(pv_np, dtype=wp.vec3, requires_grad=True, device=device)
+            out = wp.zeros(m, dtype=float, requires_grad=True, device=device)
+            tape = wp.Tape()
+            with tape:
+                wp.launch(
+                    mixed_mat3_adjoint_kernel,
+                    dim=m,
+                    inputs=[
+                        wp.array(a_np, dtype=wp.mat33, device=device),
+                        wp.array(v_np, dtype=wp.vec3, device=device),
+                        pm,
+                        pv,
+                        wp.array(da_np, dtype=wp.mat33, device=device),
+                        wp.array(dv_np, dtype=wp.vec3, device=device),
+                        wp.array(w_np, dtype=wp.vec3, device=device),
+                        wp.array(weights_np, dtype=JM3.coeff_mat3, device=device),
+                    ],
+                    outputs=[out],
+                    device=device,
+                )
+            tape.backward(grads={out: wp.ones(m, dtype=float, device=device)})
+
+            np.testing.assert_allclose(pv.grad.numpy(), pv_grad, rtol=1.0e-5, atol=1.0e-6)
+            np.testing.assert_allclose(pm.grad.numpy(), pm_grad, rtol=1.0e-5, atol=1.0e-6)
 
 
 if __name__ == "__main__":
