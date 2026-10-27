@@ -24,135 +24,209 @@ where :math:`w` is the jet's *width*. :func:`wp.JetSpace <JetSpace>` creates fir
 :func:`wp.JetSpace2 <JetSpace2>` creates second-order scalar jets that also carry a dense Hessian.
 
 Jets do not replace reverse mode but complement it, with different trade-offs in memory access, operation count and
-compile time. See
-:ref:`jets_when_to_use` below.
+compile time. See :ref:`jets_when_to_use` below.
 
 A First Example
 ---------------
 
-The energy of a spring of rest length one between two 3D nodes is an ordinary function. It is written once, generic
-over its argument types, and used both on plain ``vec3`` values and on jets:
+Consider a two-link arm in 2D with four degrees of freedom: the position of its base ``base_pos``, the relative
+shoulder angle ``shoulder`` and the relative elbow angle ``elbow``. A jet space for these inputs tracks derivatives
+along each of them, with a width equal to their four scalar components. For inverse kinematics, the goal is to bring the
+end of the arm to a target position ``target_pos``. The residual of that least-squares problem is an ordinary function,
+written once and generic over its argument types, so it accepts both plain values and jets. A kernel or another
+:func:`@wp.func <func>` can then seed the inputs, call ``residual``, and read off the coefficients to construct the
+residual's Jacobian:
 
 .. testcode::
 
-    J = wp.JetSpace((wp.vec3, wp.vec3))  # a spring: two 3D nodes, width 6
+    J = wp.JetSpace((wp.vec2, wp.float32, wp.float32))  # width 4
 
     @wp.func
-    def spring_energy(x0: Any, x1: Any):
-        r = wp.length(x1 - x0) - 1.0
-        return 0.5 * r * r
+    def residual(base_pos: Any, shoulder: Any, elbow: Any, target_pos: wp.vec2):
+        # Two links of unit length; the elbow angle is relative to the upper arm.
+        elbow_pos = base_pos + wp.cos(shoulder) * wp.vec2(1.0, 0.0) + wp.sin(shoulder) * wp.vec2(0.0, 1.0)
+        forearm = shoulder + elbow
+        end_pos = elbow_pos + wp.cos(forearm) * wp.vec2(1.0, 0.0) + wp.sin(forearm) * wp.vec2(0.0, 1.0)
+        return end_pos - target_pos
 
     @wp.kernel
-    def gradients(
-        x0: wp.array[wp.vec3],
-        x1: wp.array[wp.vec3],
-        forward: wp.array[J.coeff],
-        reverse: wp.array2d[wp.vec3],
+    def residual_jacobian_kernel(
+        base_pos: wp.array[wp.vec2],
+        shoulder: wp.array[float],
+        elbow: wp.array[float],
+        target_pos: wp.array[wp.vec2],
+        jacobian: wp.array[J.coeff_mat2],
     ):
-        i = wp.tid()
+        tid = wp.tid()
+        jet_base_pos, jet_shoulder, jet_elbow = J.seed(base_pos[tid], shoulder[tid], elbow[tid])
+        jet_residual = residual(jet_base_pos, jet_shoulder, jet_elbow, target_pos[tid])
+        jacobian[tid] = jet_residual.coeff  # 2x4: d(residual) / d(base_pos, shoulder, elbow)
 
-        # Forward mode: seed the six inputs and read the gradient off the jet.
-        a, b = J.seed(x0[i], x1[i])
-        forward[i] = spring_energy(a, b).coeff
+    base_pos = wp.array([[0.0, 0.0]], dtype=wp.vec2)
+    shoulder = wp.array([np.radians(45.0)], dtype=float)
+    elbow = wp.array([np.radians(-45.0)], dtype=float)
+    target_pos = wp.array([[-0.5, 0.5]], dtype=wp.vec2)
+    jacobian = wp.zeros(1, dtype=J.coeff_mat2)
 
-        # Reverse mode: one backward pass through the same function.
-        g0, g1 = wp.grad(spring_energy)(x0[i], x1[i])
-        reverse[i, 0] = g0
-        reverse[i, 1] = g1
+    wp.launch(residual_jacobian_kernel, dim=1, inputs=[base_pos, shoulder, elbow, target_pos], outputs=[jacobian])
 
-    x0 = wp.array([[0.0, 0.0, 0.0]], dtype=wp.vec3)
-    x1 = wp.array([[2.0, 0.0, 0.0]], dtype=wp.vec3)
-    forward = wp.zeros(1, dtype=J.coeff)
-    reverse = wp.zeros((1, 2), dtype=wp.vec3)
-
-    wp.launch(gradients, dim=1, inputs=[x0, x1], outputs=[forward, reverse])
-
-    print("forward:", forward.numpy())
-    print("reverse:", reverse.numpy().reshape(1, 6))
+    print(np.round(jacobian.numpy()[0], 4))
 
 .. testoutput::
 
-    forward: [[-1.  0.  0.  1.  0.  0.]]
-    reverse: [[-1.  0.  0.  1.  0.  0.]]
+    [[ 1.      0.     -0.7071  0.    ]
+     [ 0.      1.      1.7071  1.    ]]
 
-Nothing is bound into the module beyond the space ``J``. Operators and builtins such as ``x1 - x0`` and
-``wp.length()`` resolve on jets because the jet arithmetic is registered as overloads of Warp's own
-builtins; component access (``v[0]``) works the same way.
+Nothing is bound into the module beyond the space ``J``. Operators and builtins such as ``end_pos - target_pos`` and
+``wp.sin()`` resolve on jets because the jet arithmetic is registered as overloads of Warp's own builtins.
 
 Slots and Seeding
 -----------------
 
-A jet's derivative directions are numbered, so a jet space has to say which input component each direction belongs to.
-It does that by the *types* of the inputs being differentiated, called *slots*:
-
-.. list-table::
-    :header-rows: 1
-    :widths: 35 10 55
-
-    * - ``wp.JetSpace(slots)``
-      - Width
-      - Meaning
-    * - ``(wp.vec3, wp.vec3)``
-      - 6
-      - Two 3D points, for example a spring.
-    * - ``(wp.vec3,) * 4``
-      - 12
-      - Four 3D points, for example a tetrahedron.
-    * - ``(wp.vec2, wp.float32, wp.mat22)``
-      - 7
-      - A 2D point, a scalar and a 2x2 matrix.
-    * - ``4``
-      - 4
-      - Four scalars. An integer ``n`` means ``n`` scalar slots.
+The default use case for jets is constructing the Jacobian of a function with respect to a predetermined set of
+inputs. The :func:`wp.JetSpace <JetSpace>` constructor takes a tuple of types, called *slots*, such as
+``(wp.vec2, wp.float32, wp.float32)`` in the example above. Each slot corresponds to one of the function's inputs. By
+default, the width of the jets is the total number of scalar components (``width=4`` in the example above), so the jets
+carry the full Jacobian with respect to these inputs.
 
 The slot types are scalars, ``vec2``, ``vec3``, and the ``mat22``, ``mat33``, ``mat32`` and ``mat23`` matrices.
 The jets for each are available on the returned namespace as ``J.scalar``, ``J.vec2``, ``J.vec3``, ``J.mat2``,
 ``J.mat3``, ``J.mat32`` and ``J.mat23``, and ``J.coeff`` is the type of a scalar jet's derivative vector.
 
-Inside a kernel, ``J.seed()`` takes one value per slot and returns one jet per slot. It numbers the directions slot by
-slot, in the order the components appear (row-major within a matrix):
+Inside a kernel, ``J.seed()`` takes one value per slot and returns one jet per slot. It copies each input's value into
+the jet's ``value`` field and sets the ``coeff`` field to the unit vector along the corresponding direction of the
+derivative space, ordered by slot and then by component within the slot (row-major for matrices). In effect, the jets
+are seeded with the identity matrix, so the coefficients of any downstream output contain its Jacobian.
 
-.. code-block:: python
+Width and Directional
+---------------------
 
-    @wp.func
-    def spring_gradient(x0: wp.vec3, x1: wp.vec3):
-        # x0_jet and x1_jet are J.vec3: x0_jet carries directions 0-2, x1_jet 3-5.
-        x0_jet, x1_jet = J.seed(x0, x1)
-        return spring_energy(x0_jet, x1_jet).coeff  # the 6-component gradient
+Jets can also compute directional derivatives, also known as Jacobian-vector products, without first constructing the
+full Jacobian. To do this, construct :func:`wp.JetSpace <JetSpace>` with a ``width`` equal to the number of directions
+to differentiate along, which does not need to match the total number of slot components. When the width differs from
+the number of slot components, ``J.seed()`` is not available, and the derivative directions are provided explicitly
+instead.
 
-Because the arguments are checked against the declared slots by ordinary overload resolution, passing a ``vec2`` to a
-``vec3`` slot fails to compile instead of numbering the wrong directions. A single-slot space takes and returns the bare
-value, as in ``p = J.seed(x)``.
+``J.directional()`` takes the same values as ``J.seed()``, followed by ``width * len(slots)`` direction values, ordered
+direction-major: for each direction in turn, one value per slot, of the same type as that slot. The returned jets
+carry these directions in their ``coeff`` fields instead of the identity matrix, so the coefficients of any downstream
+output contain its Jacobian times the direction vectors.
 
-Directional derivatives
-^^^^^^^^^^^^^^^^^^^^^^^
+In the example above, suppose we want the derivative of the residual as the shoulder rotates one way and the elbow
+the other way at the same rate, so the forearm keeps its orientation. A space with scalar slots for ``shoulder`` and
+``elbow`` and ``width=1`` (instead of the default ``2``) does this, given the direction ``(1, -1)``. The result is the
+Jacobian times that direction, the shoulder column printed above minus the elbow column. Because the forearm only
+translates, the end of the arm moves exactly as the elbow does:
 
-``seed()`` uses the coordinate directions, which gives the full gradient. A derivative along a *chosen* direction needs
-only one jet component. Passing ``width=1`` creates a space with a single direction, and ``J.directional()`` takes the
-values followed by the direction to differentiate along:
+.. testcode::
 
-.. code-block:: python
+    Jd = wp.JetSpace((wp.float32, wp.float32), width=1)
 
-    J1 = wp.JetSpace((wp.vec3, wp.vec3), width=1)
+    @wp.kernel
+    def directional_derivative_kernel(
+        base_pos: wp.array[wp.vec2],
+        shoulder: wp.array[float],
+        elbow: wp.array[float],
+        target_pos: wp.array[wp.vec2],
+        directional_derivative: wp.array[Jd.coeff_mat2],
+    ):
+        tid = wp.tid()
+        # Rotate the shoulder and the elbow in opposite directions at the same rate.
+        jet_shoulder, jet_elbow = Jd.directional(shoulder[tid], elbow[tid], 1.0, -1.0)
+        jet_residual = residual(base_pos[tid], jet_shoulder, jet_elbow, target_pos[tid])
+        directional_derivative[tid] = jet_residual.coeff
 
-    @wp.func
-    def spring_directional_derivative(x0: wp.vec3, x1: wp.vec3, v0: wp.vec3, v1: wp.vec3):
-        # Derivative along the combined direction (v0, v1).
-        x0_jet, x1_jet = J1.directional(x0, x1, v0, v1)
-        return spring_energy(x0_jet, x1_jet).coeff[0]
+    directional_derivative = wp.zeros(1, dtype=Jd.coeff_mat2)
 
-With ``width > 1``, ``directional()`` takes ``width * len(slots)`` directions, ordered direction-major: direction ``q`` of
-slot ``s`` is argument ``q * len(slots) + s`` after the values. ``seed()`` exists only when ``width`` equals the number of
-components; otherwise use ``directional()``.
+    wp.launch(
+        directional_derivative_kernel,
+        dim=1,
+        inputs=[base_pos, shoulder, elbow, target_pos],
+        outputs=[directional_derivative],
+    )
 
-Seeding inside a loop
-^^^^^^^^^^^^^^^^^^^^^
+    print(np.round(directional_derivative.numpy()[0], 4))
 
-When the number of scalars is not a fixed argument list, ``J.variable(x, direction)`` returns a scalar jet with a unit
-derivative along one direction.
+.. testoutput::
+
+    [[-0.7071]
+     [ 0.7071]]
+
+
+Component-wise seeding
+^^^^^^^^^^^^^^^^^^^^^^
+
+Callers may also access the low-level interface of jets directly, without the
+slot types. Passing a number of scalars instead of slot types, as in ``wp.JetSpace(4)``,
+creates a space whose width defaults to that number, or is the ``width``
+provided. Each scalar variable is then seeded manually with ``J.variable(x,
+direction)``, which returns a scalar jet with value ``x`` and a unit derivative
+along ``direction``. 
+
+.. testcode::
+
+    Jn = wp.JetSpace(4)  # four scalars, width 4
+
+    @wp.kernel
+    def sum_of_cubes_gradient_kernel(x: wp.array2d[float], gradient: wp.array[Jn.coeff]):
+        tid = wp.tid()
+        total = Jn.constant(0.0)
+        for k in range(4):
+            xk = Jn.variable(x[tid, k], k)
+            total = total + xk * xk * xk
+        gradient[tid] = total.coeff
+
+    x = wp.array([[1.0, 2.0, 3.0, 4.0]], dtype=float)
+    gradient = wp.zeros(1, dtype=Jn.coeff)
+
+    wp.launch(sum_of_cubes_gradient_kernel, dim=1, inputs=[x], outputs=[gradient])
+
+    print(gradient.numpy()[0])
+
+.. testoutput::
+
+    [ 3. 12. 27. 48.]
 
 Hessians
 --------
+
+To compute second derivatives, we can either combine warp's reverse mode
+(:class:`wp.Tape <Tape>` or :func:`wp.grad <grad>`) with
+first-order jets (:func:`wp.JetSpace <JetSpace>`), or use second-order jets
+(:func:`wp.JetSpace2 <JetSpace2>`).
+
+:func:`wp.JetSpace2 <JetSpace2>` is constructed and seeded similarly to
+:func:`wp.JetSpace <JetSpace>`. 
+
+.. testcode::
+   
+    J2 = wp.JetSpace2((wp.vec3, wp.vec3))  # width 6
+
+    @wp.func
+    def spring_energy(a: Any, b: Any):
+        d = a - b
+        return 0.5 * (wp.length(d) - 1.0) ** 2
+
+    @wp.kernel
+    def hessian_kernel(
+        x0: wp.array[wp.vec3],
+        x1: wp.array[wp.vec3],
+        val: wp.array2[float],
+        grad: wp.array2[wp.vec6],
+        hess: wp.array[wp.mat6]
+    ):
+        i = wp.tid()
+        jet_x0, jet_x1 = J2.seed(x0[i], x1[i])
+        f = spring_energy(jet_x0, jet_x1)  
+        val[i] = f.value
+        grad[i] = f.grad
+        hess[i] = f.hess
+
+.. testoutput::
+
+
+---------- UP TO HERE -------------- 
+
 
 There are three ways to a local Hessian, and which one is best depends on the energy:
 
@@ -457,3 +531,6 @@ Limitations
 * Second-order jets carry a scalar payload only. Vector and matrix second derivatives decompose into per-component
   scalar jets.
 * Jet dtypes must be floating point. Quaternion slots are not supported.
+* A plain scalar, vector or matrix of the jet's dtype can be either operand of a jet operation, and is treated as a
+  constant. The exception is ``wp.where``, whose two branches must both be jets; wrap a plain branch with
+  ``J.constant``.
