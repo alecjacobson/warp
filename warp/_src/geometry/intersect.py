@@ -508,3 +508,181 @@ def intersect_seg_tri(p0: wp.vec3d, p1: wp.vec3d, v0: wp.vec3d, v1: wp.vec3d, v2
 
 intersect_seg_tri.__doc__ = intersect_seg_tri.doc
 register_api_function(intersect_seg_tri, module="warp.geometry", differentiable=False)
+
+
+@wp.func(inline=True)
+def _intersect_aabb_aabb(a_lower: Any, a_upper: Any, b_lower: Any, b_upper: Any):
+    # Evaluate all six comparisons without short-circuit control flow. Integer
+    # masks compile to predicate operations and avoid divergent scalar loads.
+    return bool(
+        int(a_lower[0] <= b_upper[0])
+        & int(a_lower[1] <= b_upper[1])
+        & int(a_lower[2] <= b_upper[2])
+        & int(a_upper[0] >= b_lower[0])
+        & int(a_upper[1] >= b_lower[1])
+        & int(a_upper[2] >= b_lower[2])
+    )
+
+
+@wp.func(inline=True)
+def intersect_aabb_aabb(a_lower: wp.vec3, a_upper: wp.vec3, b_lower: wp.vec3, b_upper: wp.vec3) -> bool:
+    """Test whether two closed axis-aligned bounding boxes overlap.
+
+    Face, edge, and corner contact count as intersections. Zero-width boxes
+    (planes, lines, or points) are supported. All coordinates must be finite,
+    use the same type (``vec3`` or ``vec3d``), and share a coordinate space.
+    Each lower bound must be componentwise less than or equal to its upper
+    bound. No tolerance is added; expand the bounds to request a spatial margin.
+    The boolean result is not differentiable.
+
+    Args:
+        a_lower: Lower corner of the first box.
+        a_upper: Upper corner of the first box.
+        b_lower: Lower corner of the second box.
+        b_upper: Upper corner of the second box.
+
+    Returns:
+        ``True`` if the boxes overlap, or ``False`` otherwise.
+    """
+    return _intersect_aabb_aabb(a_lower, a_upper, b_lower, b_upper)
+
+
+@wp.func(inline=True)
+def intersect_aabb_aabb(a_lower: wp.vec3d, a_upper: wp.vec3d, b_lower: wp.vec3d, b_upper: wp.vec3d) -> bool:
+    """Double-precision overload of :func:`warp.geometry.intersect_aabb_aabb`."""
+    return _intersect_aabb_aabb(a_lower, a_upper, b_lower, b_upper)
+
+
+intersect_aabb_aabb.__doc__ = intersect_aabb_aabb.doc
+register_api_function(intersect_aabb_aabb, module="warp.geometry", differentiable=False)
+
+
+@wp.func(inline=True)
+def _intersect_seg_aabb(p0: Any, p1: Any, lower: Any, upper: Any):
+    # Combine separating axes without short-circuit branches. This avoids
+    # divergent control flow for mixed hits/misses on the GPU.
+    face = _intersect_aabb_aabb(wp.min(p0, p1), wp.max(p0, p1), lower, upper)
+    # Doubled midpoint offset and box half-extents avoid division by two.
+    # Translate endpoints before adding to reduce cancellation under translation.
+    m = (p0 - lower) + (p1 - upper)
+    d = p1 - p0
+    h = upper - lower
+    ad = wp.abs(d)
+    return bool(
+        int(face)
+        & int(wp.abs(m[1] * d[2] - m[2] * d[1]) <= h[1] * ad[2] + h[2] * ad[1])
+        & int(wp.abs(m[2] * d[0] - m[0] * d[2]) <= h[2] * ad[0] + h[0] * ad[2])
+        & int(wp.abs(m[0] * d[1] - m[1] * d[0]) <= h[0] * ad[1] + h[1] * ad[0])
+    )
+
+
+@wp.func(inline=True)
+def intersect_seg_aabb(p0: wp.vec3, p1: wp.vec3, lower: wp.vec3, upper: wp.vec3) -> bool:
+    """Test whether a closed segment intersects an axis-aligned bounding box.
+
+    Endpoint, face, edge, and corner contact count as intersections. A zero-length
+    segment is a point; zero-width boxes and axis-parallel segments are supported.
+
+    Coordinates must be finite, use the same type (``vec3`` or ``vec3d``), and
+    share a coordinate space. ``lower`` must be componentwise less than or equal
+    to ``upper``. No tolerance is added; expand the bounds for a spatial margin.
+    This is a floating-point predicate, not an exact predicate: roundoff and
+    intermediate overflow or underflow can affect results. Use ``vec3d`` for
+    greater precision. The boolean result is not differentiable.
+
+    Args:
+        p0: First endpoint of the segment.
+        p1: Second endpoint of the segment.
+        lower: Lower corner of the box.
+        upper: Upper corner of the box.
+
+    Returns:
+        ``True`` if the segment intersects the box, or ``False`` otherwise.
+    """
+    return _intersect_seg_aabb(p0, p1, lower, upper)
+
+
+@wp.func(inline=True)
+def intersect_seg_aabb(p0: wp.vec3d, p1: wp.vec3d, lower: wp.vec3d, upper: wp.vec3d) -> bool:
+    """Double-precision overload of :func:`warp.geometry.intersect_seg_aabb`."""
+    return _intersect_seg_aabb(p0, p1, lower, upper)
+
+
+intersect_seg_aabb.__doc__ = intersect_seg_aabb.doc
+register_api_function(intersect_seg_aabb, module="warp.geometry", differentiable=False)
+
+
+@wp.func(inline=True)
+def _tri_aabb_edge_axes(e: Any, a: Any, b: Any, h: Any):
+    # For an axis perpendicular to this edge, its two endpoints have the same
+    # projection. Only one endpoint (a) and the opposite vertex (b) are needed.
+    p = e[2] * a[1] - e[1] * a[2]
+    q = e[2] * b[1] - e[1] * b[2]
+    r = wp.abs(e[2]) * h[1] + wp.abs(e[1]) * h[2]
+    x = int(wp.min(p, q) <= r) & int(wp.max(p, q) >= -r)
+    p = e[0] * a[2] - e[2] * a[0]
+    q = e[0] * b[2] - e[2] * b[0]
+    r = wp.abs(e[0]) * h[2] + wp.abs(e[2]) * h[0]
+    y = int(wp.min(p, q) <= r) & int(wp.max(p, q) >= -r)
+    p = e[1] * a[0] - e[0] * a[1]
+    q = e[1] * b[0] - e[0] * b[1]
+    r = wp.abs(e[1]) * h[0] + wp.abs(e[0]) * h[1]
+    return bool(x & y & int(wp.min(p, q) <= r) & int(wp.max(p, q) >= -r))
+
+
+@wp.func(inline=True)
+def _intersect_tri_aabb(v0: Any, v1: Any, v2: Any, lower: Any, upper: Any):
+    if not _intersect_aabb_aabb(wp.min(v0, wp.min(v1, v2)), wp.max(v0, wp.max(v1, v2)), lower, upper):
+        return False
+    h = (upper - lower) * type(v0[0])(0.5)
+    a = (v0 - lower) - h
+    b = (v1 - lower) - h
+    c = (v2 - lower) - h
+    e0 = v1 - v0
+    e1 = v2 - v1
+    e2 = v0 - v2
+    n = wp.cross(e0, e1)
+    if wp.abs(wp.dot(n, a)) > wp.dot(wp.abs(n), h):
+        return False
+    return bool(
+        int(_tri_aabb_edge_axes(e0, a, c, h))
+        & int(_tri_aabb_edge_axes(e1, b, a, h))
+        & int(_tri_aabb_edge_axes(e2, c, b, h))
+    )
+
+
+@wp.func(inline=True)
+def intersect_tri_aabb(v0: wp.vec3, v1: wp.vec3, v2: wp.vec3, lower: wp.vec3, upper: wp.vec3) -> bool:
+    """Test whether a triangle intersects a closed axis-aligned bounding box.
+
+    Boundary contact counts as intersection. Degenerate triangles are treated as their segment or point
+    convex hull; zero-width boxes are supported.
+
+    Coordinates must be finite, use the same type (``vec3`` or ``vec3d``), and
+    share a coordinate space. ``lower`` must be componentwise less than or equal
+    to ``upper``. No tolerance is added; expand the bounds for a spatial margin.
+    This is a floating-point predicate, not an exact predicate: roundoff and
+    intermediate overflow or underflow can affect results. Use ``vec3d`` for
+    greater precision. The boolean result is not differentiable.
+
+    Args:
+        v0: First vertex of the triangle.
+        v1: Second vertex of the triangle.
+        v2: Third vertex of the triangle.
+        lower: Lower corner of the box.
+        upper: Upper corner of the box.
+
+    Returns:
+        ``True`` if the triangle intersects the box, or ``False`` otherwise.
+    """
+    return _intersect_tri_aabb(v0, v1, v2, lower, upper)
+
+
+@wp.func(inline=True)
+def intersect_tri_aabb(v0: wp.vec3d, v1: wp.vec3d, v2: wp.vec3d, lower: wp.vec3d, upper: wp.vec3d) -> bool:
+    """Double-precision overload of :func:`warp.geometry.intersect_tri_aabb`."""
+    return _intersect_tri_aabb(v0, v1, v2, lower, upper)
+
+
+intersect_tri_aabb.__doc__ = intersect_tri_aabb.doc
+register_api_function(intersect_tri_aabb, module="warp.geometry", differentiable=False)
