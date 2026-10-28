@@ -620,7 +620,7 @@ Limitations
   :func:`wp.mesh_query_point() <warp._src.lang.mesh_query_point>`, operate on floats only and need manual integration.
 * Second-order jets take scalar, ``vec2`` and ``vec3`` slots. Matrix slots are not supported; a matrix input
   decomposes into its components.
-* Jet dtypes must be floating point. Quaternion slots are not supported.
+* Jet dtypes must be floating point.
 * A plain scalar, vector or matrix of the jet's dtype can be either operand of a jet operation, and is treated as a
   constant. The exception is ``wp.where``, whose two branches must both be jets; wrap a plain branch with
   ``J.constant``.
