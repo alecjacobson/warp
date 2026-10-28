@@ -686,3 +686,220 @@ def intersect_tri_aabb(v0: wp.vec3d, v1: wp.vec3d, v2: wp.vec3d, lower: wp.vec3d
 
 intersect_tri_aabb.__doc__ = intersect_tri_aabb.doc
 register_api_function(intersect_tri_aabb, module="warp.geometry", differentiable=False)
+
+
+@wp.func(inline=True)
+def _triangle_vertex(v0: Any, v1: Any, v2: Any, index: int):
+    if index == 0:
+        return v0
+    if index == 1:
+        return v1
+    return v2
+
+
+@wp.func(inline=True)
+def _contains_vertex_id(ids: wp.vec3i, vertex_id: int):
+    return ids[0] == vertex_id or ids[1] == vertex_id or ids[2] == vertex_id
+
+
+@wp.func(inline=True)
+def _self_intersect_tri_tri(
+    a0: Any,
+    a1: Any,
+    a2: Any,
+    b0: Any,
+    b1: Any,
+    b2: Any,
+    vertex_ids_a: wp.vec3i,
+    vertex_ids_b: wp.vec3i,
+    tol: Any,
+):
+    m0 = _contains_vertex_id(vertex_ids_b, vertex_ids_a[0])
+    m1 = _contains_vertex_id(vertex_ids_b, vertex_ids_a[1])
+    m2 = _contains_vertex_id(vertex_ids_b, vertex_ids_a[2])
+    shared = int(m0) + int(m1) + int(m2)
+    if shared == 0:
+        # Preserve ordinary intersection semantics, including tolerance and
+        # arithmetic ordering, for topologically unrelated triangles.
+        return _intersect_tri_tri(a0, a1, a2, b0, b1, b2, tol)
+    if shared == 3:
+        return True
+
+    # Select the unique shared (one ID) or unshared (two IDs) corner of A.
+    ia = int(2)
+    if m0 == (shared == 1):
+        ia = 0
+    elif m1 == (shared == 1):
+        ia = 1
+    ja = (ia + 1) % 3
+    ka = (ia + 2) % 3
+    # Stable ordering under winding changes and vertex permutations.
+    if _component(vertex_ids_a, ja) > _component(vertex_ids_a, ka):
+        ja, ka = ka, ja
+    a = _triangle_vertex(a0, a1, a2, ia)
+    u = _triangle_vertex(a0, a1, a2, ja)
+    v = _triangle_vertex(a0, a1, a2, ka)
+
+    if shared == 1:
+        shared_id = _component(vertex_ids_a, ia)
+        ib = int(2)
+        if vertex_ids_b[0] == shared_id:
+            ib = 0
+        elif vertex_ids_b[1] == shared_id:
+            ib = 1
+        jb = (ib + 1) % 3
+        kb = (ib + 2) % 3
+        if _component(vertex_ids_b, jb) > _component(vertex_ids_b, kb):
+            jb, kb = kb, jb
+        # Use the shared position as the origin. Its plane value is then zero
+        # by construction, rather than a subtraction of large plane offsets.
+        p = u - a
+        q = v - a
+        r = _triangle_vertex(b0, b1, b2, jb) - a
+        s = _triangle_vertex(b0, b1, b2, kb) - a
+        origin = a - a
+        # By convexity, any intersection beyond the shared vertex reaches an
+        # opposite edge of at least one triangle. Neither opposite edge contains
+        # the shared vertex for nondegenerate inputs. No length cutoff is needed.
+        return _intersect_seg_tri(p, q, origin, r, s, tol) or _intersect_seg_tri(r, s, origin, p, q, tol)
+
+    # Two shared IDs: u-v is the common edge, a and b the opposite vertices.
+    b = b2
+    if not _contains_vertex_id(vertex_ids_a, vertex_ids_b[0]):
+        b = b0
+    elif not _contains_vertex_id(vertex_ids_a, vertex_ids_b[1]):
+        b = b1
+    e = v - u
+    p = a - u
+    q = b - u
+    na = wp.cross(e, p)
+    nb = wp.cross(e, q)
+    zero = type(a0[0])(0.0)
+    da = _plane_distance(na, q, zero, tol)
+    db = _plane_distance(nb, p, zero, tol)
+    # As in ordinary tri-tri, either plane classifying all opposite vertices
+    # as coplanar selects the coplanar path. Shared endpoints are exact zeros.
+    if da != zero and db != zero:
+        return False
+    # Use a common dominant projection, chosen symmetrically from both normals.
+    # Sign comparisons avoid multiplying tiny projected areas together.
+    n = wp.max(wp.abs(na), wp.abs(nb))
+    index = int(0)
+    if n[1] > n[0]:
+        index = 1
+    if n[2] > _component(n, index):
+        index = 2
+    sa = _component(na, index)
+    sb = _component(nb, index)
+    return (sa > zero and sb > zero) or (sa < zero and sb < zero)
+
+
+@wp.func(inline=True)
+def self_intersect_tri_tri(
+    a0: wp.vec3,
+    a1: wp.vec3,
+    a2: wp.vec3,
+    b0: wp.vec3,
+    b1: wp.vec3,
+    b2: wp.vec3,
+    vertex_ids_a: wp.vec3i,
+    vertex_ids_b: wp.vec3i,
+    tol: wp.float64 = _DEFAULT_INTERSECTION_TOL,
+) -> bool:
+    """Test whether two triangles intersect beyond their topologically shared boundary.
+
+    Adjacency is established only by equal vertex IDs, not by equal coordinates.
+    With no shared IDs, this delegates to :func:`warp.geometry.intersect_tri_tri`
+    with the same tolerance. One shared vertex permits contact only at that
+    vertex; two shared vertices permit contact along their common edge. Three
+    shared IDs report a duplicate face as an intersection, regardless of winding.
+    Callers must exclude a face paired with itself before invoking this function.
+    Contact elsewhere, including contact at geometrically coincident vertices
+    with different IDs, counts as intersection. No intersection-length threshold
+    is applied.
+
+    Inputs must be finite, nondegenerate triangles in the same coordinate space,
+    all using the same type. Overloads accept ``vec3`` or ``vec3d`` coordinates,
+    each with a float32 or float64 ``tol``. Each face must have three
+    distinct IDs from a common vertex-ID namespace, and coordinates associated
+    with a shared ID must agree exactly. These preconditions are not checked.
+
+    ``tol`` has the same default and unnormalized plane-value units as
+    :func:`warp.geometry.intersect_tri_tri`. For a shared edge, the triangles
+    are treated as coplanar if either opposite vertex's plane value relative to
+    the other triangle is within ``tol``. Positive tolerance can consequently classify a slight fold as coplanar
+    overlap. Zero disables snapping, but floating-point roundoff can still affect
+    results; this is not an exact predicate. Use ``vec3d`` for greater precision.
+
+    This convention applies to static intersection only, not positive-clearance
+    or continuous collision queries. The boolean result is not differentiable.
+
+    Args:
+        a0: First vertex of triangle A.
+        a1: Second vertex of triangle A.
+        a2: Third vertex of triangle A.
+        b0: First vertex of triangle B.
+        b1: Second vertex of triangle B.
+        b2: Third vertex of triangle B.
+        vertex_ids_a: Vertex IDs of A, in the order ``a0``, ``a1``, ``a2``.
+        vertex_ids_b: Vertex IDs of B, in the order ``b0``, ``b1``, ``b2``.
+        tol: Nonnegative finite plane-equation tolerance, in float32 or float64.
+            This does not dilate edges or suppress short intersections.
+
+    Returns:
+        ``True`` for intersection beyond the shared vertex or edge, or for a
+        duplicate face; ``False`` for separation or ordinary adjacency.
+    """
+    return _self_intersect_tri_tri(a0, a1, a2, b0, b1, b2, vertex_ids_a, vertex_ids_b, tol)
+
+
+@wp.func(inline=True)
+def self_intersect_tri_tri(
+    a0: wp.vec3d,
+    a1: wp.vec3d,
+    a2: wp.vec3d,
+    b0: wp.vec3d,
+    b1: wp.vec3d,
+    b2: wp.vec3d,
+    vertex_ids_a: wp.vec3i,
+    vertex_ids_b: wp.vec3i,
+    tol: wp.float64 = _DEFAULT_INTERSECTION_TOL,
+) -> bool:
+    """Double-precision overload of :func:`warp.geometry.self_intersect_tri_tri`."""
+    return _self_intersect_tri_tri(a0, a1, a2, b0, b1, b2, vertex_ids_a, vertex_ids_b, tol)
+
+
+@wp.func(inline=True)
+def self_intersect_tri_tri(
+    a0: wp.vec3,
+    a1: wp.vec3,
+    a2: wp.vec3,
+    b0: wp.vec3,
+    b1: wp.vec3,
+    b2: wp.vec3,
+    vertex_ids_a: wp.vec3i,
+    vertex_ids_b: wp.vec3i,
+    tol: wp.float32,
+) -> bool:
+    """Float32 tolerance overload; see :func:`warp.geometry.self_intersect_tri_tri`."""
+    return _self_intersect_tri_tri(a0, a1, a2, b0, b1, b2, vertex_ids_a, vertex_ids_b, tol)
+
+
+@wp.func(inline=True)
+def self_intersect_tri_tri(
+    a0: wp.vec3d,
+    a1: wp.vec3d,
+    a2: wp.vec3d,
+    b0: wp.vec3d,
+    b1: wp.vec3d,
+    b2: wp.vec3d,
+    vertex_ids_a: wp.vec3i,
+    vertex_ids_b: wp.vec3i,
+    tol: wp.float32,
+) -> bool:
+    """Float32 tolerance overload; see :func:`warp.geometry.self_intersect_tri_tri`."""
+    return _self_intersect_tri_tri(a0, a1, a2, b0, b1, b2, vertex_ids_a, vertex_ids_b, tol)
+
+
+self_intersect_tri_tri.__doc__ = self_intersect_tri_tri.doc
+register_api_function(self_intersect_tri_tri, module="warp.geometry", differentiable=False)

@@ -39,4 +39,5 @@ Kernel API
    intersect_seg_tri
    intersect_tri_aabb
    intersect_tri_tri
+   self_intersect_tri_tri
    swept_volume_sdf

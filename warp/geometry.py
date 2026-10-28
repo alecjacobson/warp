@@ -59,4 +59,5 @@ from warp._src.geometry.intersect import intersect_seg_aabb as intersect_seg_aab
 from warp._src.geometry.intersect import intersect_seg_tri as intersect_seg_tri
 from warp._src.geometry.intersect import intersect_tri_aabb as intersect_tri_aabb
 from warp._src.geometry.intersect import intersect_tri_tri as intersect_tri_tri
+from warp._src.geometry.intersect import self_intersect_tri_tri as self_intersect_tri_tri
 from warp._src.geometry import swept_volume_sdf as swept_volume_sdf
