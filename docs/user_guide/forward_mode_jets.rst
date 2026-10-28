@@ -20,8 +20,13 @@ of floats, returning its derivatives along with its value, with no hand-written 
 
     x = \text{value} + \sum_{q=1}^{w} \text{coeff}_q \, \varepsilon_q
 
-where :math:`w` is the jet's *width*. :func:`wp.JetSpace <JetSpace>` creates first-order jets, and
-:func:`wp.JetSpace2 <JetSpace2>` creates second-order jets that also carry a dense Hessian.
+where :math:`w` is the jet's *width* and each :math:`\varepsilon_q` is a formal infinitesimal, one per direction,
+whose products vanish: :math:`\varepsilon_q \varepsilon_r = 0` for all :math:`q, r`. Arithmetic on jets therefore keeps
+only first-order terms. For example, multiplying two jets multiplies their values and combines their coefficients by
+the product rule, so :math:`\text{coeff}_q` of any result is its derivative along direction :math:`q`.
+:func:`wp.JetSpace <JetSpace>` creates these first-order jets. :func:`wp.JetSpace2 <JetSpace2>` creates second-order
+jets, which keep the products :math:`\varepsilon_q \varepsilon_r` (dropping only third-order terms) and so also carry
+a dense Hessian.
 
 Jets do not replace reverse mode but complement it, with different trade-offs in memory access, operation count and
 compile time. See :ref:`jets_when_to_use` below.
