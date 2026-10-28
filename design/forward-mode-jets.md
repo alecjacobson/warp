@@ -130,6 +130,7 @@ overloads of Warp's own builtins**, so user code needs no jet-specific syntax:
 ```python
 J = wp.JetSpace((wp.vec3, wp.vec3))
 
+
 @wp.func
 def spring_energy(x0: J.vec3, x1: J.vec3) -> J.scalar:
     d = x1 - x0
@@ -148,9 +149,9 @@ bookkeeping the types already know, and needs one helper per input type. The
 space is therefore described by the *types* of its inputs, called slots:
 
 ```python
-J = wp.JetSpace((wp.vec3, wp.vec3))      # width 6
+J = wp.JetSpace((wp.vec3, wp.vec3))  # width 6
 J = wp.JetSpace((wp.vec2, wp.float32, wp.mat22))  # width 7
-J = wp.JetSpace(4)                       # four scalar slots
+J = wp.JetSpace(4)  # four scalar slots
 ```
 
 Supported slot types are scalars, `vec2`, `vec3`, and the matrix shapes the
@@ -161,7 +162,7 @@ inferred from the slots unless `dtype` is given; mixing precisions is an error.
 unit directions assigned in slot order (row-major within a matrix):
 
 ```python
-a, b = J.seed(x0, x1)     # a, b are J.vec3; directions 0-2 and 3-5
+a, b = J.seed(x0, x1)  # a, b are J.vec3; directions 0-2 and 3-5
 ```
 
 A single call is therefore type-checked against the layout by ordinary overload
@@ -179,7 +180,7 @@ Hessian-vector product:
 
 ```python
 J1 = wp.JetSpace((wp.vec3, wp.vec3), width=1)
-a, b = J1.directional(x0, x1, v0, v1)    # derivative along (v0, v1)
+a, b = J1.directional(x0, x1, v0, v1)  # derivative along (v0, v1)
 ```
 
 `seed` exists only when `width` equals the component count; otherwise reading
@@ -204,16 +205,17 @@ codegen can read it back, and cached by `(width, dtype, slots)`. All layouts of
 one width and dtype share the same jet types and arithmetic, so a space declared
 as `(wp.vec3, wp.vec3)` and one declared as `6` interoperate.
 
-**Second-order spaces** take scalar slots only (`wp.JetSpace2(3)`), matching the
-scalar payload of `Jet2Scalar`. `seed(*scalars)` is available; `directional` is
-not, because a second-order jet is seeded along coordinates.
+**Second-order spaces** take scalar, `vec2` and `vec3` slots
+(`wp.JetSpace2((wp.vec3, wp.vec3))`), but not matrix slots. `seed(*values)` is
+available and builds a vector slot from one `variable` per component;
+`directional` is not, because a second-order jet is seeded along coordinates.
 
 ### Why registration on builtins is necessary
 
 Warp resolves a binary operator in `Adjoint.emit_BinOp` roughly as:
 
 ```python
-name = builtin_operators[type(node.op)]        # ast.Mult -> "mul"
+name = builtin_operators[type(node.op)]  # ast.Mult -> "mul"
 
 user_func = adj.resolve_external_reference(name)
 if isinstance(user_func, Function):
@@ -231,7 +233,7 @@ connection to the user's module. Operators then only work if the user injects
 the names first:
 
 ```python
-J.install(globals())    # what this design exists to avoid
+J.install(globals())  # what this design exists to avoid
 ```
 
 Beyond being ugly, that approach leaks plumbing into the API: it has to merge
@@ -275,10 +277,9 @@ into Warp, where builtin registration is available and needs neither.
 This was originally deferred -- it does not reuse Warp's reverse-mode autodiff
 the way first-order jets do, and the state grows quadratically in the width --
 but the tradeoff is worth it for small local energies, so it was added as
-`wp.JetSpace2` (scalar payload only). See [Second-order jets](#second-order-jets)
-below. Extending it to vector/matrix payloads multiplies that quadratic state
-by the component count and is left as a non-goal
-([#11](https://github.com/alecjacobson/warp/issues/11)).
+`wp.JetSpace2`, with scalar and vector payloads. See
+[Second-order jets](#second-order-jets) below. Matrix payloads are left as a
+non-goal ([#11](https://github.com/alecjacobson/warp/issues/11)).
 
 ### Key Implementation Details
 
@@ -298,7 +299,8 @@ Registered names: `add`, `sub`, `mul`, `div`, `pow`, `neg`, `pos`, `sin`,
 `sign`, `min`, `max`, `clamp`, `where`, `extract`, `dot`, `length`,
 `length_sq`, `normalize`, `cross`, `transpose`, `determinant`, `trace`,
 `inverse`. `wp.JetSpace2` registers the same scalar arithmetic, transcendental,
-and branching families (up through `where`).
+and branching families (up through `where`), plus the vector arithmetic,
+`extract`, `dot`, `length`, `length_sq`, `normalize` and `cross`.
 
 The value-branching builtins (`min`, `max`, `clamp`, `where`, `abs`, `sign`)
 select or pass through the derivative of the branch they take, alongside the
@@ -338,9 +340,11 @@ Seeding the identity makes one forward pass yield the whole local gradient:
 ```python
 J = wp.JetSpace(2)
 
+
 @wp.func
 def local_energy(a: J.scalar, b: J.scalar) -> J.scalar:
     return wp.sin(a * b) + 0.1 * (a * a * a) + wp.exp(b)
+
 
 @wp.kernel
 def local_gradient(z: wp.array2d[float], grad_g: wp.array[J.coeff]):
@@ -406,12 +410,24 @@ iteration, or for a wide energy -- in-kernel `wp.grad` over first-order jets get
 the same Hessian with none of that cost. The tape route remains useful on CPU and
 for long chains.
 
-The payload is **scalar only**. Each intermediate already carries an `O(width²)`
-Hessian; making the payload a vector or matrix multiplies that by the component
-count (`9×` for a `mat3`), which is a large compile-time and register cost for a
-rare use case, so it is deferred
-([#11](https://github.com/alecjacobson/warp/issues/11)). Vector-valued second
-derivatives, where genuinely needed, decompose into per-component scalar jets.
+**Vector payloads.** `Jet2Vec2` and `Jet2Vec3` are structs of one `Jet2Scalar`
+per component, and every vector operation is composed from the scalar
+overloads (`dot` is products and sums, `length` is `sqrt(dot)`, and so on). A
+vector expression therefore performs exactly the arithmetic of the same
+expression written out per component, and needs no second-order rules of its
+own. That also settles the cost: a `vec3` jet holds the three scalar jets the
+hand-scalarized function would hold, so state, registers and compile time are
+those of the scalar form. The width -- the number of differentiated components
+-- is what drives the `O(width²)` cost, not whether the components arrive as
+scalars or vectors. Its point is that one function generic over its argument
+types serves every Hessian route, so the vector-form energies used with
+first-order jets no longer need scalar-form twins for `JetSpace2`.
+
+Matrix payloads are left out
+([#11](https://github.com/alecjacobson/warp/issues/11)). The same componentwise
+construction would apply, but the matrix overload surface (matmul, transpose,
+determinant, inverse, …) is much larger, and a matrix input can be passed as
+its columns or components in the meantime.
 
 ## Coverage
 
@@ -419,20 +435,23 @@ First-order (`wp.JetSpace`) and second-order (`wp.JetSpace2`) support, by
 operation family. "FD" marks families verified against finite differences in
 `test_jet_ops.py`; the rest are covered by closed-form checks in `test_jet.py`.
 
-| Family                                                    | 1st-order scalar | 1st-order vec2/vec3 | 1st-order matrix        | 2nd-order scalar |
-| --------------------------------------------------------- | :--------------: | :-----------------: | :---------------------: | :--------------: |
-| Arithmetic (`+ - * / ** neg pos`)                         |        ✓         |          ✓          |            ✓            |        ✓         |
-| Transcendental (`sin cos tan exp log sqrt`)               |        ✓         |          –          |            –            |        ✓         |
-| Inverse-trig (`asin acos atan atan2`) — FD                |        ✓         |          –          |            –            |        ✓         |
-| Branching (`min max clamp where abs sign`) — FD           |        ✓         |          –          |            –            |        ✓         |
-| Indexing (`v[i]`, `extract`)                              |        ✓         |          ✓          |            ✓            |        –         |
-| Geometry (`dot length length_sq normalize cross`)         |        ✓         |          ✓          |            –            |        –         |
-| Matrix (`transpose trace determinant inverse`, matmul)    |        –         |          –          |    ✓ (mat2/3/32/23)     |        –         |
-| Reverse-over-jet Hessian via `wp.Tape`                    |        ✓         |          ✓          |            ✓            |     n/a          |
-| Reverse-over-jet Hessian via in-kernel `wp.grad` (no tape) |        ✓         |          ✓          |            ✓            |     n/a          |
-| Pure-forward Hessian (no tape, no reverse)                |       n/a        |         n/a         |           n/a           |        ✓         |
+| Family                                                    | 1st-order scalar | 1st-order vec2/vec3 | 1st-order matrix        | 2nd-order scalar | 2nd-order vec2/vec3 |
+| --------------------------------------------------------- | :--------------: | :-----------------: | :---------------------: | :--------------: | :-----------------: |
+| Arithmetic (`+ - * / ** neg pos`)                         |        ✓         |          ✓          |            ✓            |        ✓         |       ✓ — FD        |
+| Transcendental (`sin cos tan exp log sqrt`)               |        ✓         |          –          |            –            |        ✓         |          –          |
+| Inverse-trig (`asin acos atan atan2`) — FD                |        ✓         |          –          |            –            |        ✓         |          –          |
+| Branching (`min max clamp where abs sign`) — FD           |        ✓         |          –          |            –            |        ✓         |          –          |
+| Indexing (`v[i]`, `extract`)                              |        ✓         |          ✓          |            ✓            |        –         |       ✓ — FD        |
+| Geometry (`dot length length_sq normalize cross`)         |        ✓         |          ✓          |            –            |        –         |       ✓ — FD        |
+| Matrix (`transpose trace determinant inverse`, matmul)    |        –         |          –          |    ✓ (mat2/3/32/23)     |        –         |          –          |
+| Reverse-over-jet Hessian via `wp.Tape`                    |        ✓         |          ✓          |            ✓            |     n/a          |         n/a         |
+| Reverse-over-jet Hessian via in-kernel `wp.grad` (no tape) |        ✓         |          ✓          |            ✓            |     n/a          |         n/a         |
+| Pure-forward Hessian (no tape, no reverse)                |       n/a        |         n/a         |           n/a           |        ✓         |          ✓          |
 
-Not covered (tracked as issues): second-order vector/matrix jets
+The second-order vector column is verified in `test_jet.py` against finite
+differences of a NumPy mirror (`test_jet2_vector_ops`).
+
+Not covered (tracked as issues): second-order matrix jets
 ([#11](https://github.com/alecjacobson/warp/issues/11)); a native symmetric
 matrix type for the Hessian ([#5](https://github.com/alecjacobson/warp/issues/5));
 overloaded comparisons ([#10](https://github.com/alecjacobson/warp/issues/10));

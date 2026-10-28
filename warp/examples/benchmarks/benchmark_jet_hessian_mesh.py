@@ -25,10 +25,10 @@ differ only in HOW the reverse sweep is taken:
                      an assembled sparse Hessian without the shared-array aliasing.
 
     forward-2        a second-order jet: one forward pass writes the whole k x k
-                     Hessian, no reverse at all. Uses scalar-form energies
-                     (JetSpace2 is scalars-only). For these short elasticity
-                     energies it compiles fast at every k (tet k=12 ~5 s) and its
-                     single fused pass is the fastest runtime at k=12.
+                     Hessian, no reverse at all, on the same vector-form energies.
+                     Its single fused pass is the fastest runtime at k=12, but its
+                     O(k^2) state makes it the slowest to compile: the tet kernel
+                     takes minutes on a cold cache.
 
     uv run warp/examples/benchmarks/benchmark_jet_hessian_mesh.py --device cuda:0
     uv run warp/examples/benchmarks/benchmark_jet_hessian_mesh.py --device cuda:0 --graph
@@ -52,7 +52,7 @@ _LAM = wp.constant(1.0)
 # derivatives, over the same nodes.
 JK = {k: wp.JetSpace((wp.vec3,) * (k // 3)) for k in (6, 9, 12)}
 JD = {k: wp.JetSpace((wp.vec3,) * (k // 3), width=1) for k in (6, 9, 12)}
-J2K = {6: wp.JetSpace2(6), 9: wp.JetSpace2(9), 12: wp.JetSpace2(12)}  # forward-2
+J2K = {k: wp.JetSpace2((wp.vec3,) * (k // 3)) for k in (6, 9, 12)}  # forward-2
 
 
 # ---------------------------------------------------------------------------
@@ -85,41 +85,6 @@ def tet_energy(p0: Any, p1: Any, p2: Any, p3: Any):
     f2 = p3 - p0
     i1 = wp.dot(f0, f0) + wp.dot(f1, f1) + wp.dot(f2, f2)
     logj = wp.log(wp.dot(f0, wp.cross(f1, f2)))
-    return 0.5 * _MU * (i1 - 3.0) - _MU * logj + 0.5 * _LAM * logj * logj
-
-
-# Scalar-form energies for the second-order jet (JetSpace2 is scalars-only).
-# Same formulas as above, one scalar per coordinate.
-
-
-@wp.func
-def spring_energy_s(a0: Any, a1: Any, a2: Any, b0: Any, b1: Any, b2: Any):
-    d0, d1, d2 = a0 - b0, a1 - b1, a2 - b2
-    s = wp.sqrt(d0 * d0 + d1 * d1 + d2 * d2) - _REST
-    return 0.5 * s * s
-
-
-@wp.func
-def triangle_energy_s(a0: Any, a1: Any, a2: Any, b0: Any, b1: Any, b2: Any, c0: Any, c1: Any, c2: Any):
-    j00, j01, j02 = b0 - a0, b1 - a1, b2 - a2  # column 0 = p1 - p0
-    j10, j11, j12 = c0 - a0, c1 - a1, c2 - a2  # column 1 = p2 - p0
-    s00 = j00 * j00 + j01 * j01 + j02 * j02
-    s01 = j00 * j10 + j01 * j11 + j02 * j12
-    s11 = j10 * j10 + j11 * j11 + j12 * j12
-    tr = s00 + s11
-    return tr + tr / (s00 * s11 - s01 * s01)
-
-
-@wp.func
-def tet_energy_s(
-    a0: Any, a1: Any, a2: Any, b0: Any, b1: Any, b2: Any, c0: Any, c1: Any, c2: Any, d0: Any, d1: Any, d2: Any
-):
-    f00, f01, f02 = b0 - a0, b1 - a1, b2 - a2
-    f10, f11, f12 = c0 - a0, c1 - a1, c2 - a2
-    f20, f21, f22 = d0 - a0, d1 - a1, d2 - a2
-    i1 = f00 * f00 + f01 * f01 + f02 * f02 + f10 * f10 + f11 * f11 + f12 * f12 + f20 * f20 + f21 * f21 + f22 * f22
-    det = f00 * (f11 * f22 - f12 * f21) + f01 * (f12 * f20 - f10 * f22) + f02 * (f10 * f21 - f11 * f20)
-    logj = wp.log(det)
     return 0.5 * _MU * (i1 - 3.0) - _MU * logj + 0.5 * _LAM * logj * logj
 
 
@@ -225,15 +190,8 @@ def build_spring():
     @wp.kernel(enable_backward=False)
     def hess_fwd2(x: wp.array2d[wp.vec3], out: wp.array3d[wp.float32]):
         i = wp.tid()
-        a, b = x[i, 0], x[i, 1]
-        h = spring_energy_s(
-            J2.variable(a[0], 0),
-            J2.variable(a[1], 1),
-            J2.variable(a[2], 2),
-            J2.variable(b[0], 3),
-            J2.variable(b[1], 4),
-            J2.variable(b[2], 5),
-        ).hess
+        ja, jb = J2.seed(x[i, 0], x[i, 1])
+        h = spring_energy(ja, jb).hess
         for p in range(6):
             for q in range(6):
                 out[i, p, q] = h[p, q]
@@ -287,18 +245,8 @@ def build_triangle():
     @wp.kernel(enable_backward=False)
     def hess_fwd2(x: wp.array2d[wp.vec3], out: wp.array3d[wp.float32]):
         i = wp.tid()
-        p0, p1, p2 = x[i, 0], x[i, 1], x[i, 2]
-        h = triangle_energy_s(
-            J2.variable(p0[0], 0),
-            J2.variable(p0[1], 1),
-            J2.variable(p0[2], 2),
-            J2.variable(p1[0], 3),
-            J2.variable(p1[1], 4),
-            J2.variable(p1[2], 5),
-            J2.variable(p2[0], 6),
-            J2.variable(p2[1], 7),
-            J2.variable(p2[2], 8),
-        ).hess
+        j0, j1, j2 = J2.seed(x[i, 0], x[i, 1], x[i, 2])
+        h = triangle_energy(j0, j1, j2).hess
         for p in range(9):
             for q in range(9):
                 out[i, p, q] = h[p, q]
@@ -358,21 +306,8 @@ def build_tet():
     @wp.kernel(enable_backward=False)
     def hess_fwd2(x: wp.array2d[wp.vec3], out: wp.array3d[wp.float32]):
         i = wp.tid()
-        p0, p1, p2, p3 = x[i, 0], x[i, 1], x[i, 2], x[i, 3]
-        h = tet_energy_s(
-            J2.variable(p0[0], 0),
-            J2.variable(p0[1], 1),
-            J2.variable(p0[2], 2),
-            J2.variable(p1[0], 3),
-            J2.variable(p1[1], 4),
-            J2.variable(p1[2], 5),
-            J2.variable(p2[0], 6),
-            J2.variable(p2[1], 7),
-            J2.variable(p2[2], 8),
-            J2.variable(p3[0], 9),
-            J2.variable(p3[1], 10),
-            J2.variable(p3[2], 11),
-        ).hess
+        j0, j1, j2, j3 = J2.seed(x[i, 0], x[i, 1], x[i, 2], x[i, 3])
+        h = tet_energy(j0, j1, j2, j3).hess
         for p in range(12):
             for q in range(12):
                 out[i, p, q] = h[p, q]

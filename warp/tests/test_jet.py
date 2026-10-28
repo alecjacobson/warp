@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import unittest
+from typing import Any
 
 import numpy as np
 
@@ -63,7 +64,7 @@ Z_NP = np.array(
 
 
 def g_np(z):
-    """g evaluated with NumPy, independent of any Warp code."""
+    """G evaluated with NumPy, independent of any Warp code."""
     a = z[:, 0]
     b = z[:, 1]
     return np.sin(a * b) + 0.1 * a**3 + np.exp(b)
@@ -429,12 +430,19 @@ class TestJetSpace(unittest.TestCase):
         self.assertTrue(hasattr(narrow, "directional"))
 
     def test_jet_space2_slots(self):
-        """Check second-order spaces take scalar slots only."""
+        """Check second-order spaces take scalar, vec2 and vec3 slots but not matrices."""
         self.assertIs(wp.JetSpace2((wp.float32, wp.float32)), wp.JetSpace2(2))
         self.assertEqual(wp.JetSpace2(3).width, 3)
 
-        with self.assertRaises(TypeError):
-            wp.JetSpace2((wp.vec3, wp.vec3))
+        # Vector slots set the width from their components and share the scalar types.
+        spring = wp.JetSpace2((wp.vec3, wp.vec3))
+        self.assertEqual(spring.width, 6)
+        self.assertIs(spring.scalar, wp.JetSpace2(6).scalar)
+        self.assertEqual(wp.JetSpace2((wp.vec3, wp.float32, wp.vec2)).width, 6)
+        self.assertIs(wp.JetSpace2(wp.vec3d).dtype, wp.float64)
+
+        with self.assertRaisesRegex(TypeError, "matrix"):
+            wp.JetSpace2((wp.vec3, wp.mat33))
 
 
 # ===========================================================================
@@ -867,6 +875,246 @@ def test_jet2_seed(test, device):
     np.testing.assert_allclose(hess.numpy(), hessian_np(z64), rtol=1.0e-4, atol=1.0e-5)
 
 
+# ===========================================================================
+# Second-order vector slots. A vector-typed function generic over its argument
+# types runs unchanged on first- and second-order jets.
+# ===========================================================================
+
+J2_SPRING = wp.JetSpace2((wp.vec3, wp.vec3))
+
+# The vec3 operations on a width-3 space, and the vec2 operations on a width-3
+# space that also takes a scalar slot. Narrow widths keep these second-order
+# kernels quick to compile.
+J2_V3 = wp.JetSpace2(wp.vec3)
+J2_V2 = wp.JetSpace2((wp.vec2, wp.float32))
+
+
+@wp.func
+def spring_energy_generic(x0: Any, x1: Any):
+    r = wp.length(x1 - x0) - 1.0
+    return 0.5 * r * r
+
+
+@wp.kernel
+def jet2_spring_hessian(x0: wp.array[wp.vec3], x1: wp.array[wp.vec3], hess: wp.array3d[float]):
+    i = wp.tid()
+    a, b = J2_SPRING.seed(x0[i], x1[i])
+    h = spring_energy_generic(a, b).hess
+    for p in range(6):
+        for q in range(6):
+            hess[i, p, q] = h[p, q]
+
+
+@wp.kernel
+def jet1_spring_gradient_generic(x0: wp.array[wp.vec3], x1: wp.array[wp.vec3], grad: wp.array[J6.coeff]):
+    i = wp.tid()
+    a, b = J6.seed(x0[i], x1[i])
+    grad[i] = spring_energy_generic(a, b).coeff
+
+
+def test_jet2_vector_spring(test, device):
+    """Check one generic vec3 energy gives the gradient on first-order jets and the Hessian on second-order jets."""
+    x0_np = np.array([[0.0, 0.0, 0.0], [1.0, 2.0, -1.0]], dtype=np.float32)
+    x1_np = np.array([[2.0, 0.0, 0.0], [1.0, 2.0, 2.0]], dtype=np.float32)
+    m = x0_np.shape[0]
+    x0 = wp.array(x0_np, dtype=wp.vec3, device=device)
+    x1 = wp.array(x1_np, dtype=wp.vec3, device=device)
+
+    hess = wp.zeros((m, 6, 6), dtype=float, device=device)
+    wp.launch(jet2_spring_hessian, dim=m, inputs=[x0, x1], outputs=[hess], device=device)
+    hess_np = np.stack([_spring_hessian_np(x0_np[i], x1_np[i]) for i in range(m)])
+    np.testing.assert_allclose(hess.numpy(), hess_np, rtol=1.0e-5, atol=1.0e-6)
+
+    grad = wp.zeros(m, dtype=J6.coeff, device=device)
+    wp.launch(jet1_spring_gradient_generic, dim=m, inputs=[x0, x1], outputs=[grad], device=device)
+    d = (x1_np - x0_np).astype(np.float64)
+    length = np.linalg.norm(d, axis=1, keepdims=True)
+    g1 = (length - 1.0) * d / length
+    np.testing.assert_allclose(grad.numpy(), np.concatenate((-g1, g1), axis=1), rtol=1.0e-5, atol=1.0e-6)
+
+
+@wp.func
+def vec3_ops_energy(p: Any):
+    # Uses every second-order vec3 overload: each mix of jet and plain operands,
+    # negative indexing, and the namespace constructors.
+    c = wp.vec3(0.3, -0.2, 0.5)
+    s = 0.5 * p[1] + 1.2
+    u = 2.0 * p - c
+    v = c - p / 3.0 + p * s + 0.25 * (s * p)
+    w = s * c + c * s + (+p) + (-u) + (c + p) * 0.5 + (p + c)
+    return (
+        wp.dot(wp.cross(p, c), wp.cross(c, u))
+        + wp.dot(wp.cross(u, v), w)
+        + wp.length(v)
+        + wp.length(u - v)
+        + wp.length_sq(w)
+        + wp.dot(wp.normalize(u), c)
+        + wp.dot(c, w)
+        + p[-1] * u[0]
+        + v[1]
+        + wp.dot(c / s, p)
+        + wp.length(u / wp.length(v))
+        + wp.dot(J2_V3.make_vec3(s, p[0], p[2]), J2_V3.constant_vec3(c) + p)
+    )
+
+
+@wp.func
+def vec2_ops_energy(q: Any, s: Any):
+    # The same for vec2, plus the 2D helpers that live on the namespace.
+    n = wp.vec2(0.7, 0.1)
+    a = q * 2.0 + n
+    b = n - q / 2.0 + (-q) + (+q) + 0.5 * q
+    d = s * n + n * s + q * s + 0.5 * (s * q) + (n + q) - (q - n)
+    return (
+        wp.dot(a, n)
+        + wp.dot(n, b)
+        + wp.dot(a, d)
+        + wp.length(b)
+        + wp.length(a + b)
+        + wp.length_sq(d)
+        + wp.length(a - d)
+        + wp.dot(wp.normalize(a), n)
+        + q[-1] * a[0]
+        + wp.dot(n / s, q)
+        + wp.length(a / wp.length(b))
+        + J2_V2.cross2(a, n)
+        + J2_V2.cross2(n, b)
+        + J2_V2.cross2(a, J2_V2.perp(b))
+        + wp.dot(J2_V2.make_vec2(q[1], s), J2_V2.constant_vec2(n) - q)
+    )
+
+
+def _dot(x, y):
+    return (x * y).sum(-1)
+
+
+def _length(x):
+    return np.linalg.norm(x, axis=-1)
+
+
+def vec3_ops_energy_np(z):
+    p = z[:, 0:3]
+    c = np.array([0.3, -0.2, 0.5])
+    s = 0.5 * p[:, 1:2] + 1.2
+    u = 2.0 * p - c
+    v = c - p / 3.0 + p * s + 0.25 * (s * p)
+    w = s * c + c * s + p - u + (c + p) * 0.5 + (p + c)
+    made = np.stack((s[:, 0], p[:, 0], p[:, 2]), axis=1)
+    return (
+        _dot(np.cross(p, c), np.cross(c, u))
+        + _dot(np.cross(u, v), w)
+        + _length(v)
+        + _length(u - v)
+        + _dot(w, w)
+        + _dot(u / _length(u)[:, None], c)
+        + _dot(c, w)
+        + p[:, 2] * u[:, 0]
+        + v[:, 1]
+        + _dot(c / s, p)
+        + _length(u / _length(v)[:, None])
+        + _dot(made, c + p)
+    )
+
+
+def vec2_ops_energy_np(z):
+    q, s = z[:, 0:2], z[:, 2:3]
+    n = np.array([0.7, 0.1])
+
+    def cross2(x, y):
+        return x[..., 0] * y[..., 1] - x[..., 1] * y[..., 0]
+
+    a = q * 2.0 + n
+    b = n - q / 2.0 - q + q + 0.5 * q
+    d = s * n + n * s + q * s + 0.5 * (s * q) + (n + q) - (q - n)
+    perp_b = np.stack((-b[:, 1], b[:, 0]), axis=1)
+    made = np.stack((q[:, 1], s[:, 0]), axis=1)
+    return (
+        _dot(a, n)
+        + _dot(n, b)
+        + _dot(a, d)
+        + _length(b)
+        + _length(a + b)
+        + _dot(d, d)
+        + _length(a - d)
+        + _dot(a / _length(a)[:, None], n)
+        + q[:, 1] * a[:, 0]
+        + _dot(n / s, q)
+        + _length(a / _length(b)[:, None])
+        + cross2(a, n)
+        + cross2(n, b)
+        + cross2(a, perp_b)
+        + _dot(made, n - q)
+    )
+
+
+@wp.kernel
+def jet2_vec3_ops(
+    p: wp.array[wp.vec3],
+    val: wp.array[float],
+    grad: wp.array2d[float],
+    hess: wp.array3d[float],
+):
+    i = wp.tid()
+    e = vec3_ops_energy(J2_V3.seed(p[i]))
+    val[i] = e.value
+    for a in range(3):
+        grad[i, a] = e.grad[a]
+        for b in range(3):
+            hess[i, a, b] = e.hess[a, b]
+
+
+@wp.kernel
+def jet2_vec2_ops(
+    q: wp.array[wp.vec2],
+    s: wp.array[float],
+    val: wp.array[float],
+    grad: wp.array2d[float],
+    hess: wp.array3d[float],
+):
+    i = wp.tid()
+    qj, sj = J2_V2.seed(q[i], s[i])
+    e = vec2_ops_energy(qj, sj)
+    val[i] = e.value
+    for a in range(3):
+        grad[i, a] = e.grad[a]
+        for b in range(3):
+            hess[i, a, b] = e.hess[a, b]
+
+
+def _check_against_fd(fn_np, z_np, val, grad, hess):
+    z64 = z_np.astype(np.float64)
+    np.testing.assert_allclose(val.numpy(), fn_np(z64), rtol=1.0e-5, atol=1.0e-5)
+    np.testing.assert_allclose(grad.numpy(), _grad_fd(fn_np, z64), rtol=1.0e-4, atol=1.0e-4)
+    np.testing.assert_allclose(hess.numpy(), _hess_fd(fn_np, z64), rtol=1.0e-3, atol=1.0e-3)
+
+
+def test_jet2_vector_ops(test, device):
+    """Check every second-order vector operation against finite differences of a NumPy mirror."""
+    z_np = np.array([[0.4, -0.3, 0.8], [-0.7, 0.2, 0.3], [0.1, 0.6, -0.5]], dtype=np.float32)
+    m = z_np.shape[0]
+
+    def outputs():
+        return (
+            wp.zeros(m, dtype=float, device=device),
+            wp.zeros((m, 3), dtype=float, device=device),
+            wp.zeros((m, 3, 3), dtype=float, device=device),
+        )
+
+    # vec3 slot: p is the three components.
+    val, grad, hess = outputs()
+    p = wp.array(z_np, dtype=wp.vec3, device=device)
+    wp.launch(jet2_vec3_ops, dim=m, inputs=[p], outputs=[val, grad, hess], device=device)
+    _check_against_fd(vec3_ops_energy_np, z_np, val, grad, hess)
+
+    # vec2 slot then a scalar slot: q is the first two components, s the third.
+    z_np[:, 2] = np.abs(z_np[:, 2]) + 0.8  # keep the divisor s away from zero
+    val, grad, hess = outputs()
+    q = wp.array(z_np[:, 0:2], dtype=wp.vec2, device=device)
+    s = wp.array(z_np[:, 2], dtype=float, device=device)
+    wp.launch(jet2_vec2_ops, dim=m, inputs=[q, s], outputs=[val, grad, hess], device=device)
+    _check_against_fd(vec2_ops_energy_np, z_np, val, grad, hess)
+
+
 devices = get_test_devices()
 
 
@@ -893,6 +1141,8 @@ add_function_test(
     TestJet, "test_jet_in_kernel_grad_hessian_vector", test_jet_in_kernel_grad_hessian_vector, devices=devices
 )
 add_function_test(TestJet, "test_jet2_seed", test_jet2_seed, devices=devices)
+add_function_test(TestJet, "test_jet2_vector_spring", test_jet2_vector_spring, devices=devices)
+add_function_test(TestJet, "test_jet2_vector_ops", test_jet2_vector_ops, devices=devices)
 
 
 if __name__ == "__main__":

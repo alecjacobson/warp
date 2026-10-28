@@ -1551,6 +1551,7 @@ def _build_slot_helpers(base, kinds, width: int, dtype, second_order: bool, incl
         namespace[f"Coeff_{kind}"] = coeff_type
     if second_order:
         namespace["Hess"] = base.hess
+        namespace["variable"] = base.variable
 
     # Annotation types are passed by name so the source stays readable.
     for s_, native in enumerate(natives):
@@ -1570,11 +1571,17 @@ def _build_slot_helpers(base, kinds, width: int, dtype, second_order: bool, incl
     lines = ["@wp.func", f"def jet_seed_{uid}({', '.join(value_params)}):"]
     offset = 0
     for s, kind in enumerate(kinds):
-        lines.append(f"    c{s} = Coeff_{kind}()")
-        for k, _ in enumerate(_slot_components(kind)):
-            lines.append("    " + _coeff_assignment(kind, k, offset + k, "dtype(1.0)", f"c{s}"))
-        lines.append(construct(s))
-        offset += len(_slot_components(kind))
+        components = _slot_components(kind)
+        if second_order and kind != "scalar":
+            # A second-order vector jet is one scalar jet per component.
+            scalars = ", ".join(f"variable(v{s}[{k}], {offset + k})" for k in range(len(components)))
+            lines.append(f"    j{s} = Jet_{kind}({scalars})")
+        else:
+            lines.append(f"    c{s} = Coeff_{kind}()")
+            for k, _ in enumerate(components):
+                lines.append("    " + _coeff_assignment(kind, k, offset + k, "dtype(1.0)", f"c{s}"))
+            lines.append(construct(s))
+        offset += len(components)
     lines.append(returns())
 
     total = offset
@@ -1744,7 +1751,7 @@ def JetSpace(slots, dtype=None, *, width=None):
 # state is O(k^2), so this is a small-k strategy: register pressure grows
 # quadratically where the first-order jet's grows linearly.
 #
-# Scalars only (enough to differentiate a scalar energy); no vec2/vec3.
+# Scalars, plus vec2/vec3 built from one scalar jet per component; no matrices.
 # ==========================================================================
 
 
@@ -2063,6 +2070,282 @@ def _make_jet_space2(width: int, dtype):
             return a
         return b
 
+    # ---- vectors: one scalar jet per component ----
+    #
+    # Each operation is composed from the scalar operations above, so a vector
+    # expression performs exactly the arithmetic of the same expression written
+    # out per component, and needs no second-order rules of its own.
+
+    NativeVec2 = vector(2, dtype)
+    NativeVec3 = vector(3, dtype)
+
+    @wp.struct
+    class Jet2Vec2:
+        x: Jet2Scalar
+        y: Jet2Scalar
+
+    @wp.struct
+    class Jet2Vec3:
+        x: Jet2Scalar
+        y: Jet2Scalar
+        z: Jet2Scalar
+
+    @wp.func
+    def vec2_constant(v: NativeVec2) -> Jet2Vec2:
+        return Jet2Vec2(scalar_constant(v[0]), scalar_constant(v[1]))
+
+    @wp.func
+    def vec3_constant(v: NativeVec3) -> Jet2Vec3:
+        return Jet2Vec3(scalar_constant(v[0]), scalar_constant(v[1]), scalar_constant(v[2]))
+
+    @wp.func
+    def vec2_from_scalars(x: Jet2Scalar, y: Jet2Scalar) -> Jet2Vec2:
+        return Jet2Vec2(x, y)
+
+    @wp.func
+    def vec3_from_scalars(x: Jet2Scalar, y: Jet2Scalar, z: Jet2Scalar) -> Jet2Vec3:
+        return Jet2Vec3(x, y, z)
+
+    # Indexing goes through a native vector of component numbers so that negative
+    # and out-of-range indices behave exactly as they do on a native vector.
+
+    @wp.func
+    def jet_extract(v: Jet2Vec2, i: int) -> Jet2Scalar:
+        if wp.vec2i(0, 1)[i] == 0:
+            return v.x
+        return v.y
+
+    @wp.func
+    def jet_extract(v: Jet2Vec3, i: int) -> Jet2Scalar:
+        component = wp.vec3i(0, 1, 2)[i]
+        if component == 0:
+            return v.x
+        if component == 1:
+            return v.y
+        return v.z
+
+    @wp.func
+    def jet_add(a: Jet2Vec2, b: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(a.x + b.x, a.y + b.y)
+
+    @wp.func
+    def jet_add(a: Jet2Vec2, b: NativeVec2) -> Jet2Vec2:
+        return Jet2Vec2(a.x + b[0], a.y + b[1])
+
+    @wp.func
+    def jet_add(a: NativeVec2, b: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(a[0] + b.x, a[1] + b.y)
+
+    @wp.func
+    def jet_add(a: Jet2Vec3, b: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(a.x + b.x, a.y + b.y, a.z + b.z)
+
+    @wp.func
+    def jet_add(a: Jet2Vec3, b: NativeVec3) -> Jet2Vec3:
+        return Jet2Vec3(a.x + b[0], a.y + b[1], a.z + b[2])
+
+    @wp.func
+    def jet_add(a: NativeVec3, b: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(a[0] + b.x, a[1] + b.y, a[2] + b.z)
+
+    @wp.func
+    def jet_sub(a: Jet2Vec2, b: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(a.x - b.x, a.y - b.y)
+
+    @wp.func
+    def jet_sub(a: Jet2Vec2, b: NativeVec2) -> Jet2Vec2:
+        return Jet2Vec2(a.x - b[0], a.y - b[1])
+
+    @wp.func
+    def jet_sub(a: NativeVec2, b: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(a[0] - b.x, a[1] - b.y)
+
+    @wp.func
+    def jet_sub(a: Jet2Vec3, b: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(a.x - b.x, a.y - b.y, a.z - b.z)
+
+    @wp.func
+    def jet_sub(a: Jet2Vec3, b: NativeVec3) -> Jet2Vec3:
+        return Jet2Vec3(a.x - b[0], a.y - b[1], a.z - b[2])
+
+    @wp.func
+    def jet_sub(a: NativeVec3, b: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(a[0] - b.x, a[1] - b.y, a[2] - b.z)
+
+    @wp.func
+    def jet_pos(a: Jet2Vec2) -> Jet2Vec2:
+        return a
+
+    @wp.func
+    def jet_pos(a: Jet2Vec3) -> Jet2Vec3:
+        return a
+
+    @wp.func
+    def jet_neg(a: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(-a.x, -a.y)
+
+    @wp.func
+    def jet_neg(a: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(-a.x, -a.y, -a.z)
+
+    @wp.func
+    def jet_mul(a: Jet2Vec2, s: dtype) -> Jet2Vec2:
+        return Jet2Vec2(a.x * s, a.y * s)
+
+    @wp.func
+    def jet_mul(s: dtype, a: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(s * a.x, s * a.y)
+
+    @wp.func
+    def jet_mul(a: Jet2Vec2, s: Jet2Scalar) -> Jet2Vec2:
+        return Jet2Vec2(a.x * s, a.y * s)
+
+    @wp.func
+    def jet_mul(s: Jet2Scalar, a: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(s * a.x, s * a.y)
+
+    @wp.func
+    def jet_mul(a: NativeVec2, s: Jet2Scalar) -> Jet2Vec2:
+        return Jet2Vec2(a[0] * s, a[1] * s)
+
+    @wp.func
+    def jet_mul(s: Jet2Scalar, a: NativeVec2) -> Jet2Vec2:
+        return Jet2Vec2(s * a[0], s * a[1])
+
+    @wp.func
+    def jet_mul(a: Jet2Vec3, s: dtype) -> Jet2Vec3:
+        return Jet2Vec3(a.x * s, a.y * s, a.z * s)
+
+    @wp.func
+    def jet_mul(s: dtype, a: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(s * a.x, s * a.y, s * a.z)
+
+    @wp.func
+    def jet_mul(a: Jet2Vec3, s: Jet2Scalar) -> Jet2Vec3:
+        return Jet2Vec3(a.x * s, a.y * s, a.z * s)
+
+    @wp.func
+    def jet_mul(s: Jet2Scalar, a: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(s * a.x, s * a.y, s * a.z)
+
+    @wp.func
+    def jet_mul(a: NativeVec3, s: Jet2Scalar) -> Jet2Vec3:
+        return Jet2Vec3(a[0] * s, a[1] * s, a[2] * s)
+
+    @wp.func
+    def jet_mul(s: Jet2Scalar, a: NativeVec3) -> Jet2Vec3:
+        return Jet2Vec3(s * a[0], s * a[1], s * a[2])
+
+    # Division by a jet takes one reciprocal and multiplies, rather than dividing
+    # every component.
+
+    @wp.func
+    def jet_div(a: Jet2Vec2, s: dtype) -> Jet2Vec2:
+        return Jet2Vec2(a.x / s, a.y / s)
+
+    @wp.func
+    def jet_div(a: Jet2Vec2, s: Jet2Scalar) -> Jet2Vec2:
+        inv = dtype(1.0) / s
+        return Jet2Vec2(a.x * inv, a.y * inv)
+
+    @wp.func
+    def jet_div(a: NativeVec2, s: Jet2Scalar) -> Jet2Vec2:
+        inv = dtype(1.0) / s
+        return Jet2Vec2(a[0] * inv, a[1] * inv)
+
+    @wp.func
+    def jet_div(a: Jet2Vec3, s: dtype) -> Jet2Vec3:
+        return Jet2Vec3(a.x / s, a.y / s, a.z / s)
+
+    @wp.func
+    def jet_div(a: Jet2Vec3, s: Jet2Scalar) -> Jet2Vec3:
+        inv = dtype(1.0) / s
+        return Jet2Vec3(a.x * inv, a.y * inv, a.z * inv)
+
+    @wp.func
+    def jet_div(a: NativeVec3, s: Jet2Scalar) -> Jet2Vec3:
+        inv = dtype(1.0) / s
+        return Jet2Vec3(a[0] * inv, a[1] * inv, a[2] * inv)
+
+    @wp.func
+    def jet_dot(a: Jet2Vec2, b: Jet2Vec2) -> Jet2Scalar:
+        return a.x * b.x + a.y * b.y
+
+    @wp.func
+    def jet_dot(a: Jet2Vec2, b: NativeVec2) -> Jet2Scalar:
+        return a.x * b[0] + a.y * b[1]
+
+    @wp.func
+    def jet_dot(a: NativeVec2, b: Jet2Vec2) -> Jet2Scalar:
+        return a[0] * b.x + a[1] * b.y
+
+    @wp.func
+    def jet_dot(a: Jet2Vec3, b: Jet2Vec3) -> Jet2Scalar:
+        return a.x * b.x + a.y * b.y + a.z * b.z
+
+    @wp.func
+    def jet_dot(a: Jet2Vec3, b: NativeVec3) -> Jet2Scalar:
+        return a.x * b[0] + a.y * b[1] + a.z * b[2]
+
+    @wp.func
+    def jet_dot(a: NativeVec3, b: Jet2Vec3) -> Jet2Scalar:
+        return a[0] * b.x + a[1] * b.y + a[2] * b.z
+
+    @wp.func
+    def jet_length_sq(v: Jet2Vec2) -> Jet2Scalar:
+        return jet_dot(v, v)
+
+    @wp.func
+    def jet_length_sq(v: Jet2Vec3) -> Jet2Scalar:
+        return jet_dot(v, v)
+
+    @wp.func
+    def jet_length(v: Jet2Vec2) -> Jet2Scalar:
+        return jet_sqrt(jet_dot(v, v))
+
+    @wp.func
+    def jet_length(v: Jet2Vec3) -> Jet2Scalar:
+        return jet_sqrt(jet_dot(v, v))
+
+    @wp.func
+    def jet_normalize(v: Jet2Vec2) -> Jet2Vec2:
+        return jet_div(v, jet_length(v))
+
+    @wp.func
+    def jet_normalize(v: Jet2Vec3) -> Jet2Vec3:
+        return jet_div(v, jet_length(v))
+
+    # Warp defines neither of these for vec2, so they stay on the namespace
+    # instead of becoming builtin overloads, as in the first-order space.
+
+    @wp.func
+    def jet_perp(v: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(-v.y, v.x)
+
+    @wp.func
+    def jet_cross2(a: Jet2Vec2, b: Jet2Vec2) -> Jet2Scalar:
+        return a.x * b.y - a.y * b.x
+
+    @wp.func
+    def jet_cross2(a: Jet2Vec2, b: NativeVec2) -> Jet2Scalar:
+        return a.x * b[1] - a.y * b[0]
+
+    @wp.func
+    def jet_cross2(a: NativeVec2, b: Jet2Vec2) -> Jet2Scalar:
+        return a[0] * b.y - a[1] * b.x
+
+    @wp.func
+    def jet_cross(a: Jet2Vec3, b: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x)
+
+    @wp.func
+    def jet_cross(a: Jet2Vec3, b: NativeVec3) -> Jet2Vec3:
+        return Jet2Vec3(a.y * b[2] - a.z * b[1], a.z * b[0] - a.x * b[2], a.x * b[1] - a.y * b[0])
+
+    @wp.func
+    def jet_cross(a: NativeVec3, b: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(a[1] * b.z - a[2] * b.y, a[2] * b.x - a[0] * b.z, a[0] * b.y - a[1] * b.x)
+
     _register("add", jet_add)
     _register("sub", jet_sub)
     _register("mul", jet_mul)
@@ -2089,39 +2372,76 @@ def _make_jet_space2(width: int, dtype):
     _register("clamp", jet_clamp)
     _register("where", jet_where)
 
+    _register("extract", jet_extract)
+
+    _register("dot", jet_dot)
+    _register("length", jet_length)
+    _register("length_sq", jet_length_sq)
+    _register("normalize", jet_normalize)
+    _register("cross", jet_cross)
+
     return SimpleNamespace(
         width=width,
         dtype=dtype,
         scalar=Jet2Scalar,
+        vec2=Jet2Vec2,
+        vec3=Jet2Vec3,
         grad=Grad,
         hess=Hess,
+        native_vec2=NativeVec2,
+        native_vec3=NativeVec3,
         constant=scalar_constant,
         variable=scalar_variable,
-        _slot_jet_types={"scalar": (Jet2Scalar, Grad)},
+        make_vec2=vec2_from_scalars,
+        make_vec3=vec3_from_scalars,
+        constant_vec2=vec2_constant,
+        constant_vec3=vec3_constant,
+        perp=jet_perp,
+        cross2=jet_cross2,
+        _slot_jet_types={"scalar": (Jet2Scalar, Grad), "vec2": (Jet2Vec2, None), "vec3": (Jet2Vec3, None)},
     )
 
 
 def JetSpace2(slots, dtype=None):
-    """Return second-order (forward-over-forward) jet types for a set of scalars.
+    """Return second-order (forward-over-forward) jet types for a set of differentiated inputs.
 
     A width-k second-order jet tracks value, gradient, and the full k x k
     Hessian; propagating it through a scalar function in one forward pass yields
     the local Hessian with no reverse pass. Per-intermediate state is O(k^2), so
-    this suits small k. Scalars only.
+    this suits small k.
 
     Args:
-        slots: Number of scalar variables differentiated with respect to, or a
-            sequence of scalar types, one per variable. Fixed when the types are
-            specialized, not when a kernel runs.
-        dtype: Scalar type the jets are built on; ``wp.float32`` by default.
+        slots: The inputs differentiated with respect to. Either an integer
+            ``n``, meaning ``n`` scalar inputs, or a sequence of types, one per
+            input: ``wp.float32``, ``wp.vec2`` or ``wp.vec3``. A spring over two
+            nodes is ``(wp.vec3, wp.vec3)``, with width 6.
+        dtype: Scalar type the jets are built on. Inferred from ``slots`` when
+            they are Warp types; ``wp.float32`` when ``slots`` is an integer
+            or contains only Python ``float``.
 
     Returns:
-        A namespace holding the generated type (``scalar``) and the helpers that
-        construct jets.
+        A namespace holding the generated types (``scalar``, ``vec2``, ``vec3``)
+        and the helpers that construct jets.
 
-    ``seed(*values)`` takes one scalar per variable and returns one jet per
-    variable, each with a unit derivative along its own direction.
-    ``variable(x, direction)`` seeds a single scalar, for use in a loop.
+    ``seed(*values)`` takes one value per slot and returns one jet per slot,
+    with the derivative directions numbered slot by slot in the order the
+    components appear, as in :func:`warp.JetSpace`. With ``spring_energy`` an
+    ordinary ``@wp.func`` that is generic over its argument types::
+
+        J2 = wp.JetSpace2((wp.vec3, wp.vec3))  # two 3D points, width 6
+
+
+        @wp.func
+        def spring_hessian(x0: wp.vec3, x1: wp.vec3):
+            x0_jet, x1_jet = J2.seed(x0, x1)
+            return spring_energy(x0_jet, x1_jet).hess  # the 6 x 6 Hessian
+
+    Vector jets support the same arithmetic and geometry as first-order ones
+    (``dot``, ``cross``, ``length``, ``normalize``, indexing), so the same
+    ``spring_energy`` also runs on :func:`warp.JetSpace` jets. A second-order
+    vector jet is one scalar jet per component, so it carries the same state as
+    the function written out per component. ``variable(x, direction)`` seeds a
+    single scalar, for use in a loop.
 
     As with :func:`warp.JetSpace`, the width is a compile-time constant and the
     types are for local derivatives of fixed, statically known arity. The
@@ -2131,9 +2451,12 @@ def JetSpace2(slots, dtype=None):
     :func:`warp.grad`), which reaches the same Hessian with linear state.
     """
     kinds, dtype = _normalize_slots(slots, dtype)
-    if any(kind != "scalar" for kind in kinds):
-        raise TypeError("Second-order jets support scalar slots only")
-    width = len(kinds)
+    if any(kind not in ("scalar", "vec2", "vec3") for kind in kinds):
+        raise TypeError(
+            "Second-order jets support scalar, vec2 and vec3 slots, not matrix slots. Pass a matrix as its "
+            "columns or scalar components, or use a first-order JetSpace with a reverse sweep."
+        )
+    width = sum(len(_slot_components(kind)) for kind in kinds)
 
     key = (width, dtype)
     base = _CACHE2.get(key)
