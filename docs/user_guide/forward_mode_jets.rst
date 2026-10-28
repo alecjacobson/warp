@@ -506,24 +506,24 @@ mode here; their value is that the same code also yields second derivatives.
 
     * - Element
       - ``k``
-      - Forward-mode jet (ms)
-      - Reverse mode, ``Tape`` (ms)
-      - ``wp.grad`` in kernel (ms)
+      - Forward-mode jet (ns/element)
+      - Reverse mode, ``Tape`` (ns/element)
+      - ``wp.grad`` in kernel (ns/element)
     * - Spring
       - 6
-      - 0.051
-      - 0.066
-      - 0.051
+      - MISSING
+      - MISSING
+      - MISSING
     * - Triangle
       - 9
-      - 0.074
-      - 0.089
-      - 0.072
+      - MISSING
+      - MISSING
+      - MISSING
     * - Tetrahedron
       - 12
-      - 0.122
-      - 0.134
-      - 0.119
+      - MISSING
+      - MISSING
+      - MISSING
 
 **Hessian** (``benchmark_jet_hessian_mesh.py``). The in-kernel ``wp.grad`` route and the second-order jet are both
 roughly an order of magnitude faster than running a tape, because the per-element Hessian stays in registers and needs a
@@ -572,29 +572,29 @@ on its backward sweeps alone.
     :header-rows: 1
 
     * - Outputs ``m``
-      - Width-3 jet (ms)
-      - ``wp.grad`` in kernel (ms)
-      - ``m`` tape sweeps (ms)
+      - Width-3 jet (ns/element)
+      - ``wp.grad`` in kernel (ns/element)
+      - ``m`` tape sweeps (ns/element)
     * - 4
-      - 0.025
-      - 0.074
-      - 0.41
+      - MISSING
+      - MISSING
+      - MISSING
     * - 16
-      - 0.037
-      - 0.284
-      - 6.1
+      - MISSING
+      - MISSING
+      - MISSING
     * - 32
-      - 0.152
-      - 0.575
-      - 28.7
+      - MISSING
+      - MISSING
+      - MISSING
     * - 64
-      - 0.211
-      - 1.15
-      - not run
+      - MISSING
+      - MISSING
+      - MISSING
     * - 128
-      - 0.412
-      - 2.28
-      - not run
+      - MISSING
+      - MISSING
+      - MISSING
 
 The jet is 3 to 8 times faster than in-kernel ``wp.grad`` for ``m >= 4`` and hundreds of times faster than the tape,
 which launches ``m`` backward passes and rewrites an :math:`n \times m` seed each time. The tape was not run beyond
