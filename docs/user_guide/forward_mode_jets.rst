@@ -28,6 +28,50 @@ the product rule, so :math:`\text{coeff}_q` of any result is its derivative alon
 jets, which keep the products :math:`\varepsilon_q \varepsilon_r` (dropping only third-order terms) and so also carry
 a dense Hessian.
 
+For example, take :math:`u = a + b` and :math:`v = a - b` at :math:`a = 2, b = 3`. With width 2, ``Jcoord.seed()`` seeds
+each input along its own direction, so the coefficients of ``a`` and ``b`` are the rows of the identity, and the
+coefficients of ``u`` and ``v`` are the rows of the Jacobian. With width 1 and the single direction :math:`(1, -1)`,
+both inputs vary along one shared direction, and the coefficients of ``u`` and ``v`` are the Jacobian times that
+direction:
+
+.. testcode::
+
+    Jcoord = wp.JetSpace((wp.float32, wp.float32))  # width 2: one direction per input
+    Jdir = wp.JetSpace((wp.float32, wp.float32), width=1)  # width 1: one chosen direction
+
+    @wp.kernel
+    def sum_difference_kernel(jacobian: wp.array[Jcoord.coeff], jacobian_times_direction: wp.array[Jdir.coeff]):
+        # Coordinate directions: a.coeff = (1, 0), b.coeff = (0, 1).
+        a, b = Jcoord.seed(2.0, 3.0)
+        u = a + b
+        v = a - b
+        jacobian[0] = u.coeff
+        jacobian[1] = v.coeff
+
+        # One direction (1, -1): a.coeff = (1), b.coeff = (-1).
+        a1, b1 = Jdir.directional(2.0, 3.0, 1.0, -1.0)
+        u1 = a1 + b1
+        v1 = a1 - b1
+        jacobian_times_direction[0] = u1.coeff
+        jacobian_times_direction[1] = v1.coeff
+
+    jacobian = wp.zeros(2, dtype=Jcoord.coeff)
+    jacobian_times_direction = wp.zeros(2, dtype=Jdir.coeff)
+    wp.launch(sum_difference_kernel, dim=1, outputs=[jacobian, jacobian_times_direction])
+
+    print(f"jacobian =\n{jacobian.numpy()}")
+    print("jacobian_times_direction =", jacobian_times_direction.numpy()[:, 0])
+
+.. testoutput::
+
+    jacobian =
+    [[ 1.  1.]
+     [ 1. -1.]]
+    jacobian_times_direction = [0. 2.]
+
+Both are the same mechanism: the width is the number of directions, not the number of inputs, and coordinate seeding
+is the special case where the directions are the coordinate axes.
+
 Jets do not replace reverse mode but complement it, with different trade-offs in memory access, operation count and
 compile time. See :ref:`jets_when_to_use` below.
 
