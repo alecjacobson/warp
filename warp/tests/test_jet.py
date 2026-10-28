@@ -21,6 +21,9 @@ J3 = wp.JetSpace(3)
 
 J2D = wp.JetSpace(2, dtype=wp.float64)
 
+# The same two variables with one direction, for Hessian-vector products.
+J2_DIR = wp.JetSpace(2, width=1)
+
 
 # ----------------------------------------------------------------------------
 # g(a,b) = sin(a*b) + 0.1*a^3 + exp(b)
@@ -32,7 +35,7 @@ J2D = wp.JetSpace(2, dtype=wp.float64)
 
 
 @wp.func
-def local_energy(a: J2.scalar, b: J2.scalar) -> J2.scalar:
+def local_energy(a: Any, b: Any):
     return wp.sin(a * b) + 0.1 * (a * a * a) + wp.exp(b)
 
 
@@ -45,6 +48,13 @@ def local_gradient(z: wp.array2d[float], grad_g: wp.array[J2.coeff]):
     z1 = J2.variable(z[i, 1], 1)
 
     grad_g[i] = local_energy(z0, z1).coeff
+
+
+@wp.kernel
+def local_directional(z: wp.array2d[float], d: wp.array2d[float], out: wp.array[float]):
+    i = wp.tid()
+    a, b = J2_DIR.directional(z[i, 0], z[i, 1], d[i, 0], d[i, 1])
+    out[i] = local_energy(a, b).coeff[0]
 
 
 @wp.kernel
@@ -115,31 +125,41 @@ def hessian_fd(z, h=1.0e-4):
 
 
 def hessian_from_tape(z_np, device):
-    """Hessian of every local term by reverse-over-forward."""
+    """Return the jet gradient and the reverse-over-forward Hessian of every local term.
+
+    The gradient comes from one width-2 forward pass. Each Hessian column comes
+    from a width-1 directional derivative along a basis direction and one
+    backward sweep of the tape over it.
+    """
     m = z_np.shape[0]
 
-    z = wp.array(z_np, dtype=float, device=device, requires_grad=True)
-    grad_g = wp.zeros(m, dtype=J2.coeff, device=device, requires_grad=True)
-
-    tape = wp.Tape()
-    with tape:
-        wp.launch(local_gradient, dim=m, inputs=[z], outputs=[grad_g], device=device)
+    grad_g = wp.zeros(m, dtype=J2.coeff, device=device)
+    wp.launch(
+        local_gradient, dim=m, inputs=[wp.array(z_np, dtype=float, device=device)], outputs=[grad_g], device=device
+    )
 
     hessian = np.empty((m, 2, 2), dtype=np.float32)
 
-    for row in range(2):
-        seed_np = np.zeros((m, 2), dtype=np.float32)
+    for col in range(2):
+        d_np = np.zeros((m, 2), dtype=np.float32)
+        d_np[:, col] = 1.0
 
-        # Select the same gradient component for every local term.
-        seed_np[:, row] = 1.0
-        seed = wp.array(seed_np, dtype=J2.coeff, device=device)
+        z = wp.array(z_np, dtype=float, device=device, requires_grad=True)
+        dv = wp.zeros(m, dtype=float, device=device, requires_grad=True)
 
-        tape.backward(grads={grad_g: seed})
+        tape = wp.Tape()
+        with tape:
+            wp.launch(
+                local_directional,
+                dim=m,
+                inputs=[z, wp.array(d_np, dtype=float, device=device)],
+                outputs=[dv],
+                device=device,
+            )
+        tape.backward(grads={dv: wp.ones(m, dtype=float, device=device)})
 
-        # z.grad[i,b] = d grad_g[i,row] / d z[i,b] = H_i[row,b]
-        hessian[:, row, :] = z.grad.numpy()
-
-        tape.zero()
+        # z.grad[i,b] = d (grad g_i . e_col) / d z[i,b] = H_i[b,col]
+        hessian[:, :, col] = z.grad.numpy()
 
     return grad_g.numpy(), hessian
 
@@ -694,16 +714,17 @@ def test_jet_directional(test, device):
 
 
 @wp.kernel
-def spring_gradient_wrt_inputs(
+def spring_gradient_dot_wrt_inputs(
     x0: wp.array[wp.vec3],
     x1: wp.array[wp.vec3],
-    grad: wp.array[J6.coeff],
+    w: wp.array[J6.coeff],
+    out: wp.array[float],
 ):
     i = wp.tid()
 
     a, b = J6.seed(x0[i], x1[i])
 
-    grad[i] = spring_energy(a, b).coeff
+    out[i] = wp.dot(spring_energy(a, b).coeff, w[i])
 
 
 @wp.kernel
@@ -731,7 +752,7 @@ def _spring_hessian_np(x0, x1):
 
 
 def test_jet_seed_is_differentiable(test, device):
-    """Check reverse mode differentiates through seed() and directional() to give the Hessian."""
+    """Check reverse mode differentiates through seed() and directional() to give the Hessian-vector product."""
     x0_np = np.array([[0.0, 0.0, 0.0], [1.0, 2.0, -1.0]], dtype=np.float32)
     x1_np = np.array([[2.0, 0.0, 0.0], [1.0, 2.0, 2.0]], dtype=np.float32)
     d0_np = np.array([[1.0, -2.0, 0.5], [0.0, 1.0, 1.0]], dtype=np.float32)
@@ -739,27 +760,25 @@ def test_jet_seed_is_differentiable(test, device):
     m = x0_np.shape[0]
 
     hess_np = np.stack([_spring_hessian_np(x0_np[i], x1_np[i]) for i in range(m)])
+    direction = np.concatenate((d0_np, d1_np), axis=1)
+    expected = np.einsum("mij,mj->mi", hess_np, direction)
 
-    # Width-6 jets: one backward sweep per row gives the rows of the Hessian.
+    # Width-6 jets: one backward sweep of (gradient . d) through seed() gives H d.
     x0 = wp.array(x0_np, dtype=wp.vec3, device=device, requires_grad=True)
     x1 = wp.array(x1_np, dtype=wp.vec3, device=device, requires_grad=True)
-    grad = wp.zeros(m, dtype=J6.coeff, device=device, requires_grad=True)
+    w = wp.array(direction, dtype=J6.coeff, device=device)
+    out = wp.zeros(m, dtype=float, device=device, requires_grad=True)
 
     tape = wp.Tape()
     with tape:
-        wp.launch(spring_gradient_wrt_inputs, dim=m, inputs=[x0, x1], outputs=[grad], device=device)
+        wp.launch(spring_gradient_dot_wrt_inputs, dim=m, inputs=[x0, x1, w], outputs=[out], device=device)
+    tape.backward(grads={out: wp.ones(m, dtype=float, device=device)})
 
-    hess = np.zeros((m, 6, 6))
-    for row in range(6):
-        row_seed = np.zeros((m, 6), dtype=np.float32)
-        row_seed[:, row] = 1.0
-        tape.backward(grads={grad: wp.array(row_seed, dtype=J6.coeff, device=device)})
-        hess[:, row, :] = np.concatenate((x0.grad.numpy(), x1.grad.numpy()), axis=1)
-        tape.zero()
+    np.testing.assert_allclose(
+        np.concatenate((x0.grad.numpy(), x1.grad.numpy()), axis=1), expected, rtol=1.0e-4, atol=1.0e-5
+    )
 
-    np.testing.assert_allclose(hess, hess_np, rtol=1.0e-4, atol=1.0e-5)
-
-    # A width-1 jet over a combined direction: one backward sweep gives H d.
+    # A width-1 jet over the same direction through directional(): one backward sweep gives H d.
     x0 = wp.array(x0_np, dtype=wp.vec3, device=device, requires_grad=True)
     x1 = wp.array(x1_np, dtype=wp.vec3, device=device, requires_grad=True)
     d0 = wp.array(d0_np, dtype=wp.vec3, device=device)
@@ -771,8 +790,6 @@ def test_jet_seed_is_differentiable(test, device):
         wp.launch(spring_directional_wrt_inputs, dim=m, inputs=[x0, x1, d0, d1], outputs=[out], device=device)
     tape.backward(grads={out: wp.ones(m, dtype=float, device=device)})
 
-    direction = np.concatenate((d0_np, d1_np), axis=1)
-    expected = np.einsum("mij,mj->mi", hess_np, direction)
     np.testing.assert_allclose(
         np.concatenate((x0.grad.numpy(), x1.grad.numpy()), axis=1), expected, rtol=1.0e-4, atol=1.0e-5
     )

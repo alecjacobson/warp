@@ -5,15 +5,11 @@
 # Local element Hessian: reverse-over-forward via tape vs in-kernel wp.grad
 ###########################################################################
 
-"""Assemble each element's local k x k Hessian, three reverse-over-forward ways.
+"""Assemble each element's local k x k Hessian, two reverse-over-forward ways and one forward way.
 
 Same generic vec3 energies as the gradient benchmark (spring k=6, triangle k=9,
-tet k=12), on per-element data. All three routes are reverse-over-forward -- they
-differ only in HOW the reverse sweep is taken:
-
-    width-k (tape)   one k-wide forward jet -> grad in a global requires_grad
-                     array, then k tape.backward sweeps (one seed per gradient
-                     component) -> Hessian rows. k backward launches + tape.
+tet k=12), on per-element data. The two reverse-over-forward routes differ only
+in HOW the reverse sweep is taken:
 
     width-1 (tape)   for each basis direction e_j, a width-1 dual forward gives
                      the directional derivative Dg.e_j, then one tape.backward
@@ -48,9 +44,7 @@ _MU = wp.constant(1.0)
 _LAM = wp.constant(1.0)
 
 # One jet per node (a spring has two, a triangle three, a tetrahedron four).
-# JK carries the full local gradient; JD is the width-1 dual for the directional
-# derivatives, over the same nodes.
-JK = {k: wp.JetSpace((wp.vec3,) * (k // 3)) for k in (6, 9, 12)}
+# JD is the width-1 dual for the directional derivatives; J2K the second-order jet.
 JD = {k: wp.JetSpace((wp.vec3,) * (k // 3), width=1) for k in (6, 9, 12)}
 J2K = {k: wp.JetSpace2((wp.vec3,) * (k // 3)) for k in (6, 9, 12)}  # forward-2
 
@@ -144,19 +138,12 @@ def sample(k, m, seed=0):
 
 
 # ---------------------------------------------------------------------------
-# Per-element kernels. build_* returns (k, grad_wide, directional, hess_w1).
+# Per-element kernels. build_* returns (k, directional, hess_w1, hess_fwd2).
 # ---------------------------------------------------------------------------
 
 
 def build_spring():
-    Jk = JK[6]
     J1 = JD[6]
-
-    @wp.kernel
-    def grad_wide(x: wp.array2d[wp.vec3], g: wp.array[Jk.coeff]):
-        i = wp.tid()
-        a, b = Jk.seed(x[i, 0], x[i, 1])
-        g[i] = spring_energy(a, b).coeff
 
     @wp.kernel
     def directional(x: wp.array2d[wp.vec3], d: wp.array2d[wp.vec3], dv: wp.array[wp.float32]):
@@ -196,18 +183,11 @@ def build_spring():
             for q in range(6):
                 out[i, p, q] = h[p, q]
 
-    return 6, grad_wide, directional, hess_w1, hess_fwd2
+    return 6, directional, hess_w1, hess_fwd2
 
 
 def build_triangle():
-    Jk = JK[9]
     J1 = JD[9]
-
-    @wp.kernel
-    def grad_wide(x: wp.array2d[wp.vec3], g: wp.array[Jk.coeff]):
-        i = wp.tid()
-        a, b, c = Jk.seed(x[i, 0], x[i, 1], x[i, 2])
-        g[i] = triangle_energy(a, b, c).coeff
 
     @wp.kernel
     def directional(x: wp.array2d[wp.vec3], d: wp.array2d[wp.vec3], dv: wp.array[wp.float32]):
@@ -251,18 +231,11 @@ def build_triangle():
             for q in range(9):
                 out[i, p, q] = h[p, q]
 
-    return 9, grad_wide, directional, hess_w1, hess_fwd2
+    return 9, directional, hess_w1, hess_fwd2
 
 
 def build_tet():
-    Jk = JK[12]
     J1 = JD[12]
-
-    @wp.kernel
-    def grad_wide(x: wp.array2d[wp.vec3], g: wp.array[Jk.coeff]):
-        i = wp.tid()
-        a, b, c, d = Jk.seed(x[i, 0], x[i, 1], x[i, 2], x[i, 3])
-        g[i] = tet_energy(a, b, c, d).coeff
 
     @wp.kernel
     def directional(x: wp.array2d[wp.vec3], d: wp.array2d[wp.vec3], dv: wp.array[wp.float32]):
@@ -312,7 +285,7 @@ def build_tet():
             for q in range(12):
                 out[i, p, q] = h[p, q]
 
-    return 12, grad_wide, directional, hess_w1, hess_fwd2
+    return 12, directional, hess_w1, hess_fwd2
 
 
 @wp.kernel
@@ -333,39 +306,6 @@ ELEMENTS = {
 }
 
 
-class WidthKTape:
-    label = "width-k(tape)"
-
-    def __init__(self, spec, kernels, x_np, device):
-        self.k, self.device = spec.k, device
-        self.nodes = spec.k // 3
-        self.n = x_np.shape[0]
-        Jk = JK[spec.k]
-        self.grad_wide = kernels[0]
-        self.x = wp.array(x_np, dtype=wp.vec3, device=device, requires_grad=True)
-        self.g = wp.zeros(self.n, dtype=Jk.coeff, device=device, requires_grad=True)
-        self.hessian = wp.zeros((self.n, self.k, self.k), dtype=wp.float32, device=device)
-        self.seeds = []
-        for row in range(self.k):
-            s = np.zeros((self.n, self.k), np.float32)
-            s[:, row] = 1.0
-            self.seeds.append(wp.array(s, dtype=Jk.coeff, device=device))
-
-    def run(self):
-        tape = wp.Tape()
-        with tape:
-            wp.launch(self.grad_wide, dim=self.n, inputs=[self.x], outputs=[self.g], device=self.device)
-        for row in range(self.k):
-            tape.backward(grads={self.g: self.seeds[row]})
-            wp.launch(
-                _scatter_grad_row, dim=self.n, inputs=[self.x.grad, row, self.nodes, self.hessian], device=self.device
-            )
-            tape.zero()
-
-    def hess(self):
-        return self.hessian.numpy()
-
-
 class Width1Tape:
     label = "width-1(tape)"
 
@@ -373,7 +313,7 @@ class Width1Tape:
         self.k, self.device = spec.k, device
         self.nodes = spec.k // 3
         self.n = x_np.shape[0]
-        self.directional = kernels[1]
+        self.directional = kernels[0]
         self.x = wp.array(x_np, dtype=wp.vec3, device=device, requires_grad=True)
         self.dv = wp.zeros(self.n, dtype=wp.float32, device=device, requires_grad=True)
         self.ones = wp.ones(self.n, dtype=wp.float32, device=device)
@@ -408,7 +348,7 @@ class Width1InKernel:
 
     def __init__(self, spec, kernels, x_np, device):
         self.k, self.device, self.n = spec.k, device, x_np.shape[0]
-        self.hess_w1 = kernels[2]
+        self.hess_w1 = kernels[1]
         self.x = wp.array(x_np, dtype=wp.vec3, device=device)
         self.hessian = wp.zeros((self.n, self.k, self.k), dtype=wp.float32, device=device)
 
@@ -426,7 +366,7 @@ class Forward2:
 
     def __init__(self, spec, kernels, x_np, device):
         self.k, self.device, self.n = spec.k, device, x_np.shape[0]
-        self.kernel = kernels[3]  # None for elements above the compile cap
+        self.kernel = kernels[2]  # None for elements above the compile cap
         self.x = wp.array(x_np, dtype=wp.vec3, device=device)
         self.hessian = wp.zeros((self.n, self.k, self.k), dtype=wp.float32, device=device)
 
@@ -457,7 +397,7 @@ def time_strategy(s, device, reps, use_graph):
     return timeit(lambda: wp.capture_launch(cap.graph), device, reps)
 
 
-STRATEGIES = [WidthKTape, Width1Tape, Width1InKernel]
+STRATEGIES = [Width1Tape, Width1InKernel]
 
 
 def main():
@@ -475,8 +415,8 @@ def main():
     print(f"device: {wp.get_device(device)}   reps: {args.reps}   timing: {mode}\n")
 
     header = (
-        f"{'element':>9} {'k':>3} {'m':>9} {'wk-tape':>9} {'w1-tape':>9} {'w1-ink':>9} {'fwd-2':>9}"
-        f" {'ink/wk':>7} {'ink/w1':>7} {'ink/f2':>7} {'|err|':>9}"
+        f"{'element':>9} {'k':>3} {'m':>9} {'w1-tape':>9} {'w1-ink':>9} {'fwd-2':>9}"
+        f" {'ink/w1':>7} {'ink/f2':>7} {'|err|':>9}"
     )
     print(header)
     print("-" * len(header))
@@ -486,7 +426,7 @@ def main():
     for name in [args.element] if args.element else list(ELEMENTS):
         spec = ELEMENTS[name]
         kernels = spec.build()[1:]
-        strategies = list(STRATEGIES) + ([Forward2] if kernels[3] is not None else [])
+        strategies = list(STRATEGIES) + ([Forward2] if kernels[2] is not None else [])
         for m in args.m:
             x_np = sample(spec.k, m)
             runs = {S.label: S(spec, kernels, x_np, device) for S in strategies}
@@ -508,13 +448,13 @@ def main():
             err = max(inter, fd)
 
             t = {lbl: time_strategy(s, device, args.reps, args.graph) for lbl, s in runs.items()}
-            twk, tw1, tik = t["width-k(tape)"], t["width-1(tape)"], t["width-1(ink)"]
+            tw1, tik = t["width-1(tape)"], t["width-1(ink)"]
             tf2 = t.get("forward-2")
             f2s = f"{tf2 * 1e3:>9.3f}" if tf2 else f"{'-':>9}"
             f2r = f"{tik / tf2:>6.2f}x" if tf2 else f"{'-':>7}"
             print(
-                f"{name:>9} {spec.k:>3} {m:>9} {twk * 1e3:>9.3f} {tw1 * 1e3:>9.3f} {tik * 1e3:>9.3f} {f2s}"
-                f" {tik / twk:>6.2f}x {tik / tw1:>6.2f}x {f2r} {err:>9.1e}"
+                f"{name:>9} {spec.k:>3} {m:>9} {tw1 * 1e3:>9.3f} {tik * 1e3:>9.3f} {f2s}"
+                f" {tik / tw1:>6.2f}x {f2r} {err:>9.1e}"
             )
 
 

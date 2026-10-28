@@ -5,15 +5,9 @@
 # Benchmarks for local-Hessian assembly with wp.JetSpace
 ###########################################################################
 
-"""Benchmark local-Hessian assembly: width-k reverse-over-forward vs width-1 HVPs.
+"""Benchmark local-Hessian assembly: width-1 HVPs vs a second-order jet.
 
 Both strategies materialize the same m x k x k result.
-
-    width-k   one k-wide forward pass yields all of grad g, then k reverse
-              sweeps through that widened program pull out its k x k Jacobian
-              one row at a time.
-
-                  forward ~ O(kC),  k reverses ~ O(kC) each  ->  O(k^2 C)
 
     width-1   for each basis direction e_j, a constant-width forward pass
               yields the scalar Dg[e_j] = grad g . e_j, and one reverse sweep
@@ -40,7 +34,7 @@ Usage:
     uv run warp/examples/benchmarks/benchmark_jet_hessian.py --sweep m --m 1000000
     uv run warp/examples/benchmarks/benchmark_jet_hessian.py --k 2 4 8 16 32 64 100
 
-Correctness is gated before every timing run: a config whose two strategies
+Correctness is gated before every timing run: a config whose strategies
 disagree, or which disagrees with a float64 finite-difference reference, is
 reported as FAIL and not timed. See the strip-mining note below -- getting the
 loop structure wrong yields silently incorrect derivatives, not an error.
@@ -97,37 +91,16 @@ def strip_mine(k):
 
 
 def build(k, dtype=wp.float32):
-    """Return (Jk, width-k gradient kernel, width-1 directional kernel, forward-2 kernel).
+    """Return (width-1 directional kernel, forward-2 kernel).
 
     The forward-2 kernel is only created when ``k`` is within FORWARD2_MAX_K,
     and is ``None`` otherwise. Skipping it at the definition site is what keeps
     the cap cheap: an O(k**2) second-order kernel costs its compile time as soon
     as it joins the module, whether or not it is ever launched.
     """
-    Jk = wp.JetSpace(k, dtype=dtype)
     J1 = wp.JetSpace(1, dtype=dtype)
 
     outer, inner = strip_mine(k)
-
-    @wp.kernel
-    def grad_wide(z: wp.array2d[dtype], out: wp.array[Jk.coeff]):
-        i = wp.tid()
-
-        acc = Jk.constant(dtype(0.0))
-        prev = Jk.variable(z[i, 0], 0)
-
-        for b in range(wp.static(outer)):
-            for t in range(wp.static(inner)):
-                j = b * wp.static(inner) + t
-
-                # j == 0 seeds `prev` above; j >= k is padding when k is not a
-                # product of the two factors.
-                if j >= 1 and j < wp.static(k):
-                    cur = Jk.variable(z[i, j], j)
-                    acc = acc + wp.sin(prev * cur) + dtype(0.1) * (prev * prev * prev)
-                    prev = cur
-
-        out[i] = (acc + wp.exp(prev)).coeff
 
     @wp.kernel
     def directional(z: wp.array2d[dtype], v: wp.array[dtype], dv: wp.array[dtype]):
@@ -148,7 +121,7 @@ def build(k, dtype=wp.float32):
         dv[i] = (acc + wp.exp(prev)).coeff[0]
 
     if k > FORWARD2_MAX_K:
-        return Jk, grad_wide, directional, None
+        return directional, None
 
     J2 = wp.JetSpace2(k, dtype=dtype)
 
@@ -175,7 +148,7 @@ def build(k, dtype=wp.float32):
             for q in range(wp.static(k)):
                 out[i, p, q] = h[p, q]
 
-    return Jk, grad_wide, directional, hess_forward
+    return directional, hess_forward
 
 
 def energy_np(z, k):
@@ -224,55 +197,9 @@ def hessian_fd(z, k, h=1.0e-4):
 
 
 @wp.kernel
-def _scatter_row(src: wp.array2d[float], row: int, dst: wp.array3d[float]):
-    i, b = wp.tid()
-    dst[i, row, b] = src[i, b]
-
-
-@wp.kernel
 def _scatter_col(src: wp.array2d[float], col: int, dst: wp.array3d[float]):
     i, b = wp.tid()
     dst[i, b, col] = src[i, b]
-
-
-class WidthK:
-    """One k-wide forward pass, then k reverse sweeps through it."""
-
-    label = "width-k"
-
-    def __init__(self, k, Jk, kernel, z_np, device):
-        self.k = k
-        self.kernel = kernel
-        self.device = device
-        self.n = z_np.shape[0]
-
-        self.z = wp.array(z_np, dtype=float, device=device, requires_grad=True)
-        self.g = wp.zeros(self.n, dtype=Jk.coeff, device=device, requires_grad=True)
-        self.hessian = wp.zeros((self.n, k, k), dtype=float, device=device)
-
-        # One seed per gradient component, uploaded once.
-        self.seeds = []
-        for row in range(k):
-            s = np.zeros((self.n, k), dtype=np.float32)
-            s[:, row] = 1.0
-            self.seeds.append(wp.array(s, dtype=Jk.coeff, device=device))
-
-    def run(self):
-        tape = wp.Tape()
-        with tape:
-            wp.launch(self.kernel, dim=self.n, inputs=[self.z], outputs=[self.g], device=self.device)
-
-        for row in range(self.k):
-            tape.backward(grads={self.g: self.seeds[row]})
-
-            # z.grad[i,b] = H_i[row,b]
-            wp.launch(
-                _scatter_row,
-                dim=(self.n, self.k),
-                inputs=[self.z.grad, row, self.hessian],
-                device=self.device,
-            )
-            tape.zero()
 
 
 class Width1:
@@ -280,7 +207,7 @@ class Width1:
 
     label = "width-1"
 
-    def __init__(self, k, Jk, kernel, z_np, device):
+    def __init__(self, k, kernel, z_np, device):
         self.k = k
         self.kernel = kernel
         self.device = device
@@ -329,7 +256,7 @@ class Forward2:
 
     label = "forward-2"
 
-    def __init__(self, k, Jk, kernel, z_np, device):
+    def __init__(self, k, kernel, z_np, device):
         self.k = k
         self.kernel = kernel
         self.device = device
@@ -352,29 +279,28 @@ def assemble(strategy):
 # ---------------------------------------------------------------------------
 
 
-def check(k, Jk, kw, kd, kf, device, n=16, seed=0):
+def check(k, kd, kf, device, n=16, seed=0):
     """Gate: strategies must agree with each other and with float64 FD.
 
     Returns (max cross-strategy disagreement, max error vs FD, forward-2 usable).
     forward-2 is optional: if its wide second-order jet fails to build at this k,
-    the other two are still gated and timed.
+    width-1 is still gated against FD and timed.
     """
     rng = np.random.default_rng(seed)
     z = rng.uniform(-1.0, 1.0, size=(n, k)).astype(np.float32)
 
-    hw = assemble(WidthK(k, Jk, kw, z, device))
-    hh = assemble(Width1(k, Jk, kd, z, device))
+    hh = assemble(Width1(k, kd, z, device))
     ref = hessian_fd(z.astype(np.float64), k)
 
-    cross = np.abs(hw - hh).max()
-    fd = max(np.abs(hw - ref).max(), np.abs(hh - ref).max())
+    cross = 0.0
+    fd = np.abs(hh - ref).max()
 
     if kf is None:
         f2_ok = False
     else:
         try:
-            hf = assemble(Forward2(k, Jk, kf, z, device))
-            cross = max(cross, np.abs(hw - hf).max())
+            hf = assemble(Forward2(k, kf, z, device))
+            cross = np.abs(hh - hf).max()
             fd = max(fd, np.abs(hf - ref).max())
             f2_ok = True
         except Exception:
@@ -417,16 +343,10 @@ def time_strategy(strategy, device, reps, use_graph):
 
 
 def estimate_bytes(m, k):
-    """Rough peak footprint of WidthK, the heaviest strategy.
-
-    z, z.grad, g and g.grad are linear in k; the assembled Hessian and the k
-    seed arrays of shape (m, k) are each quadratic. Counting only one seed
-    understates the total by nearly a full m * k * k block.
-    """
-    linear = 4 * m * k  # z, z.grad, g, g.grad
-    seeds = m * k * k  # k seed arrays, one per gradient component
+    """Rough peak footprint of one strategy: the assembled Hessian dominates."""
+    linear = 2 * m * k + 3 * m  # z, z.grad; dv, dv.grad, ones
     hessian = m * k * k
-    return (linear + seeds + hessian) * 4
+    return (linear + hessian) * 4
 
 
 def run(k_values, m_values, device, reps, tol, max_bytes, skip_check, use_graph):
@@ -434,17 +354,15 @@ def run(k_values, m_values, device, reps, tol, max_bytes, skip_check, use_graph)
     mode = "graph replay (warm)" if use_graph else "per-launch"
     print(f"reps: {reps}   correctness tol: {tol}   memory cap: {max_bytes / 2**30:.1f} GiB   timing: {mode}\n")
 
-    header = (
-        f"{'k':>5} {'m':>9} {'width-k':>11} {'width-1':>11} {'fwd-2':>11} {'wk/w1':>7} {'f2/w1':>7} {'|max-fd|':>10}"
-    )
+    header = f"{'k':>5} {'m':>9} {'width-1':>11} {'fwd-2':>11} {'f2/w1':>7} {'|max-fd|':>10}"
     print(header)
     print("-" * len(header))
-    print("(speedups > 1 mean width-1 is faster than that strategy)")
+    print("(f2/w1 > 1 means width-1 is faster than forward-2)")
 
     results = []
 
     for k in k_values:
-        Jk, kw, kd, kf = build(k)
+        kd, kf = build(k)
 
         if skip_check:
             cross = fd = float("nan")
@@ -452,7 +370,7 @@ def run(k_values, m_values, device, reps, tol, max_bytes, skip_check, use_graph)
             # has already declined to create the kernel above it.
             f2_ok = kf is not None
         else:
-            cross, fd, f2_ok = check(k, Jk, kw, kd, kf, device)
+            cross, fd, f2_ok = check(k, kd, kf, device)
 
             if not (cross < tol and fd < tol):
                 print(f"{k:>5} {'-':>9}   FAIL  cross={cross:.2e} fd={fd:.2e}")
@@ -468,10 +386,7 @@ def run(k_values, m_values, device, reps, tol, max_bytes, skip_check, use_graph)
             z = rng.uniform(-1.0, 1.0, size=(m, k)).astype(np.float32)
 
             # Buffers and uploads are hoisted out of the timed region.
-            wide = WidthK(k, Jk, kw, z, device)
-            hvp = Width1(k, Jk, kd, z, device)
-
-            tw = time_strategy(wide, device, reps, use_graph)
+            hvp = Width1(k, kd, z, device)
             th = time_strategy(hvp, device, reps, use_graph)
 
             # forward-2 is optional: skip it if the wide second-order jet is
@@ -479,7 +394,7 @@ def run(k_values, m_values, device, reps, tol, max_bytes, skip_check, use_graph)
             tf = float("nan")
             if f2_ok:
                 try:
-                    fwd2 = Forward2(k, Jk, kf, z, device)
+                    fwd2 = Forward2(k, kf, z, device)
                     tf = time_strategy(fwd2, device, reps, use_graph)
                 except Exception:
                     tf = float("nan")
@@ -491,10 +406,8 @@ def run(k_values, m_values, device, reps, tol, max_bytes, skip_check, use_graph)
                 f2_time = f"{'-':>11}"
                 f2_speed = f"{'-':>7}"
 
-            print(
-                f"{k:>5} {m:>9} {tw * 1e3:>11.2f} {th * 1e3:>11.2f} {f2_time} {tw / th:>6.2f}x {f2_speed} {fd:>10.1e}"
-            )
-            results.append((k, m, tw, th, tf))
+            print(f"{k:>5} {m:>9} {th * 1e3:>11.2f} {f2_time} {f2_speed} {fd:>10.1e}")
+            results.append((k, m, th, tf))
 
     return results
 
@@ -527,7 +440,7 @@ def main():
 
     if args.sweep in ("k", "both"):
         print("=" * 80)
-        print("k sweep -- cost of widening the forward program")
+        print("k sweep -- cost of a growing number of variables")
         print("=" * 80)
         run(
             args.k or [2, 4, 8, 16, 32, 64, 100],

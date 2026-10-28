@@ -20,7 +20,6 @@ every strategy (jet arithmetic is registered as builtin overloads):
                 rev-grad : Warp reverse-mode (forward + tape.backward)
 
   hessian       forward-2 : one second-order jet pass -> full k x k Hessian
-                width-k   : one width-k forward jet -> grad, then k reverse sweeps
 
 forward-2 holds an O(k^2) Hessian in registers; nvcc compile is super-linear in
 k (tet k=12 takes ~2 min the first time, then caches). --forward2-max-k skips it
@@ -375,12 +374,6 @@ ELEMENTS = {
 # ---------------------------------------------------------------------------
 
 
-@wp.kernel
-def _scatter_row(src: wp.array2d[wp.float32], row: int, dst: wp.array3d[wp.float32]):
-    i, b = wp.tid()
-    dst[i, row, b] = src[i, b]
-
-
 class JetGrad:
     def __init__(self, k, Jk, kernel, z_np, device):
         self.k, self.kernel, self.device, self.n = k, kernel, device, z_np.shape[0]
@@ -410,33 +403,6 @@ class ReverseGrad:
 
     def grad(self):
         return self.z.grad.numpy().reshape(self.n, self.k)
-
-
-class WidthK:
-    """Reverse-over-forward Hessian: one width-k forward jet, then k reverse sweeps."""
-
-    def __init__(self, k, Jk, kernel, z_np, device):
-        self.k, self.kernel, self.device, self.n = k, kernel, device, z_np.shape[0]
-        self.z = wp.array(z_np, dtype=wp.float32, device=device, requires_grad=True)
-        self.g = wp.zeros(self.n, dtype=Jk.coeff, device=device, requires_grad=True)
-        self.hessian = wp.zeros((self.n, k, k), dtype=wp.float32, device=device)
-        self.seeds = []
-        for row in range(k):
-            s = np.zeros((self.n, k), np.float32)
-            s[:, row] = 1.0
-            self.seeds.append(wp.array(s, dtype=Jk.coeff, device=device))
-
-    def run(self):
-        tape = wp.Tape()
-        with tape:
-            wp.launch(self.kernel, dim=self.n, inputs=[self.z], outputs=[self.g], device=self.device)
-        for row in range(self.k):
-            tape.backward(grads={self.g: self.seeds[row]})
-            wp.launch(_scatter_row, dim=(self.n, self.k), inputs=[self.z.grad, row, self.hessian], device=self.device)
-            tape.zero()
-
-    def hess(self):
-        return self.hessian.numpy()
 
 
 class Forward2:
@@ -523,10 +489,7 @@ def main():
     mode = "graph replay (warm)" if args.graph else "per-launch"
     print(f"device: {wp.get_device(device)}   m: {args.m}   reps: {args.reps}   timing: {mode}\n")
 
-    header = (
-        f"{'element':>9} {'k':>3} {'jet-grad':>9} {'rev-grad':>9} {'g:jet/rev':>10}"
-        f" {'fwd-2':>9} {'width-k':>9} {'h:f2/wk':>9} {'|fd|':>9}"
-    )
+    header = f"{'element':>9} {'k':>3} {'jet-grad':>9} {'rev-grad':>9} {'g:jet/rev':>10} {'fwd-2':>9} {'|fd|':>9}"
     print(header)
     print("-" * len(header))
 
@@ -540,17 +503,12 @@ def main():
         zc = sample(k, 16, seed=1)
         jg = JetGrad(k, Jk, grad_wide, zc, device)
         jg.run()
-        wk = WidthK(k, Jk, grad_wide, zc, device)
-        wk.run()
         wp.synchronize_device(device)
         zc64 = zc.astype(np.float64)
-        fd_err = max(
-            np.abs(jg.grad() - grad_fd(energy_np, zc64, k)).max(), np.abs(wk.hess() - hess_fd(energy_np, zc64, k)).max()
-        )
+        fd_err = np.abs(jg.grad() - grad_fd(energy_np, zc64, k)).max()
 
         tjg = time_strategy(JetGrad(k, Jk, grad_wide, z_np, device), device, args.reps, args.graph)
         trg = time_strategy(ReverseGrad(k, energy_k, z_np, device), device, args.reps, args.graph)
-        twk = time_strategy(WidthK(k, Jk, grad_wide, z_np, device), device, args.reps, args.graph)
 
         if hess_k is not None:
             f2 = Forward2(k, hess_k, zc, device)
@@ -558,14 +516,11 @@ def main():
             wp.synchronize_device(device)
             fd_err = max(fd_err, np.abs(f2.hess() - hess_fd(energy_np, zc64, k)).max())
             tf2 = time_strategy(Forward2(k, hess_k, z_np, device), device, args.reps, args.graph)
-            f2s, hr = f"{tf2 * 1e3:>9.3f}", f"{tf2 / twk:>8.2f}x"
+            f2s = f"{tf2 * 1e3:>9.3f}"
         else:
-            f2s, hr = f"{'-':>9}", f"{'-':>9}"
+            f2s = f"{'-':>9}"
 
-        print(
-            f"{name:>9} {k:>3} {tjg * 1e3:>9.3f} {trg * 1e3:>9.3f} {tjg / trg:>9.2f}x"
-            f" {f2s} {twk * 1e3:>9.3f} {hr} {fd_err:>9.1e}"
-        )
+        print(f"{name:>9} {k:>3} {tjg * 1e3:>9.3f} {trg * 1e3:>9.3f} {tjg / trg:>9.2f}x {f2s} {fd_err:>9.1e}")
 
 
 if __name__ == "__main__":

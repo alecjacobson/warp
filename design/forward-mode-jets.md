@@ -34,7 +34,8 @@ Evaluating `g_i` over jets rather than floats yields `grad g_i` as a side
 effect of evaluating it, with no hand-differentiation. Crucially, the jet
 arithmetic is itself ordinary Warp code, so Warp's existing reverse-mode
 autodiff can differentiate *through* it. Reverse-over-forward then gives the
-local Hessian one row at a time, using only machinery Warp already has.
+local Hessian one Hessian-vector product at a time, using only machinery Warp
+already has.
 
 Jets are complementary to any scheme in which users supply local derivatives by
 hand and a separate mechanism scatters them into a global sparse Hessian: jets
@@ -390,7 +391,7 @@ which one wins is energy-dependent:
 
 | Route | Mechanism | Cost |
 | ----- | --------- | ---- |
-| Reverse-over-jet, tape | width-`k` forward jet for the gradient, then `k` `tape.backward()` sweeps for the rows | `k` backward launches; needs a global `requires_grad` array |
+| Reverse-over-jet, tape | width-1 dual for each directional derivative, then one `tape.backward()` per direction for a Hessian column | `k` forward and backward launch pairs; needs a global `requires_grad` array |
 | Reverse-over-jet, in-kernel | width-1 dual for each directional derivative, reverse sweep taken *in the kernel* with `wp.grad` | one launch, register-resident, no tape and no global `.grad` |
 | Pure forward | second-order jet | one launch, no reverse at all; `O(k²)` state in registers |
 
@@ -505,9 +506,8 @@ the CUDA correctness coverage for the CPU-only `test_jet_ops.py` cases):
   gradient throughput as width `k` and element count scale, contrasting a
   width-`k` jet pass, a `wp.Tape`, and in-kernel `wp.grad`.
 - `benchmark_jet_hessian.py` / `benchmark_jet_hessian_mesh.py` -- local-Hessian
-  strategies: width-`k` reverse-over-jet tape, width-1 tape, in-kernel width-1
-  `wp.grad`, and the pure-forward second-order jet, on real spring/triangle/
-  tetrahedron energies.
+  strategies: width-1 tape, in-kernel width-1 `wp.grad`, and the pure-forward
+  second-order jet, on real spring/triangle/tetrahedron energies.
 - `benchmark_element_hessian.py` -- the same spring/triangle/tetrahedron
   energies written once as generic scalar `wp.func`s, so one definition feeds
   every gradient and Hessian strategy. `--forward2-max-k` skips the
