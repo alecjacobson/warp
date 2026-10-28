@@ -21,7 +21,7 @@ of floats, returning its derivatives along with its value, with no hand-written 
     x = \text{value} + \sum_{q=1}^{w} \text{coeff}_q \, \varepsilon_q
 
 where :math:`w` is the jet's *width*. :func:`wp.JetSpace <JetSpace>` creates first-order jets, and
-:func:`wp.JetSpace2 <JetSpace2>` creates second-order scalar jets that also carry a dense Hessian.
+:func:`wp.JetSpace2 <JetSpace2>` creates second-order jets that also carry a dense Hessian.
 
 Jets do not replace reverse mode but complement it, with different trade-offs in memory access, operation count and
 compile time. See :ref:`jets_when_to_use` below.
@@ -70,10 +70,11 @@ residual's Jacobian:
 
     wp.launch(residual_jacobian_kernel, dim=1, inputs=[base_pos, shoulder, elbow, target_pos], outputs=[jacobian])
 
-    print(np.round(jacobian.numpy()[0], 4))
+    print(f"jacobian =\n{np.round(jacobian.numpy()[0], 4)}")
 
 .. testoutput::
 
+    jacobian =
     [[ 1.      0.     -0.7071  0.    ]
      [ 0.      1.      1.7071  1.    ]]
 
@@ -145,13 +146,11 @@ translates, the end of the arm moves exactly as the elbow does:
         outputs=[directional_derivative],
     )
 
-    print(np.round(directional_derivative.numpy()[0], 4))
+    print("directional_derivative =", np.round(directional_derivative.numpy()[0, :, 0], 4))
 
 .. testoutput::
 
-    [[-0.7071]
-     [ 0.7071]]
-
+    directional_derivative = [-0.7071  0.7071]
 
 Component-wise seeding
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -161,7 +160,7 @@ slot types. Passing a number of scalars instead of slot types, as in ``wp.JetSpa
 creates a space whose width defaults to that number, or is the ``width``
 provided. Each scalar variable is then seeded manually with ``J.variable(x,
 direction)``, which returns a scalar jet with value ``x`` and a unit derivative
-along ``direction``. 
+along ``direction``.
 
 .. testcode::
 
@@ -181,25 +180,24 @@ along ``direction``.
 
     wp.launch(sum_of_cubes_gradient_kernel, dim=1, inputs=[x], outputs=[gradient])
 
-    print(gradient.numpy()[0])
+    print("gradient =", gradient.numpy()[0])
 
 .. testoutput::
 
-    [ 3. 12. 27. 48.]
+    gradient = [ 3. 12. 27. 48.]
 
 Hessians
 --------
 
-To compute second derivatives, we can either combine warp's reverse mode
-(:class:`wp.Tape <Tape>` or :func:`wp.grad <grad>`) with
-first-order jets (:func:`wp.JetSpace <JetSpace>`), or use second-order jets
+To compute second derivatives, we can either combine Warp's reverse mode (:class:`wp.Tape <Tape>` or
+:func:`wp.grad <grad>`) with first-order jets (:func:`wp.JetSpace <JetSpace>`), or use second-order jets
 (:func:`wp.JetSpace2 <JetSpace2>`).
 
-:func:`wp.JetSpace2 <JetSpace2>` is constructed and seeded similarly to
-:func:`wp.JetSpace <JetSpace>`. 
+:func:`wp.JetSpace2 <JetSpace2>` is constructed and seeded like :func:`wp.JetSpace <JetSpace>`, with scalar, ``vec2``
+and ``vec3`` slots. A second-order jet carries its value, its gradient ``grad`` and its dense Hessian ``hess``:
 
 .. testcode::
-   
+
     J2 = wp.JetSpace2((wp.vec3, wp.vec3))  # width 6
 
     @wp.func
@@ -211,36 +209,60 @@ first-order jets (:func:`wp.JetSpace <JetSpace>`), or use second-order jets
     def hessian_kernel(
         x0: wp.array[wp.vec3],
         x1: wp.array[wp.vec3],
-        val: wp.array2[float],
-        grad: wp.array2[wp.vec6],
-        hess: wp.array[wp.mat6]
+        val: wp.array[float],
+        grad: wp.array[J2.grad],
+        hess: wp.array[J2.hess],
     ):
         i = wp.tid()
         jet_x0, jet_x1 = J2.seed(x0[i], x1[i])
-        f = spring_energy(jet_x0, jet_x1)  
+        f = spring_energy(jet_x0, jet_x1)
         val[i] = f.value
         grad[i] = f.grad
         hess[i] = f.hess
 
+    # A spring of rest length one, stretched to length two along x.
+    x0 = wp.array([[0.0, 0.0, 0.0]], dtype=wp.vec3)
+    x1 = wp.array([[2.0, 0.0, 0.0]], dtype=wp.vec3)
+    val = wp.zeros(1, dtype=float)
+    grad = wp.zeros(1, dtype=J2.grad)
+    hess = wp.zeros(1, dtype=J2.hess)
+
+    wp.launch(hessian_kernel, dim=1, inputs=[x0, x1], outputs=[val, grad, hess])
+
+    print("val =", val.numpy()[0])
+    print("grad =", grad.numpy()[0])
+    print(f"hess =\n{hess.numpy()[0]}")
+
 .. testoutput::
 
+    val = 0.5
+    grad = [-1.  0.  0.  1.  0.  0.]
+    hess =
+    [[ 1.   0.   0.  -1.   0.   0. ]
+     [ 0.   0.5  0.   0.  -0.5  0. ]
+     [ 0.   0.   0.5  0.   0.  -0.5]
+     [-1.   0.   0.   1.   0.   0. ]
+     [ 0.  -0.5  0.   0.   0.5  0. ]
+     [ 0.   0.  -0.5  0.   0.   0.5]]
 
----------- UP TO HERE -------------- 
+Reverse over forward
+^^^^^^^^^^^^^^^^^^^^
 
+For a small, fixed number of inputs, :func:`wp.JetSpace2 <JetSpace2>` is often the fastest way to compute a Hessian at
+run time. Its state grows quadratically with the width, however, so it is register-intensive and can take a long time to
+compile. For more inputs, or when shorter compile times matter, it can be better to combine Warp's reverse mode with
+first-order jets: reverse over forward. The jet arithmetic is ordinary Warp code, so Warp's autodiff differentiates it,
+including the seeding helpers, like any other function. This works either inside a kernel, with :func:`wp.grad <grad>`
+applied to a :func:`@wp.func <func>`, or across kernels, by recording a :class:`wp.Tape <Tape>` and calling
+``tape.backward()`` once per input.
 
-There are three ways to a local Hessian, and which one is best depends on the energy:
+wp.grad over wp.JetSpace
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-1. **Reverse mode over a first-order jet with** :class:`wp.Tape <Tape>`. A width-``k`` jet gives the gradient in one
-   forward launch, then ``k`` backward sweeps give the rows of the Hessian. It reuses Warp's tape and needs a global
-   array with ``requires_grad=True``.
-2. **Reverse mode over a first-order jet inside the kernel with** :func:`wp.grad <grad>`. A width-1 jet gives the
-   directional derivative :math:`\nabla E \cdot v`, and the in-kernel adjoint sweep of that scalar gives the
-   Hessian-vector product :math:`H v`. It runs in registers in a single launch, with no tape and no global ``.grad``
-   array.
-3. **A second-order jet,** :func:`wp.JetSpace2 <JetSpace2>`. One forward pass returns the value, gradient and the dense
-   Hessian, with no reverse mode at all.
-
-Route 2, with ``J1`` the width-1 space from above:
+:func:`wp.grad <grad>` differentiates a :func:`@wp.func <func>`. A function that evaluates the energy over width-1 jets
+along a direction :math:`v` returns the directional derivative :math:`\nabla E \cdot v`, and the gradient of that with
+respect to the inputs is the Hessian-vector product :math:`H v`. With :math:`v` the unit vector :math:`e_j`, it is row
+:math:`j` of the Hessian, so one call per input gives the full Hessian:
 
 .. testcode::
 
@@ -248,12 +270,113 @@ Route 2, with ``J1`` the width-1 space from above:
 
     @wp.func
     def directional_derivative(x0: wp.vec3, x1: wp.vec3, v0: wp.vec3, v1: wp.vec3):
-        # First-order jet along the direction (v0, v1): the scalar dE . v.
-        a, b = J1.directional(x0, x1, v0, v1)
-        return spring_energy(a, b).coeff[0]
+        # A width-1 jet along the direction (v0, v1): the scalar dE . v.
+        jet_x0, jet_x1 = J1.directional(x0, x1, v0, v1)
+        return spring_energy(jet_x0, jet_x1).coeff[0]
 
     @wp.kernel
-    def hessian_vector_product(
+    def grad_over_jet_hessian_kernel(
+        x0: wp.array[wp.vec3],
+        x1: wp.array[wp.vec3],
+        hess: wp.array3d[float],
+    ):
+        i = wp.tid()
+        for j in range(6):
+            # The unit direction e_j over the six coordinates.
+            v0 = wp.vec3(0.0)
+            v1 = wp.vec3(0.0)
+            if j < 3:
+                v0[j] = 1.0
+            else:
+                v1[j - 3] = 1.0
+            # The gradient of dE . e_j with respect to (x0, x1) is row j of the Hessian.
+            hv0, hv1, _v0_adj, _v1_adj = wp.grad(directional_derivative)(x0[i], x1[i], v0, v1)
+            for k in range(3):
+                hess[i, j, k] = hv0[k]
+                hess[i, j, 3 + k] = hv1[k]
+
+    hess = wp.zeros((1, 6, 6), dtype=float)
+    wp.launch(grad_over_jet_hessian_kernel, dim=1, inputs=[x0, x1], outputs=[hess])
+
+    print(f"hess =\n{hess.numpy()[0]}")
+
+.. testoutput::
+
+    hess =
+    [[ 1.   0.   0.  -1.   0.   0. ]
+     [ 0.   0.5  0.   0.  -0.5  0. ]
+     [ 0.   0.   0.5  0.   0.  -0.5]
+     [-1.   0.   0.   1.   0.   0. ]
+     [ 0.  -0.5  0.   0.   0.5  0. ]
+     [ 0.   0.  -0.5  0.   0.   0.5]]
+
+Each Hessian-vector product costs a constant multiple of one evaluation of the energy, so the full Hessian of :math:`n`
+inputs costs :math:`O(n)` evaluations, against :math:`O(n^2)` for a dense second-order jet. In practice this route is
+a bit slower than :func:`wp.JetSpace2 <JetSpace2>` at run time, with shorter compile times.
+
+wp.Tape over wp.JetSpace
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The same directional derivative can be recorded on a :class:`wp.Tape <Tape>` instead. Each ``tape.backward()`` gives
+one row of the Hessian as the adjoints of the inputs. Because of tape and kernel launch overhead, this is often the
+slowest of the three methods, but it is more flexible than :func:`wp.grad <grad>` because the jets can pass between
+kernel launches through arrays:
+
+.. testcode::
+
+    @wp.kernel
+    def spring_directional_derivative_kernel(
+        x0: wp.array[wp.vec3],
+        x1: wp.array[wp.vec3],
+        v0: wp.array[wp.vec3],
+        v1: wp.array[wp.vec3],
+        out: wp.array[float],
+    ):
+        i = wp.tid()
+        out[i] = directional_derivative(x0[i], x1[i], v0[i], v1[i])
+
+    x0 = wp.array([[0.0, 0.0, 0.0]], dtype=wp.vec3, requires_grad=True)
+    x1 = wp.array([[2.0, 0.0, 0.0]], dtype=wp.vec3, requires_grad=True)
+    out = wp.zeros(1, dtype=float, requires_grad=True)
+    hess = np.zeros((1, 6, 6))
+
+    tape = wp.Tape()
+    for j in range(6):
+        e = np.zeros((1, 6))
+        e[:, j] = 1.0
+        v0 = wp.array(e[:, :3], dtype=wp.vec3)
+        v1 = wp.array(e[:, 3:], dtype=wp.vec3)
+        with tape:
+            wp.launch(spring_directional_derivative_kernel, dim=1, inputs=[x0, x1, v0, v1], outputs=[out])
+        # The adjoints of x0 and x1 are row j of the Hessian.
+        tape.backward(grads={out: wp.ones(1, dtype=float)})
+        hess[:, j, :3] = x0.grad.numpy()
+        hess[:, j, 3:] = x1.grad.numpy()
+        tape.reset()
+
+    print(f"hess =\n{hess[0]}")
+
+.. testoutput::
+
+    hess =
+    [[ 1.   0.   0.  -1.   0.   0. ]
+     [ 0.   0.5  0.   0.  -0.5  0. ]
+     [ 0.   0.   0.5  0.   0.  -0.5]
+     [-1.   0.   0.   1.   0.   0. ]
+     [ 0.  -0.5  0.   0.   0.5  0. ]
+     [ 0.   0.  -0.5  0.   0.   0.5]]
+
+Hessian-vector products
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Both reverse-over-forward methods build the Hessian one row at a time, as Hessian-vector products with unit vectors.
+Seeding the width-1 jet with any other vector :math:`v` gives :math:`H v` from a single backward pass, without forming
+the Hessian:
+
+.. testcode::
+
+    @wp.kernel
+    def hessian_vector_product_kernel(
         x0: wp.array[wp.vec3],
         x1: wp.array[wp.vec3],
         v0: wp.array[wp.vec3],
@@ -261,9 +384,8 @@ Route 2, with ``J1`` the width-1 space from above:
         hv: wp.array2d[wp.vec3],
     ):
         i = wp.tid()
-
-        # The gradient of (dE . v) with respect to the inputs is H v.
-        hv0, hv1, _a, _b = wp.grad(directional_derivative)(x0[i], x1[i], v0[i], v1[i])
+        # The gradient of dE . v with respect to the inputs is H v.
+        hv0, hv1, _v0_adj, _v1_adj = wp.grad(directional_derivative)(x0[i], x1[i], v0[i], v1[i])
         hv[i, 0] = hv0
         hv[i, 1] = hv1
 
@@ -271,46 +393,13 @@ Route 2, with ``J1`` the width-1 space from above:
     v1 = wp.array([[1.0, 1.0, 0.0]], dtype=wp.vec3)
     hv = wp.zeros((1, 2), dtype=wp.vec3)
 
-    wp.launch(hessian_vector_product, dim=1, inputs=[x0, x1, v0, v1], outputs=[hv])
+    wp.launch(hessian_vector_product_kernel, dim=1, inputs=[x0, x1, v0, v1], outputs=[hv])
 
-    print("H v:", hv.numpy().reshape(1, 6))
-
-.. testoutput::
-
-    H v: [[-1.  -0.5  0.   1.   0.5  0. ]]
-
-Looping this over the six coordinate directions gives the full :math:`6 \times 6` block.
-
-Route 3 on a two-variable energy. Second-order spaces take scalar slots, so the energy is written over scalars:
-
-.. testcode::
-
-    J2 = wp.JetSpace2(2)
-
-    @wp.func
-    def energy(a: Any, b: Any):
-        return a * a * b + wp.sin(b)
-
-    @wp.kernel
-    def second_order(out: wp.array2d[float]):
-        a, b = J2.seed(1.0, 0.5)
-        e = energy(a, b)  # e.value, e.grad (length 2) and e.hess (2 x 2)
-        for p in range(2):
-            for q in range(2):
-                out[p, q] = e.hess[p, q]
-
-    out = wp.zeros((2, 2), dtype=float)
-    wp.launch(second_order, dim=1, inputs=[], outputs=[out])
-
-    print(out.numpy())
+    print("hv =", hv.numpy().reshape(6))
 
 .. testoutput::
 
-    [[ 1.          2.        ]
-     [ 2.         -0.47942555]]
-
-Reverse mode through jets is what makes routes 1 and 2 possible: the jet arithmetic is ordinary Warp code, so
-Warp's autodiff differentiates it like any other function. That includes the seeding helpers.
+    hv = [-1.  -0.5  0.   1.   0.5  0. ]
 
 Forward and Reverse Mode Side by Side
 -------------------------------------
@@ -334,8 +423,9 @@ Both modes compute the same derivatives. They differ in what they cost and in wh
       - The number of outputs (one sweep per output row).
       - The number of directions, ``width``, carried through every intermediate.
     * - Second derivatives
-      - Not directly. Reverse mode is applied to a function that already contains a derivative.
-      - A second-order jet carries the Hessian; first-order jets also give :math:`H v` through reverse mode.
+      - Not on its own, because reverse mode cannot be applied to its own output. Reverse mode over a first-order jet
+        gives :math:`H v`.
+      - A second-order jet carries the dense Hessian.
     * - Number of inputs
       - Unbounded and set at run time, such as every degree of freedom of a simulation.
       - Fixed when the types are created, because ``width`` is a compile-time constant.
@@ -346,33 +436,9 @@ Both modes compute the same derivatives. They differ in what they cost and in wh
       - A loss over a large state, in training or optimization.
       - A dense *local* gradient or Hessian of one element, scattered into a global system.
 
-In code, the two read as follows for the same energy:
-
-.. list-table::
-    :header-rows: 1
-    :widths: 50 50
-
-    * - Reverse mode
-      - Forward-mode jets
-    * - .. code-block:: python
-
-            @wp.kernel
-            def gradient(x0: wp.array[wp.vec3], x1: wp.array[wp.vec3], g: wp.array2d[wp.vec3]):
-                i = wp.tid()
-                g0, g1 = wp.grad(spring_energy)(x0[i], x1[i])
-                g[i, 0] = g0
-                g[i, 1] = g1
-      - .. code-block:: python
-
-            @wp.kernel
-            def gradient(x0: wp.array[wp.vec3], x1: wp.array[wp.vec3], g: wp.array[J.coeff]):
-                i = wp.tid()
-                a, b = J.seed(x0[i], x1[i])
-                g[i] = spring_energy(a, b).coeff
-
 .. _jets_when_to_use:
 
-When to Use Jets
+When to use jets
 ----------------
 
 ``width`` is a compile-time constant, not a runtime length. It becomes the length of ``coeff`` and is unrolled into the
@@ -393,15 +459,40 @@ They are the wrong tool for differentiating with respect to a problem-sized or r
 mode's single backward pass. Use :class:`Tape` or :func:`grad` for the outer derivative, and jets for the fixed-arity
 term inside it.
 
+.. list-table::
+    :header-rows: 1
+
+    * - Task
+      - Suggested tool
+    * - Global gradient
+      - :class:`wp.Tape <Tape>`
+    * - Local gradient
+      - :func:`wp.grad <grad>` or :class:`wp.Tape <Tape>`. For small in-kernel gradients,
+        :func:`wp.JetSpace <JetSpace>` can sometimes be faster than :func:`wp.grad <grad>`.
+    * - Local Jacobian
+      - :func:`wp.JetSpace <JetSpace>`
+    * - Vector-Jacobian product
+      - :func:`wp.grad <grad>` or :class:`wp.Tape <Tape>`
+    * - Jacobian-vector product
+      - :func:`wp.JetSpace <JetSpace>` with ``directional()``
+    * - Local Hessian
+      - :func:`wp.JetSpace2 <JetSpace2>` if compile time allows, otherwise :func:`wp.grad <grad>` over
+        :func:`wp.JetSpace <JetSpace>`
+    * - Hessian-vector product
+      - :func:`wp.grad <grad>` over :func:`wp.JetSpace <JetSpace>`
+    * - Global sparse Jacobian or Hessian
+      - If the contributions are local, :func:`wp.JetSpace <JetSpace>` or :func:`wp.JetSpace2 <JetSpace2>` for each
+        local block, scattered into the global matrix
+
 Performance
 -----------
 
 The numbers below come from the benchmarks in ``warp/examples/benchmarks``, run on an NVIDIA RTX PRO 5000 Blackwell
 (laptop) GPU in float32 with about one million elements per run. Each time is the best of 20 launches for the gradient
-and of 10 for the Hessian, with launch overhead included and no CUDA graph. The tetrahedron Hessian row uses 200,000 elements. Timings on this
-laptop GPU vary by tens of percent between runs, so read the table for ratios and orders of magnitude. Every strategy is first checked against the others and against finite
-differences. They show the *relative* cost of the strategies, not absolute figures to expect on other hardware or for
-other energies.
+and of 10 for the Hessian, with launch overhead included and no CUDA graph. The tetrahedron Hessian row uses 200,000
+elements. Timings on this laptop GPU vary by tens of percent between runs, so read the table for ratios and orders of
+magnitude. Every strategy is first checked against the others and against finite differences. They show the *relative*
+cost of the strategies, not absolute figures to expect on other hardware or for other energies.
 
 **Gradient** (``benchmark_jet_gradient_mesh.py``). Evaluating the energy as a width-``k`` jet is about as fast as
 reverse mode, and ``wp.grad`` in the same kernel is about as fast again. First-order jets are not a speed-up over reverse
@@ -440,26 +531,22 @@ single launch.
 
     * - Element
       - ``k``
-      - ``k`` tape sweeps over a width-``k`` jet (ms)
       - ``k`` tape sweeps over a width-1 jet (ms)
       - In-kernel ``wp.grad`` over a width-1 jet (ms)
       - Second-order jet (ms)
     * - Spring
       - 6
-      - 4.87
-      - 4.79
+      - MISSING
       - 0.584
       - 0.561
     * - Triangle
       - 9
-      - 72.6
-      - 10.8
+      - MISSING
       - 3.2
       - 2.0
     * - Tetrahedron
       - 12
-      - 61.9
-      - 2.58
+      - MISSING
       - 1.00
       - 0.51
 
@@ -528,8 +615,8 @@ Limitations
   do not overload on jets, so branch on ``.value``.
 * Only builtins with jet overloads accept jets. Others, such as spatial queries like
   :func:`wp.mesh_query_point() <warp._src.lang.mesh_query_point>`, operate on floats only and need manual integration.
-* Second-order jets carry a scalar payload only. Vector and matrix second derivatives decompose into per-component
-  scalar jets.
+* Second-order jets take scalar, ``vec2`` and ``vec3`` slots. Matrix slots are not supported; a matrix input
+  decomposes into its components.
 * Jet dtypes must be floating point. Quaternion slots are not supported.
 * A plain scalar, vector or matrix of the jet's dtype can be either operand of a jet operation, and is treated as a
   constant. The exception is ``wp.where``, whose two branches must both be jets; wrap a plain branch with
