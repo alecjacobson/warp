@@ -955,6 +955,7 @@ def vec3_ops_energy(p: Any):
     # Uses every second-order vec3 overload: each mix of jet and plain operands,
     # negative indexing, and the namespace constructors.
     c = wp.vec3(0.3, -0.2, 0.5)
+    m = wp.mat33(0.9, -0.4, 0.2, 0.1, 1.1, -0.3, -0.5, 0.6, 0.8)
     s = 0.5 * p[1] + 1.2
     u = 2.0 * p - c
     v = c - p / 3.0 + p * s + 0.25 * (s * p)
@@ -972,6 +973,7 @@ def vec3_ops_energy(p: Any):
         + wp.dot(c / s, p)
         + wp.length(u / wp.length(v))
         + wp.dot(J2_V3.make_vec3(s, p[0], p[2]), J2_V3.constant_vec3(c) + p)
+        + wp.length_sq(m * u)
     )
 
 
@@ -979,6 +981,7 @@ def vec3_ops_energy(p: Any):
 def vec2_ops_energy(q: Any, s: Any):
     # The same for vec2, plus the 2D helpers that live on the namespace.
     n = wp.vec2(0.7, 0.1)
+    m = wp.mat22(0.9, -0.4, 0.3, 1.2)
     a = q * 2.0 + n
     b = n - q / 2.0 + (-q) + (+q) + 0.5 * q
     d = s * n + n * s + q * s + 0.5 * (s * q) + (n + q) - (q - n)
@@ -998,6 +1001,7 @@ def vec2_ops_energy(q: Any, s: Any):
         + J2_V2.cross2(n, b)
         + J2_V2.cross2(a, J2_V2.perp(b))
         + wp.dot(J2_V2.make_vec2(q[1], s), J2_V2.constant_vec2(n) - q)
+        + wp.length_sq(m * d)
     )
 
 
@@ -1012,6 +1016,7 @@ def _length(x):
 def vec3_ops_energy_np(z):
     p = z[:, 0:3]
     c = np.array([0.3, -0.2, 0.5])
+    m = np.array([[0.9, -0.4, 0.2], [0.1, 1.1, -0.3], [-0.5, 0.6, 0.8]])
     s = 0.5 * p[:, 1:2] + 1.2
     u = 2.0 * p - c
     v = c - p / 3.0 + p * s + 0.25 * (s * p)
@@ -1030,12 +1035,14 @@ def vec3_ops_energy_np(z):
         + _dot(c / s, p)
         + _length(u / _length(v)[:, None])
         + _dot(made, c + p)
+        + _dot(u @ m.T, u @ m.T)
     )
 
 
 def vec2_ops_energy_np(z):
     q, s = z[:, 0:2], z[:, 2:3]
     n = np.array([0.7, 0.1])
+    m = np.array([[0.9, -0.4], [0.3, 1.2]])
 
     def cross2(x, y):
         return x[..., 0] * y[..., 1] - x[..., 1] * y[..., 0]
@@ -1061,6 +1068,7 @@ def vec2_ops_energy_np(z):
         + cross2(n, b)
         + cross2(a, perp_b)
         + _dot(made, n - q)
+        + _dot(d @ m.T, d @ m.T)
     )
 
 

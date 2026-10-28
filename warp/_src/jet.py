@@ -2236,6 +2236,23 @@ def _make_jet_space2(width: int, dtype):
     def jet_mul(s: Jet2Scalar, a: NativeVec3) -> Jet2Vec3:
         return Jet2Vec3(s * a[0], s * a[1], s * a[2])
 
+    # A plain matrix times a vector jet, one row at a time.
+
+    NativeMat2 = matrix((2, 2), dtype)
+    NativeMat3 = matrix((3, 3), dtype)
+
+    @wp.func
+    def jet_mul(m: NativeMat2, a: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(m[0, 0] * a.x + m[0, 1] * a.y, m[1, 0] * a.x + m[1, 1] * a.y)
+
+    @wp.func
+    def jet_mul(m: NativeMat3, a: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(
+            m[0, 0] * a.x + m[0, 1] * a.y + m[0, 2] * a.z,
+            m[1, 0] * a.x + m[1, 1] * a.y + m[1, 2] * a.z,
+            m[2, 0] * a.x + m[2, 1] * a.y + m[2, 2] * a.z,
+        )
+
     # Division by a jet takes one reciprocal and multiplies, rather than dividing
     # every component.
 
