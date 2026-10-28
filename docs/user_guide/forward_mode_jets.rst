@@ -60,7 +60,7 @@ residual's Jacobian:
         shoulder: wp.array[float],
         elbow: wp.array[float],
         target_pos: wp.array[wp.vec2],
-        jacobian: wp.array[J.coeff_mat2],
+        jacobian: wp.array[J.coeff_vec2],
     ):
         tid = wp.tid()
         jet_base_pos, jet_shoulder, jet_elbow = J.seed(base_pos[tid], shoulder[tid], elbow[tid])
@@ -71,7 +71,7 @@ residual's Jacobian:
     shoulder = wp.array([np.radians(45.0)], dtype=float)
     elbow = wp.array([np.radians(-45.0)], dtype=float)
     target_pos = wp.array([[-0.5, 0.5]], dtype=wp.vec2)
-    jacobian = wp.zeros(1, dtype=J.coeff_mat2)
+    jacobian = wp.zeros(1, dtype=J.coeff_vec2)
 
     wp.launch(residual_jacobian_kernel, dim=1, inputs=[base_pos, shoulder, elbow, target_pos], outputs=[jacobian])
 
@@ -96,8 +96,8 @@ default, the width of the jets is the total number of scalar components (``width
 carry the full Jacobian with respect to these inputs.
 
 The slot types are scalars, ``vec2``, ``vec3``, and the ``mat22``, ``mat33``, ``mat32`` and ``mat23`` matrices.
-The jets for each are available on the returned namespace as ``J.scalar``, ``J.vec2``, ``J.vec3``, ``J.mat2``,
-``J.mat3``, ``J.mat32`` and ``J.mat23``, and ``J.coeff`` is the type of a scalar jet's derivative vector.
+The jets for each are available on the returned namespace as ``J.scalar``, ``J.vec2``, ``J.vec3``, ``J.mat22``,
+``J.mat33``, ``J.mat32`` and ``J.mat23``, and ``J.coeff`` is the type of a scalar jet's derivative vector.
 
 Inside a kernel, ``J.seed()`` takes one value per slot and returns one jet per slot. It copies each input's value into
 the jet's ``value`` field and sets the ``coeff`` field to the unit vector along the corresponding direction of the
@@ -134,7 +134,7 @@ translates, the end of the arm moves exactly as the elbow does:
         shoulder: wp.array[float],
         elbow: wp.array[float],
         target_pos: wp.array[wp.vec2],
-        directional_derivative: wp.array[Jd.coeff_mat2],
+        directional_derivative: wp.array[Jd.coeff_vec2],
     ):
         tid = wp.tid()
         # Rotate the shoulder and the elbow in opposite directions at the same rate.
@@ -142,7 +142,7 @@ translates, the end of the arm moves exactly as the elbow does:
         jet_residual = residual(base_pos[tid], jet_shoulder, jet_elbow, target_pos[tid])
         directional_derivative[tid] = jet_residual.coeff
 
-    directional_derivative = wp.zeros(1, dtype=Jd.coeff_mat2)
+    directional_derivative = wp.zeros(1, dtype=Jd.coeff_vec2)
 
     wp.launch(
         directional_derivative_kernel,

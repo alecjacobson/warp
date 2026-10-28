@@ -52,7 +52,7 @@ assembly step.
 | R4  | Derivative width independent of geometric dimension                                | Must     | 6 directions over two `vec3` endpoints           |
 | R5  | Several widths and dtypes coexist in one process                                   | Should   |                                                  |
 | R6  | Geometry helpers: `dot`, `length`, `normalize`, `cross`                            | Should   |                                                  |
-| R7  | Matrix jets: `determinant`, `trace`, `transpose`, `inverse`, matmul                | Should   | Square `mat2`/`mat3` and rectangular `mat32`/`mat23` for deformation gradients |
+| R7  | Matrix jets: `determinant`, `trace`, `transpose`, `inverse`, matmul                | Should   | Square `mat22`/`mat33` and rectangular `mat32`/`mat23` for deformation gradients |
 | R8  | Second-order jets giving a dense local Hessian in one forward pass                  | Should   | `wp.JetSpace2`; no tape required                 |
 
 **Non-goals**: second-order jets for vector/matrix payloads
@@ -114,8 +114,8 @@ inputs being differentiated with respect to -- see [Slots and seeding](#slots-an
 | `scalar`| `dtype`         | `vector(width)`      |
 | `vec2`  | `vector(2)`     | `matrix(2, width)`   |
 | `vec3`  | `vector(3)`     | `matrix(3, width)`   |
-| `mat2`  | `matrix(2, 2)`  | `matrix(4, width)`   |
-| `mat3`  | `matrix(3, 3)`  | `matrix(9, width)`   |
+| `mat22` | `matrix(2, 2)`  | `matrix(4, width)`   |
+| `mat33` | `matrix(3, 3)`  | `matrix(9, width)`   |
 | `mat32` | `matrix(3, 2)`  | `matrix(6, width)`   |
 | `mat23` | `matrix(2, 3)`  | `matrix(6, width)`   |
 
@@ -364,14 +364,14 @@ tape.backward(grads={grad_g: seed_row})
 
 ### Matrix jets
 
-Square (`mat2`, `mat3`) and rectangular (`mat32`, `mat23`) matrix jets let a
+Square (`mat22`, `mat33`) and rectangular (`mat32`, `mat23`) matrix jets let a
 deformation gradient be a first-class jet value, so an elastic energy written in
 terms of `F`, `S = FᵀF`, `det F`, and `tr S` differentiates through the whole
 chain without hand-derivatives. Overloads cover `transpose`, `trace`,
 `determinant`, matmul, and `inverse`. Inverse uses the closed-form differential
 `d(A⁻¹) = -A⁻¹ (dA) A⁻¹`, evaluated per direction from `A⁻¹` computed once. A
-`mat3` deformation gradient is built column-by-column from three seeded `vec3`
-endpoints (`make_mat3`), or seeded directly by declaring a `wp.mat33` slot; the rectangular pair supports triangles, whose `3×2`
+`mat33` deformation gradient is built column-by-column from three seeded `vec3`
+endpoints (`make_mat33`), or seeded directly by declaring a `wp.mat33` slot; the rectangular pair supports triangles, whose `3×2`
 `F` and `S = FᵀF` come from `make_mat32` and the `(2×3)(3×2)` product.
 
 These reuse the native `wp.inverse`/`wp.determinant` on the `value` and only
@@ -444,7 +444,7 @@ operation family. "FD" marks families verified against finite differences in
 | Branching (`min max clamp where abs sign`) — FD           |        ✓         |          –          |            –            |        ✓         |          –          |
 | Indexing (`v[i]`, `extract`)                              |        ✓         |          ✓          |            ✓            |        –         |       ✓ — FD        |
 | Geometry (`dot length length_sq normalize cross`)         |        ✓         |          ✓          |            –            |        –         |       ✓ — FD        |
-| Matrix (`transpose trace determinant inverse`, matmul)    |        –         |          –          |    ✓ (mat2/3/32/23)     |        –         |          –          |
+| Matrix (`transpose trace determinant inverse`, matmul)    |        –         |          –          |    ✓ (mat22/33/32/23)    |        –         |          –          |
 | Reverse-over-jet Hessian via `wp.Tape`                    |        ✓         |          ✓          |            ✓            |     n/a          |         n/a         |
 | Reverse-over-jet Hessian via in-kernel `wp.grad` (no tape) |        ✓         |          ✓          |            ✓            |     n/a          |         n/a         |
 | Pure-forward Hessian (no tape, no reverse)                |       n/a        |         n/a         |           n/a           |        ✓         |          ✓          |
@@ -486,8 +486,8 @@ a tuple argument and this is the property that would break first.
 **`warp/tests/test_jet_ops.py`** (`TestJetOps`, `TestJetMatrix`). Finite-
 difference checks for the wider op surface: inverse-trig, `pow` variants, and
 value-branching builtins for both first- and second-order jets (gradient and, for
-second order, the Hessian); and matrix jets -- `mat2` determinant/trace, a `mat3`
-tetrahedron elastic energy, `mat3` inverse, and a rectangular `mat32` triangle
+second order, the Hessian); and matrix jets -- `mat22` determinant/trace, a `mat33`
+tetrahedron elastic energy, `mat33` inverse, and a rectangular `mat32` triangle
 energy. These are **CPU-only** (`DEVICES = ["cpu"]`, standard `unittest.TestCase`
 rather than `add_function_test`): building one module for both CPU and CUDA in the
 same process trips a module-hasher instability where the second device's build

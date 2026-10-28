@@ -290,24 +290,24 @@ J12 = wp.JetSpace((wp.vec3,) * 4)  # a tetrahedron's four nodes
 
 
 # --------------------------------------------------------------------------
-# mat2 multiplication: mat2 * mat2 and mat2 * vec2.
+# mat22 multiplication: mat22 * mat22 and mat22 * vec2.
 # --------------------------------------------------------------------------
 
 
 @wp.kernel
-def jet_mat2_matmul(z: wp.array2d[float], out: wp.array[J4.coeff]):
+def jet_mat22_matmul(z: wp.array2d[float], out: wp.array[J4.coeff]):
     i = wp.tid()
     # A = [[z0, z2], [z1, z3]], built from its two seeded columns. Both
-    # mat2 * mat2 and mat2 * vec2 appear in (A A) v.
+    # mat22 * mat22 and mat22 * vec2 appear in (A A) v.
     c0 = J4.make_vec2(J4.variable(z[i, 0], 0), J4.variable(z[i, 1], 1))
     c1 = J4.make_vec2(J4.variable(z[i, 2], 2), J4.variable(z[i, 3], 3))
-    a = J4.make_mat2(c0, c1)
+    a = J4.make_mat22(c0, c1)
     v = J4.make_vec2(J4.constant(1.0), J4.constant(-2.0))
     w = (a * a) * v
     out[i] = (w[0] + w[1]).coeff
 
 
-def mat2_matmul_np(z):
+def mat22_matmul_np(z):
     n = z.shape[0]
     a = np.empty((n, 2, 2))
     a[:, 0, 0] = z[:, 0]
@@ -319,12 +319,12 @@ def mat2_matmul_np(z):
 
 
 @wp.kernel(enable_backward=False)
-def jet_mat2_detrace(a: wp.array2d[float], det_g: wp.array[J4.coeff], tr_g: wp.array[J4.coeff]):
+def jet_mat22_detrace(a: wp.array2d[float], det_g: wp.array[J4.coeff], tr_g: wp.array[J4.coeff]):
     # Seed the four entries (row-major m00,m01,m10,m11) to directions 0..3.
     i = wp.tid()
     c0 = J4.make_vec2(J4.variable(a[i, 0], 0), J4.variable(a[i, 2], 2))  # column 0 = (m00, m10)
     c1 = J4.make_vec2(J4.variable(a[i, 1], 1), J4.variable(a[i, 3], 3))  # column 1 = (m01, m11)
-    m = J4.make_mat2(c0, c1)
+    m = J4.make_mat22(c0, c1)
     det_g[i] = wp.determinant(m).coeff
     tr_g[i] = wp.trace(m).coeff
 
@@ -346,7 +346,7 @@ def jet_tet(z: wp.array2d[float], grad: wp.array[J12.coeff]):
         wp.vec3(z[i, 6], z[i, 7], z[i, 8]),
         wp.vec3(z[i, 9], z[i, 10], z[i, 11]),
     )
-    f = J12.make_mat3(p1 - p0, p2 - p0, p3 - p0)  # deformation gradient
+    f = J12.make_mat33(p1 - p0, p2 - p0, p3 - p0)  # deformation gradient
     i1 = wp.trace(wp.transpose(f) * f)  # matmul -> trace = sum of squares
     logj = wp.log(wp.determinant(f))
     e = 0.5 * (i1 - 3.0) - logj + 0.5 * logj * logj
@@ -354,13 +354,13 @@ def jet_tet(z: wp.array2d[float], grad: wp.array[J12.coeff]):
 
 
 @wp.kernel(enable_backward=False)
-def jet_mat3_inverse(a: wp.array2d[float], out: wp.array3d[float]):
+def jet_mat33_inverse(a: wp.array2d[float], out: wp.array3d[float]):
     # Seed the 3x3 entries (row-major dirs 0..8); write d(inv[r,c])/d(entry k).
     i = wp.tid()
     c0 = J9.make_vec3(J9.variable(a[i, 0], 0), J9.variable(a[i, 3], 3), J9.variable(a[i, 6], 6))  # column 0
     c1 = J9.make_vec3(J9.variable(a[i, 1], 1), J9.variable(a[i, 4], 4), J9.variable(a[i, 7], 7))
     c2 = J9.make_vec3(J9.variable(a[i, 2], 2), J9.variable(a[i, 5], 5), J9.variable(a[i, 8], 8))
-    inv = wp.inverse(J9.make_mat3(c0, c1, c2))
+    inv = wp.inverse(J9.make_mat33(c0, c1, c2))
     for r in range(3):
         for c in range(3):
             for q in range(9):
@@ -392,14 +392,14 @@ def jet_triangle_rect(z: wp.array2d[float], grad: wp.array[J9.coeff]):
 
 
 class TestJetMatrix(unittest.TestCase):
-    def test_mat2_det_trace(self):
-        """Check mat2 determinant and trace derivatives against finite differences."""
+    def test_mat22_det_trace(self):
+        """Check mat22 determinant and trace derivatives against finite differences."""
         rng = np.random.default_rng(0)
         a = (rng.standard_normal((5, 4)) + np.array([2.0, 0.1, 0.1, 2.0])).astype(np.float32)  # well-conditioned
         det_g = wp.zeros(5, dtype=J4.coeff, device="cpu")
         tr_g = wp.zeros(5, dtype=J4.coeff, device="cpu")
         wp.launch(
-            jet_mat2_detrace,
+            jet_mat22_detrace,
             dim=5,
             inputs=[wp.array(a, dtype=float, device="cpu")],
             outputs=[det_g, tr_g],
@@ -412,8 +412,8 @@ class TestJetMatrix(unittest.TestCase):
         np.testing.assert_allclose(det_g.numpy().reshape(5, 4), det_expected, rtol=1e-5, atol=1e-6)
         np.testing.assert_allclose(tr_g.numpy().reshape(5, 4), tr_expected, rtol=1e-5, atol=1e-6)
 
-    def test_mat3_tet_energy(self):
-        """Check a mat3 tetrahedron energy gradient against finite differences."""
+    def test_mat33_tet_energy(self):
+        """Check a mat33 tetrahedron energy gradient against finite differences."""
         rng = np.random.default_rng(1)
         rest = np.array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1], np.float32)  # unit reference tet
         z = (rest + 0.05 * rng.standard_normal((6, 12))).astype(np.float32)
@@ -423,12 +423,14 @@ class TestJetMatrix(unittest.TestCase):
             grad.numpy().reshape(6, 12), _grad_fd(tet_np, z.astype(np.float64)), rtol=1e-3, atol=1e-4
         )
 
-    def test_mat3_inverse(self):
-        """Check the mat3 inverse derivative against finite differences."""
+    def test_mat33_inverse(self):
+        """Check the mat33 inverse derivative against finite differences."""
         rng = np.random.default_rng(2)
         a = (np.eye(3) + 0.3 * rng.standard_normal((4, 3, 3))).astype(np.float32).reshape(4, 9)
         out = wp.zeros((4, 9, 9), dtype=float, device="cpu")
-        wp.launch(jet_mat3_inverse, dim=4, inputs=[wp.array(a, dtype=float, device="cpu")], outputs=[out], device="cpu")
+        wp.launch(
+            jet_mat33_inverse, dim=4, inputs=[wp.array(a, dtype=float, device="cpu")], outputs=[out], device="cpu"
+        )
         got = out.numpy()
         # FD of inv(A) w.r.t. each entry, compared to d(inv[r,c])/d(entry k).
         h = 1e-4
@@ -456,19 +458,19 @@ class TestJetMatrix(unittest.TestCase):
             grad.numpy().reshape(5, 9), _grad_fd(triangle_rect_np, z.astype(np.float64)), rtol=1e-3, atol=1e-4
         )
 
-    def test_mat2_matmul(self):
-        """Check mat2 * mat2 and mat2 * vec2 derivatives against finite differences.
+    def test_mat22_matmul(self):
+        """Check mat22 * mat22 and mat22 * vec2 derivatives against finite differences.
 
-        ``mat2`` is part of the public namespace and is what a rectangular
+        ``mat22`` is part of the public namespace and is what a rectangular
         ``mat23 * mat32`` product returns, so ordinary 2D matrix algebra has to
         work on the result.
         """
         rng = np.random.default_rng(0)
         z = (rng.standard_normal((5, 4)) + np.array([2.0, 0.1, 0.1, 2.0])).astype(np.float32)
         out = wp.zeros(5, dtype=J4.coeff, device="cpu")
-        wp.launch(jet_mat2_matmul, dim=5, inputs=[wp.array(z, dtype=float, device="cpu")], outputs=[out], device="cpu")
+        wp.launch(jet_mat22_matmul, dim=5, inputs=[wp.array(z, dtype=float, device="cpu")], outputs=[out], device="cpu")
         np.testing.assert_allclose(
-            out.numpy().reshape(5, 4), _grad_fd(mat2_matmul_np, z.astype(np.float64)), rtol=1e-3, atol=1e-4
+            out.numpy().reshape(5, 4), _grad_fd(mat22_matmul_np, z.astype(np.float64)), rtol=1e-3, atol=1e-4
         )
 
 
@@ -646,7 +648,7 @@ def mixed_vec_kernel(
 
 
 @wp.kernel(enable_backward=False)
-def mixed_mat2_kernel(
+def mixed_mat22_kernel(
     a_in: wp.array[wp.mat22],
     v_in: wp.array[wp.vec2],
     pm: wp.array[wp.mat22],
@@ -655,7 +657,7 @@ def mixed_mat2_kernel(
 ):
     i = wp.tid()
     a, v = JM2.directional(a_in[i], v_in[i], pm[i], pv[i], wp.transpose(a_in[i]), -v_in[i])
-    lm = JM2.mat2()
+    lm = JM2.mat22()
     lm.value = pm[i]
     lv = JM2.constant_vec2(pv[i])
 
@@ -670,7 +672,7 @@ def mixed_mat2_kernel(
 
 
 @wp.kernel(enable_backward=False)
-def mixed_mat3_kernel(
+def mixed_mat33_kernel(
     a_in: wp.array[wp.mat33],
     v_in: wp.array[wp.vec3],
     pm: wp.array[wp.mat33],
@@ -679,7 +681,7 @@ def mixed_mat3_kernel(
 ):
     i = wp.tid()
     a, v = JM3.directional(a_in[i], v_in[i], pm[i], pv[i], wp.transpose(a_in[i]), -v_in[i])
-    lm = JM3.mat3()
+    lm = JM3.mat33()
     lm.value = pm[i]
     lv = JM3.constant_vec3(pv[i])
 
@@ -713,7 +715,7 @@ def mixed_rect_kernel(
 
 
 @wp.kernel
-def mixed_mat3_adjoint_kernel(
+def mixed_mat33_adjoint_kernel(
     a_in: wp.array[wp.mat33],
     v_in: wp.array[wp.vec3],
     pm: wp.array[wp.mat33],
@@ -721,7 +723,7 @@ def mixed_mat3_adjoint_kernel(
     da: wp.array2d[wp.mat33],
     dv: wp.array2d[wp.vec3],
     w: wp.array[wp.vec3],
-    weights: wp.array[JM3.coeff_mat3],
+    weights: wp.array[JM3.coeff_vec3],
     out: wp.array[float],
 ):
     i = wp.tid()
@@ -763,13 +765,13 @@ class TestJetMixedOperands(unittest.TestCase):
             self._assert_agree(err.numpy())
 
     def test_square_matrix(self):
-        """Check mat2 and mat3 products and sums with one plain operand against lifted constants."""
+        """Check mat22 and mat33 products and sums with one plain operand against lifted constants."""
         rng = np.random.default_rng(2)
         m = 4
         for device in DEVICES:
             for kernel, mat, vec, n in (
-                (mixed_mat2_kernel, wp.mat22, wp.vec2, 2),
-                (mixed_mat3_kernel, wp.mat33, wp.vec3, 3),
+                (mixed_mat22_kernel, wp.mat22, wp.vec2, 2),
+                (mixed_mat33_kernel, wp.mat33, wp.vec3, 3),
             ):
                 err = wp.zeros((m, 8), dtype=float, device=device)
                 wp.launch(
@@ -830,7 +832,7 @@ class TestJetMixedOperands(unittest.TestCase):
             tape = wp.Tape()
             with tape:
                 wp.launch(
-                    mixed_mat3_adjoint_kernel,
+                    mixed_mat33_adjoint_kernel,
                     dim=m,
                     inputs=[
                         wp.array(a_np, dtype=wp.mat33, device=device),
@@ -840,7 +842,7 @@ class TestJetMixedOperands(unittest.TestCase):
                         wp.array(da_np, dtype=wp.mat33, device=device),
                         wp.array(dv_np, dtype=wp.vec3, device=device),
                         wp.array(w_np, dtype=wp.vec3, device=device),
-                        wp.array(weights_np, dtype=JM3.coeff_mat3, device=device),
+                        wp.array(weights_np, dtype=JM3.coeff_vec3, device=device),
                     ],
                     outputs=[out],
                     device=device,
