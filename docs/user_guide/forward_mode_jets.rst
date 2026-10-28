@@ -191,7 +191,9 @@ Hessians
 
 To compute second derivatives, we can either combine Warp's reverse mode (:class:`wp.Tape <Tape>` or
 :func:`wp.grad <grad>`) with first-order jets (:func:`wp.JetSpace <JetSpace>`), or use second-order jets
-(:func:`wp.JetSpace2 <JetSpace2>`).
+(:func:`wp.JetSpace2 <JetSpace2>`). For any of these methods discussed below,
+the function value and the gradient are also computed as byproducts, so they can
+be used for Newton's method or other optimization algorithms.
 
 :func:`wp.JetSpace2 <JetSpace2>` is constructed and seeded like :func:`wp.JetSpace <JetSpace>`, with scalar, ``vec2``
 and ``vec3`` slots. A second-order jet carries its value, its gradient ``grad`` and its dense Hessian ``hess``:
@@ -244,6 +246,7 @@ and ``vec3`` slots. A second-order jet carries its value, its gradient ``grad`` 
      [-1.   0.   0.   1.   0.   0. ]
      [ 0.  -0.5  0.   0.   0.5  0. ]
      [ 0.   0.  -0.5  0.   0.   0.5]]
+
 
 Reverse over forward
 ^^^^^^^^^^^^^^^^^^^^
@@ -531,24 +534,24 @@ single launch.
 
     * - Element
       - ``k``
-      - ``k`` tape sweeps over a width-1 jet (ms)
-      - In-kernel ``wp.grad`` over a width-1 jet (ms)
-      - Second-order jet (ms)
+      - Second-order jet (ns/element)
+      - In-kernel ``wp.grad`` over a width-1 jet (ns/element)
+      - ``k`` tape sweeps over a width-1 jet (ns/element)
     * - Spring
       - 6
       - MISSING
-      - 0.584
-      - 0.561
+      - MISSING
+      - MISSING
     * - Triangle
       - 9
       - MISSING
-      - 3.2
-      - 2.0
+      - MISSING
+      - MISSING
     * - Tetrahedron
       - 12
       - MISSING
-      - 1.00
-      - 0.51
+      - MISSING
+      - MISSING
 
 The second-order jet is fastest at run time for these small energies, but it pays for that at compile time, because its
 state is :math:`O(k^2)` and NVCC compile time is super-linear in ``k``. For the short elasticity energies above a
