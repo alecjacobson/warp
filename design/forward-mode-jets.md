@@ -53,7 +53,7 @@ assembly step.
 | R5  | Several widths and dtypes coexist in one process                                   | Should   |                                                  |
 | R6  | Geometry helpers: `dot`, `length`, `normalize`, `cross`                            | Should   |                                                  |
 | R7  | Matrix jets: `determinant`, `trace`, `transpose`, `inverse`, matmul                | Should   | Square `mat2`/`mat3` and rectangular `mat32`/`mat23` for deformation gradients |
-| R8  | Second-order scalar jets giving a dense local Hessian in one forward pass           | Should   | `wp.JetSpace2`; no tape required                 |
+| R8  | Second-order jets giving a dense local Hessian in one forward pass                  | Should   | `wp.JetSpace2`; no tape required                 |
 
 **Non-goals**: second-order jets for vector/matrix payloads
 ([#11](https://github.com/alecjacobson/warp/issues/11) -- may not be
@@ -380,7 +380,7 @@ overloads.
 
 ### Second-order jets
 
-`wp.JetSpace2(width, dtype)` carries a value, a length-`width` gradient, and a
+`wp.JetSpace2(slots, dtype)` carries a value, a length-`width` gradient, and a
 dense `width × width` Hessian, propagated by the second-order chain rule through
 the same arithmetic, transcendental, and branching overloads as first-order
 jets. One forward evaluation of a scalar energy yields its local Hessian with

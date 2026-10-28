@@ -2437,8 +2437,13 @@ def JetSpace2(slots, dtype=None):
             or contains only Python ``float``.
 
     Returns:
-        A namespace holding the generated types (``scalar``, ``vec2``, ``vec3``)
-        and the helpers that construct jets.
+        A namespace holding the generated jet types (``scalar``, ``vec2``,
+        ``vec3``), the types of a jet's gradient and Hessian (``grad``,
+        ``hess``), and the helpers that construct jets.
+
+    The width is always the total number of scalar components in ``slots``:
+    unlike :func:`warp.JetSpace`, there is no ``width`` argument and no
+    ``directional``.
 
     ``seed(*values)`` takes one value per slot and returns one jet per slot,
     with the derivative directions numbered slot by slot in the order the

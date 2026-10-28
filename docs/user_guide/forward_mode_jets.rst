@@ -506,7 +506,7 @@ mode here; their value is that the same code also yields second derivatives.
 
     * - Element
       - ``k``
-      - Forward-mode jet (ns/element)
+      - Forward-mode ``wp.JetSpace`` (ns/element)
       - Reverse mode, ``Tape`` (ns/element)
       - ``wp.grad`` in kernel (ns/element)
     * - Spring
