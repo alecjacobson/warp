@@ -44,8 +44,8 @@ Three levels are involved:
   coefficient data: for example, the coefficients of a ``J.vec2`` jet are a ``J.coeff_type_vec2``, an ordinary
   :math:`2 \times w` matrix whose rows are the derivatives of the two components.
 
-A Simple First Example
-----------------------
+A Small First Example
+---------------------
 
 For example, take :math:`u = a + b` and :math:`v = a - b` at :math:`a = 2, b = 3`. With width 2, ``Jcoord.seed()`` seeds
 each input along its own direction, so the coefficients of ``a`` and ``b`` are the rows of the identity, and the
