@@ -304,11 +304,12 @@ adjoint, which is what makes R2 work.
 
 Registered names: `add`, `sub`, `mul`, `div`, `pow`, `neg`, `pos`, `sin`,
 `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `log`, `sqrt`, `abs`,
-`sign`, `min`, `max`, `clamp`, `where`, `extract`, `dot`, `length`,
-`length_sq`, `normalize`, `cross`, `transpose`, `determinant`, `trace`,
+`sign`, `min`, `max`, `clamp`, `where`, `extract`, `dot`, `cw_mul`, `cw_div`,
+`length`, `length_sq`, `normalize`, `cross`, `transpose`, `determinant`, `trace`,
 `inverse`. `wp.JetSpace2` registers the same scalar arithmetic, transcendental,
 and branching families (up through `where`), plus the vector arithmetic,
-`extract`, `dot`, `length`, `length_sq`, `normalize` and `cross`.
+`extract`, `dot`, `cw_mul`, `cw_div`, `length`, `length_sq`, `normalize` and
+`cross`.
 
 The value-branching builtins (`min`, `max`, `clamp`, `where`, `abs`, `sign`)
 select or pass through the derivative of the branch they take, alongside the
@@ -451,6 +452,7 @@ operation family. "FD" marks families verified against finite differences in
 | Branching (`min max clamp where abs sign`) — FD           |        ✓         |          –          |            –            |        ✓         |          –          |
 | Indexing (`v[i]`, `extract`)                              |        ✓         |          ✓          |            ✓            |        –         |       ✓ — FD        |
 | Geometry (`dot length length_sq normalize cross`)         |        ✓         |          ✓          |            –            |        –         |       ✓ — FD        |
+| Component-wise (`cw_mul cw_div`)                          |        –         |          ✓          |            –            |        –         |          ✓          |
 | Matrix (`transpose trace determinant inverse`, matmul)    |        –         |          –          |    ✓ (mat22/33/32/23)    |        –         |          –          |
 | Reverse-over-jet Hessian via `wp.Tape`                    |        ✓         |          ✓          |            ✓            |     n/a          |         n/a         |
 | Reverse-over-jet Hessian via in-kernel `wp.grad` (no tape) |        ✓         |          ✓          |            ✓            |     n/a          |         n/a         |

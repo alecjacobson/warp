@@ -855,5 +855,163 @@ class TestJetMixedOperands(unittest.TestCase):
             np.testing.assert_allclose(pm.grad.numpy(), pm_grad, rtol=1.0e-5, atol=1.0e-6)
 
 
+# --------------------------------------------------------------------------
+# Component-wise products, checked against the same product assembled from
+# per-component scalar operations, for first- and second-order vector jets
+# with either operand plain.
+# --------------------------------------------------------------------------
+
+JC2 = wp.JetSpace((wp.vec2, wp.vec2), width=2)
+JC3 = wp.JetSpace((wp.vec3, wp.vec3), width=2)
+J2C2 = wp.JetSpace2((wp.vec2, wp.vec2))
+J2C3 = wp.JetSpace2((wp.vec3, wp.vec3))
+
+
+@wp.func
+def cw_mul_by_components(a: Any, b: Any, e0: Any, e1: Any):
+    return a[0] * b[0] * e0 + a[1] * b[1] * e1
+
+
+@wp.func
+def cw_div_by_components(a: Any, b: Any, e0: Any, e1: Any):
+    return a[0] / b[0] * e0 + a[1] / b[1] * e1
+
+
+@wp.func
+def cw_mul_by_components(a: Any, b: Any, e0: Any, e1: Any, e2: Any):
+    return a[0] * b[0] * e0 + a[1] * b[1] * e1 + a[2] * b[2] * e2
+
+
+@wp.func
+def cw_div_by_components(a: Any, b: Any, e0: Any, e1: Any, e2: Any):
+    return a[0] / b[0] * e0 + a[1] / b[1] * e1 + a[2] / b[2] * e2
+
+
+@wp.func
+def jet2_scalar_err(a: Any, b: Any) -> float:
+    dg = a.grad - b.grad
+    dh = a.hess - b.hess
+    return (a.value - b.value) * (a.value - b.value) + wp.dot(dg, dg) + wp.ddot(dh, dh)
+
+
+@wp.func
+def jet2_vec2_err(a: Any, b: Any) -> float:
+    return jet2_scalar_err(a.x, b.x) + jet2_scalar_err(a.y, b.y)
+
+
+@wp.func
+def jet2_vec3_err(a: Any, b: Any) -> float:
+    return jet2_scalar_err(a.x, b.x) + jet2_scalar_err(a.y, b.y) + jet2_scalar_err(a.z, b.z)
+
+
+@wp.kernel(enable_backward=False)
+def cw_first_order_kernel(
+    a2_in: wp.array[wp.vec2],
+    b2_in: wp.array[wp.vec2],
+    a3_in: wp.array[wp.vec3],
+    b3_in: wp.array[wp.vec3],
+    err: wp.array2d[float],
+):
+    i = wp.tid()
+    pa2 = a2_in[i]
+    pb2 = b2_in[i]
+    pa3 = a3_in[i]
+    pb3 = b3_in[i]
+    a2, b2 = JC2.directional(pa2, pb2, pb2, -pa2, wp.vec2(1.0, -0.5), pa2)
+    a3, b3 = JC3.directional(pa3, pb3, pb3, -pa3, wp.vec3(1.0, -0.5, 0.25), pa3)
+    x2 = wp.vec2(1.0, 0.0)
+    y2 = wp.vec2(0.0, 1.0)
+    x3 = wp.vec3(1.0, 0.0, 0.0)
+    y3 = wp.vec3(0.0, 1.0, 0.0)
+    z3 = wp.vec3(0.0, 0.0, 1.0)
+
+    err[i, 0] = vec_err(wp.cw_mul(a2, b2), cw_mul_by_components(a2, b2, x2, y2))
+    err[i, 1] = vec_err(wp.cw_mul(a2, pb2), cw_mul_by_components(a2, pb2, x2, y2))
+    err[i, 2] = vec_err(wp.cw_mul(pa2, b2), cw_mul_by_components(pa2, b2, x2, y2))
+    err[i, 3] = vec_err(wp.cw_div(a2, b2), cw_div_by_components(a2, b2, x2, y2))
+    err[i, 4] = vec_err(wp.cw_div(a2, pb2), cw_div_by_components(a2, pb2, x2, y2))
+    err[i, 5] = vec_err(wp.cw_div(pa2, b2), cw_div_by_components(pa2, b2, x2, y2))
+    err[i, 6] = vec_err(wp.cw_mul(a3, b3), cw_mul_by_components(a3, b3, x3, y3, z3))
+    err[i, 7] = vec_err(wp.cw_mul(a3, pb3), cw_mul_by_components(a3, pb3, x3, y3, z3))
+    err[i, 8] = vec_err(wp.cw_mul(pa3, b3), cw_mul_by_components(pa3, b3, x3, y3, z3))
+    err[i, 9] = vec_err(wp.cw_div(a3, b3), cw_div_by_components(a3, b3, x3, y3, z3))
+    err[i, 10] = vec_err(wp.cw_div(a3, pb3), cw_div_by_components(a3, pb3, x3, y3, z3))
+    err[i, 11] = vec_err(wp.cw_div(pa3, b3), cw_div_by_components(pa3, b3, x3, y3, z3))
+
+
+@wp.kernel(enable_backward=False)
+def cw_second_order_kernel(
+    a2_in: wp.array[wp.vec2],
+    b2_in: wp.array[wp.vec2],
+    a3_in: wp.array[wp.vec3],
+    b3_in: wp.array[wp.vec3],
+    err: wp.array2d[float],
+):
+    i = wp.tid()
+    pa2 = a2_in[i]
+    pb2 = b2_in[i]
+    pa3 = a3_in[i]
+    pb3 = b3_in[i]
+    # Square the seeded jets so the operands carry nonzero Hessians.
+    s2, t2 = J2C2.seed(pa2, pb2)
+    s3, t3 = J2C3.seed(pa3, pb3)
+    a2 = wp.cw_mul(s2, s2) + t2
+    b2 = wp.cw_mul(t2, t2) - s2 + wp.vec2(2.0)
+    a3 = wp.cw_mul(s3, s3) + t3
+    b3 = wp.cw_mul(t3, t3) - s3 + wp.vec3(2.0)
+    x2 = wp.vec2(1.0, 0.0)
+    y2 = wp.vec2(0.0, 1.0)
+    x3 = wp.vec3(1.0, 0.0, 0.0)
+    y3 = wp.vec3(0.0, 1.0, 0.0)
+    z3 = wp.vec3(0.0, 0.0, 1.0)
+
+    err[i, 0] = jet2_vec2_err(wp.cw_mul(a2, b2), cw_mul_by_components(a2, b2, x2, y2))
+    err[i, 1] = jet2_vec2_err(wp.cw_mul(a2, pb2), cw_mul_by_components(a2, pb2, x2, y2))
+    err[i, 2] = jet2_vec2_err(wp.cw_mul(pa2, b2), cw_mul_by_components(pa2, b2, x2, y2))
+    err[i, 3] = jet2_vec2_err(wp.cw_div(a2, b2), cw_div_by_components(a2, b2, x2, y2))
+    err[i, 4] = jet2_vec2_err(wp.cw_div(a2, pb2), cw_div_by_components(a2, pb2, x2, y2))
+    err[i, 5] = jet2_vec2_err(wp.cw_div(pa2, b2), cw_div_by_components(pa2, b2, x2, y2))
+    err[i, 6] = jet2_vec3_err(wp.cw_mul(a3, b3), cw_mul_by_components(a3, b3, x3, y3, z3))
+    err[i, 7] = jet2_vec3_err(wp.cw_mul(a3, pb3), cw_mul_by_components(a3, pb3, x3, y3, z3))
+    err[i, 8] = jet2_vec3_err(wp.cw_mul(pa3, b3), cw_mul_by_components(pa3, b3, x3, y3, z3))
+    err[i, 9] = jet2_vec3_err(wp.cw_div(a3, b3), cw_div_by_components(a3, b3, x3, y3, z3))
+    err[i, 10] = jet2_vec3_err(wp.cw_div(a3, pb3), cw_div_by_components(a3, pb3, x3, y3, z3))
+    err[i, 11] = jet2_vec3_err(wp.cw_div(pa3, b3), cw_div_by_components(pa3, b3, x3, y3, z3))
+
+
+class TestJetComponentWise(unittest.TestCase):
+    def _launch(self, kernel):
+        rng = np.random.default_rng(5)
+        m = 5
+
+        def operand(n):
+            # Magnitudes in [0.5, 1.5] with random signs keep the divisors away from zero.
+            return (rng.uniform(0.5, 1.5, size=(m, n)) * rng.choice([-1.0, 1.0], size=(m, n))).astype(np.float32)
+
+        for device in DEVICES:
+            err = wp.zeros((m, 12), dtype=float, device=device)
+            wp.launch(
+                kernel,
+                dim=m,
+                inputs=[
+                    wp.array(operand(2), dtype=wp.vec2, device=device),
+                    wp.array(operand(2), dtype=wp.vec2, device=device),
+                    wp.array(operand(3), dtype=wp.vec3, device=device),
+                    wp.array(operand(3), dtype=wp.vec3, device=device),
+                ],
+                outputs=[err],
+                device=device,
+            )
+            np.testing.assert_allclose(err.numpy(), 0.0, atol=1.0e-9)
+
+    def test_first_order(self):
+        """Check first-order cw_mul and cw_div against per-component products, with either operand plain."""
+        self._launch(cw_first_order_kernel)
+
+    def test_second_order(self):
+        """Check second-order cw_mul and cw_div against per-component products, with either operand plain."""
+        self._launch(cw_second_order_kernel)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

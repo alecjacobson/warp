@@ -734,6 +734,116 @@ def _make_jet_space(width: int, dtype):
         return JetScalar(wp.dot(a, b.value), c)
 
     # ------------------------------------------------------------------
+    # Component-wise products
+    # ------------------------------------------------------------------
+
+    @wp.func
+    def jet_cw_mul(a: JetVec2, b: JetVec2) -> JetVec2:
+        c = CoeffVec2()
+        for i in range(2):
+            for q in range(wp.static(width)):
+                c[i, q] = a.coeff[i, q] * b.value[i] + a.value[i] * b.coeff[i, q]
+        return JetVec2(wp.cw_mul(a.value, b.value), c)
+
+    @wp.func
+    def jet_cw_mul(a: JetVec2, b: NativeVec2) -> JetVec2:
+        c = CoeffVec2()
+        for i in range(2):
+            for q in range(wp.static(width)):
+                c[i, q] = a.coeff[i, q] * b[i]
+        return JetVec2(wp.cw_mul(a.value, b), c)
+
+    @wp.func
+    def jet_cw_mul(a: NativeVec2, b: JetVec2) -> JetVec2:
+        c = CoeffVec2()
+        for i in range(2):
+            for q in range(wp.static(width)):
+                c[i, q] = a[i] * b.coeff[i, q]
+        return JetVec2(wp.cw_mul(a, b.value), c)
+
+    @wp.func
+    def jet_cw_div(a: JetVec2, b: JetVec2) -> JetVec2:
+        value = wp.cw_div(a.value, b.value)
+        c = CoeffVec2()
+        for i in range(2):
+            inv_b = dtype(1.0) / b.value[i]
+            for q in range(wp.static(width)):
+                c[i, q] = (a.coeff[i, q] - value[i] * b.coeff[i, q]) * inv_b
+        return JetVec2(value, c)
+
+    @wp.func
+    def jet_cw_div(a: JetVec2, b: NativeVec2) -> JetVec2:
+        c = CoeffVec2()
+        for i in range(2):
+            inv_b = dtype(1.0) / b[i]
+            for q in range(wp.static(width)):
+                c[i, q] = a.coeff[i, q] * inv_b
+        return JetVec2(wp.cw_div(a.value, b), c)
+
+    @wp.func
+    def jet_cw_div(a: NativeVec2, b: JetVec2) -> JetVec2:
+        value = wp.cw_div(a, b.value)
+        c = CoeffVec2()
+        for i in range(2):
+            inv_b = dtype(1.0) / b.value[i]
+            for q in range(wp.static(width)):
+                c[i, q] = -value[i] * b.coeff[i, q] * inv_b
+        return JetVec2(value, c)
+
+    @wp.func
+    def jet_cw_mul(a: JetVec3, b: JetVec3) -> JetVec3:
+        c = CoeffVec3()
+        for i in range(3):
+            for q in range(wp.static(width)):
+                c[i, q] = a.coeff[i, q] * b.value[i] + a.value[i] * b.coeff[i, q]
+        return JetVec3(wp.cw_mul(a.value, b.value), c)
+
+    @wp.func
+    def jet_cw_mul(a: JetVec3, b: NativeVec3) -> JetVec3:
+        c = CoeffVec3()
+        for i in range(3):
+            for q in range(wp.static(width)):
+                c[i, q] = a.coeff[i, q] * b[i]
+        return JetVec3(wp.cw_mul(a.value, b), c)
+
+    @wp.func
+    def jet_cw_mul(a: NativeVec3, b: JetVec3) -> JetVec3:
+        c = CoeffVec3()
+        for i in range(3):
+            for q in range(wp.static(width)):
+                c[i, q] = a[i] * b.coeff[i, q]
+        return JetVec3(wp.cw_mul(a, b.value), c)
+
+    @wp.func
+    def jet_cw_div(a: JetVec3, b: JetVec3) -> JetVec3:
+        value = wp.cw_div(a.value, b.value)
+        c = CoeffVec3()
+        for i in range(3):
+            inv_b = dtype(1.0) / b.value[i]
+            for q in range(wp.static(width)):
+                c[i, q] = (a.coeff[i, q] - value[i] * b.coeff[i, q]) * inv_b
+        return JetVec3(value, c)
+
+    @wp.func
+    def jet_cw_div(a: JetVec3, b: NativeVec3) -> JetVec3:
+        c = CoeffVec3()
+        for i in range(3):
+            inv_b = dtype(1.0) / b[i]
+            for q in range(wp.static(width)):
+                c[i, q] = a.coeff[i, q] * inv_b
+        return JetVec3(wp.cw_div(a.value, b), c)
+
+    @wp.func
+    def jet_cw_div(a: NativeVec3, b: JetVec3) -> JetVec3:
+        value = wp.cw_div(a, b.value)
+        c = CoeffVec3()
+        for i in range(3):
+            inv_b = dtype(1.0) / b.value[i]
+            for q in range(wp.static(width)):
+                c[i, q] = -value[i] * b.coeff[i, q] * inv_b
+        return JetVec3(value, c)
+
+    # ------------------------------------------------------------------
     # Length / normalization
     # ------------------------------------------------------------------
 
@@ -1343,6 +1453,8 @@ def _make_jet_space(width: int, dtype):
     _register("extract", jet_extract)
 
     _register("dot", jet_dot)
+    _register("cw_mul", jet_cw_mul)
+    _register("cw_div", jet_cw_div)
     _register("length", jet_length)
     _register("length_sq", jet_length_sq)
     _register("normalize", jet_normalize)
@@ -2344,6 +2456,54 @@ def _make_jet_space2(width: int, dtype):
         return a[0] * b.x + a[1] * b.y + a[2] * b.z
 
     @wp.func
+    def jet_cw_mul(a: Jet2Vec2, b: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(a.x * b.x, a.y * b.y)
+
+    @wp.func
+    def jet_cw_mul(a: Jet2Vec2, b: NativeVec2) -> Jet2Vec2:
+        return Jet2Vec2(a.x * b[0], a.y * b[1])
+
+    @wp.func
+    def jet_cw_mul(a: NativeVec2, b: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(a[0] * b.x, a[1] * b.y)
+
+    @wp.func
+    def jet_cw_mul(a: Jet2Vec3, b: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(a.x * b.x, a.y * b.y, a.z * b.z)
+
+    @wp.func
+    def jet_cw_mul(a: Jet2Vec3, b: NativeVec3) -> Jet2Vec3:
+        return Jet2Vec3(a.x * b[0], a.y * b[1], a.z * b[2])
+
+    @wp.func
+    def jet_cw_mul(a: NativeVec3, b: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(a[0] * b.x, a[1] * b.y, a[2] * b.z)
+
+    @wp.func
+    def jet_cw_div(a: Jet2Vec2, b: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(a.x / b.x, a.y / b.y)
+
+    @wp.func
+    def jet_cw_div(a: Jet2Vec2, b: NativeVec2) -> Jet2Vec2:
+        return Jet2Vec2(a.x / b[0], a.y / b[1])
+
+    @wp.func
+    def jet_cw_div(a: NativeVec2, b: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(a[0] / b.x, a[1] / b.y)
+
+    @wp.func
+    def jet_cw_div(a: Jet2Vec3, b: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(a.x / b.x, a.y / b.y, a.z / b.z)
+
+    @wp.func
+    def jet_cw_div(a: Jet2Vec3, b: NativeVec3) -> Jet2Vec3:
+        return Jet2Vec3(a.x / b[0], a.y / b[1], a.z / b[2])
+
+    @wp.func
+    def jet_cw_div(a: NativeVec3, b: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(a[0] / b.x, a[1] / b.y, a[2] / b.z)
+
+    @wp.func
     def jet_length_sq(v: Jet2Vec2) -> Jet2Scalar:
         return jet_dot(v, v)
 
@@ -2427,6 +2587,8 @@ def _make_jet_space2(width: int, dtype):
     _register("extract", jet_extract)
 
     _register("dot", jet_dot)
+    _register("cw_mul", jet_cw_mul)
+    _register("cw_div", jet_cw_div)
     _register("length", jet_length)
     _register("length_sq", jet_length_sq)
     _register("normalize", jet_normalize)

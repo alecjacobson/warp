@@ -225,7 +225,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
     from warp.tests.test_intersect import TestIntersect
     from warp.tests.test_iter import TestIter
     from warp.tests.test_jet import TestJet, TestJetSpace
-    from warp.tests.test_jet_ops import TestJetMatrix, TestJetMixedOperands, TestJetOps
+    from warp.tests.test_jet_ops import TestJetComponentWise, TestJetMatrix, TestJetMixedOperands, TestJetOps
     from warp.tests.test_kernel_cache import TestKernelCache
     from warp.tests.test_large import TestLarge
     from warp.tests.test_launch import TestLaunch
@@ -414,6 +414,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
         TestJetOps,
         TestJetMatrix,
         TestJetMixedOperands,
+        TestJetComponentWise,
         TestKernelAttributes,
         TestKernelCache,
         TestLarge,
