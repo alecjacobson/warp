@@ -40,7 +40,10 @@ direction:
     Jdir = wp.JetSpace((wp.float32, wp.float32), width=1)  # width 1: one chosen direction
 
     @wp.kernel
-    def sum_difference_kernel(jacobian: wp.array[Jcoord.coeff], jacobian_times_direction: wp.array[Jdir.coeff]):
+    def sum_difference_kernel(
+        jacobian: wp.array[Jcoord.coeff_type_scalar],
+        jacobian_times_direction: wp.array[Jdir.coeff_type_scalar],
+    ):
         # Coordinate directions: a.coeff = (1, 0), b.coeff = (0, 1).
         a, b = Jcoord.seed(2.0, 3.0)
         u = a + b
@@ -55,8 +58,8 @@ direction:
         jacobian_times_direction[0] = u1.coeff
         jacobian_times_direction[1] = v1.coeff
 
-    jacobian = wp.zeros(2, dtype=Jcoord.coeff)
-    jacobian_times_direction = wp.zeros(2, dtype=Jdir.coeff)
+    jacobian = wp.zeros(2, dtype=Jcoord.coeff_type_scalar)
+    jacobian_times_direction = wp.zeros(2, dtype=Jdir.coeff_type_scalar)
     wp.launch(sum_difference_kernel, dim=1, outputs=[jacobian, jacobian_times_direction])
 
     print(f"jacobian =\n{jacobian.numpy()}")
@@ -104,7 +107,7 @@ residual's Jacobian:
         shoulder: wp.array[float],
         elbow: wp.array[float],
         target_pos: wp.array[wp.vec2],
-        jacobian: wp.array[J.coeff_vec2],
+        jacobian: wp.array[J.coeff_type_vec2],  # a vec2 jet's coefficients: 2x4 here
     ):
         tid = wp.tid()
         jet_base_pos, jet_shoulder, jet_elbow = J.seed(base_pos[tid], shoulder[tid], elbow[tid])
@@ -115,7 +118,7 @@ residual's Jacobian:
     shoulder = wp.array([np.radians(45.0)], dtype=float)
     elbow = wp.array([np.radians(-45.0)], dtype=float)
     target_pos = wp.array([[-0.5, 0.5]], dtype=wp.vec2)
-    jacobian = wp.zeros(1, dtype=J.coeff_vec2)
+    jacobian = wp.zeros(1, dtype=J.coeff_type_vec2)
 
     wp.launch(residual_jacobian_kernel, dim=1, inputs=[base_pos, shoulder, elbow, target_pos], outputs=[jacobian])
 
@@ -140,13 +143,21 @@ default, the width of the jets is the total number of scalar components (``width
 carry the full Jacobian with respect to these inputs.
 
 The slot types are scalars, ``vec2``, ``vec3``, and the ``mat22``, ``mat33``, ``mat32`` and ``mat23`` matrices.
-The jets for each are available on the returned namespace as ``J.scalar``, ``J.vec2``, ``J.vec3``, ``J.mat22``,
-``J.mat33``, ``J.mat32`` and ``J.mat23``, and ``J.coeff`` is the type of a scalar jet's derivative vector.
+:func:`wp.JetSpace <JetSpace>` returns a namespace of types that share the same derivative directions. For each slot
+type ``X`` it holds a jet type ``J.X`` (``J.scalar``, ``J.vec2``, ..., ``J.mat23``) and the type of that jet's
+``coeff`` field, ``J.coeff_type_X``. For example, a ``J.vec2`` jet's coefficients are a ``J.coeff_type_vec2``, a
+:math:`2 \times w` matrix whose row :math:`r` holds the derivatives of component :math:`r`. Matrix jets flatten their
+entries row-major, so ``J.coeff_type_mat22`` has four rows. Every input and intermediate of the same type shares one
+jet type: ``J.vec2`` is the type of every ``vec2`` jet in the space, not of a particular slot. The same types can be
+looked up by the plain Warp type, as in ``J.jet_type(wp.vec2)`` and ``J.coeff_type(wp.vec2)``. These lookups work in
+annotations and host code, but cannot be called inside a kernel or :func:`@wp.func <func>`, where the attributes are
+needed.
 
-Inside a kernel, ``J.seed()`` takes one value per slot and returns one jet per slot. It copies each input's value into
-the jet's ``value`` field and sets the ``coeff`` field to the unit vector along the corresponding direction of the
-derivative space, ordered by slot and then by component within the slot (row-major for matrices). In effect, the jets
-are seeded with the identity matrix, so the coefficients of any downstream output contain its Jacobian.
+Individual jets are instances of these types, and ``a.value`` and ``a.coeff`` are the data a jet ``a`` holds. Inside a
+kernel, ``J.seed()`` creates them: it takes one value per slot and returns one jet per slot. It copies each input's
+value into the jet's ``value`` field and sets the ``coeff`` field to the unit vector along the corresponding direction
+of the derivative space, ordered by slot and then by component within the slot (row-major for matrices). In effect, the
+jets are seeded with the identity matrix, so the coefficients of any downstream output contain its Jacobian.
 
 Width and Directional
 ---------------------
@@ -178,7 +189,7 @@ translates, the end of the arm moves exactly as the elbow does:
         shoulder: wp.array[float],
         elbow: wp.array[float],
         target_pos: wp.array[wp.vec2],
-        directional_derivative: wp.array[Jd.coeff_vec2],
+        directional_derivative: wp.array[Jd.coeff_type_vec2],
     ):
         tid = wp.tid()
         # Rotate the shoulder and the elbow in opposite directions at the same rate.
@@ -186,7 +197,7 @@ translates, the end of the arm moves exactly as the elbow does:
         jet_residual = residual(base_pos[tid], jet_shoulder, jet_elbow, target_pos[tid])
         directional_derivative[tid] = jet_residual.coeff
 
-    directional_derivative = wp.zeros(1, dtype=Jd.coeff_vec2)
+    directional_derivative = wp.zeros(1, dtype=Jd.coeff_type_vec2)
 
     wp.launch(
         directional_derivative_kernel,
@@ -216,7 +227,7 @@ along ``direction``.
     Jn = wp.JetSpace(4)  # four scalars, width 4
 
     @wp.kernel
-    def sum_of_cubes_gradient_kernel(x: wp.array2d[float], gradient: wp.array[Jn.coeff]):
+    def sum_of_cubes_gradient_kernel(x: wp.array2d[float], gradient: wp.array[Jn.coeff_type_scalar]):
         tid = wp.tid()
         total = Jn.constant(0.0)
         for k in range(4):
@@ -225,7 +236,7 @@ along ``direction``.
         gradient[tid] = total.coeff
 
     x = wp.array([[1.0, 2.0, 3.0, 4.0]], dtype=float)
-    gradient = wp.zeros(1, dtype=Jn.coeff)
+    gradient = wp.zeros(1, dtype=Jn.coeff_type_scalar)
 
     wp.launch(sum_of_cubes_gradient_kernel, dim=1, inputs=[x], outputs=[gradient])
 
@@ -245,7 +256,8 @@ the function value and the gradient are also computed as byproducts, so they can
 be used for Newton's method or other optimization algorithms.
 
 :func:`wp.JetSpace2 <JetSpace2>` is constructed and seeded like :func:`wp.JetSpace <JetSpace>`, with scalar, ``vec2``
-and ``vec3`` slots. A second-order jet carries its value, its gradient ``grad`` and its dense Hessian ``hess``:
+and ``vec3`` slots. A second-order scalar jet carries its value, its gradient ``grad`` and its dense Hessian
+``hess``, whose types are ``J2.grad_type_scalar`` and ``J2.hess_type_scalar``:
 
 .. testcode::
 
@@ -261,8 +273,8 @@ and ``vec3`` slots. A second-order jet carries its value, its gradient ``grad`` 
         x0: wp.array[wp.vec3],
         x1: wp.array[wp.vec3],
         val: wp.array[float],
-        grad: wp.array[J2.grad],
-        hess: wp.array[J2.hess],
+        grad: wp.array[J2.grad_type_scalar],
+        hess: wp.array[J2.hess_type_scalar],
     ):
         i = wp.tid()
         jet_x0, jet_x1 = J2.seed(x0[i], x1[i])
@@ -275,8 +287,8 @@ and ``vec3`` slots. A second-order jet carries its value, its gradient ``grad`` 
     x0 = wp.array([[0.0, 0.0, 0.0]], dtype=wp.vec3)
     x1 = wp.array([[2.0, 0.0, 0.0]], dtype=wp.vec3)
     val = wp.zeros(1, dtype=float)
-    grad = wp.zeros(1, dtype=J2.grad)
-    hess = wp.zeros(1, dtype=J2.hess)
+    grad = wp.zeros(1, dtype=J2.grad_type_scalar)
+    hess = wp.zeros(1, dtype=J2.hess_type_scalar)
 
     wp.launch(hessian_kernel, dim=1, inputs=[x0, x1], outputs=[val, grad, hess])
 

@@ -72,7 +72,7 @@ def residual(x: wp.vec3, j: int):
 
 
 @wp.kernel(enable_backward=False)
-def jacobian_jet_kernel(x: wp.array[wp.vec3], m: int, jac: wp.array[J3.coeff]):
+def jacobian_jet_kernel(x: wp.array[wp.vec3], m: int, jac: wp.array[J3.coeff_type_scalar]):
     i = wp.tid()
     n = x.shape[0]
     p = J3.seed(x[i])
@@ -138,7 +138,7 @@ def main():
     print(f"{'m':>4} {'jet':>8} {'wp.grad':>9} {'tape':>9} {'grad/jet':>9} {'tape/jet':>9} {'max rel err':>12}")
 
     for m in args.ms:
-        jac_jet = wp.zeros(m * n, dtype=J3.coeff, device=device)
+        jac_jet = wp.zeros(m * n, dtype=J3.coeff_type_scalar, device=device)
         jac_grad = wp.zeros(m * n, dtype=wp.vec3, device=device)
 
         def run_jet(m=m, jac_jet=jac_jet):

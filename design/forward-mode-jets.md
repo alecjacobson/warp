@@ -120,7 +120,14 @@ inputs being differentiated with respect to -- see [Slots and seeding](#slots-an
 | `mat23` | `matrix(2, 3)`  | `matrix(6, width)`   |
 
 Matrix `coeff` stores the entry derivatives row-major (`coeff[r * cols + c, q]`
-is `d value[r, c] / d eps_q`). Each type is a `@wp.struct`. The arithmetic is
+is `d value[r, c] / d eps_q`). The namespace names each jet type after the
+Warp type of its value (`J.vec2`, `J.mat22`) and each `coeff` type
+`J.coeff_type_<name>` (`J.coeff_type_vec2`, `J.coeff_type_mat22`); a
+`_type_` infix keeps type attributes distinct from the jet fields
+`a.coeff`, `a.grad` and `a.hess`. `J.jet_type(t)` and `J.coeff_type(t)` look
+the same types up by Warp type, for annotations and host code: Warp's kernel
+codegen cannot call a Python function that returns a type, so kernel bodies
+use the attributes. Each jet type is a `@wp.struct`. The arithmetic is
 generated as ordinary `@wp.func`
 overloads over those structs, with width-dependent loops statically unrolled
 via `wp.static(width)`.
@@ -348,7 +355,7 @@ def local_energy(a: J.scalar, b: J.scalar) -> J.scalar:
 
 
 @wp.kernel
-def local_gradient(z: wp.array2d[float], grad_g: wp.array[J.coeff]):
+def local_gradient(z: wp.array2d[float], grad_g: wp.array[J.coeff_type_scalar]):
     i = wp.tid()
     a, b = J.seed(z[i, 0], z[i, 1])
     grad_g[i] = local_energy(a, b).coeff

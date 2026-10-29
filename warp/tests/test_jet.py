@@ -40,7 +40,7 @@ def local_energy(a: Any, b: Any):
 
 
 @wp.kernel
-def local_gradient(z: wp.array2d[float], grad_g: wp.array[J2.coeff]):
+def local_gradient(z: wp.array2d[float], grad_g: wp.array[J2.coeff_type_scalar]):
     i = wp.tid()
 
     # Identity seed: dz0 = [1,0], dz1 = [0,1]
@@ -133,7 +133,7 @@ def hessian_from_tape(z_np, device):
     """
     m = z_np.shape[0]
 
-    grad_g = wp.zeros(m, dtype=J2.coeff, device=device)
+    grad_g = wp.zeros(m, dtype=J2.coeff_type_scalar, device=device)
     wp.launch(
         local_gradient, dim=m, inputs=[wp.array(z_np, dtype=float, device=device)], outputs=[grad_g], device=device
     )
@@ -224,7 +224,7 @@ def spring_energy(x0: J6.vec3, x1: J6.vec3) -> J6.scalar:
 def spring_gradient(
     x0: wp.array[wp.vec3],
     x1: wp.array[wp.vec3],
-    grad: wp.array[J6.coeff],
+    grad: wp.array[J6.coeff_type_scalar],
 ):
     i = wp.tid()
 
@@ -240,7 +240,7 @@ def test_jet_spring_gradient(test, device):
 
     x0 = wp.array(x0_np, dtype=wp.vec3, device=device)
     x1 = wp.array(x1_np, dtype=wp.vec3, device=device)
-    grad = wp.zeros(2, dtype=J6.coeff, device=device)
+    grad = wp.zeros(2, dtype=J6.coeff_type_scalar, device=device)
 
     wp.launch(spring_gradient, dim=2, inputs=[x0, x1], outputs=[grad], device=device)
 
@@ -397,8 +397,8 @@ class TestJetSpace(unittest.TestCase):
         """Check that a space reports the width it was created with."""
         self.assertEqual(J2.width, 2)
         self.assertEqual(J6.width, 6)
-        self.assertEqual(wp.types.type_size(J2.coeff), 2)
-        self.assertEqual(wp.types.type_size(J6.coeff), 6)
+        self.assertEqual(wp.types.type_size(J2.coeff_type_scalar), 2)
+        self.assertEqual(wp.types.type_size(J6.coeff_type_scalar), 6)
 
     def test_jet_space_slots_set_width(self):
         """Check the width defaults to the number of scalar components in the slots."""
@@ -448,6 +448,41 @@ class TestJetSpace(unittest.TestCase):
             getattr(narrow, "seed")  # noqa: B009
 
         self.assertTrue(hasattr(narrow, "directional"))
+
+    def test_jet_space_type_lookup(self):
+        """Check jet_type() and coeff_type() return the types of each jet and its coefficients."""
+        kinds = (
+            (wp.float32, "scalar"),
+            (float, "scalar"),
+            (wp.vec2, "vec2"),
+            (wp.vec3, "vec3"),
+            (wp.mat22, "mat22"),
+            (wp.mat33, "mat33"),
+            (wp.types.matrix((3, 2), wp.float32), "mat32"),
+            (wp.types.matrix((2, 3), wp.float32), "mat23"),
+        )
+        for t, name in kinds:
+            with self.subTest(type=name):
+                self.assertIs(J6.jet_type(t), getattr(J6, name))
+                self.assertIs(J6.coeff_type(t), getattr(J6, f"coeff_type_{name}"))
+                self.assertIs(J6.jet_type(t).vars["coeff"].type, J6.coeff_type(t))
+
+        self.assertEqual(J6.coeff_type_vec2._shape_, (2, 6))
+        self.assertEqual(J6.coeff_type_mat22._shape_, (4, 6))
+
+        with self.assertRaisesRegex(TypeError, "float64"):
+            J6.coeff_type(wp.vec2d)
+        for t in (wp.vec4, wp.mat44, int):
+            with self.subTest(type=t), self.assertRaises(TypeError):
+                J6.jet_type(t)
+
+        spring = wp.JetSpace2((wp.vec3, wp.vec3))
+        self.assertIs(spring.jet_type(wp.vec3), spring.vec3)
+        self.assertIs(spring.scalar.vars["grad"].type, spring.grad_type_scalar)
+        self.assertIs(spring.scalar.vars["hess"].type, spring.hess_type_scalar)
+        self.assertFalse(hasattr(spring, "coeff_type"))
+        with self.assertRaises(TypeError):
+            spring.jet_type(wp.mat22)
 
     def test_jet_space2_slots(self):
         """Check second-order spaces take scalar, vec2 and vec3 slots but not matrices."""
@@ -671,7 +706,7 @@ def spring_directional(
 def spring_directional_basis(
     x0: wp.array[wp.vec3],
     x1: wp.array[wp.vec3],
-    grad: wp.array[J6.coeff],
+    grad: wp.array[J6.coeff_type_scalar],
 ):
     i = wp.tid()
 
@@ -699,8 +734,8 @@ def test_jet_directional(test, device):
     d1 = wp.array(d1_np, dtype=wp.vec3, device=device)
 
     # Six explicit coordinate directions match the six seeded ones.
-    grad_basis = wp.zeros(2, dtype=J6.coeff, device=device)
-    grad_seed = wp.zeros(2, dtype=J6.coeff, device=device)
+    grad_basis = wp.zeros(2, dtype=J6.coeff_type_scalar, device=device)
+    grad_seed = wp.zeros(2, dtype=J6.coeff_type_scalar, device=device)
     wp.launch(spring_directional_basis, dim=2, inputs=[x0, x1], outputs=[grad_basis], device=device)
     wp.launch(spring_gradient, dim=2, inputs=[x0, x1], outputs=[grad_seed], device=device)
     np.testing.assert_array_equal(grad_basis.numpy(), grad_seed.numpy())
@@ -717,7 +752,7 @@ def test_jet_directional(test, device):
 def spring_gradient_dot_wrt_inputs(
     x0: wp.array[wp.vec3],
     x1: wp.array[wp.vec3],
-    w: wp.array[J6.coeff],
+    w: wp.array[J6.coeff_type_scalar],
     out: wp.array[float],
 ):
     i = wp.tid()
@@ -766,7 +801,7 @@ def test_jet_seed_is_differentiable(test, device):
     # Width-6 jets: one backward sweep of (gradient . d) through seed() gives H d.
     x0 = wp.array(x0_np, dtype=wp.vec3, device=device, requires_grad=True)
     x1 = wp.array(x1_np, dtype=wp.vec3, device=device, requires_grad=True)
-    w = wp.array(direction, dtype=J6.coeff, device=device)
+    w = wp.array(direction, dtype=J6.coeff_type_scalar, device=device)
     out = wp.zeros(m, dtype=float, device=device, requires_grad=True)
 
     tape = wp.Tape()
@@ -802,7 +837,7 @@ def spring_directional_derivative(x0: wp.vec3, x1: wp.vec3, d0: wp.vec3, d1: wp.
 
 
 @wp.func
-def spring_seeded_gradient_dot(x0: wp.vec3, x1: wp.vec3, w: J6.coeff):
+def spring_seeded_gradient_dot(x0: wp.vec3, x1: wp.vec3, w: J6.coeff_type_scalar):
     a, b = J6.seed(x0, x1)
     return wp.dot(spring_energy(a, b).coeff, w)
 
@@ -825,7 +860,7 @@ def spring_hessian_vector_in_kernel(
     hv_directional[i, 1] = g1
 
     # The same product from the width-6 gradient contracted with the direction.
-    w = J6.coeff(d0[i][0], d0[i][1], d0[i][2], d1[i][0], d1[i][1], d1[i][2])
+    w = J6.coeff_type_scalar(d0[i][0], d0[i][1], d0[i][2], d1[i][0], d1[i][1], d1[i][2])
     h0, h1, _w = wp.grad(spring_seeded_gradient_dot)(x0[i], x1[i], w)
     hv_seeded[i, 0] = h0
     hv_seeded[i, 1] = h1
@@ -923,7 +958,7 @@ def jet2_spring_hessian(x0: wp.array[wp.vec3], x1: wp.array[wp.vec3], hess: wp.a
 
 
 @wp.kernel
-def jet1_spring_gradient_generic(x0: wp.array[wp.vec3], x1: wp.array[wp.vec3], grad: wp.array[J6.coeff]):
+def jet1_spring_gradient_generic(x0: wp.array[wp.vec3], x1: wp.array[wp.vec3], grad: wp.array[J6.coeff_type_scalar]):
     i = wp.tid()
     a, b = J6.seed(x0[i], x1[i])
     grad[i] = spring_energy_generic(a, b).coeff
@@ -942,7 +977,7 @@ def test_jet2_vector_spring(test, device):
     hess_np = np.stack([_spring_hessian_np(x0_np[i], x1_np[i]) for i in range(m)])
     np.testing.assert_allclose(hess.numpy(), hess_np, rtol=1.0e-5, atol=1.0e-6)
 
-    grad = wp.zeros(m, dtype=J6.coeff, device=device)
+    grad = wp.zeros(m, dtype=J6.coeff_type_scalar, device=device)
     wp.launch(jet1_spring_gradient_generic, dim=m, inputs=[x0, x1], outputs=[grad], device=device)
     d = (x1_np - x0_np).astype(np.float64)
     length = np.linalg.norm(d, axis=1, keepdims=True)

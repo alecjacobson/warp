@@ -107,14 +107,14 @@ def build(k, dtype=wp.float32):
         i = wp.tid()
 
         acc = J1.constant(dtype(0.0))
-        prev = J1.with_coeff(z[i, 0], J1.coeff(v[0]))
+        prev = J1.with_coeff(z[i, 0], J1.coeff_type_scalar(v[0]))
 
         for b in range(wp.static(outer)):
             for t in range(wp.static(inner)):
                 j = b * wp.static(inner) + t
 
                 if j >= 1 and j < wp.static(k):
-                    cur = J1.with_coeff(z[i, j], J1.coeff(v[j]))
+                    cur = J1.with_coeff(z[i, j], J1.coeff_type_scalar(v[j]))
                     acc = acc + wp.sin(prev * cur) + dtype(0.1) * (prev * prev * prev)
                     prev = cur
 

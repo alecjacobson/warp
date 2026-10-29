@@ -200,7 +200,7 @@ def build_spring(with_forward2=True):
     Jk = wp.JetSpace(6)
 
     @wp.kernel
-    def spring_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff]):
+    def spring_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff_type_scalar]):
         i = wp.tid()
         out[i] = spring_energy(
             Jk.variable(z[i, 0], 0),
@@ -245,7 +245,7 @@ def build_triangle(with_forward2=True):
     Jk = wp.JetSpace(9)
 
     @wp.kernel
-    def triangle_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff]):
+    def triangle_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff_type_scalar]):
         i = wp.tid()
         out[i] = triangle_energy(
             Jk.variable(z[i, 0], 0),
@@ -296,7 +296,7 @@ def build_tet(with_forward2=True):
     Jk = wp.JetSpace(12)
 
     @wp.kernel
-    def tet_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff]):
+    def tet_grad_wide(z: wp.array2d[wp.float32], out: wp.array[Jk.coeff_type_scalar]):
         i = wp.tid()
         out[i] = tet_energy(
             Jk.variable(z[i, 0], 0),
@@ -378,7 +378,7 @@ class JetGrad:
     def __init__(self, k, Jk, kernel, z_np, device):
         self.k, self.kernel, self.device, self.n = k, kernel, device, z_np.shape[0]
         self.z = wp.array(z_np, dtype=wp.float32, device=device)
-        self.out = wp.zeros(self.n, dtype=Jk.coeff, device=device)
+        self.out = wp.zeros(self.n, dtype=Jk.coeff_type_scalar, device=device)
 
     def run(self):
         wp.launch(self.kernel, dim=self.n, inputs=[self.z], outputs=[self.out], device=self.device)

@@ -44,7 +44,7 @@ def build(k, dtype=wp.float32):
     outer, inner = strip_mine(k)
 
     @wp.kernel
-    def jet_grad(z: wp.array2d[dtype], out: wp.array[Jk.coeff]):
+    def jet_grad(z: wp.array2d[dtype], out: wp.array[Jk.coeff_type_scalar]):
         # Forward jet: the value's k coefficients ARE grad g. One launch, no tape.
         i = wp.tid()
         acc = Jk.constant(dtype(0.0))
@@ -98,7 +98,7 @@ class JetFwd:
     def __init__(self, k, Jk, kernel, z_np, device):
         self.k, self.kernel, self.device, self.n = k, kernel, device, z_np.shape[0]
         self.z = wp.array(z_np, dtype=float, device=device)
-        self.out = wp.zeros(self.n, dtype=Jk.coeff, device=device)
+        self.out = wp.zeros(self.n, dtype=Jk.coeff_type_scalar, device=device)
 
     def run(self):
         wp.launch(self.kernel, dim=self.n, inputs=[self.z], outputs=[self.out], device=self.device)

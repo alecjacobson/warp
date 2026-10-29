@@ -55,7 +55,7 @@ jets are written with ordinary operator and builtin syntax::
     def local_gradient(
         x0: wp.array[wp.vec3],
         x1: wp.array[wp.vec3],
-        grad: wp.array[J.coeff],
+        grad: wp.array[J.coeff_type_scalar],
     ):
         i = wp.tid()
 
@@ -1363,13 +1363,17 @@ def _make_jet_space(width: int, dtype):
         mat33=JetMat33,
         mat32=JetMat32,
         mat23=JetMat23,
-        coeff=Coeff,
+        coeff_type_scalar=Coeff,
+        coeff_type_vec2=CoeffVec2,
+        coeff_type_vec3=CoeffVec3,
+        coeff_type_mat22=CoeffMat4,
+        coeff_type_mat33=CoeffMat9,
+        coeff_type_mat32=CoeffMat6,
+        coeff_type_mat23=CoeffMat6,
         native_vec2=NativeVec2,
         native_vec3=NativeVec3,
         native_mat22=NativeMat22,
         native_mat33=NativeMat33,
-        coeff_vec2=CoeffVec2,
-        coeff_vec3=CoeffVec3,
         constant=scalar_constant,
         with_coeff=scalar_with_coeff,
         variable=scalar_variable,
@@ -1550,7 +1554,7 @@ def _build_slot_helpers(base, kinds, width: int, dtype, second_order: bool, incl
         namespace[f"Jet_{kind}"] = jet_type
         namespace[f"Coeff_{kind}"] = coeff_type
     if second_order:
-        namespace["Hess"] = base.hess
+        namespace["Hess"] = base.hess_type_scalar
         namespace["variable"] = base.variable
 
     # Annotation types are passed by name so the source stays readable.
@@ -1608,6 +1612,24 @@ def _build_slot_helpers(base, kinds, width: int, dtype, second_order: bool, incl
     return seed, directional, natives, total
 
 
+def _type_lookup(base, dtype, index: int, what: str):
+    """Return a function mapping a Warp type to entry ``index`` of ``base._slot_jet_types``."""
+
+    def lookup(t):
+        kind, scalar_dtype = _classify_slot(t)
+        if scalar_dtype is not None and scalar_dtype is not dtype:
+            raise TypeError(
+                f"{getattr(t, '__name__', t)} has scalar type {scalar_dtype.__name__}, "
+                f"but this jet space is built on {dtype.__name__}"
+            )
+        entry = base._slot_jet_types.get(kind)
+        if entry is None or entry[index] is None:
+            raise TypeError(f"This jet space has no {what} for {getattr(t, '__name__', t)}")
+        return entry[index]
+
+    return lookup
+
+
 def _layout_namespace(base, kinds, width: int, dtype, second_order: bool):
     key = (second_order, width, dtype, kinds)
     J = _CACHE_LAYOUT.get(key)
@@ -1617,6 +1639,9 @@ def _layout_namespace(base, kinds, width: int, dtype, second_order: bool):
         )
         members = {k: v for k, v in vars(base).items() if not k.startswith("_")}
         members.update(slots=natives, slot_components=total)
+        members["jet_type"] = _type_lookup(base, dtype, 0, "jet type")
+        if not second_order:
+            members["coeff_type"] = _type_lookup(base, dtype, 1, "coefficient type")
         if directional is not None:
             members["directional"] = directional
         if seed is not None:
@@ -1658,10 +1683,11 @@ def JetSpace(slots, dtype=None, *, width=None):
             gradient are needed.
 
     Returns:
-        A namespace holding the generated types (``scalar``, ``vec2``,
-        ``vec3``, ``mat22``, ``mat33``, ``mat32``, ``mat23``), the
-        coefficient types ``coeff``, ``coeff_vec2`` and ``coeff_vec3`` of the
-        scalar and vector jets, the helpers that construct jets, and ``slots``, the native type of each slot.
+        A namespace holding the generated jet types (``scalar``, ``vec2``,
+        ``vec3``, ``mat22``, ``mat33``, ``mat32``, ``mat23``), the type of
+        each one's ``coeff`` field (``coeff_type_scalar``, ``coeff_type_vec2``,
+        and so on through ``coeff_type_mat23``), the helpers that construct
+        jets, and ``slots``, the native type of each slot.
 
     Jets are created inside a kernel or function with ``seed`` or
     ``directional``. With ``spring_energy`` an ordinary ``@wp.func`` that is
@@ -1700,6 +1726,14 @@ def JetSpace(slots, dtype=None, *, width=None):
     ``variable(x, direction)`` is the underlying scalar primitive: a scalar jet
     with a unit derivative along ``direction``. Use it to seed in a loop, where
     the number of scalars is not a fixed argument list.
+
+    ``jet_type(t)`` and ``coeff_type(t)`` look the types up by the Warp type of
+    the value instead: ``J.coeff_type(wp.vec2)`` is ``J.coeff_type_vec2``. They
+    are Python functions, so they work in annotations and host code, such as
+    ``wp.array[J.coeff_type(wp.vec2)]``, but cannot be called inside a kernel
+    or ``@wp.func``, where the attributes are needed. A type whose scalar type
+    differs from the space's, or that the space does not support, raises
+    :class:`TypeError`.
 
     ``width`` is fixed when the types are specialized, not when a kernel runs:
     it becomes the length of ``coeff`` and is unrolled into the generated code.
@@ -2404,8 +2438,8 @@ def _make_jet_space2(width: int, dtype):
         scalar=Jet2Scalar,
         vec2=Jet2Vec2,
         vec3=Jet2Vec3,
-        grad=Grad,
-        hess=Hess,
+        grad_type_scalar=Grad,
+        hess_type_scalar=Hess,
         native_vec2=NativeVec2,
         native_vec3=NativeVec3,
         constant=scalar_constant,
@@ -2439,8 +2473,10 @@ def JetSpace2(slots, dtype=None):
 
     Returns:
         A namespace holding the generated jet types (``scalar``, ``vec2``,
-        ``vec3``), the types of a jet's gradient and Hessian (``grad``,
-        ``hess``), and the helpers that construct jets.
+        ``vec3``), the types of a scalar jet's ``grad`` and ``hess`` fields
+        (``grad_type_scalar``, ``hess_type_scalar``), the helpers that
+        construct jets, and ``jet_type(t)``, which looks a jet type up by the
+        Warp type of the value as in :func:`warp.JetSpace`.
 
     The width is always the total number of scalar components in ``slots``:
     unlike :func:`warp.JetSpace`, there is no ``width`` argument and no
