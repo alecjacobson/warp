@@ -689,6 +689,105 @@ Store the Jacobian output-major, ``jac[j * n + i]``, so that neighbouring thread
 point-major, ``jac[i * m + j]``, made the jet about five times slower at ``m = 64`` (1.32 ms against 0.25 ms) and left
 the ``wp.grad`` route nearly unchanged, because the jet is fast enough to be bound by those strided stores.
 
+Custom derivatives
+------------------
+
+Some functions are expensive to differentiate step by step. For example, the closest point :math:`p` on an ellipsoid
+with semi-axes :math:`a` to a query point :math:`q` outside it has no closed form. It is
+:math:`p_i = a_i^2 q_i / (a_i^2 + t)`, where the Lagrange multiplier :math:`t` is the root of
+
+.. math::
+
+    f(t, q) = \sum_i \left( \frac{a_i q_i}{a_i^2 + t} \right)^2 - 1,
+
+which a few Newton steps find. Written generically, the solver accepts jets, and calling it on a seeded query
+differentiates through every step:
+
+.. testcode::
+
+    Jq = wp.JetSpace((wp.vec3,))  # width 3
+
+    @wp.func
+    def ellipsoid_newton_step(query: Any, axes: wp.vec3, t: Any):
+        d = wp.cw_mul(axes, axes) + t * wp.vec3(1.0)
+        u = wp.cw_div(wp.cw_mul(axes, query), d)
+        f = wp.dot(u, u) - 1.0
+        df_dt = -2.0 * wp.dot(u, wp.cw_div(u, d))
+        return t - f / df_dt
+
+    @wp.func
+    def ellipsoid_point(query: Any, axes: wp.vec3, t: Any):
+        axes2 = wp.cw_mul(axes, axes)
+        return wp.cw_div(wp.cw_mul(axes2, query), axes2 + t * wp.vec3(1.0))
+
+    @wp.kernel
+    def ellipsoid_point_jacobian_kernel(
+        query: wp.array[wp.vec3],
+        axes: wp.vec3,
+        jacobian: wp.array[Jq.coeff_type_vec3],
+    ):
+        tid = wp.tid()
+        jet_query = Jq.seed(query[tid])
+        jet_t = Jq.constant(0.0)
+        for _ in range(20):
+            jet_t = ellipsoid_newton_step(jet_query, axes, jet_t)  # every step carries the derivatives
+        jacobian[tid] = ellipsoid_point(jet_query, axes, jet_t).coeff
+
+    axes = wp.vec3(1.0, 0.5, 0.25)
+    query = wp.array([[2.0, 1.0, 0.5]], dtype=wp.vec3)
+    jacobian = wp.zeros(1, dtype=Jq.coeff_type_vec3)
+
+    wp.launch(ellipsoid_point_jacobian_kernel, dim=1, inputs=[query, axes], outputs=[jacobian])
+
+    print(f"jacobian =\n{np.round(jacobian.numpy()[0], 4)}")
+
+.. testoutput::
+
+    jacobian =
+    [[ 0.0921 -0.1095 -0.0182]
+     [-0.1095  0.1459 -0.0054]
+     [-0.0182 -0.0054  0.0505]]
+
+Every Newton step pays for the derivatives, although only the solution's derivative is needed. Further, a solver that
+calls code without jet overloads, such as a spatial query, cannot be differentiated this way at all. Instead, run the
+solver on plain values and differentiate only its solution. Because :math:`f(t, q) = 0` there, the implicit function
+theorem gives the derivative of the root as
+
+.. math::
+
+    \frac{\partial t}{\partial q} = -\left( \frac{\partial f}{\partial t} \right)^{-1} \frac{\partial f}{\partial q}.
+
+One more Newton step, taken on the jet query from the converged plain :math:`t`, computes exactly this: its value stays
+:math:`t`, and since :math:`f` vanishes there, its coefficients are :math:`-(\partial f / \partial t)^{-1}` times those
+of :math:`f`. The same generic functions serve both passes:
+
+.. testcode::
+
+    @wp.kernel
+    def ellipsoid_point_implicit_jacobian_kernel(
+        query: wp.array[wp.vec3],
+        axes: wp.vec3,
+        jacobian: wp.array[Jq.coeff_type_vec3],
+    ):
+        tid = wp.tid()
+        t = float(0.0)
+        for _ in range(20):
+            t = ellipsoid_newton_step(query[tid], axes, t)  # plain floats
+        jet_query = Jq.seed(query[tid])
+        jet_t = ellipsoid_newton_step(jet_query, axes, t)  # one jet step: implicit function theorem
+        jacobian[tid] = ellipsoid_point(jet_query, axes, jet_t).coeff
+
+    wp.launch(ellipsoid_point_implicit_jacobian_kernel, dim=1, inputs=[query, axes], outputs=[jacobian])
+
+    print(f"jacobian =\n{np.round(jacobian.numpy()[0], 4)}")
+
+.. testoutput::
+
+    jacobian =
+    [[ 0.0921 -0.1095 -0.0182]
+     [-0.1095  0.1459 -0.0054]
+     [-0.0182 -0.0054  0.0505]]
+
 Limitations
 -----------
 
