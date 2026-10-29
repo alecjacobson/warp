@@ -31,15 +31,18 @@ a dense Hessian.
 Jets do not replace reverse mode but complement it, with different trade-offs in memory access, operation count and
 compile time. See :ref:`jets_when_to_use` below.
 
-Three levels are involved. A *jet space*, created by :func:`wp.JetSpace <JetSpace>`, fixes one set of derivative
-directions. It returns a namespace, called ``J`` below, which holds a family of compatible jet *types* sharing those
-directions, along with seeding helpers such as ``J.seed()``. There is one jet type per kind of value: ``J.scalar``,
-``J.vec2``, ``J.mat22`` (a jet whose value is a 2x2 matrix), and so on. Each type is shared by every input and
-intermediate of that kind, and is not tied to any particular input. Individual *jets* are instances of these types,
-created inside a kernel by the seeding helpers. A jet ``a`` holds its value in ``a.value`` and its derivative data in
-``a.coeff``. The namespace also names the plain Warp types of that coefficient data: for example, the coefficients of a
-``J.vec2`` jet are a ``J.coeff_type_vec2``, an ordinary :math:`2 \times w` matrix whose rows are the derivatives of the
-two components.
+Three levels are involved:
+
+- A *jet space*, created by :func:`wp.JetSpace <JetSpace>`, fixes one set of derivative directions. It returns a
+  namespace, called ``J`` below, which holds a family of compatible jet types sharing those directions, along with
+  seeding helpers such as ``J.seed()``.
+- A *jet type* exists for each kind of value: ``J.scalar``, ``J.vec2``, ``J.mat22`` (a jet whose value is a 2x2
+  matrix), and so on. Each type is shared by every input and intermediate of that kind, and is not tied to any
+  particular input.
+- A *jet* is an instance of one of these types, created inside a kernel by the seeding helpers. A jet ``a`` holds its
+  value in ``a.value`` and its derivative data in ``a.coeff``. The namespace also names the plain Warp types of that
+  coefficient data: for example, the coefficients of a ``J.vec2`` jet are a ``J.coeff_type_vec2``, an ordinary
+  :math:`2 \times w` matrix whose rows are the derivatives of the two components.
 
 A Simple First Example
 ----------------------
