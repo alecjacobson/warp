@@ -692,9 +692,12 @@ the ``wp.grad`` route nearly unchanged, because the jet is fast enough to be bou
 Custom derivatives
 ------------------
 
-Some functions are expensive to differentiate step by step. For example, the closest point :math:`p` on an ellipsoid
-with semi-axes :math:`a` to a query point :math:`q` outside it has no closed form. It is
-:math:`p_i = a_i^2 q_i / (a_i^2 + t)`, where the Lagrange multiplier :math:`t` is the root of
+Some functions are only defined for floating-point inputs (e.g.,
+:func:`wp.mesh_query_point() <warp._src.lang.mesh_query_point>`), and others are expensive to differentiate step by
+step. In such cases, we can replace the derivative of a function with a custom implementation.
+
+For example, the closest point :math:`p` on an ellipsoid with semi-axes :math:`a` to a query point :math:`q` outside it
+has no closed form. It is :math:`p_i = a_i^2 q_i / (a_i^2 + t)`, where the Lagrange multiplier :math:`t` is the root of
 
 .. math::
 
