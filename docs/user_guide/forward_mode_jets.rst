@@ -28,6 +28,12 @@ the product rule, so :math:`\text{coeff}_q` of any result is its derivative alon
 jets, which keep the products :math:`\varepsilon_q \varepsilon_r` (dropping only third-order terms) and so also carry
 a dense Hessian.
 
+Jets do not replace reverse mode but complement it, with different trade-offs in memory access, operation count and
+compile time. See :ref:`jets_when_to_use` below.
+
+A Simple First Example
+----------------------
+
 For example, take :math:`u = a + b` and :math:`v = a - b` at :math:`a = 2, b = 3`. With width 2, ``Jcoord.seed()`` seeds
 each input along its own direction, so the coefficients of ``a`` and ``b`` are the rows of the identity, and the
 coefficients of ``u`` and ``v`` are the rows of the Jacobian. With width 1 and the single direction :math:`(1, -1)`,
@@ -75,11 +81,8 @@ direction:
 Both are the same mechanism: the width is the number of directions, not the number of inputs, and coordinate seeding
 is the special case where the directions are the coordinate axes.
 
-Jets do not replace reverse mode but complement it, with different trade-offs in memory access, operation count and
-compile time. See :ref:`jets_when_to_use` below.
-
-A First Example
----------------
+Inverse Kinematics Example
+--------------------------
 
 Consider a two-link arm in 2D with four degrees of freedom: the position of its base ``base_pos``, the relative
 shoulder angle ``shoulder`` and the relative elbow angle ``elbow``. A jet space for these inputs tracks derivatives
