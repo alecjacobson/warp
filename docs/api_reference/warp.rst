@@ -319,6 +319,7 @@ Automatic Differentiation
    Tape
    JetSpace
    JetSpace2
+   value
 
 Device Management
 -----------------

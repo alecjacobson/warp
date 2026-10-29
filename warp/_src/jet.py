@@ -128,6 +128,47 @@ def _register(name: str, fn) -> None:
         builtin.add_overload(overload)
 
 
+# ``value`` on plain floats is the identity; each jet space adds an overload for
+# its scalar jet, so generic code can compare plain floats and jets alike.
+
+
+@wp.func
+def value(x: wp.float16) -> wp.float16:
+    return x
+
+
+@wp.func
+def value(x: wp.float32) -> wp.float32:
+    return x
+
+
+@wp.func
+def value(x: wp.float64) -> wp.float64:
+    """Return the value of a scalar jet without its derivatives, or a plain float unchanged.
+
+    Comparisons such as ``a < b`` are not defined on jets, so a function written
+    generically over plain floats and jets compares ``wp.value(a) < wp.value(b)``
+    instead. A branch chosen this way carries the derivative of the branch taken.
+
+    Args:
+        x: A ``float16``, ``float32`` or ``float64``, or a scalar jet of any
+            :func:`warp.JetSpace` or :func:`warp.JetSpace2`.
+
+    Returns:
+        ``x`` itself for a plain float, otherwise the jet's ``value`` field,
+        a plain float of the jet's dtype.
+    """
+    return x
+
+
+warp._src.context.register_api_function(value, module="warp", differentiable=True)
+
+
+def _register_value(fn) -> None:
+    """Add ``fn``, which takes a space's scalar jet, as an overload of :func:`value`."""
+    value.add_overload(fn)
+
+
 def _make_jet_space(width: int, dtype):
     _check_space_args(width, dtype)
 
@@ -1424,6 +1465,12 @@ def _make_jet_space(width: int, dtype):
     # in any module, with nothing bound into the caller's namespace.
     # ------------------------------------------------------------------
 
+    @wp.func
+    def scalar_value(x: JetScalar) -> dtype:
+        return x.value
+
+    _register_value(scalar_value)
+
     _register("add", jet_add)
     _register("sub", jet_sub)
     _register("mul", jet_mul)
@@ -2557,6 +2604,12 @@ def _make_jet_space2(width: int, dtype):
     @wp.func
     def jet_cross(a: NativeVec3, b: Jet2Vec3) -> Jet2Vec3:
         return Jet2Vec3(a[1] * b.z - a[2] * b.y, a[2] * b.x - a[0] * b.z, a[0] * b.y - a[1] * b.x)
+
+    @wp.func
+    def scalar_value(x: Jet2Scalar) -> dtype:
+        return x.value
+
+    _register_value(scalar_value)
 
     _register("add", jet_add)
     _register("sub", jet_sub)

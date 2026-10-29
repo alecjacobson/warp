@@ -125,6 +125,7 @@ from warp._src.context import synchronize as synchronize
 from warp._src.tape import Tape as Tape
 from warp._src.jet import JetSpace as JetSpace
 from warp._src.jet import JetSpace2 as JetSpace2
+from warp._src.jet import value as value
 from warp._src.context import Device as Device
 from warp._src.utils import ScopedDevice as ScopedDevice
 from warp._src.context import is_device_available as is_device_available

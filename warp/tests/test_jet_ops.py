@@ -1013,5 +1013,63 @@ class TestJetComponentWise(unittest.TestCase):
         self._launch(cw_second_order_kernel)
 
 
+# --------------------------------------------------------------------------
+# wp.value: one generic function that branches on plain floats and on jets.
+# --------------------------------------------------------------------------
+
+
+@wp.func
+def generic_relu(x: Any):
+    if wp.value(x) > 0:
+        return x
+    return x - x
+
+
+@wp.kernel(enable_backward=False)
+def generic_relu_kernel(
+    x: wp.array[float],
+    out32: wp.array[float],
+    out64: wp.array[wp.float64],
+    coeff: wp.array[J2.coeff_type_scalar],
+    grad: wp.array[J2_2ND.grad_type_scalar],
+    hess: wp.array[J2_2ND.hess_type_scalar],
+):
+    i = wp.tid()
+    out32[i] = generic_relu(x[i])
+    out64[i] = generic_relu(wp.float64(x[i]))
+    a = J2.variable(x[i], 0) * J2.variable(1.0, 1)
+    coeff[i] = generic_relu(a).coeff
+    b = J2_2ND.variable(x[i], 0) * J2_2ND.variable(1.0, 1)
+    r = generic_relu(b)
+    grad[i] = r.grad
+    hess[i] = r.hess
+
+
+class TestJetValue(unittest.TestCase):
+    def test_generic_branch(self):
+        """Check that wp.value lets one generic function branch on floats and on first- and second-order jets."""
+        x_np = np.array([0.7, -0.3], dtype=np.float32)
+        on = (x_np > 0).astype(np.float32)
+        for device in DEVICES:
+            out32 = wp.zeros(2, dtype=float, device=device)
+            out64 = wp.zeros(2, dtype=wp.float64, device=device)
+            coeff = wp.zeros(2, dtype=J2.coeff_type_scalar, device=device)
+            grad = wp.zeros(2, dtype=J2_2ND.grad_type_scalar, device=device)
+            hess = wp.zeros(2, dtype=J2_2ND.hess_type_scalar, device=device)
+            wp.launch(
+                generic_relu_kernel,
+                dim=2,
+                inputs=[wp.array(x_np, dtype=float, device=device)],
+                outputs=[out32, out64, coeff, grad, hess],
+                device=device,
+            )
+            np.testing.assert_allclose(out32.numpy(), x_np * on)
+            np.testing.assert_allclose(out64.numpy(), x_np * on, rtol=1.0e-6)
+            # x0 * x1 at (x, 1) has value x, gradient (1, x) and Hessian [[0, 1], [1, 0]].
+            np.testing.assert_allclose(coeff.numpy(), np.stack([on, x_np * on], axis=1), rtol=1.0e-6)
+            np.testing.assert_allclose(grad.numpy(), np.stack([on, x_np * on], axis=1), rtol=1.0e-6)
+            np.testing.assert_allclose(hess.numpy(), on[:, None, None] * np.array([[0.0, 1.0], [1.0, 0.0]]))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
