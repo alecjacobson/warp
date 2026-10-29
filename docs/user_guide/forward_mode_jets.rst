@@ -696,6 +696,9 @@ Some functions are only defined for floating-point inputs (e.g.,
 :func:`wp.mesh_query_point() <warp._src.lang.mesh_query_point>`), and others are expensive to differentiate step by
 step. In such cases, we can replace the derivative of a function with a custom implementation.
 
+Example: Ellipsoid closest point
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 For example, the closest point :math:`p` on an ellipsoid with semi-axes :math:`a` to a query point :math:`q` outside it
 has no closed form. It is :math:`p_i = a_i^2 q_i / (a_i^2 + t)`, where the Lagrange multiplier :math:`t` is the root of
 
@@ -794,12 +797,11 @@ of :math:`f`. The same generic functions serve both passes:
 Limitations
 -----------
 
-* The width is fixed when the types are created. Spaces of different widths and element types may coexist in a process.
+* The width is fixed when the types are created and cannot change at runtime.
 * Creating a space registers its arithmetic on Warp's builtins for the lifetime of the process. The effect is
   additive and happens once per width and scalar type.
-* Branching builtins (``min``, ``max``, ``clamp``, ``where``, ``abs``, ``sign``) carry the derivative of the branch they
-  take. At a switch point that is a one-sided derivative, and jets do not smooth the kink. Comparisons such as ``a < b``
-  do not overload on jets, so branch on ``.value``.
+* Comparisons such as ``a < b`` are not defined on jets. Write ``wp.value(a) < wp.value(b)`` instead:
+  :func:`wp.value() <value>` returns plain floats unchanged, so a generic function can branch on floats and jets alike.
 * Only builtins with jet overloads accept jets. Others, such as spatial queries like
   :func:`wp.mesh_query_point() <warp._src.lang.mesh_query_point>`, operate on floats only and need manual integration.
 * Second-order jets take scalar, ``vec2`` and ``vec3`` slots. Matrix slots are not supported; a matrix input
