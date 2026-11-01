@@ -325,7 +325,7 @@ and ``vec3`` slots. A second-order scalar jet carries its value, its gradient ``
      [ 0.   0.  -0.5  0.   0.   0.5]]
 
 
-Reverse over forward
+Reverse-over-forward
 ^^^^^^^^^^^^^^^^^^^^
 
 For a small, fixed number of inputs, :func:`wp.JetSpace2 <JetSpace2>` is often the fastest way to compute a Hessian at
@@ -336,7 +336,7 @@ including the seeding helpers, like any other function. This works either inside
 applied to a :func:`@wp.func <func>`, or across kernels, by recording a :class:`wp.Tape <Tape>` and calling
 ``tape.backward()`` once per input.
 
-wp.grad over wp.JetSpace
+wp.grad-over-wp.JetSpace
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 :func:`wp.grad <grad>` differentiates a :func:`@wp.func <func>`. A function that evaluates the energy over width-1 jets
@@ -394,7 +394,7 @@ Each Hessian-vector product costs a constant multiple of one evaluation of the e
 inputs costs :math:`O(n)` evaluations, against :math:`O(n^2)` for a dense second-order jet. In practice this route is
 a bit slower than :func:`wp.JetSpace2 <JetSpace2>` at run time, with shorter compile times.
 
-wp.Tape over wp.JetSpace
+wp.Tape-over-wp.JetSpace
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 The same directional derivative can be recorded on a :class:`wp.Tape <Tape>` instead. Each ``tape.backward()`` gives
@@ -798,7 +798,7 @@ Limitations
 -----------
 
 * The width is fixed when the types are created and cannot change at runtime.
-* Creating a space registers its arithmetic on Warp's builtins for the lifetime of the process. The effect is
+* Creating a jet space registers its arithmetic on Warp's builtins for the lifetime of the process. The effect is
   additive and happens once per width and scalar type.
 * Comparisons such as ``a < b`` are not defined on jets. Write ``wp.value(a) < wp.value(b)`` instead:
   :func:`wp.value() <value>` returns plain floats unchanged, so a generic function can branch on floats and jets alike.
@@ -810,3 +810,4 @@ Limitations
 * A plain scalar, vector or matrix of the jet's dtype can be either operand of a jet operation, and is treated as a
   constant. The exception is ``wp.where``, whose two branches must both be jets; wrap a plain branch with
   ``J.constant``.
+* Forward-over-reverse is not possible because ``wp.grad`` lacks closure.
