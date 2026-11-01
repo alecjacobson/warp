@@ -47,7 +47,7 @@ Three levels are involved:
 A Small First Example
 ---------------------
 
-For example, take :math:`u = a + b` and :math:`v = a - b` at :math:`a = 2, b = 3`. With width 2, ``Jcoord.seed()`` seeds
+Take :math:`u = a + b` and :math:`v = a - b` at :math:`a = 2, b = 3`. With width 2, ``Jcoord.seed()`` seeds
 each input along its own direction, so the coefficients of ``a`` and ``b`` are the rows of the identity, and the
 coefficients of ``u`` and ``v`` are the rows of the Jacobian. With width 1 and the single direction :math:`(1, -1)`,
 both inputs vary along one shared direction, and the coefficients of ``u`` and ``v`` are the Jacobian times that
@@ -228,15 +228,13 @@ translates, the end of the arm moves exactly as the elbow does:
 
     directional_derivative = [-0.7071  0.7071]
 
-Component-wise seeding
+Component-Wise Seeding
 ^^^^^^^^^^^^^^^^^^^^^^
 
-Callers may also access the low-level interface of jets directly, without the
-slot types. Passing a number of scalars instead of slot types, as in ``wp.JetSpace(4)``,
-creates a space whose width defaults to that number, or is the ``width``
-provided. Each scalar variable is then seeded manually with ``J.variable(x,
-direction)``, which returns a scalar jet with value ``x`` and a unit derivative
-along ``direction``.
+Callers may also access the low-level interface of jets directly, without the slot types. Passing a number of scalars
+instead of slot types, as in ``wp.JetSpace(4)``, creates a space whose width defaults to that number, or is the
+``width`` provided. Each scalar variable is then seeded manually with ``J.variable(x, direction)``, which returns a
+scalar jet with value ``x`` and a unit derivative along ``direction``.
 
 .. testcode::
 
@@ -267,9 +265,8 @@ Hessians
 
 To compute second derivatives, we can either combine Warp's reverse mode (:class:`wp.Tape <Tape>` or
 :func:`wp.grad <grad>`) with first-order jets (:func:`wp.JetSpace <JetSpace>`), or use second-order jets
-(:func:`wp.JetSpace2 <JetSpace2>`). For any of these methods discussed below,
-the function value and the gradient are also computed as byproducts, so they can
-be used for Newton's method or other optimization algorithms.
+(:func:`wp.JetSpace2 <JetSpace2>`). For any of these methods discussed below, the function value and the gradient are
+also computed as byproducts, so they can be used for Newton's method or other optimization algorithms.
 
 :func:`wp.JetSpace2 <JetSpace2>` is constructed and seeded like :func:`wp.JetSpace <JetSpace>`, with scalar, ``vec2``
 and ``vec3`` slots. A second-order scalar jet carries its value, its gradient ``grad`` and its dense Hessian
@@ -325,7 +322,7 @@ and ``vec3`` slots. A second-order scalar jet carries its value, its gradient ``
      [ 0.   0.  -0.5  0.   0.   0.5]]
 
 
-Reverse-over-forward
+Reverse-over-Forward
 ^^^^^^^^^^^^^^^^^^^^
 
 For a small, fixed number of inputs, :func:`wp.JetSpace2 <JetSpace2>` is often the fastest way to compute a Hessian at
@@ -334,10 +331,10 @@ compile. For more inputs, or when shorter compile times matter, it can be better
 first-order jets: reverse over forward. The jet arithmetic is ordinary Warp code, so Warp's autodiff differentiates it,
 including the seeding helpers, like any other function. This works either inside a kernel, with :func:`wp.grad <grad>`
 applied to a :func:`@wp.func <func>`, or across kernels, by recording a :class:`wp.Tape <Tape>` and calling
-``tape.backward()`` once per input.
+``tape.backward()`` once per input component.
 
-wp.grad-over-wp.JetSpace
-~~~~~~~~~~~~~~~~~~~~~~~~
+``wp.grad`` over ``wp.JetSpace``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :func:`wp.grad <grad>` differentiates a :func:`@wp.func <func>`. A function that evaluates the energy over width-1 jets
 along a direction :math:`v` returns the directional derivative :math:`\nabla E \cdot v`, and the gradient of that with
@@ -394,8 +391,8 @@ Each Hessian-vector product costs a constant multiple of one evaluation of the e
 inputs costs :math:`O(n)` evaluations, against :math:`O(n^2)` for a dense second-order jet. In practice this route is
 a bit slower than :func:`wp.JetSpace2 <JetSpace2>` at run time, with shorter compile times.
 
-wp.Tape-over-wp.JetSpace
-~~~~~~~~~~~~~~~~~~~~~~~~
+``wp.Tape`` over ``wp.JetSpace``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The same directional derivative can be recorded on a :class:`wp.Tape <Tape>` instead. Each ``tape.backward()`` gives
 one row of the Hessian as the adjoints of the inputs. Because of tape and kernel launch overhead, this is often the
@@ -446,7 +443,7 @@ kernel launches through arrays:
      [ 0.  -0.5  0.   0.   0.5  0. ]
      [ 0.   0.  -0.5  0.   0.   0.5]]
 
-Hessian-vector products
+Hessian-Vector Products
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 Both reverse-over-forward methods build the Hessian one row at a time, as Hessian-vector products with unit vectors.
@@ -481,63 +478,29 @@ the Hessian:
 
     hv = [-1.  -0.5  0.   1.   0.5  0. ]
 
-Forward and Reverse Mode Side by Side
--------------------------------------
-
-Both modes compute the same derivatives. They differ in what they cost and in what they can express.
-
-.. list-table::
-    :header-rows: 1
-    :widths: 24 38 38
-
-    * -
-      - Reverse mode (:class:`Tape`, :func:`grad`)
-      - Forward-mode jets (:func:`JetSpace`, :func:`JetSpace2`)
-    * - Propagates
-      - A sensitivity of one output backwards, from the output to every input.
-      - Derivatives along ``width`` directions forwards, alongside the value.
-    * - One evaluation gives
-      - The gradient of a scalar output with respect to *all* inputs.
-      - The derivatives of *every* intermediate along ``width`` directions.
-    * - Cost scales with
-      - The number of outputs (one sweep per output row).
-      - The number of directions, ``width``, carried through every intermediate.
-    * - Second derivatives
-      - Not on its own, because reverse mode cannot be applied to its own output. Reverse mode over a first-order jet
-        gives :math:`H v`.
-      - A second-order jet carries the dense Hessian.
-    * - Number of inputs
-      - Unbounded and set at run time, such as every degree of freedom of a simulation.
-      - Fixed when the types are created, because ``width`` is a compile-time constant.
-    * - Needs
-      - A recorded tape, or an in-kernel ``wp.grad`` call over a ``wp.func``.
-      - Nothing recorded. The function is called on jet values like any other.
-    * - Best for
-      - A loss over a large state, in training or optimization.
-      - A dense *local* gradient or Hessian of one element, scattered into a global system.
-
 .. _jets_when_to_use:
 
-When to use jets
+When to Use Jets
 ----------------
 
 ``width`` is a compile-time constant, not a runtime length. It becomes the length of ``coeff`` and is unrolled into the
 generated code, and every intermediate value carries all ``width`` components whether or not they are read back. A
 second-order jet carries :math:`w^2` Hessian entries. Register pressure and compile time grow with the width.
 
-That makes jets a good fit for a *local* derivative of statically known arity. A spring over two ``vec3`` nodes has
-width 6, a triangle width 9 and a tetrahedron width 12, and the dense local block is what a Newton solver scatters into a
-sparse global matrix. A good test is whether the width can be written as a literal next to the function that uses it.
+That makes jets a good fit for a *local* derivative of statically known arity. For example, a mass-spring system is made
+up of many springs, each with two ``vec3`` endpoints, so collecting the local derivatives of an elastic spring energy
+requires a width of 6. Similarly, contact forces between triangle meshes are often expressed as edge-edge or
+point-triangle constraints, each of which involves 4 ``vec3`` vertex positions.
 
-Jets also win when a function has *many outputs* of a few inputs, i.e. a tall Jacobian :math:`r : \mathbb{R}^k \to
-\mathbb{R}^m` with :math:`m \gg k`. Reverse mode needs one backward sweep per output, while one width-``k`` jet carries all
-``k`` directions through a single forward pass, and any work shared by the outputs runs once (see
-:ref:`the Jacobian benchmark below <jets_jacobian_performance>`).
+Jets also generally outperform reverse mode when a function has *more outputs than inputs*, i.e. a tall Jacobian
+:math:`r : \mathbb{R}^k \to \mathbb{R}^m` with :math:`m > k`. Reverse mode needs one backward sweep per output, while
+one width-``k`` jet carries all ``k`` directions through a single forward pass, and any work shared by the outputs runs
+once (see :ref:`the Jacobian benchmark below <jets_jacobian_performance>`).
 
 They are the wrong tool for differentiating with respect to a problem-sized or runtime number of variables. A width of
-:math:`n` cannot specialize a type, and even where it could, forward mode would cost :math:`n` directions against reverse
-mode's single backward pass. Use :class:`Tape` or :func:`grad` for the outer derivative, and jets for the fixed-arity
-term inside it.
+:math:`n` cannot specialize a type, and even where it could, forward mode would cost :math:`n` directions against
+reverse mode's single backward pass. Use :class:`wp.Tape <Tape>` or :func:`wp.grad <grad>` for the outer derivative, and
+jets for the fixed-arity term inside it.
 
 .. list-table::
     :header-rows: 1
@@ -588,19 +551,19 @@ mode here; their value is that the same code also yields second derivatives.
       - ``wp.grad`` in kernel (ns/element)
     * - Spring
       - 6
-      - 0.050
+      - **0.050**
       - 0.067
       - 0.051
     * - Triangle
       - 9
       - 0.073
       - 0.088
-      - 0.072
+      - **0.072**
     * - Tetrahedron
       - 12
       - 0.113
       - 0.125
-      - 0.111
+      - **0.111**
 
 **Hessian** (``benchmark_jet_hessian_mesh.py``). The in-kernel ``wp.grad`` route and the second-order jet are 2 to 9
 times faster than running a tape, because the per-element Hessian stays in registers and needs a single launch.
@@ -615,22 +578,22 @@ times faster than running a tape, because the per-element Hessian stays in regis
       - :class:`wp.Tape <Tape>` over :func:`wp.JetSpace <JetSpace>` (ns/element)
     * - Spring
       - 6
-      - 0.54
+      - **0.54**
       - 0.56
       - 4.81
     * - Triangle
       - 9
-      - 1.13
+      - **1.13**
       - 2.18
       - 10.9
     * - Tetrahedron
       - 12
-      - 2.28
+      - **2.28**
       - 5.41
       - 12.5
 
 The second-order jet is fastest at run time for these small energies, but it pays for that at compile time, because its
-state is :math:`O(k^2)` and NVCC compile time is super-linear in ``k``. For the short elasticity energies above a
+state is :math:`O(k^2)` and NVCC compile time is super-linear in ``k``. For the short elasticity energies above, a
 tetrahedron compiles in seconds, but a longer scalar-form energy at ``k = 12`` can take minutes on a cold cache
 (``benchmark_element_hessian.py`` measures this). When compile time matters, in-kernel ``wp.grad`` over a first-order jet
 gives the same Hessian with state that grows linearly in ``k``.
@@ -652,23 +615,23 @@ on its backward sweeps alone.
       - ``wp.grad`` in kernel (ns/element)
       - ``m`` tape sweeps (ns/element)
     * - 4
-      - 0.13
+      - **0.13**
       - 0.38
       - 2.06
     * - 16
-      - 0.19
+      - **0.19**
       - 1.39
       - 30.3
     * - 32
-      - 0.78
+      - **0.78**
       - 2.81
       - 129
     * - 64
-      - 1.04
+      - **1.04**
       - 5.71
       - not run
     * - 128
-      - 2.08
+      - **2.08**
       - 11.3
       - not run
 
@@ -685,21 +648,23 @@ near this GPU's 896 GB/s peak. Up to ``m = 16`` the Jacobian (38 MB at ``m = 16`
 across repeated launches, which flatters those jet times. That is why the jet's cost per point quadruples between
 ``m = 16`` and ``m = 32`` and its lead over ``wp.grad`` dips there.
 
-Store the Jacobian output-major, ``jac[j * n + i]``, so that neighbouring threads write neighbouring elements. Storing it
+Store the Jacobian output-major, ``jac[j * n + i]``, so that neighboring threads write neighboring elements. Storing it
 point-major, ``jac[i * m + j]``, made the jet about five times slower at ``m = 64`` (1.32 ms against 0.25 ms) and left
 the ``wp.grad`` route nearly unchanged, because the jet is fast enough to be bound by those strided stores.
 
-Custom derivatives
+.. _jets_custom_derivatives:
+
+Custom Derivatives
 ------------------
 
 Some functions are only defined for floating-point inputs (e.g.,
 :func:`wp.mesh_query_point() <warp._src.lang.mesh_query_point>`), and others are expensive to differentiate step by
 step. In such cases, we can replace the derivative of a function with a custom implementation.
 
-Example: Ellipsoid closest point
+Example: Ellipsoid Closest Point
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-For example, the closest point :math:`p` on an ellipsoid with semi-axes :math:`a` to a query point :math:`q` outside it
+The closest point :math:`p` on an ellipsoid with semi-axes :math:`a` to a query point :math:`q` outside it
 has no closed form. It is :math:`p_i = a_i^2 q_i / (a_i^2 + t)`, where the Lagrange multiplier :math:`t` is the root of
 
 .. math::
@@ -754,10 +719,9 @@ differentiates through every step:
      [-0.1095  0.1459 -0.0054]
      [-0.0182 -0.0054  0.0505]]
 
-Every Newton step pays for the derivatives, although only the solution's derivative is needed. Further, a solver that
-calls code without jet overloads, such as a spatial query, cannot be differentiated this way at all. Instead, run the
-solver on plain values and differentiate only its solution. Because :math:`f(t, q) = 0` there, the implicit function
-theorem gives the derivative of the root as
+Every Newton step pays for the derivatives, although only the solution's derivative is needed. Instead, run the solver
+on plain values and differentiate only its solution. Because :math:`f(t, q) = 0` there, the implicit function theorem
+gives the derivative of the root as
 
 .. math::
 
@@ -803,11 +767,13 @@ Limitations
 * Comparisons such as ``a < b`` are not defined on jets. Write ``wp.value(a) < wp.value(b)`` instead:
   :func:`wp.value() <value>` returns plain floats unchanged, so a generic function can branch on floats and jets alike.
 * Only builtins with jet overloads accept jets. Others, such as spatial queries like
-  :func:`wp.mesh_query_point() <warp._src.lang.mesh_query_point>`, operate on floats only and need manual integration.
+  :func:`wp.mesh_query_point() <warp._src.lang.mesh_query_point>`, operate on floats only and need a custom derivative
+  (see :ref:`jets_custom_derivatives`).
 * Second-order jets take scalar, ``vec2`` and ``vec3`` slots. Matrix slots are not supported; a matrix input
   decomposes into its components.
 * Jet dtypes must be floating point.
 * A plain scalar, vector or matrix of the jet's dtype can be either operand of a jet operation, and is treated as a
   constant. The exception is ``wp.where``, whose two branches must both be jets; wrap a plain branch with
   ``J.constant``.
-* Forward-over-reverse is not possible because ``wp.grad`` lacks closure.
+* Forward-over-reverse is not supported: :func:`wp.grad <grad>` produces a native function rather than a
+  :func:`@wp.func <func>`, so it cannot be called with jets.
