@@ -286,6 +286,9 @@ Geometry
    mesh_query_ray_anyhit
    mesh_query_ray_count_intersections
    mesh_query_sphere
+   point_query_knn
+   point_query_nearest
+   point_query_next
 
 .. _builtins-volumes:
 

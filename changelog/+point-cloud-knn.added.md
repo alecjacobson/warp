@@ -1,0 +1,1 @@
+Add exact CPU/CUDA point-cloud nearest-neighbor queries over an existing BVH and explicit point array, including eager compile-time kNN iterators, deterministic ties, strict cutoffs, exclusion, partial results, and differentiable gathers. Handle empty CUDA LBVH construction without invalid allocations.

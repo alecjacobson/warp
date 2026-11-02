@@ -6680,6 +6680,49 @@ def tile_map(op: Callable, a: Tile[Any, tuple[int, ...]], *args: Any) -> Tile[An
             [0.5 1.2 1.9 2.6 3.3]"""
     ...
 
+def point_query_nearest(
+    bvh: uint64,
+    points: Array[vec3f],
+    point: vec3f,
+    max_dist: float32 | float,
+    exclude_index: int32 | int = -1,
+) -> int:
+    """Return the nearest original point index, or -1 if no point is eligible.
+
+    Eligibility uses a strict distance cutoff and excludes only ``exclude_index``.
+    Equal computed squared distances prefer the smaller original index. A nonpositive
+    or NaN cutoff or a nonfinite query returns -1. Infinity means unbounded search.
+    The BVH must enclose the supplied contiguous point array with the same index mapping.
+    Keep both allocations alive, and refit after moving points. Coordinates and squared
+    distances must be finite and representable in float32. Selection is nondifferentiable;
+    gather ``points[index]`` and compute distances in caller code for gradients."""
+    ...
+
+def point_query_knn(
+    bvh: uint64,
+    points: Array[vec3f],
+    point: vec3f,
+    max_dist: float32 | float,
+    k: int32 | int,
+    exclude_index: int32 | int = -1,
+) -> Any:
+    """Complete exact k-nearest selection and return an inferred local iterator.
+
+    ``k`` must be a compile-time positive integer (literal or ``wp.static`` constant).
+    Consume final neighbors with :func:`point_query_next`, in ascending order of
+    (computed squared distance, original index). Fewer than k eligible points produce
+    a partial iterator, without padding. Search completes before this function returns;
+    stopping consumption early does not reduce traversal work. The input and lifetime
+    contract is the same as :func:`point_query_nearest`. Selection is nondifferentiable."""
+    ...
+
+def point_query_next(query: Any, index: int32 | int) -> bool:
+    """Write the next final neighbor index and return True, advancing the local cursor.
+
+    After exhaustion return False and leave ``index`` unchanged on every call.
+    ``query`` must be the inferred state returned by :func:`point_query_knn`."""
+    ...
+
 def bvh_query_aabb(id: uint64, low: vec3f, high: vec3f, root: int32 | int = -1) -> BvhQuery:
     """Construct an axis-aligned bounding box (AABB) query against a BVH.
 

@@ -2329,6 +2329,24 @@ class range_t:
         pass
 
 
+# Private inferred local value; capacity is part of overload/cache identity.
+class _PointQuery:
+    pass
+
+
+_point_query_types = {}
+
+
+def _point_query_type(capacity):
+    if capacity not in _point_query_types:
+        _point_query_types[capacity] = type(
+            f"_PointQuery{capacity}",
+            (_PointQuery,),
+            {"_wp_native_name_": f"point_query_t<{capacity}>", "capacity": capacity},
+        )
+    return _point_query_types[capacity]
+
+
 # definition just for kernel type (cannot be a parameter), see bvh.h
 class BvhQuery:
     """Object used to track state during BVH traversal.
@@ -8658,7 +8676,9 @@ def get_type_code(arg_type) -> str:
             "Union type annotations are only supported at Python scope and are invalid in Warp kernels/functions"
         )
     elif isinstance(arg_type, type):
-        if is_native_type(arg_type):
+        if issubclass(arg_type, _PointQuery):
+            return f"pointq{arg_type.capacity}"
+        elif is_native_type(arg_type):
             return f"nt{arg_type._wp_native_type_.type_code}"
         elif hasattr(arg_type, "_wp_scalar_type_"):
             # vector/matrix type

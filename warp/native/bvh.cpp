@@ -733,7 +733,11 @@ void bvh_refit_recursive(BVH& bvh, int index)
     }
 }
 
-void bvh_refit_host(BVH& bvh) { bvh_refit_recursive(bvh, *bvh.root); }
+void bvh_refit_host(BVH& bvh)
+{
+    if (bvh.num_items > 0)
+        bvh_refit_recursive(bvh, *bvh.root);
+}
 void bvh_rebuild_host(BVH& bvh, int constructor_type)
 {
     if (constructor_type == BVH_CONSTRUCTOR_CUBQL) {
