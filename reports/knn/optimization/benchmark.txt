@@ -1,0 +1,91 @@
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+Case 1: surface sigma=0.0 N=32 Q=32 k=8
+  prior=0.1241 same=0.1497 configured=0.0981 PR=0.5225 ms
+Case 2: surface sigma=0.0 N=1000 Q=1000 k=8
+  prior=0.3605 same=0.3398 configured=0.3622 PR=0.6202 ms
+Case 3: surface sigma=0.0 N=100000 Q=1 k=8
+  prior=0.3548 same=0.2143 configured=0.2036 PR=0.6700 ms
+Case 4: surface sigma=0.0 N=100000 Q=8192 k=11
+  prior=0.9362 same=0.7952 configured=0.8141 PR=1.1088 ms
+Case 5: surface sigma=0.0 N=1000000 Q=100000 k=1
+  prior=3.6963 same=2.1887 configured=1.6597 PR=1.6812 ms
+Case 6: surface sigma=0.0 N=1000000 Q=100000 k=11
+  prior=6.7620 same=6.1888 configured=3.2846 PR=3.4795 ms
+Case 7: surface sigma=0.0 N=128 Q=1 k=64
+  prior=0.1726 same=0.1816 configured=0.1719 PR=0.7297 ms
+Case 8: surface sigma=0.0 N=1000 Q=32 k=4
+  prior=0.1976 same=0.1913 configured=0.1160 PR=0.6234 ms
+Case 9: surface sigma=0.0 N=1000 Q=32 k=16
+  prior=0.4539 same=0.4414 configured=0.1334 PR=0.7177 ms
+Case 10: surface sigma=0.0 N=1000 Q=32 k=32
+  prior=0.9017 same=0.8957 configured=0.1675 PR=1.0745 ms
+Case 11: surface sigma=0.01 N=32 Q=32 k=8
+  prior=0.1216 same=0.1236 configured=0.0934 PR=0.4695 ms
+Case 12: surface sigma=0.01 N=1000 Q=1000 k=8
+  prior=0.3415 same=0.3264 configured=0.3178 PR=0.5948 ms
+Case 13: surface sigma=0.01 N=100000 Q=1 k=8
+  prior=0.3565 same=0.2280 configured=0.2337 PR=0.6766 ms
+Case 14: surface sigma=0.01 N=100000 Q=8192 k=11
+  prior=1.0958 same=0.9825 configured=1.0143 PR=1.1115 ms
+Case 15: surface sigma=0.01 N=1000000 Q=100000 k=1
+  prior=4.0153 same=2.4646 configured=1.8679 PR=1.9619 ms
+Case 16: surface sigma=0.01 N=1000000 Q=100000 k=11
+  prior=8.4802 same=6.5751 configured=4.7064 PR=4.7418 ms
+Case 17: surface sigma=0.01 N=128 Q=1 k=64
+  prior=0.1704 same=0.1774 configured=0.1695 PR=0.7006 ms
+Case 18: surface sigma=0.01 N=1000 Q=32 k=4
+  prior=0.2034 same=0.1956 configured=0.1110 PR=0.5749 ms
+Case 19: surface sigma=0.01 N=1000 Q=32 k=16
+  prior=0.4496 same=0.4440 configured=0.1298 PR=0.6745 ms
+Case 20: surface sigma=0.01 N=1000 Q=32 k=32
+  prior=0.9123 same=0.9056 configured=0.1657 PR=0.8773 ms
+Case 21: volume sigma=0.0 N=32 Q=32 k=8
+  prior=0.1427 same=0.1423 configured=0.0921 PR=0.4714 ms
+Case 22: volume sigma=0.0 N=1000 Q=1000 k=8
+  prior=0.3957 same=0.3955 configured=0.4010 PR=0.6503 ms
+Case 23: volume sigma=0.0 N=100000 Q=1 k=8
+  prior=0.3513 same=0.2339 configured=0.2401 PR=0.6936 ms
+Case 24: volume sigma=0.0 N=100000 Q=8192 k=11
+  prior=1.1924 same=1.0845 configured=1.1132 PR=1.3136 ms
+Case 25: volume sigma=0.0 N=1000000 Q=100000 k=1
+  prior=3.8275 same=2.3418 configured=2.8517 PR=2.1723 ms
+Case 26: volume sigma=0.0 N=1000000 Q=100000 k=11
+  prior=8.4085 same=6.5260 configured=4.5089 PR=5.5321 ms
+Case 27: volume sigma=0.0 N=128 Q=1 k=64
+  prior=0.1753 same=0.1794 configured=0.1708 PR=0.6787 ms
+Case 28: volume sigma=0.0 N=1000 Q=32 k=4
+  prior=0.2888 same=0.2616 configured=0.1419 PR=0.6039 ms
+Case 29: volume sigma=0.0 N=1000 Q=32 k=16
+  prior=0.5900 same=0.5843 configured=0.1714 PR=0.7582 ms
+Case 30: volume sigma=0.0 N=1000 Q=32 k=32
+  prior=1.2186 same=1.2176 configured=0.2219 PR=1.0485 ms
+Case 31: volume sigma=0.01 N=32 Q=32 k=8
+  prior=0.1402 same=0.1471 configured=0.0928 PR=0.4774 ms
+Case 32: volume sigma=0.01 N=1000 Q=1000 k=8
+  prior=0.4080 same=0.4010 configured=0.4046 PR=0.6459 ms
+Case 33: volume sigma=0.01 N=100000 Q=1 k=8
+  prior=0.3515 same=0.2330 configured=0.2472 PR=0.7005 ms
+Case 34: volume sigma=0.01 N=100000 Q=8192 k=11
+  prior=1.2190 same=1.1092 configured=1.1431 PR=1.3279 ms
+Case 35: volume sigma=0.01 N=1000000 Q=100000 k=1
+  prior=3.8587 same=2.3549 configured=1.8455 PR=2.2135 ms
+Case 36: volume sigma=0.01 N=1000000 Q=100000 k=11
+  prior=8.4829 same=6.5651 configured=4.5850 PR=5.5797 ms
+Case 37: volume sigma=0.01 N=128 Q=1 k=64
+  prior=0.1755 same=0.1805 configured=0.1708 PR=0.6689 ms
+Case 38: volume sigma=0.01 N=1000 Q=32 k=4
+  prior=0.2737 same=0.2678 configured=0.1432 PR=0.6085 ms
+Case 39: volume sigma=0.01 N=1000 Q=32 k=16
+  prior=0.6133 same=0.6003 configured=0.1748 PR=0.7449 ms
+Case 40: volume sigma=0.01 N=1000 Q=32 k=32
+  prior=1.2349 same=1.2397 configured=0.2184 PR=1.0660 ms
+Case 41: scan sigma=0.0 N=198835 Q=8192 k=11
+  prior=1.2644 same=0.9849 configured=0.9810 PR=1.2890 ms
+Case 42: scan sigma=0.01 N=198835 Q=8192 k=11
+  prior=1.6219 same=1.3275 configured=1.3275 PR=1.7460 ms

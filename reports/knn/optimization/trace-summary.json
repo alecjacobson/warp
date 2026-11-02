@@ -1,0 +1,320 @@
+{
+  "before": [
+    {
+      "category": "kernel",
+      "name": "make_api_query__locals__api_638eaf99_cuda_kernel_forward",
+      "total_ms": 5.632975999999999
+    },
+    {
+      "category": "kernel",
+      "name": "wp::build_hierarchy(int, int*, int const*, unsigned long const*, int*, int const*, int volatile*, int volatile*, int volatile*, wp::BVHPackedNodeHalf volatile*, wp::BVHPackedNodeHalf volatile*)",
+      "total_ms": 1.515452
+    },
+    {
+      "category": "kernel",
+      "name": "wp::mark_packed_leaf_nodes(int, int const*, int const*, int const*, unsigned long const*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*, int)",
+      "total_ms": 0.487486
+    },
+    {
+      "category": "kernel",
+      "name": "void cub::CUB_200802_SM_750::DeviceRadixSortOnesweepKernel<cub::CUB_200802_SM_750::detail::radix::policy_hub<unsigned long, SortPayload<4>, unsigned int>::Policy1000, false, unsigned long, SortPayload<4>, unsigned int, int, int, cub::CUB_200802_SM_750::detail::identity_decomposer_t>(int*, int*, unsigned int*, unsigned int const*, unsigned long*, unsigned long const*, SortPayload<4>*, SortPayload<4> const*, int, int, int, cub::CUB_200802_SM_750::detail::identity_decomposer_t)",
+      "total_ms": 0.343519
+    },
+    {
+      "category": "kernel",
+      "name": "wp::build_leaves(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, int, int const*, int*, int*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*)",
+      "total_ms": 0.199487
+    },
+    {
+      "category": "gpu_memset",
+      "name": "Memset (Device)",
+      "total_ms": 0.15865399999999996
+    },
+    {
+      "category": "kernel",
+      "name": "wp::compute_total_bounds(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, wp::vec_t<3u, float>*, wp::vec_t<3u, float>*, int)",
+      "total_ms": 0.051296
+    },
+    {
+      "category": "kernel",
+      "name": "wp::compute_morton_codes(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, int, wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, int*, unsigned long*, int const*)",
+      "total_ms": 0.018591999999999997
+    },
+    {
+      "category": "kernel",
+      "name": "void cub::CUB_200802_SM_750::DeviceRadixSortHistogramKernel<cub::CUB_200802_SM_750::detail::radix::policy_hub<unsigned long, SortPayload<4>, unsigned int>::Policy1000, false, unsigned long, unsigned int, cub::CUB_200802_SM_750::detail::identity_decomposer_t>(unsigned int*, unsigned long const*, unsigned int, int, int, cub::CUB_200802_SM_750::detail::identity_decomposer_t)",
+      "total_ms": 0.0096
+    },
+    {
+      "category": "kernel",
+      "name": "wp::compute_key_deltas(unsigned long const*, int*, int)",
+      "total_ms": 0.008992000000000002
+    },
+    {
+      "category": "gpu_memcpy",
+      "name": "Memcpy DtoD (Device -> Device)",
+      "total_ms": 0.007552
+    },
+    {
+      "category": "kernel",
+      "name": "wp::compute_total_inv_edges(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, wp::vec_t<3u, float>*)",
+      "total_ms": 0.001824
+    },
+    {
+      "category": "kernel",
+      "name": "void cub::CUB_200802_SM_750::DeviceRadixSortExclusiveSumKernel<cub::CUB_200802_SM_750::detail::radix::policy_hub<unsigned long, SortPayload<4>, unsigned int>::Policy1000, unsigned int>(unsigned int*)",
+      "total_ms": 0.001792
+    },
+    {
+      "category": "kernel",
+      "name": "wp::memset_kernel(int*, int, unsigned long)",
+      "total_ms": 0.001664
+    },
+    {
+      "category": "gpu_memcpy",
+      "name": "Memcpy HtoD (Pageable -> Device)",
+      "total_ms": 0.00032
+    }
+  ],
+  "leaf4": [
+    {
+      "category": "kernel",
+      "name": "make_api_query__locals__api_609f5c4e_cuda_kernel_forward",
+      "total_ms": 5.143772
+    },
+    {
+      "category": "kernel",
+      "name": "wp::refit_active_leaves(int, int const*, int*, int const*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*, wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*)",
+      "total_ms": 0.587647
+    },
+    {
+      "category": "kernel",
+      "name": "void wp::mark_packed_leaf_nodes<unsigned int>(int, int, bool, int const*, int const*, int const*, unsigned int const*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*, int)",
+      "total_ms": 0.181344
+    },
+    {
+      "category": "kernel",
+      "name": "void cub::CUB_200802_SM_750::DeviceRadixSortOnesweepKernel<cub::CUB_200802_SM_750::detail::radix::policy_hub<unsigned int, SortPayload<4>, unsigned int>::Policy1000, false, unsigned int, SortPayload<4>, unsigned int, int, int, cub::CUB_200802_SM_750::detail::identity_decomposer_t>(int*, int*, unsigned int*, unsigned int const*, unsigned int*, unsigned int const*, SortPayload<4>*, SortPayload<4> const*, int, int, int, cub::CUB_200802_SM_750::detail::identity_decomposer_t)",
+      "total_ms": 0.16768
+    },
+    {
+      "category": "kernel",
+      "name": "void wp::build_radix_topology<unsigned int>(int, unsigned int const*, int*, int*, int*, int*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*)",
+      "total_ms": 0.157088
+    },
+    {
+      "category": "kernel",
+      "name": "wp::build_leaves(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, int, bool, int const*, int*, int*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*)",
+      "total_ms": 0.08483199999999999
+    },
+    {
+      "category": "kernel",
+      "name": "wp::compute_total_bounds(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, wp::vec_t<3u, float>*, wp::vec_t<3u, float>*, int)",
+      "total_ms": 0.030944
+    },
+    {
+      "category": "gpu_memset",
+      "name": "Memset (Device)",
+      "total_ms": 0.030176
+    },
+    {
+      "category": "kernel",
+      "name": "void wp::compute_morton_codes<unsigned int>(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, int, wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, int*, unsigned int*, int const*)",
+      "total_ms": 0.012832000000000001
+    },
+    {
+      "category": "gpu_memcpy",
+      "name": "Memcpy DtoD (Device -> Device)",
+      "total_ms": 0.008
+    },
+    {
+      "category": "kernel",
+      "name": "void cub::CUB_200802_SM_750::DeviceRadixSortHistogramKernel<cub::CUB_200802_SM_750::detail::radix::policy_hub<unsigned int, SortPayload<4>, unsigned int>::Policy1000, false, unsigned int, unsigned int, cub::CUB_200802_SM_750::detail::identity_decomposer_t>(unsigned int*, unsigned int const*, unsigned int, int, int, cub::CUB_200802_SM_750::detail::identity_decomposer_t)",
+      "total_ms": 0.006656
+    },
+    {
+      "category": "kernel",
+      "name": "wp::memset_kernel(int*, int, unsigned long)",
+      "total_ms": 0.002496
+    },
+    {
+      "category": "kernel",
+      "name": "wp::initialize_bvh_descriptor(wp::BVH*, wp::BVH)",
+      "total_ms": 0.0013759999999999998
+    },
+    {
+      "category": "kernel",
+      "name": "void cub::CUB_200802_SM_750::DeviceRadixSortExclusiveSumKernel<cub::CUB_200802_SM_750::detail::radix::policy_hub<unsigned int, SortPayload<4>, unsigned int>::Policy1000, unsigned int>(unsigned int*)",
+      "total_ms": 0.001088
+    },
+    {
+      "category": "kernel",
+      "name": "wp::compute_total_inv_edges(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, wp::vec_t<3u, float>*)",
+      "total_ms": 0.000992
+    }
+  ],
+  "leaf32": [
+    {
+      "category": "kernel",
+      "name": "make_ordered_query__locals__ordered_c2dd03fa_cuda_kernel_forward",
+      "total_ms": 3.219067
+    },
+    {
+      "category": "kernel",
+      "name": "wp::refit_active_leaves(int, int const*, int*, int const*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*, wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*)",
+      "total_ms": 0.39388799999999996
+    },
+    {
+      "category": "kernel",
+      "name": "void wp::mark_packed_leaf_nodes<unsigned int>(int, int, bool, int const*, int const*, int const*, unsigned int const*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*, int)",
+      "total_ms": 0.198367
+    },
+    {
+      "category": "kernel",
+      "name": "void cub::CUB_200802_SM_750::DeviceRadixSortOnesweepKernel<cub::CUB_200802_SM_750::detail::radix::policy_hub<unsigned int, SortPayload<4>, unsigned int>::Policy1000, false, unsigned int, SortPayload<4>, unsigned int, int, int, cub::CUB_200802_SM_750::detail::identity_decomposer_t>(int*, int*, unsigned int*, unsigned int const*, unsigned int*, unsigned int const*, SortPayload<4>*, SortPayload<4> const*, int, int, int, cub::CUB_200802_SM_750::detail::identity_decomposer_t)",
+      "total_ms": 0.165279
+    },
+    {
+      "category": "kernel",
+      "name": "void wp::build_radix_topology<unsigned int>(int, unsigned int const*, int*, int*, int*, int*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*)",
+      "total_ms": 0.159008
+    },
+    {
+      "category": "kernel",
+      "name": "wp::build_leaves(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, int, bool, int const*, int*, int*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*)",
+      "total_ms": 0.087392
+    },
+    {
+      "category": "kernel",
+      "name": "void cub::CUB_200802_SM_750::DeviceRadixSortOnesweepKernel<cub::CUB_200802_SM_750::detail::radix::policy_hub<int, SortPayload<4>, unsigned int>::Policy1000, false, int, SortPayload<4>, unsigned int, int, int, cub::CUB_200802_SM_750::detail::identity_decomposer_t>(int*, int*, unsigned int*, unsigned int const*, int*, int const*, SortPayload<4>*, SortPayload<4> const*, int, int, int, cub::CUB_200802_SM_750::detail::identity_decomposer_t)",
+      "total_ms": 0.069504
+    },
+    {
+      "category": "gpu_memset",
+      "name": "Memset (Device)",
+      "total_ms": 0.034752
+    },
+    {
+      "category": "kernel",
+      "name": "wp::compute_total_bounds(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, wp::vec_t<3u, float>*, wp::vec_t<3u, float>*, int)",
+      "total_ms": 0.030719999999999997
+    },
+    {
+      "category": "kernel",
+      "name": "void wp::compute_morton_codes<unsigned int>(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, int, wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, int*, unsigned int*, int const*)",
+      "total_ms": 0.013249
+    },
+    {
+      "category": "gpu_memcpy",
+      "name": "Memcpy DtoD (Device -> Device)",
+      "total_ms": 0.007488000000000001
+    },
+    {
+      "category": "kernel",
+      "name": "void cub::CUB_200802_SM_750::DeviceRadixSortHistogramKernel<cub::CUB_200802_SM_750::detail::radix::policy_hub<unsigned int, SortPayload<4>, unsigned int>::Policy1000, false, unsigned int, unsigned int, cub::CUB_200802_SM_750::detail::identity_decomposer_t>(unsigned int*, unsigned int const*, unsigned int, int, int, cub::CUB_200802_SM_750::detail::identity_decomposer_t)",
+      "total_ms": 0.0065910000000000005
+    },
+    {
+      "category": "kernel",
+      "name": "query_codes_a2e74958_cuda_kernel_forward",
+      "total_ms": 0.0064
+    },
+    {
+      "category": "kernel",
+      "name": "void cub::CUB_200802_SM_750::DeviceRadixSortHistogramKernel<cub::CUB_200802_SM_750::detail::radix::policy_hub<int, SortPayload<4>, unsigned int>::Policy1000, false, int, unsigned int, cub::CUB_200802_SM_750::detail::identity_decomposer_t>(unsigned int*, int const*, unsigned int, int, int, cub::CUB_200802_SM_750::detail::identity_decomposer_t)",
+      "total_ms": 0.003104
+    },
+    {
+      "category": "kernel",
+      "name": "wp::memset_kernel(int*, int, unsigned long)",
+      "total_ms": 0.002529
+    },
+    {
+      "category": "kernel",
+      "name": "wp::initialize_bvh_descriptor(wp::BVH*, wp::BVH)",
+      "total_ms": 0.0013440000000000001
+    },
+    {
+      "category": "kernel",
+      "name": "void cub::CUB_200802_SM_750::DeviceRadixSortExclusiveSumKernel<cub::CUB_200802_SM_750::detail::radix::policy_hub<unsigned int, SortPayload<4>, unsigned int>::Policy1000, unsigned int>(unsigned int*)",
+      "total_ms": 0.001089
+    },
+    {
+      "category": "kernel",
+      "name": "void cub::CUB_200802_SM_750::DeviceRadixSortExclusiveSumKernel<cub::CUB_200802_SM_750::detail::radix::policy_hub<int, SortPayload<4>, unsigned int>::Policy1000, unsigned int>(unsigned int*)",
+      "total_ms": 0.001088
+    },
+    {
+      "category": "kernel",
+      "name": "wp::compute_total_inv_edges(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, wp::vec_t<3u, float>*)",
+      "total_ms": 0.000991
+    }
+  ],
+  "small": [
+    {
+      "category": "kernel",
+      "name": "make_api_query__locals__api_432f0064_cuda_kernel_forward",
+      "total_ms": 0.141344
+    },
+    {
+      "category": "kernel",
+      "name": "void cub::CUB_200802_SM_750::DeviceRadixSortSingleTileKernel<cub::CUB_200802_SM_750::detail::radix::policy_hub<unsigned int, SortPayload<4>, unsigned int>::Policy1000, false, unsigned int, SortPayload<4>, unsigned int, cub::CUB_200802_SM_750::detail::identity_decomposer_t>(unsigned int const*, unsigned int*, SortPayload<4> const*, SortPayload<4>*, unsigned int, int, int, cub::CUB_200802_SM_750::detail::identity_decomposer_t)",
+      "total_ms": 0.012416
+    },
+    {
+      "category": "kernel",
+      "name": "wp::refit_active_leaves(int, int const*, int*, int const*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*, wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*)",
+      "total_ms": 0.011712
+    },
+    {
+      "category": "kernel",
+      "name": "void wp::build_radix_topology<unsigned int>(int, unsigned int const*, int*, int*, int*, int*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*)",
+      "total_ms": 0.005632
+    },
+    {
+      "category": "kernel",
+      "name": "wp::compute_total_bounds(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, wp::vec_t<3u, float>*, wp::vec_t<3u, float>*, int)",
+      "total_ms": 0.004256
+    },
+    {
+      "category": "gpu_memcpy",
+      "name": "Memcpy DtoD (Device -> Device)",
+      "total_ms": 0.00304
+    },
+    {
+      "category": "kernel",
+      "name": "wp::memset_kernel(int*, int, unsigned long)",
+      "total_ms": 0.001952
+    },
+    {
+      "category": "kernel",
+      "name": "void wp::mark_packed_leaf_nodes<unsigned int>(int, int, bool, int const*, int const*, int const*, unsigned int const*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*, int)",
+      "total_ms": 0.001888
+    },
+    {
+      "category": "kernel",
+      "name": "void wp::compute_morton_codes<unsigned int>(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, int, wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, int*, unsigned int*, int const*)",
+      "total_ms": 0.0013759999999999998
+    },
+    {
+      "category": "kernel",
+      "name": "wp::build_leaves(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, int, bool, int const*, int*, int*, wp::BVHPackedNodeHalf*, wp::BVHPackedNodeHalf*)",
+      "total_ms": 0.0013440000000000001
+    },
+    {
+      "category": "kernel",
+      "name": "wp::compute_total_inv_edges(wp::vec_t<3u, float> const*, wp::vec_t<3u, float> const*, wp::vec_t<3u, float>*)",
+      "total_ms": 0.0011519999999999998
+    },
+    {
+      "category": "kernel",
+      "name": "wp::initialize_bvh_descriptor(wp::BVH*, wp::BVH)",
+      "total_ms": 0.000928
+    },
+    {
+      "category": "gpu_memset",
+      "name": "Memset (Device)",
+      "total_ms": 0.000896
+    }
+  ]
+}

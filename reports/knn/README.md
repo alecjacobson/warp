@@ -1,5 +1,7 @@
 # Exact point-cloud nearest neighbors in Warp
 
+**Follow-up:** [Profile-guided optimization of the 12 losses](optimization/README.md) improves all 12 and reaches 41/42 wins with explicit workload configurations (31/42 with the original configuration). The report below preserves the original baseline measurements.
+
 Temporary report bundle. [Download the HTML version](report.html) to view it locally.
 
 Implemented the design on the existing `wp.Bvh`. The default one-shot implementation is faster than the pinned PhysicsNeMo PR in **30/42 measured cases**, with a **1.45× geometric-mean speedup** across this chosen matrix.
