@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>warp.rand_init &#8212; Warp 1.19.0.dev1</title>
+    <title>warp.rand_init &#8212; Warp 1.20.0.dev0</title>
   
   
   
@@ -44,7 +44,7 @@
 
 
 
-    <script src="../../_static/documentation_options.js?v=130af3c1"></script>
+    <script src="../../_static/documentation_options.js?v=1cb47380"></script>
     <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -70,7 +70,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="1.19.0.dev1" />
+  <meta name="docsearch:version" content="1.20.0.dev0" />
   
     
     <script src="../../_static/searchtools.js"></script>
@@ -147,11 +147,11 @@
       
     
     
-    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.19.0.dev1 - Home"/>
-    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.19.0.dev1 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.20.0.dev0 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.20.0.dev0 - Home"/>
   
   
-    <p class="title logo__title">Warp 1.19.0.dev1</p>
+    <p class="title logo__title">Warp 1.20.0.dev0</p>
   
 </a></div>
     
@@ -291,11 +291,11 @@
       
     
     
-    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.19.0.dev1 - Home"/>
-    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.19.0.dev1 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.20.0.dev0 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.20.0.dev0 - Home"/>
   
   
-    <p class="title logo__title">Warp 1.19.0.dev1</p>
+    <p class="title logo__title">Warp 1.20.0.dev0</p>
   
 </a>
 
@@ -569,9 +569,10 @@ order on every device.</p>
 only for the duration of the kernel invocation and does not carry over between
 launches. Re-launching with the same seed and per-thread offsets reproduces the
 same sequences. To draw different sequences across launches, change the seed or
-include a launch-specific value in the <code class="docutils literal notranslate"><span class="pre">rand_init(seed,</span> <span class="pre">offset)</span></code> offset. See
+include a launch-specific value in the <code class="docutils literal notranslate"><span class="pre">offset</span></code> of the <code class="docutils literal notranslate"><span class="pre">wp.rand_init(seed,</span> <span class="pre">offset)</span></code>
+overload. See
 <a class="reference internal" href="../../user_guide/runtime.html#avoiding-correlated-sequences"><span class="std std-ref">Avoiding Correlated Sequences</span></a> for examples.</p>
-<p>For parallel kernels, prefer the <code class="docutils literal notranslate"><span class="pre">rand_init(seed,</span> <span class="pre">offset)</span></code> overload with a
+<p>For parallel kernels, prefer the <code class="docutils literal notranslate"><span class="pre">wp.rand_init(seed,</span> <span class="pre">offset)</span></code> overload with a
 unique per-thread <code class="docutils literal notranslate"><span class="pre">offset</span></code> so each thread draws a distinct sequence. See
 the <a class="reference internal" href="../../user_guide/runtime.html#random-number-generation"><span class="std std-ref">Random Number Generation</span></a> user guide
 section for more details.</p>

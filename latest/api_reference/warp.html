@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>warp &#8212; Warp 1.19.0.dev1</title>
+    <title>warp &#8212; Warp 1.20.0.dev0</title>
   
   
   
@@ -44,7 +44,7 @@
 
 
 
-    <script src="../_static/documentation_options.js?v=130af3c1"></script>
+    <script src="../_static/documentation_options.js?v=1cb47380"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -70,7 +70,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="1.19.0.dev1" />
+  <meta name="docsearch:version" content="1.20.0.dev0" />
   
     
     <script src="../_static/searchtools.js"></script>
@@ -147,11 +147,11 @@
       
     
     
-    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.19.0.dev1 - Home"/>
-    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.19.0.dev1 - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.20.0.dev0 - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.20.0.dev0 - Home"/>
   
   
-    <p class="title logo__title">Warp 1.19.0.dev1</p>
+    <p class="title logo__title">Warp 1.20.0.dev0</p>
   
 </a></div>
     
@@ -291,11 +291,11 @@
       
     
     
-    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.19.0.dev1 - Home"/>
-    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.19.0.dev1 - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="Warp 1.20.0.dev0 - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="Warp 1.20.0.dev0 - Home"/>
   
   
-    <p class="title logo__title">Warp 1.19.0.dev1</p>
+    <p class="title logo__title">Warp 1.20.0.dev0</p>
   
 </a>
 
@@ -627,7 +627,7 @@ element methods, and <a class="reference internal" href="warp_sparse.html#module
 <td><p>64-bit double-precision floating-point scalar type.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.handle.html#warp.handle" title="warp.handle"><code class="xref py py-obj docutils literal notranslate"><span class="pre">handle</span></code></a></p></td>
-<td><p>Type for object handles (Mesh, Volume, BVH) in kernel parameters.</p></td>
+<td><p>Type for object handles (Mesh, Volume, BVH) in kernel parameters, struct fields, and arrays.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.int8.html#warp.int8" title="warp.int8"><code class="xref py py-obj docutils literal notranslate"><span class="pre">int8</span></code></a></p></td>
 <td><p>8-bit signed integer scalar type.</p></td>
@@ -840,7 +840,7 @@ element methods, and <a class="reference internal" href="warp_sparse.html#module
 <td><p>Quaternion with float16 (half-precision) components for 3D rotations.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.quat_between_vectors.html#warp.quat_between_vectors" title="warp.quat_between_vectors"><code class="xref py py-obj docutils literal notranslate"><span class="pre">quat_between_vectors</span></code></a></p></td>
-<td><p>Compute the quaternion that rotates vector <code class="docutils literal notranslate"><span class="pre">a</span></code> to vector <code class="docutils literal notranslate"><span class="pre">b</span></code>.</p></td>
+<td><p>Return the rotation quaternion that rotates the direction of <code class="docutils literal notranslate"><span class="pre">a</span></code> onto the direction of <code class="docutils literal notranslate"><span class="pre">b</span></code>.</p></td>
 </tr>
 </tbody>
 </table>
@@ -1076,19 +1076,22 @@ element methods, and <a class="reference internal" href="warp_sparse.html#module
 <tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.clear_lto_cache.html#warp.clear_lto_cache" title="warp.clear_lto_cache"><code class="xref py py-obj docutils literal notranslate"><span class="pre">clear_lto_cache</span></code></a></p></td>
 <td><p>Clear the LTO cache directory of previously generated LTO code.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.init.html#warp.init" title="warp.init"><code class="xref py py-obj docutils literal notranslate"><span class="pre">init</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.get_cpu_kernel_cache_key.html#warp.get_cpu_kernel_cache_key" title="warp.get_cpu_kernel_cache_key"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_cpu_kernel_cache_key</span></code></a></p></td>
+<td><p>Return a key identifying the CPU compilation target for naming external kernel caches.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.init.html#warp.init" title="warp.init"><code class="xref py py-obj docutils literal notranslate"><span class="pre">init</span></code></a></p></td>
 <td><p>Initialize the Warp runtime.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.is_cpu_available.html#warp.is_cpu_available" title="warp.is_cpu_available"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_cpu_available</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.is_cpu_available.html#warp.is_cpu_available" title="warp.is_cpu_available"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_cpu_available</span></code></a></p></td>
 <td><p>Check whether CPU execution is available.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.is_cubql_available.html#warp.is_cubql_available" title="warp.is_cubql_available"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_cubql_available</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.is_cubql_available.html#warp.is_cubql_available" title="warp.is_cubql_available"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_cubql_available</span></code></a></p></td>
 <td><p>Check whether the cuBQL BVH builder is available.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.is_cuda_available.html#warp.is_cuda_available" title="warp.is_cuda_available"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_cuda_available</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.is_cuda_available.html#warp.is_cuda_available" title="warp.is_cuda_available"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_cuda_available</span></code></a></p></td>
 <td><p>Check whether CUDA execution is available.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.print_diagnostics.html#warp.print_diagnostics" title="warp.print_diagnostics"><code class="xref py py-obj docutils literal notranslate"><span class="pre">print_diagnostics</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.print_diagnostics.html#warp.print_diagnostics" title="warp.print_diagnostics"><code class="xref py py-obj docutils literal notranslate"><span class="pre">print_diagnostics</span></code></a></p></td>
 <td><p>Print a comprehensive snapshot of the Warp build and runtime environment.</p></td>
 </tr>
 </tbody>
