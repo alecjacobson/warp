@@ -1,0 +1,522 @@
+[03:19:02] INFO: Starting Warp documentation build
+[03:19:02] INFO: Generating API stubs for autocomplete
+[03:19:02] INFO: /home/horde/Repos/warp.knn/warp/warp/__init__.pyi is up to date
+[03:19:02] INFO: Building html documentation: /home/horde/Repos/warp.knn/warp/docs -> /home/horde/Repos/warp.knn/warp/docs/_build/html
+Running Sphinx v9.1.0
+loading translations [en]... done
+making output directory... done
+[03:19:03] INFO: Generating API reference stubs...
+[03:19:04] INFO: Wrote docs/api_reference/warp.rst (327 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_autograd.rst (5 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_build_experimental.rst (2 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_config.rst (40 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_fem.rst (128 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_fem_cache.rst (2 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_fem_field.rst (4 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_fem_geometry.rst (1 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_fem_linalg.rst (12 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_fem_polynomial.rst (2 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_fem_space.rst (3 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_fem_space_shape.rst (25 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_fem_utils.rst (4 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_geometry.rst (14 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_optim.rst (2 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_optim_linear.rst (13 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_render.rst (2 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_sparse.rst (28 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_types.rst (33 symbols)
+[03:19:04] INFO: Wrote docs/api_reference/warp_utils.rst (13 symbols)
+[03:19:04] INFO: Wrote docs/language_reference/builtins.rst (303 symbols)
+[03:19:04] INFO: Generated documentation for 21 modules with 976 total symbols
+[autosummary] generating autosummary for: api_reference/warp.rst, api_reference/warp_autograd.rst, api_reference/warp_build_experimental.rst, api_reference/warp_config.rst, api_reference/warp_fem.rst, api_reference/warp_fem_cache.rst, api_reference/warp_fem_field.rst, api_reference/warp_fem_geometry.rst, api_reference/warp_fem_linalg.rst, api_reference/warp_fem_polynomial.rst, ..., user_guide/interoperability/jax.rst, user_guide/interoperability/pytorch.rst, user_guide/limitations.rst, user_guide/point_queries.rst, user_guide/programming_model.rst, user_guide/programming_model/code_generation.rst, user_guide/programming_model/cpp_cuda_workflows.rst, user_guide/programming_model/generics.rst, user_guide/programming_model/tiles.rst, user_guide/runtime.rst
+[autosummary] generating autosummary for: /home/horde/Repos/warp.knn/warp/docs/api_reference/_generated/warp.Allocator.rst, /home/horde/Repos/warp.knn/warp/docs/api_reference/_generated/warp.Bvh.rst, /home/horde/Repos/warp.knn/warp/docs/api_reference/_generated/warp.BvhQuery.rst, /home/horde/Repos/warp.knn/warp/docs/api_reference/_generated/warp.BvhQueryTiled.rst, /home/horde/Repos/warp.knn/warp/docs/api_reference/_generated/warp.CaptureMode.rst, /home/horde/Repos/warp.knn/warp/docs/api_reference/_generated/warp.CudaManagedAllocator.rst, /home/horde/Repos/warp.knn/warp/docs/api_reference/_generated/warp.DeterministicMode.rst, /home/horde/Repos/warp.knn/warp/docs/api_reference/_generated/warp.Device.rst, /home/horde/Repos/warp.knn/warp/docs/api_reference/_generated/warp.DeviceLike.rst, /home/horde/Repos/warp.knn/warp/docs/api_reference/_generated/warp.E.rst, ..., /home/horde/Repos/warp.knn/warp/docs/language_reference/_generated/warp.volume_sample_v.rst, /home/horde/Repos/warp.knn/warp/docs/language_reference/_generated/warp.volume_store.rst, /home/horde/Repos/warp.knn/warp/docs/language_reference/_generated/warp.volume_store_f.rst, /home/horde/Repos/warp.knn/warp/docs/language_reference/_generated/warp.volume_store_i.rst, /home/horde/Repos/warp.knn/warp/docs/language_reference/_generated/warp.volume_store_v.rst, /home/horde/Repos/warp.knn/warp/docs/language_reference/_generated/warp.volume_voxel_count.rst, /home/horde/Repos/warp.knn/warp/docs/language_reference/_generated/warp.volume_world_to_index.rst, /home/horde/Repos/warp.knn/warp/docs/language_reference/_generated/warp.volume_world_to_index_dir.rst, /home/horde/Repos/warp.knn/warp/docs/language_reference/_generated/warp.where.rst, /home/horde/Repos/warp.knn/warp/docs/language_reference/_generated/warp.zeros.rst
+loading intersphinx inventory 'jax' from https://docs.jax.dev/en/latest/objects.inv ...
+loading intersphinx inventory 'numpy' from https://numpy.org/doc/stable/objects.inv ...
+loading intersphinx inventory 'python' from https://docs.python.org/3/objects.inv ...
+loading intersphinx inventory 'pytorch' from https://docs.pytorch.org/docs/stable/objects.inv ...
+myst v5.1.0: MdParserConfig(commonmark_only=False, gfm_only=False, enable_extensions=set(), disable_syntax=[], all_links_external=False, links_external_new_tab=False, url_schemes=('http', 'https', 'mailto', 'ftp'), ref_domains=None, fence_as_directive=set(), number_code_blocks=[], title_to_header=False, heading_anchors=2, heading_slug_func=None, html_meta={}, footnote_sort=True, footnote_transition=True, words_per_minute=200, substitutions={}, linkify_fuzzy_links=True, dmath_allow_labels=True, dmath_allow_space=True, dmath_allow_digits=True, dmath_double_inline=False, update_mathjax=True, mathjax_classes='tex2jax_process|mathjax_process|math|output_area', enable_checkboxes=False, strikethrough_single_tilde=False, colon_fence_exact_match=False, suppress_warnings=[], highlight_code_blocks=True)
+building [mo]: targets for 0 po files that are out of date
+writing output...
+building [html]: targets for 1015 source files that are out of date
+updating environment: [new config] 1015 added, 0 changed, 0 removed
+reading sources... [  0%] api_reference/_generated/warp.Allocator .. api_reference/_generated/warp.CaptureMode
+reading sources... [  1%] api_reference/_generated/warp.CudaManagedAllocator .. api_reference/_generated/warp.E
+reading sources... [  1%] api_reference/_generated/warp.Event .. api_reference/_generated/warp.Graph
+reading sources... [  2%] api_reference/_generated/warp.HALF_PI .. api_reference/_generated/warp.Int
+reading sources... [  2%] api_reference/_generated/warp.JaxCallableGraphMode .. api_reference/_generated/warp.LN2
+reading sources... [  3%] api_reference/_generated/warp.LOG10E .. api_reference/_generated/warp.LOG_INFO
+reading sources... [  3%] api_reference/_generated/warp.LOG_WARNING .. api_reference/_generated/warp.Mesh
+reading sources... [  4%] api_reference/_generated/warp.MeshQuery .. api_reference/_generated/warp.MeshQueryRay
+reading sources... [  4%] api_reference/_generated/warp.Module .. api_reference/_generated/warp.PI
+reading sources... [  5%] api_reference/_generated/warp.RegisteredGLBuffer .. api_reference/_generated/warp.ScopedCudaProfiler
+reading sources... [  5%] api_reference/_generated/warp.ScopedDevice .. api_reference/_generated/warp.ScopedMempool
+reading sources... [  6%] api_reference/_generated/warp.ScopedMempoolAccess .. api_reference/_generated/warp.Stream
+reading sources... [  6%] api_reference/_generated/warp.TAU .. api_reference/_generated/warp.TIMING_KERNEL_BUILTIN
+reading sources... [  7%] api_reference/_generated/warp.TIMING_MEMCPY .. api_reference/_generated/warp.Texture1D
+reading sources... [  7%] api_reference/_generated/warp.Texture2D .. api_reference/_generated/warp.TextureResourceFlags
+reading sources... [  8%] api_reference/_generated/warp.TimingResult .. api_reference/_generated/warp.WarpCodegenIndexError
+reading sources... [  8%] api_reference/_generated/warp.WarpCodegenKeyError .. api_reference/_generated/warp.address_of
+reading sources... [  9%] api_reference/_generated/warp.array .. api_reference/_generated/warp.array4d
+reading sources... [  9%] api_reference/_generated/warp.autograd.gradcheck .. api_reference/_generated/warp.autograd.jacobian_plot
+reading sources... [ 10%] api_reference/_generated/warp.bfloat16 .. api_reference/_generated/warp.can_access
+reading sources... [ 10%] api_reference/_generated/warp.capture_begin .. api_reference/_generated/warp.capture_launch
+reading sources... [ 11%] api_reference/_generated/warp.capture_load .. api_reference/_generated/warp.clear_jax_callable_graph_cache
+reading sources... [ 11%] api_reference/_generated/warp.clear_kernel_cache .. api_reference/_generated/warp.config.LaunchArrayAccessMode
+reading sources... [ 12%] api_reference/_generated/warp.config.cache_kernels .. api_reference/_generated/warp.config.cuda_output
+reading sources... [ 12%] api_reference/_generated/warp.config.default_grid_stride .. api_reference/_generated/warp.config.enable_backward
+reading sources... [ 13%] api_reference/_generated/warp.config.enable_cpu_blocks .. api_reference/_generated/warp.config.enable_mathdx_solver
+reading sources... [ 13%] api_reference/_generated/warp.config.enable_mempools_at_init .. api_reference/_generated/warp.config.launch_array_access_mode
+reading sources... [ 14%] api_reference/_generated/warp.config.legacy_cpu_linker .. api_reference/_generated/warp.config.llvm_cuda
+reading sources... [ 14%] api_reference/_generated/warp.config.load_module_max_workers .. api_reference/_generated/warp.config.optimization_level
+reading sources... [ 15%] api_reference/_generated/warp.config.print_launches .. api_reference/_generated/warp.config.verbose_warnings
+reading sources... [ 15%] api_reference/_generated/warp.config.verify_autograd_array_access .. api_reference/_generated/warp.constant
+reading sources... [ 16%] api_reference/_generated/warp.copy .. api_reference/_generated/warp.device_from_paddle
+reading sources... [ 16%] api_reference/_generated/warp.device_from_torch .. api_reference/_generated/warp.dtype_from_jax
+reading sources... [ 17%] api_reference/_generated/warp.dtype_from_numpy .. api_reference/_generated/warp.dtype_to_numpy
+reading sources... [ 17%] api_reference/_generated/warp.dtype_to_paddle .. api_reference/_generated/warp.empty_like
+reading sources... [ 18%] api_reference/_generated/warp.event_from_ipc_handle .. api_reference/_generated/warp.fem.BasisSpace
+reading sources... [ 18%] api_reference/_generated/warp.fem.BoundarySides .. api_reference/_generated/warp.fem.Coords_f64
+reading sources... [ 19%] api_reference/_generated/warp.fem.D .. api_reference/_generated/warp.fem.Element
+reading sources... [ 19%] api_reference/_generated/warp.fem.ElementBasis .. api_reference/_generated/warp.fem.ExplicitQuadrature
+reading sources... [ 20%] api_reference/_generated/warp.fem.Field .. api_reference/_generated/warp.fem.Geometry
+reading sources... [ 20%] api_reference/_generated/warp.fem.GeometryDomain .. api_reference/_generated/warp.fem.Grid3D
+reading sources... [ 21%] api_reference/_generated/warp.fem.Hexmesh .. api_reference/_generated/warp.fem.NULL_ELEMENT_INDEX
+reading sources... [ 21%] api_reference/_generated/warp.fem.NULL_NODE_INDEX .. api_reference/_generated/warp.fem.NodeIndex
+reading sources... [ 22%] api_reference/_generated/warp.fem.NonconformingField .. api_reference/_generated/warp.fem.PointBasisSpace
+reading sources... [ 22%] api_reference/_generated/warp.fem.Polynomial .. api_reference/_generated/warp.fem.QuadraturePointIndex
+reading sources... [ 23%] api_reference/_generated/warp.fem.RegularQuadrature .. api_reference/_generated/warp.fem.ShapeFunction
+reading sources... [ 23%] api_reference/_generated/warp.fem.Sides .. api_reference/_generated/warp.fem.SpaceTopology
+reading sources... [ 24%] api_reference/_generated/warp.fem.Subdomain .. api_reference/_generated/warp.fem.Tetmesh
+reading sources... [ 24%] api_reference/_generated/warp.fem.Trimesh2D .. api_reference/_generated/warp.fem.adaptive_nanogrid_from_hierarchy
+reading sources... [ 25%] api_reference/_generated/warp.fem.at_node .. api_reference/_generated/warp.fem.cache.dynamic_func
+reading sources... [ 25%] api_reference/_generated/warp.fem.cache.dynamic_kernel .. api_reference/_generated/warp.fem.degree
+reading sources... [ 26%] api_reference/_generated/warp.fem.div .. api_reference/_generated/warp.fem.element_index
+reading sources... [ 26%] api_reference/_generated/warp.fem.element_partition_index .. api_reference/_generated/warp.fem.field.TestField
+reading sources... [ 27%] api_reference/_generated/warp.fem.field.TrialField .. api_reference/_generated/warp.fem.grad_jump
+reading sources... [ 27%] api_reference/_generated/warp.fem.grad_outer .. api_reference/_generated/warp.fem.interpolate
+reading sources... [ 28%] api_reference/_generated/warp.fem.jump .. api_reference/_generated/warp.fem.linalg.householder_make_hessenberg
+reading sources... [ 28%] api_reference/_generated/warp.fem.linalg.householder_qr_decomposition .. api_reference/_generated/warp.fem.linalg.spherical_part
+reading sources... [ 29%] api_reference/_generated/warp.fem.linalg.symmetric_eigenvalues_qr .. api_reference/_generated/warp.fem.make_collocated_function_space
+reading sources... [ 29%] api_reference/_generated/warp.fem.make_contravariant_function_space .. api_reference/_generated/warp.fem.make_element_shape_function
+reading sources... [ 30%] api_reference/_generated/warp.fem.make_free_sample .. api_reference/_generated/warp.fem.make_space_partition
+reading sources... [ 30%] api_reference/_generated/warp.fem.make_space_restriction .. api_reference/_generated/warp.fem.measure_ratio
+reading sources... [ 31%] api_reference/_generated/warp.fem.node_count .. api_reference/_generated/warp.fem.node_outer_weight
+reading sources... [ 31%] api_reference/_generated/warp.fem.node_outer_weight_gradient .. api_reference/_generated/warp.fem.outer
+reading sources... [ 32%] api_reference/_generated/warp.fem.partition_lookup .. api_reference/_generated/warp.fem.project_linear_system
+reading sources... [ 32%] api_reference/_generated/warp.fem.project_system_matrix .. api_reference/_generated/warp.fem.space.CollocatedFunctionSpace
+reading sources... [ 33%] api_reference/_generated/warp.fem.space.ContravariantFunctionSpace .. api_reference/_generated/warp.fem.space.shape.CubeNedelecFirstKindShapeFunctions
+reading sources... [ 33%] api_reference/_generated/warp.fem.space.shape.CubeNonConformingPolynomialShapeFunctions .. api_reference/_generated/warp.fem.space.shape.CubeTripolynomialShapeFunctions
+reading sources... [ 33%] api_reference/_generated/warp.fem.space.shape.SquareBSplineShapeFunctions .. api_reference/_generated/warp.fem.space.shape.SquareRaviartThomasShapeFunctions
+reading sources... [ 34%] api_reference/_generated/warp.fem.space.shape.SquareSerendipityShapeFunctions .. api_reference/_generated/warp.fem.space.shape.TetrahedronPolynomialShapeFunctions
+reading sources... [ 34%] api_reference/_generated/warp.fem.space.shape.TetrahedronRaviartThomasShapeFunctions .. api_reference/_generated/warp.fem.space.shape.TrianglePolynomialShapeFunctions
+reading sources... [ 35%] api_reference/_generated/warp.fem.space.shape.TriangleRaviartThomasShapeFunctions .. api_reference/_generated/warp.fem.to_outer_cell
+reading sources... [ 35%] api_reference/_generated/warp.fem.utils.grid_to_hexes .. api_reference/_generated/warp.fixedarray
+reading sources... [ 36%] api_reference/_generated/warp.float16 .. api_reference/_generated/warp.from_dlpack
+reading sources... [ 36%] api_reference/_generated/warp.from_ipc_handle .. api_reference/_generated/warp.from_ptr
+reading sources... [ 37%] api_reference/_generated/warp.from_torch .. api_reference/_generated/warp.func_grad
+reading sources... [ 37%] api_reference/_generated/warp.func_native .. api_reference/_generated/warp.geometry.IsoSurfaceNets
+reading sources... [ 38%] api_reference/_generated/warp.geometry.SweptVolumeSignMode .. api_reference/_generated/warp.geometry.sparse_marching_cubes
+reading sources... [ 38%] api_reference/_generated/warp.geometry.sparse_marching_cubes_from_cells .. api_reference/_generated/warp.geometry.swept_volume_sdf
+reading sources... [ 39%] api_reference/_generated/warp.geometry.tri_tri_adjacency .. api_reference/_generated/warp.get_cuda_devices
+reading sources... [ 39%] api_reference/_generated/warp.get_cuda_driver_version .. api_reference/_generated/warp.get_cuda_toolkit_version
+reading sources... [ 40%] api_reference/_generated/warp.get_device .. api_reference/_generated/warp.get_logger
+reading sources... [ 40%] api_reference/_generated/warp.get_mempool_release_threshold .. api_reference/_generated/warp.get_module_options
+reading sources... [ 41%] api_reference/_generated/warp.get_preferred_device .. api_reference/_generated/warp.half_pi_constant
+reading sources... [ 41%] api_reference/_generated/warp.handle .. api_reference/_generated/warp.indexedarray3d
+reading sources... [ 42%] api_reference/_generated/warp.indexedarray4d .. api_reference/_generated/warp.init
+reading sources... [ 42%] api_reference/_generated/warp.int16 .. api_reference/_generated/warp.is_conditional_graph_supported
+reading sources... [ 43%] api_reference/_generated/warp.is_cpu_available .. api_reference/_generated/warp.is_mempool_access_enabled
+reading sources... [ 43%] api_reference/_generated/warp.is_mempool_access_supported .. api_reference/_generated/warp.is_peer_access_supported
+reading sources... [ 44%] api_reference/_generated/warp.jax_callable .. api_reference/_generated/warp.launch_tiled
+reading sources... [ 44%] api_reference/_generated/warp.ln10_constant .. api_reference/_generated/warp.log10e_constant
+reading sources... [ 45%] api_reference/_generated/warp.log2e_constant .. api_reference/_generated/warp.mat22d
+reading sources... [ 45%] api_reference/_generated/warp.mat22f .. api_reference/_generated/warp.mat33f
+reading sources... [ 46%] api_reference/_generated/warp.mat33h .. api_reference/_generated/warp.mat44h
+reading sources... [ 46%] api_reference/_generated/warp.matrix_from_cols .. api_reference/_generated/warp.ones_like
+reading sources... [ 47%] api_reference/_generated/warp.optim.Adam .. api_reference/_generated/warp.optim.linear.CR
+reading sources... [ 47%] api_reference/_generated/warp.optim.linear.FSAI .. api_reference/_generated/warp.optim.linear.aslinearoperator
+reading sources... [ 48%] api_reference/_generated/warp.optim.linear.bicgstab_function .. api_reference/_generated/warp.optim.linear.preconditioner
+reading sources... [ 48%] api_reference/_generated/warp.overload .. api_reference/_generated/warp.print_memory_report
+reading sources... [ 49%] api_reference/_generated/warp.quat .. api_reference/_generated/warp.quath
+reading sources... [ 49%] api_reference/_generated/warp.record_event .. api_reference/_generated/warp.set_cuda_allocator
+reading sources... [ 50%] api_reference/_generated/warp.set_device .. api_reference/_generated/warp.set_mempool_enabled
+reading sources... [ 50%] api_reference/_generated/warp.set_mempool_release_threshold .. api_reference/_generated/warp.sparse.BSR_STATUS_ROW_CAPACITY_EXCEEDED
+reading sources... [ 51%] api_reference/_generated/warp.sparse.BSR_STATUS_SUCCESS .. api_reference/_generated/warp.sparse.bsr_axpy
+reading sources... [ 51%] api_reference/_generated/warp.sparse.bsr_axpy_work_arrays .. api_reference/_generated/warp.sparse.bsr_diag
+reading sources... [ 52%] api_reference/_generated/warp.sparse.bsr_from_triplets .. api_reference/_generated/warp.sparse.bsr_mm
+reading sources... [ 52%] api_reference/_generated/warp.sparse.bsr_mm_work_arrays .. api_reference/_generated/warp.sparse.bsr_set_diag
+reading sources... [ 53%] api_reference/_generated/warp.sparse.bsr_set_from_mapped_values .. api_reference/_generated/warp.sparse.bsr_set_zero
+reading sources... [ 53%] api_reference/_generated/warp.sparse.bsr_transposed .. api_reference/_generated/warp.spatial_matrixf
+reading sources... [ 54%] api_reference/_generated/warp.spatial_matrixh .. api_reference/_generated/warp.spatial_vectorh
+reading sources... [ 54%] api_reference/_generated/warp.static .. api_reference/_generated/warp.struct
+reading sources... [ 55%] api_reference/_generated/warp.synchronize .. api_reference/_generated/warp.tau_constant
+reading sources... [ 55%] api_reference/_generated/warp.tile .. api_reference/_generated/warp.timing_print
+reading sources... [ 56%] api_reference/_generated/warp.to_dlpack .. api_reference/_generated/warp.transform
+reading sources... [ 56%] api_reference/_generated/warp.transform_expand .. api_reference/_generated/warp.types.is_array
+reading sources... [ 57%] api_reference/_generated/warp.types.is_composite .. api_reference/_generated/warp.types.is_quaternion
+reading sources... [ 57%] api_reference/_generated/warp.types.is_scalar .. api_reference/_generated/warp.types.is_value
+reading sources... [ 58%] api_reference/_generated/warp.types.is_vector .. api_reference/_generated/warp.types.type_ctype
+reading sources... [ 58%] api_reference/_generated/warp.types.type_is_array .. api_reference/_generated/warp.types.type_is_matrix
+reading sources... [ 59%] api_reference/_generated/warp.types.type_is_quaternion .. api_reference/_generated/warp.types.type_is_transformation
+reading sources... [ 59%] api_reference/_generated/warp.types.type_is_value .. api_reference/_generated/warp.types.type_size_in_bytes
+reading sources... [ 60%] api_reference/_generated/warp.types.types_equal .. api_reference/_generated/warp.uint64
+reading sources... [ 60%] api_reference/_generated/warp.uint8 .. api_reference/_generated/warp.utils.array_cast
+reading sources... [ 61%] api_reference/_generated/warp.utils.array_inner .. api_reference/_generated/warp.utils.graph_coloring_assign
+reading sources... [ 61%] api_reference/_generated/warp.utils.graph_coloring_balance .. api_reference/_generated/warp.utils.segmented_sort_pairs
+reading sources... [ 62%] api_reference/_generated/warp.vec2 .. api_reference/_generated/warp.vec2h
+reading sources... [ 62%] api_reference/_generated/warp.vec2i .. api_reference/_generated/warp.vec2ui
+reading sources... [ 63%] api_reference/_generated/warp.vec2ul .. api_reference/_generated/warp.vec3d
+reading sources... [ 63%] api_reference/_generated/warp.vec3f .. api_reference/_generated/warp.vec3s
+reading sources... [ 64%] api_reference/_generated/warp.vec3ub .. api_reference/_generated/warp.vec4
+reading sources... [ 64%] api_reference/_generated/warp.vec4b .. api_reference/_generated/warp.vec4i
+reading sources... [ 65%] api_reference/_generated/warp.vec4l .. api_reference/_generated/warp.vec4ul
+reading sources... [ 65%] api_reference/_generated/warp.vec4us .. api_reference/_generated/warp.zeros_like
+reading sources... [ 66%] api_reference/warp .. api_reference/warp_fem
+reading sources... [ 66%] api_reference/warp_fem_cache .. api_reference/warp_fem_polynomial
+reading sources... [ 67%] api_reference/warp_fem_space .. api_reference/warp_optim
+reading sources... [ 67%] api_reference/warp_optim_linear .. api_reference/warp_utils
+reading sources... [ 67%] domain_modules/fem .. language_reference/_generated/warp.abs
+reading sources... [ 68%] language_reference/_generated/warp.acos .. language_reference/_generated/warp.array
+reading sources... [ 68%] language_reference/_generated/warp.asin .. language_reference/_generated/warp.atomic_and
+reading sources... [ 69%] language_reference/_generated/warp.atomic_cas .. language_reference/_generated/warp.atomic_or
+reading sources... [ 69%] language_reference/_generated/warp.atomic_sub .. language_reference/_generated/warp.bit_or
+reading sources... [ 70%] language_reference/_generated/warp.bit_xor .. language_reference/_generated/warp.bvh_query_aabb
+reading sources... [ 70%] language_reference/_generated/warp.bvh_query_aabb_tiled .. language_reference/_generated/warp.bvh_query_ray
+reading sources... [ 71%] language_reference/_generated/warp.bvh_query_ray_tiled .. language_reference/_generated/warp.ceil
+reading sources... [ 71%] language_reference/_generated/warp.clamp .. language_reference/_generated/warp.cosh
+reading sources... [ 72%] language_reference/_generated/warp.cross .. language_reference/_generated/warp.ddot
+reading sources... [ 72%] language_reference/_generated/warp.degrees .. language_reference/_generated/warp.div_approx
+reading sources... [ 73%] language_reference/_generated/warp.dot .. language_reference/_generated/warp.erfcinv
+reading sources... [ 73%] language_reference/_generated/warp.erfinv .. language_reference/_generated/warp.floordiv
+reading sources... [ 74%] language_reference/_generated/warp.frac .. language_reference/_generated/warp.hash_grid_query_next
+reading sources... [ 74%] language_reference/_generated/warp.identity .. language_reference/_generated/warp.invert
+reading sources... [ 75%] language_reference/_generated/warp.isfinite .. language_reference/_generated/warp.length
+reading sources... [ 75%] language_reference/_generated/warp.length_sq .. language_reference/_generated/warp.log2
+reading sources... [ 76%] language_reference/_generated/warp.lower_bound .. language_reference/_generated/warp.matrix_from_rows
+reading sources... [ 76%] language_reference/_generated/warp.max .. language_reference/_generated/warp.mesh_get
+reading sources... [ 77%] language_reference/_generated/warp.mesh_get_bvh .. language_reference/_generated/warp.mesh_get_velocity
+reading sources... [ 77%] language_reference/_generated/warp.mesh_query_aabb .. language_reference/_generated/warp.mesh_query_furthest_point_no_sign
+reading sources... [ 78%] language_reference/_generated/warp.mesh_query_next .. language_reference/_generated/warp.mesh_query_point_sign_parity
+reading sources... [ 78%] language_reference/_generated/warp.mesh_query_point_sign_winding_number .. language_reference/_generated/warp.mesh_query_sphere
+reading sources... [ 79%] language_reference/_generated/warp.min .. language_reference/_generated/warp.noise
+reading sources... [ 79%] language_reference/_generated/warp.nonzero .. language_reference/_generated/warp.norm_pseudo_huber
+reading sources... [ 80%] language_reference/_generated/warp.normalize .. language_reference/_generated/warp.point_query_nearest
+reading sources... [ 80%] language_reference/_generated/warp.point_query_next .. language_reference/_generated/warp.print
+reading sources... [ 81%] language_reference/_generated/warp.printf .. language_reference/_generated/warp.quat_from_matrix
+reading sources... [ 81%] language_reference/_generated/warp.quat_identity .. language_reference/_generated/warp.quat_rpy
+reading sources... [ 82%] language_reference/_generated/warp.quat_slerp .. language_reference/_generated/warp.quat_to_rpy
+reading sources... [ 82%] language_reference/_generated/warp.quat_twist .. language_reference/_generated/warp.radians
+reading sources... [ 83%] language_reference/_generated/warp.rand_init .. language_reference/_generated/warp.randu
+reading sources... [ 83%] language_reference/_generated/warp.rint .. language_reference/_generated/warp.sample_triangle
+reading sources... [ 84%] language_reference/_generated/warp.sample_unit_cube .. language_reference/_generated/warp.sample_unit_ring
+reading sources... [ 84%] language_reference/_generated/warp.sample_unit_sphere .. language_reference/_generated/warp.sign
+reading sources... [ 85%] language_reference/_generated/warp.sin .. language_reference/_generated/warp.smoothstep
+reading sources... [ 85%] language_reference/_generated/warp.spatial_adjoint .. language_reference/_generated/warp.spatial_dot
+reading sources... [ 86%] language_reference/_generated/warp.spatial_top .. language_reference/_generated/warp.step
+reading sources... [ 86%] language_reference/_generated/warp.sub .. language_reference/_generated/warp.tanh
+reading sources... [ 87%] language_reference/_generated/warp.texture_sample .. language_reference/_generated/warp.tile_argmax
+reading sources... [ 87%] language_reference/_generated/warp.tile_argmin .. language_reference/_generated/warp.tile_atomic_add_indexed
+reading sources... [ 88%] language_reference/_generated/warp.tile_axpy .. language_reference/_generated/warp.tile_bvh_query_ray
+reading sources... [ 88%] language_reference/_generated/warp.tile_cholesky .. language_reference/_generated/warp.tile_diag_add
+reading sources... [ 89%] language_reference/_generated/warp.tile_dot .. language_reference/_generated/warp.tile_from_thread
+reading sources... [ 89%] language_reference/_generated/warp.tile_full .. language_reference/_generated/warp.tile_lower_solve
+reading sources... [ 90%] language_reference/_generated/warp.tile_lower_solve_inplace .. language_reference/_generated/warp.tile_mesh_query_aabb
+reading sources... [ 90%] language_reference/_generated/warp.tile_mesh_query_aabb_next .. language_reference/_generated/warp.tile_randf
+reading sources... [ 91%] language_reference/_generated/warp.tile_randi .. language_reference/_generated/warp.tile_scan_inclusive
+reading sources... [ 91%] language_reference/_generated/warp.tile_scan_max_inclusive .. language_reference/_generated/warp.tile_slice_indexed
+reading sources... [ 92%] language_reference/_generated/warp.tile_sort .. language_reference/_generated/warp.tile_stack_count
+reading sources... [ 92%] language_reference/_generated/warp.tile_stack_pop .. language_reference/_generated/warp.tile_sum
+reading sources... [ 93%] language_reference/_generated/warp.tile_transpose .. language_reference/_generated/warp.tile_zeros
+reading sources... [ 93%] language_reference/_generated/warp.trace .. language_reference/_generated/warp.transform_get_rotation
+reading sources... [ 94%] language_reference/_generated/warp.transform_get_translation .. language_reference/_generated/warp.transform_point
+reading sources... [ 94%] language_reference/_generated/warp.transform_set_rotation .. language_reference/_generated/warp.transform_vector
+reading sources... [ 95%] language_reference/_generated/warp.transform_wrench .. language_reference/_generated/warp.unot
+reading sources... [ 95%] language_reference/_generated/warp.untile .. language_reference/_generated/warp.volume_index_to_world_dir
+reading sources... [ 96%] language_reference/_generated/warp.volume_lookup .. language_reference/_generated/warp.volume_lookup_v
+reading sources... [ 96%] language_reference/_generated/warp.volume_sample .. language_reference/_generated/warp.volume_sample_grad_index
+reading sources... [ 97%] language_reference/_generated/warp.volume_sample_i .. language_reference/_generated/warp.volume_store_f
+reading sources... [ 97%] language_reference/_generated/warp.volume_store_i .. language_reference/_generated/warp.volume_world_to_index_dir
+reading sources... [ 98%] language_reference/_generated/warp.where .. project/contribution_guide
+reading sources... [ 98%] project/publications .. user_guide/debugging
+reading sources... [ 99%] user_guide/differentiability .. user_guide/execution_and_performance/memory_management
+reading sources... [ 99%] user_guide/execution_and_performance/profiling .. user_guide/interoperability
+reading sources... [100%] user_guide/interoperability/jax .. user_guide/programming_model
+reading sources... [100%] user_guide/programming_model/code_generation .. user_guide/runtime
+
+looking for now-outdated files... none found
+pickling environment... done
+checking consistency... done
+preparing documents... done
+copying assets...
+copying static files...
+Writing evaluated template result to /home/horde/Repos/warp.knn/warp/docs/_build/html/_static/language_data.js
+Writing evaluated template result to /home/horde/Repos/warp.knn/warp/docs/_build/html/_static/documentation_options.js
+Writing evaluated template result to /home/horde/Repos/warp.knn/warp/docs/_build/html/_static/basic.css
+Writing evaluated template result to /home/horde/Repos/warp.knn/warp/docs/_build/html/_static/copybutton.js
+copying static files: done
+copying extra files...
+copying extra files: done
+copying assets: done
+writing output... [  0%] api_reference/_generated/warp.Bvh .. api_reference/_generated/warp.CudaManagedAllocator
+writing output... [  1%] api_reference/_generated/warp.DeterministicMode .. api_reference/_generated/warp.Event
+writing output... [  1%] api_reference/_generated/warp.Float .. api_reference/_generated/warp.HALF_PI
+writing output... [  2%] api_reference/_generated/warp.HashGrid .. api_reference/_generated/warp.JaxCallableGraphMode
+writing output... [  2%] api_reference/_generated/warp.JaxModulePreloadMode .. api_reference/_generated/warp.LOG10E
+writing output... [  3%] api_reference/_generated/warp.LOG2E .. api_reference/_generated/warp.LOG_WARNING
+writing output... [  3%] api_reference/_generated/warp.Launch .. api_reference/_generated/warp.MeshQuery
+writing output... [  4%] api_reference/_generated/warp.MeshQueryAABB .. api_reference/_generated/warp.Module
+writing output... [  4%] api_reference/_generated/warp.ModuleBuildOptions .. api_reference/_generated/warp.RegisteredGLBuffer
+writing output... [  5%] api_reference/_generated/warp.Scalar .. api_reference/_generated/warp.ScopedDevice
+writing output... [  5%] api_reference/_generated/warp.ScopedLogLevel .. api_reference/_generated/warp.ScopedMempoolAccess
+writing output... [  6%] api_reference/_generated/warp.ScopedPeerAccess .. api_reference/_generated/warp.TAU
+writing output... [  6%] api_reference/_generated/warp.TIMING_ALL .. api_reference/_generated/warp.TIMING_MEMCPY
+writing output... [  7%] api_reference/_generated/warp.TIMING_MEMSET .. api_reference/_generated/warp.Texture2D
+writing output... [  7%] api_reference/_generated/warp.Texture3D .. api_reference/_generated/warp.TimingResult
+writing output... [  8%] api_reference/_generated/warp.Volume .. api_reference/_generated/warp.WarpCodegenKeyError
+writing output... [  8%] api_reference/_generated/warp.WarpCodegenTypeError .. api_reference/_generated/warp.array
+writing output... [  9%] api_reference/_generated/warp.array1d .. api_reference/_generated/warp.autograd.gradcheck
+writing output... [  9%] api_reference/_generated/warp.autograd.gradcheck_tape .. api_reference/_generated/warp.bfloat16
+writing output... [ 10%] api_reference/_generated/warp.bool .. api_reference/_generated/warp.capture_begin
+writing output... [ 10%] api_reference/_generated/warp.capture_debug_dot_print .. api_reference/_generated/warp.capture_load
+writing output... [ 11%] api_reference/_generated/warp.capture_load_from_bytes .. api_reference/_generated/warp.clear_kernel_cache
+writing output... [ 11%] api_reference/_generated/warp.clear_lto_cache .. api_reference/_generated/warp.config.cache_kernels
+writing output... [ 12%] api_reference/_generated/warp.config.compile_time_trace .. api_reference/_generated/warp.config.default_grid_stride
+writing output... [ 12%] api_reference/_generated/warp.config.deterministic .. api_reference/_generated/warp.config.enable_cpu_blocks
+writing output... [ 13%] api_reference/_generated/warp.config.enable_graph_capture_module_load_by_default .. api_reference/_generated/warp.config.enable_mempools_at_init
+writing output... [ 13%] api_reference/_generated/warp.config.enable_tiles_in_stack_memory .. api_reference/_generated/warp.config.legacy_cpu_linker
+writing output... [ 14%] api_reference/_generated/warp.config.legacy_scalar_return_types .. api_reference/_generated/warp.config.load_module_max_workers
+writing output... [ 14%] api_reference/_generated/warp.config.log_level .. api_reference/_generated/warp.config.print_launches
+writing output... [ 15%] api_reference/_generated/warp.config.ptx_target_arch .. api_reference/_generated/warp.config.verify_autograd_array_access
+writing output... [ 15%] api_reference/_generated/warp.config.verify_cuda .. api_reference/_generated/warp.copy
+writing output... [ 16%] api_reference/_generated/warp.cuda_profiler_start .. api_reference/_generated/warp.device_from_torch
+writing output... [ 16%] api_reference/_generated/warp.device_to_jax .. api_reference/_generated/warp.dtype_from_numpy
+writing output... [ 17%] api_reference/_generated/warp.dtype_from_paddle .. api_reference/_generated/warp.dtype_to_paddle
+writing output... [ 17%] api_reference/_generated/warp.dtype_to_torch .. api_reference/_generated/warp.event_from_ipc_handle
+writing output... [ 18%] api_reference/_generated/warp.fabricarray .. api_reference/_generated/warp.fem.BoundarySides
+writing output... [ 18%] api_reference/_generated/warp.fem.CellBasedGeometryPartition .. api_reference/_generated/warp.fem.D
+writing output... [ 19%] api_reference/_generated/warp.fem.DiscreteField .. api_reference/_generated/warp.fem.ElementBasis
+writing output... [ 19%] api_reference/_generated/warp.fem.ElementIndex .. api_reference/_generated/warp.fem.Field
+writing output... [ 20%] api_reference/_generated/warp.fem.FieldLike .. api_reference/_generated/warp.fem.GeometryDomain
+writing output... [ 20%] api_reference/_generated/warp.fem.GeometryField .. api_reference/_generated/warp.fem.Hexmesh
+writing output... [ 21%] api_reference/_generated/warp.fem.ImplicitField .. api_reference/_generated/warp.fem.NULL_NODE_INDEX
+writing output... [ 21%] api_reference/_generated/warp.fem.NULL_QP_INDEX .. api_reference/_generated/warp.fem.NonconformingField
+writing output... [ 22%] api_reference/_generated/warp.fem.OUTSIDE .. api_reference/_generated/warp.fem.Polynomial
+writing output... [ 22%] api_reference/_generated/warp.fem.Quadmesh2D .. api_reference/_generated/warp.fem.RegularQuadrature
+writing output... [ 23%] api_reference/_generated/warp.fem.Sample .. api_reference/_generated/warp.fem.Sides
+writing output... [ 23%] api_reference/_generated/warp.fem.SkewSymmetricTensorMapper .. api_reference/_generated/warp.fem.Subdomain
+writing output... [ 24%] api_reference/_generated/warp.fem.SymmetricTensorMapper .. api_reference/_generated/warp.fem.Trimesh2D
+writing output... [ 24%] api_reference/_generated/warp.fem.Trimesh3D .. api_reference/_generated/warp.fem.at_node
+writing output... [ 25%] api_reference/_generated/warp.fem.average .. api_reference/_generated/warp.fem.cache.dynamic_kernel
+writing output... [ 25%] api_reference/_generated/warp.fem.cells_function .. api_reference/_generated/warp.fem.div
+writing output... [ 26%] api_reference/_generated/warp.fem.div_outer .. api_reference/_generated/warp.fem.element_partition_index
+writing output... [ 26%] api_reference/_generated/warp.fem.environment_index .. api_reference/_generated/warp.fem.field.TrialField
+writing output... [ 27%] api_reference/_generated/warp.fem.geometry.DeformedGeometry .. api_reference/_generated/warp.fem.grad_outer
+writing output... [ 27%] api_reference/_generated/warp.fem.inner .. api_reference/_generated/warp.fem.jump
+writing output... [ 28%] api_reference/_generated/warp.fem.linalg.array_axpy .. api_reference/_generated/warp.fem.linalg.householder_qr_decomposition
+writing output... [ 28%] api_reference/_generated/warp.fem.linalg.inverse_qr .. api_reference/_generated/warp.fem.linalg.symmetric_eigenvalues_qr
+writing output... [ 29%] api_reference/_generated/warp.fem.linalg.symmetric_part .. api_reference/_generated/warp.fem.make_contravariant_function_space
+writing output... [ 29%] api_reference/_generated/warp.fem.make_covariant_function_space .. api_reference/_generated/warp.fem.make_free_sample
+writing output... [ 30%] api_reference/_generated/warp.fem.make_polynomial_basis_space .. api_reference/_generated/warp.fem.make_space_restriction
+writing output... [ 30%] api_reference/_generated/warp.fem.make_test .. api_reference/_generated/warp.fem.node_count
+writing output... [ 31%] api_reference/_generated/warp.fem.node_index .. api_reference/_generated/warp.fem.node_outer_weight_gradient
+writing output... [ 31%] api_reference/_generated/warp.fem.node_partition_index .. api_reference/_generated/warp.fem.partition_lookup
+writing output... [ 32%] api_reference/_generated/warp.fem.polynomial.lagrange_scales .. api_reference/_generated/warp.fem.project_system_matrix
+writing output... [ 32%] api_reference/_generated/warp.fem.project_system_rhs .. api_reference/_generated/warp.fem.space.ContravariantFunctionSpace
+writing output... [ 33%] api_reference/_generated/warp.fem.space.CovariantFunctionSpace .. api_reference/_generated/warp.fem.space.shape.CubeNonConformingPolynomialShapeFunctions
+writing output... [ 33%] api_reference/_generated/warp.fem.space.shape.CubeRaviartThomasShapeFunctions .. api_reference/_generated/warp.fem.space.shape.SquareBSplineShapeFunctions
+writing output... [ 33%] api_reference/_generated/warp.fem.space.shape.SquareBipolynomialShapeFunctions .. api_reference/_generated/warp.fem.space.shape.SquareSerendipityShapeFunctions
+writing output... [ 34%] api_reference/_generated/warp.fem.space.shape.SquareShapeFunction .. api_reference/_generated/warp.fem.space.shape.TetrahedronRaviartThomasShapeFunctions
+writing output... [ 34%] api_reference/_generated/warp.fem.space.shape.TetrahedronShapeFunction .. api_reference/_generated/warp.fem.space.shape.TriangleRaviartThomasShapeFunctions
+writing output... [ 35%] api_reference/_generated/warp.fem.space.shape.TriangleShapeFunction .. api_reference/_generated/warp.fem.utils.grid_to_hexes
+writing output... [ 35%] api_reference/_generated/warp.fem.utils.grid_to_quads .. api_reference/_generated/warp.float16
+writing output... [ 36%] api_reference/_generated/warp.float32 .. api_reference/_generated/warp.from_ipc_handle
+writing output... [ 36%] api_reference/_generated/warp.from_jax .. api_reference/_generated/warp.from_torch
+writing output... [ 37%] api_reference/_generated/warp.full .. api_reference/_generated/warp.func_native
+writing output... [ 37%] api_reference/_generated/warp.func_replay .. api_reference/_generated/warp.geometry.SweptVolumeSignMode
+writing output... [ 38%] api_reference/_generated/warp.geometry.delaunay_edge_flip .. api_reference/_generated/warp.geometry.sparse_marching_cubes_from_cells
+writing output... [ 38%] api_reference/_generated/warp.geometry.swept_volume_bounds .. api_reference/_generated/warp.geometry.tri_tri_adjacency
+writing output... [ 39%] api_reference/_generated/warp.get_cpu_kernel_cache_key .. api_reference/_generated/warp.get_cuda_driver_version
+writing output... [ 39%] api_reference/_generated/warp.get_cuda_kernel_properties .. api_reference/_generated/warp.get_device
+writing output... [ 40%] api_reference/_generated/warp.get_device_allocator .. api_reference/_generated/warp.get_mempool_release_threshold
+writing output... [ 40%] api_reference/_generated/warp.get_mempool_used_mem_current .. api_reference/_generated/warp.get_preferred_device
+writing output... [ 41%] api_reference/_generated/warp.get_stream .. api_reference/_generated/warp.handle
+writing output... [ 41%] api_reference/_generated/warp.indexedarray .. api_reference/_generated/warp.indexedarray4d
+writing output... [ 42%] api_reference/_generated/warp.indexedfabricarray .. api_reference/_generated/warp.int16
+writing output... [ 42%] api_reference/_generated/warp.int32 .. api_reference/_generated/warp.is_cpu_available
+writing output... [ 43%] api_reference/_generated/warp.is_cubql_available .. api_reference/_generated/warp.is_mempool_access_supported
+writing output... [ 43%] api_reference/_generated/warp.is_mempool_enabled .. api_reference/_generated/warp.jax_callable
+writing output... [ 44%] api_reference/_generated/warp.jax_kernel .. api_reference/_generated/warp.ln10_constant
+writing output... [ 44%] api_reference/_generated/warp.ln2_constant .. api_reference/_generated/warp.log2e_constant
+writing output... [ 45%] api_reference/_generated/warp.map .. api_reference/_generated/warp.mat22f
+writing output... [ 45%] api_reference/_generated/warp.mat22h .. api_reference/_generated/warp.mat33h
+writing output... [ 46%] api_reference/_generated/warp.mat44 .. api_reference/_generated/warp.matrix_from_cols
+writing output... [ 46%] api_reference/_generated/warp.matrix_from_rows .. api_reference/_generated/warp.optim.Adam
+writing output... [ 47%] api_reference/_generated/warp.optim.SGD .. api_reference/_generated/warp.optim.linear.FSAI
+writing output... [ 47%] api_reference/_generated/warp.optim.linear.GMRES .. api_reference/_generated/warp.optim.linear.bicgstab_function
+writing output... [ 48%] api_reference/_generated/warp.optim.linear.cg_function .. api_reference/_generated/warp.overload
+writing output... [ 48%] api_reference/_generated/warp.phi_constant .. api_reference/_generated/warp.quat
+writing output... [ 49%] api_reference/_generated/warp.quat_between_vectors .. api_reference/_generated/warp.record_event
+writing output... [ 49%] api_reference/_generated/warp.ref .. api_reference/_generated/warp.set_device
+writing output... [ 50%] api_reference/_generated/warp.set_device_allocator .. api_reference/_generated/warp.set_mempool_release_threshold
+writing output... [ 50%] api_reference/_generated/warp.set_module_options .. api_reference/_generated/warp.sparse.BSR_STATUS_SUCCESS
+writing output... [ 51%] api_reference/_generated/warp.sparse.BsrMatrix .. api_reference/_generated/warp.sparse.bsr_axpy_work_arrays
+writing output... [ 51%] api_reference/_generated/warp.sparse.bsr_block_index .. api_reference/_generated/warp.sparse.bsr_from_triplets
+writing output... [ 52%] api_reference/_generated/warp.sparse.bsr_get_diag .. api_reference/_generated/warp.sparse.bsr_mm_work_arrays
+writing output... [ 52%] api_reference/_generated/warp.sparse.bsr_mv .. api_reference/_generated/warp.sparse.bsr_set_from_mapped_values
+writing output... [ 53%] api_reference/_generated/warp.sparse.bsr_set_from_triplets .. api_reference/_generated/warp.sparse.bsr_transposed
+writing output... [ 53%] api_reference/_generated/warp.sparse.bsr_zeros .. api_reference/_generated/warp.spatial_matrixh
+writing output... [ 54%] api_reference/_generated/warp.spatial_vector .. api_reference/_generated/warp.static
+writing output... [ 54%] api_reference/_generated/warp.stream_from_paddle .. api_reference/_generated/warp.synchronize
+writing output... [ 55%] api_reference/_generated/warp.synchronize_device .. api_reference/_generated/warp.tile
+writing output... [ 55%] api_reference/_generated/warp.tile_stack .. api_reference/_generated/warp.to_dlpack
+writing output... [ 56%] api_reference/_generated/warp.to_jax .. api_reference/_generated/warp.transform_expand
+writing output... [ 56%] api_reference/_generated/warp.transformd .. api_reference/_generated/warp.types.is_composite
+writing output... [ 57%] api_reference/_generated/warp.types.is_float .. api_reference/_generated/warp.types.is_scalar
+writing output... [ 57%] api_reference/_generated/warp.types.is_struct .. api_reference/_generated/warp.types.is_vector
+writing output... [ 58%] api_reference/_generated/warp.types.matrix .. api_reference/_generated/warp.types.type_is_array
+writing output... [ 58%] api_reference/_generated/warp.types.type_is_composite .. api_reference/_generated/warp.types.type_is_quaternion
+writing output... [ 59%] api_reference/_generated/warp.types.type_is_scalar .. api_reference/_generated/warp.types.type_is_value
+writing output... [ 59%] api_reference/_generated/warp.types.type_is_vector .. api_reference/_generated/warp.types.types_equal
+writing output... [ 60%] api_reference/_generated/warp.types.vector .. api_reference/_generated/warp.uint8
+writing output... [ 60%] api_reference/_generated/warp.unmap_cuda_device .. api_reference/_generated/warp.utils.array_inner
+writing output... [ 61%] api_reference/_generated/warp.utils.array_scan .. api_reference/_generated/warp.utils.graph_coloring_balance
+writing output... [ 61%] api_reference/_generated/warp.utils.graph_coloring_get_groups .. api_reference/_generated/warp.vec2
+writing output... [ 62%] api_reference/_generated/warp.vec2b .. api_reference/_generated/warp.vec2i
+writing output... [ 62%] api_reference/_generated/warp.vec2l .. api_reference/_generated/warp.vec2ul
+writing output... [ 63%] api_reference/_generated/warp.vec2us .. api_reference/_generated/warp.vec3f
+writing output... [ 63%] api_reference/_generated/warp.vec3h .. api_reference/_generated/warp.vec3ub
+writing output... [ 64%] api_reference/_generated/warp.vec3ui .. api_reference/_generated/warp.vec4b
+writing output... [ 64%] api_reference/_generated/warp.vec4d .. api_reference/_generated/warp.vec4l
+writing output... [ 65%] api_reference/_generated/warp.vec4s .. api_reference/_generated/warp.vec4us
+writing output... [ 65%] api_reference/_generated/warp.wait_event .. api_reference/warp
+writing output... [ 66%] api_reference/warp_autograd .. api_reference/warp_fem_cache
+writing output... [ 66%] api_reference/warp_fem_field .. api_reference/warp_fem_space
+writing output... [ 67%] api_reference/warp_fem_space_shape .. api_reference/warp_optim_linear
+writing output... [ 67%] api_reference/warp_render .. domain_modules/fem
+writing output... [ 67%] domain_modules/render .. language_reference/_generated/warp.acos
+writing output... [ 68%] language_reference/_generated/warp.add .. language_reference/_generated/warp.asin
+writing output... [ 68%] language_reference/_generated/warp.atan .. language_reference/_generated/warp.atomic_cas
+writing output... [ 69%] language_reference/_generated/warp.atomic_exch .. language_reference/_generated/warp.atomic_sub
+writing output... [ 69%] language_reference/_generated/warp.atomic_xor .. language_reference/_generated/warp.bit_xor
+writing output... [ 70%] language_reference/_generated/warp.block_dim .. language_reference/_generated/warp.bvh_query_aabb_tiled
+writing output... [ 70%] language_reference/_generated/warp.bvh_query_capsule .. language_reference/_generated/warp.bvh_query_ray_tiled
+writing output... [ 71%] language_reference/_generated/warp.bvh_query_sphere .. language_reference/_generated/warp.clamp
+writing output... [ 71%] language_reference/_generated/warp.closest_point_edge_edge .. language_reference/_generated/warp.cross
+writing output... [ 72%] language_reference/_generated/warp.curlnoise .. language_reference/_generated/warp.degrees
+writing output... [ 72%] language_reference/_generated/warp.determinant .. language_reference/_generated/warp.dot
+writing output... [ 73%] language_reference/_generated/warp.eig3 .. language_reference/_generated/warp.erfinv
+writing output... [ 73%] language_reference/_generated/warp.exp .. language_reference/_generated/warp.frac
+writing output... [ 74%] language_reference/_generated/warp.get_diag .. language_reference/_generated/warp.identity
+writing output... [ 74%] language_reference/_generated/warp.intersect_tri_tri .. language_reference/_generated/warp.isfinite
+writing output... [ 75%] language_reference/_generated/warp.isinf .. language_reference/_generated/warp.length_sq
+writing output... [ 75%] language_reference/_generated/warp.lerp .. language_reference/_generated/warp.lower_bound
+writing output... [ 76%] language_reference/_generated/warp.lshift .. language_reference/_generated/warp.max
+writing output... [ 76%] language_reference/_generated/warp.mesh_eval_face_normal .. language_reference/_generated/warp.mesh_get_bvh
+writing output... [ 77%] language_reference/_generated/warp.mesh_get_group_root .. language_reference/_generated/warp.mesh_query_aabb
+writing output... [ 77%] language_reference/_generated/warp.mesh_query_aabb_next .. language_reference/_generated/warp.mesh_query_next
+writing output... [ 78%] language_reference/_generated/warp.mesh_query_point .. language_reference/_generated/warp.mesh_query_point_sign_winding_number
+writing output... [ 78%] language_reference/_generated/warp.mesh_query_ray .. language_reference/_generated/warp.min
+writing output... [ 79%] language_reference/_generated/warp.mod .. language_reference/_generated/warp.nonzero
+writing output... [ 79%] language_reference/_generated/warp.norm_huber .. language_reference/_generated/warp.normalize
+writing output... [ 80%] language_reference/_generated/warp.outer .. language_reference/_generated/warp.point_query_next
+writing output... [ 80%] language_reference/_generated/warp.poisson .. language_reference/_generated/warp.printf
+writing output... [ 81%] language_reference/_generated/warp.qr3 .. language_reference/_generated/warp.quat_identity
+writing output... [ 81%] language_reference/_generated/warp.quat_inverse .. language_reference/_generated/warp.quat_slerp
+writing output... [ 82%] language_reference/_generated/warp.quat_to_axis_angle .. language_reference/_generated/warp.quat_twist
+writing output... [ 82%] language_reference/_generated/warp.quat_twist_angle .. language_reference/_generated/warp.rand_init
+writing output... [ 83%] language_reference/_generated/warp.randf .. language_reference/_generated/warp.rint
+writing output... [ 83%] language_reference/_generated/warp.round .. language_reference/_generated/warp.sample_unit_cube
+writing output... [ 84%] language_reference/_generated/warp.sample_unit_disk .. language_reference/_generated/warp.sample_unit_sphere
+writing output... [ 84%] language_reference/_generated/warp.sample_unit_sphere_surface .. language_reference/_generated/warp.sin
+writing output... [ 85%] language_reference/_generated/warp.sinh .. language_reference/_generated/warp.spatial_adjoint
+writing output... [ 85%] language_reference/_generated/warp.spatial_bottom .. language_reference/_generated/warp.spatial_top
+writing output... [ 86%] language_reference/_generated/warp.spatial_vector .. language_reference/_generated/warp.sub
+writing output... [ 86%] language_reference/_generated/warp.svd2 .. language_reference/_generated/warp.texture_sample
+writing output... [ 87%] language_reference/_generated/warp.tid .. language_reference/_generated/warp.tile_argmin
+writing output... [ 87%] language_reference/_generated/warp.tile_assign .. language_reference/_generated/warp.tile_axpy
+writing output... [ 88%] language_reference/_generated/warp.tile_broadcast .. language_reference/_generated/warp.tile_cholesky
+writing output... [ 88%] language_reference/_generated/warp.tile_cholesky_inplace .. language_reference/_generated/warp.tile_dot
+writing output... [ 89%] language_reference/_generated/warp.tile_empty .. language_reference/_generated/warp.tile_full
+writing output... [ 89%] language_reference/_generated/warp.tile_ifft .. language_reference/_generated/warp.tile_lower_solve_inplace
+writing output... [ 90%] language_reference/_generated/warp.tile_map .. language_reference/_generated/warp.tile_mesh_query_aabb_next
+writing output... [ 90%] language_reference/_generated/warp.tile_min .. language_reference/_generated/warp.tile_randi
+writing output... [ 91%] language_reference/_generated/warp.tile_reduce .. language_reference/_generated/warp.tile_scan_max_inclusive
+writing output... [ 91%] language_reference/_generated/warp.tile_scan_min_inclusive .. language_reference/_generated/warp.tile_sort
+writing output... [ 92%] language_reference/_generated/warp.tile_squeeze .. language_reference/_generated/warp.tile_stack_pop
+writing output... [ 92%] language_reference/_generated/warp.tile_stack_push .. language_reference/_generated/warp.tile_transpose
+writing output... [ 93%] language_reference/_generated/warp.tile_upper_solve .. language_reference/_generated/warp.trace
+writing output... [ 93%] language_reference/_generated/warp.transform_compose .. language_reference/_generated/warp.transform_get_translation
+writing output... [ 94%] language_reference/_generated/warp.transform_identity .. language_reference/_generated/warp.transform_set_rotation
+writing output... [ 94%] language_reference/_generated/warp.transform_set_translation .. language_reference/_generated/warp.transform_wrench
+writing output... [ 95%] language_reference/_generated/warp.transformation .. language_reference/_generated/warp.untile
+writing output... [ 95%] language_reference/_generated/warp.vector .. language_reference/_generated/warp.volume_lookup
+writing output... [ 96%] language_reference/_generated/warp.volume_lookup_f .. language_reference/_generated/warp.volume_sample
+writing output... [ 96%] language_reference/_generated/warp.volume_sample_f .. language_reference/_generated/warp.volume_sample_i
+writing output... [ 97%] language_reference/_generated/warp.volume_sample_index .. language_reference/_generated/warp.volume_store_i
+writing output... [ 97%] language_reference/_generated/warp.volume_store_v .. language_reference/_generated/warp.where
+writing output... [ 98%] language_reference/_generated/warp.zeros .. project/publications
+writing output... [ 98%] user_guide/basics .. user_guide/differentiability
+writing output... [ 99%] user_guide/execution_and_performance .. user_guide/execution_and_performance/profiling
+writing output... [ 99%] user_guide/execution_and_performance/reducing_compilation_and_startup_time .. user_guide/interoperability/jax
+writing output... [100%] user_guide/interoperability/pytorch .. user_guide/programming_model/code_generation
+writing output... [100%] user_guide/programming_model/cpp_cuda_workflows .. user_guide/runtime
+
+generating indices... genindex py-modindex done
+writing additional pages... search done
+copying images... [  2%] img/header.jpg
+copying images... [  4%] img/examples/core_dem.png
+copying images... [  6%] img/examples/core_fluid.png
+copying images... [  8%] img/examples/core_graph_capture.png
+copying images... [ 10%] img/examples/core_mesh.png
+copying images... [ 12%] img/examples/core_nvdb.png
+copying images... [ 15%] img/examples/core_raycast.png
+copying images... [ 17%] img/examples/core_raymarch.png
+copying images... [ 19%] img/examples/core_sample_mesh.png
+copying images... [ 21%] img/examples/core_sph.png
+copying images... [ 23%] img/examples/core_torch.png
+copying images... [ 25%] img/examples/core_wave.png
+copying images... [ 27%] img/examples/core_fft_poisson_navier_stokes_2d.png
+copying images... [ 29%] img/examples/core_fdtd_3d.png
+copying images... [ 31%] img/examples/geometry_isosurface.png
+copying images... [ 33%] img/examples/geometry_sparse_marching_cubes.png
+copying images... [ 35%] img/examples/fem_diffusion_3d.png
+copying images... [ 38%] img/examples/fem_mixed_elasticity.png
+copying images... [ 40%] img/examples/fem_apic_fluid.png
+copying images... [ 42%] img/examples/fem_streamlines.png
+copying images... [ 44%] img/examples/fem_distortion_energy.png
+copying images... [ 46%] img/examples/fem_taylor_green.png
+copying images... [ 48%] img/examples/fem_kelvin_helmholtz.png
+copying images... [ 50%] img/examples/fem_magnetostatics.png
+copying images... [ 52%] img/examples/fem_adaptive_grid.png
+copying images... [ 54%] img/examples/fem_nonconforming_contact.png
+copying images... [ 56%] img/examples/fem_darcy_ls_optimization.png
+copying images... [ 58%] img/examples/fem_elastic_shape_optimization.png
+copying images... [ 60%] img/examples/fem_cantilever_topology_optimization.png
+copying images... [ 62%] img/examples/geometry_swept_volume.png
+copying images... [ 65%] img/examples/optim_diffray.png
+copying images... [ 67%] img/examples/optim_fluid_checkpoint.png
+copying images... [ 69%] img/examples/optim_particle_repulsion.png
+copying images... [ 71%] img/examples/optim_navier_stokes_perturbation.png
+copying images... [ 73%] img/examples/tile_mlp.png
+copying images... [ 75%] img/examples/tile_nbody.png
+copying images... [ 77%] img/examples/tile_mcgp.png
+copying images... [ 79%] img/norm_huber.svg
+copying images... [ 81%] img/norm_pseudo_huber.svg
+copying images... [ 83%] img/kernel_jacobian_ad.svg
+copying images... [ 85%] img/kernel_jacobian_ad_subset.svg
+copying images... [ 88%] img/tape.svg
+copying images... [ 90%] img/profiling_nosync.png
+copying images... [ 92%] img/profiling_sync.png
+copying images... [ 94%] img/nsight_compute_python_vs_sass.png
+copying images... [ 96%] img/torch_sync_overhead.png
+copying images... [ 98%] img/compiler_pipeline.svg
+copying images... [100%] img/examples/geometry_sparse_marching_cubes.gif
+
+dumping search index in English (code: en)... done
+dumping object inventory... done
+wrote 15 documentation redirect stub(s)
+build succeeded.
+
+The HTML pages are in docs/_build/html.
+[03:20:19] INFO: Successfully built html documentation
+[03:20:19] INFO: Documentation build completed successfully

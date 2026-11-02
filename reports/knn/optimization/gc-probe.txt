@@ -1,0 +1,13 @@
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+Module warp.examples.benchmarks.point_query_common 9a00c24 load on device 'cuda:0' took 0.66 ms  (cached)
+Module make_ordered_query__locals__ordered_a8b1ce4a a8b1ce4 load on device 'cuda:0' took 0.51 ms  (cached)
+False-50 min,median,max [1.76777601 1.84238004] [1.78054398 1.91990501] [1.87721598 2.09422002]
+True-0 min,median,max [1.76761603 1.84288004] [1.78430396 1.96347502] [1.94736004 2.19186   ]
+True-100 min,median,max [1.76726401 1.84207992] [1.78104001 1.89767953] [1.865376  2.0581889]
+GC events [{'phase': 'True-0', 'sample': -1, 'ms': 15.150357969105244, 'generation': 2, 'collected': 60, 'uncollectable': 0}, {'phase': 'False-50', 'sample': 49, 'ms': 9.663528995588422, 'generation': 2, 'collected': 14, 'uncollectable': 0}, {'phase': 'True-100', 'sample': 49, 'ms': 8.486200007610023, 'generation': 2, 'collected': 14, 'uncollectable': 0}]

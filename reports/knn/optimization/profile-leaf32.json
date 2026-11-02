@@ -1,0 +1,113 @@
+{
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+  "settings": {
+    "output": "../artifacts/optimization/profile-leaf32",
+    "points": 1000000,
+    "queries": 100000,
+    "k": 11,
+    "leaf_size": 32,
+    "query_stride": 1,
+    "ordered": true,
+    "trace": true
+  },
+  "construction_activities": [
+    {
+      "name": "builtin kernel memset_kernel",
+      "ms": 0.006496000103652477,
+      "kind": 2
+    },
+    {
+      "name": "builtin kernel memset_kernel",
+      "ms": 0.0037440001033246517,
+      "kind": 2
+    },
+    {
+      "name": "builtin kernel compute_total_bounds",
+      "ms": 0.03465599939227104,
+      "kind": 2
+    },
+    {
+      "name": "builtin kernel compute_total_inv_edges",
+      "ms": 0.0022720000706613064,
+      "kind": 2
+    },
+    {
+      "name": "builtin kernel compute_morton_codes",
+      "ms": 0.013856000266969204,
+      "kind": 2
+    },
+    {
+      "name": "memcpy DtoD",
+      "ms": 0.009503999724984169,
+      "kind": 4
+    },
+    {
+      "name": "builtin kernel build_leaves",
+      "ms": 0.08764799684286118,
+      "kind": 2
+    },
+    {
+      "name": "memset",
+      "ms": 0.017952000722289085,
+      "kind": 8
+    },
+    {
+      "name": "builtin kernel build_radix_topology",
+      "ms": 0.1613440066576004,
+      "kind": 2
+    },
+    {
+      "name": "builtin kernel mark_packed_leaf_nodes",
+      "ms": 0.2043839991092682,
+      "kind": 2
+    },
+    {
+      "name": "builtin kernel refit_active_leaves",
+      "ms": 0.3948479890823364,
+      "kind": 2
+    },
+    {
+      "name": "builtin kernel initialize_bvh_descriptor",
+      "ms": 0.0033919999841600657,
+      "kind": 2
+    }
+  ],
+  "query_graph": {
+    "median_ms": 3.2664863586425783,
+    "min_ms": 3.260153579711914,
+    "max_ms": 3.2858943939208984,
+    "wall_median_ms": 3.267078095814213,
+    "samples_ms": [
+      3.2858943939208984,
+      3.2664863586425783,
+      3.276070404052734,
+      3.2691886901855467,
+      3.260153579711914,
+      3.264339065551758,
+      3.264246368408203
+    ],
+    "graph_iterations": 20
+  },
+  "rebuild_plan_query_graph": {
+    "median_ms": 4.423078536987305,
+    "min_ms": 4.419118499755859,
+    "max_ms": 4.550588989257813,
+    "wall_median_ms": 4.423889453755692,
+    "samples_ms": [
+      4.550588989257813,
+      4.422756958007812,
+      4.422953414916992,
+      4.423078536987305,
+      4.432123184204102,
+      4.419118499755859,
+      4.4298545837402346
+    ],
+    "graph_iterations": 20
+  },
+  "validation": {
+    "checked_rows": 32,
+    "float32_mismatch_rows": 0,
+    "float64_mismatch_rows": 0
+  },
+  "built_id_nonzero": true
+}

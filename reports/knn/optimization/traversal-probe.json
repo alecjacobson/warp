@@ -1,0 +1,890 @@
+[
+  {
+    "kind": "volume",
+    "N": 1000,
+    "Q": 32,
+    "k": 32,
+    "leaf": 4,
+    "cache": false,
+    "profile": false,
+    "query": {
+      "median_ms": 1.4116080284118653,
+      "min_ms": 1.4115488052368164,
+      "max_ms": 1.4249343872070312,
+      "wall_median_ms": 1.4120532956440002,
+      "samples_ms": [
+        1.4249343872070312,
+        1.4117456436157227,
+        1.4116080284118653,
+        1.4115488052368164,
+        1.4115599632263183
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "volume",
+    "N": 1000,
+    "Q": 32,
+    "k": 32,
+    "leaf": 4,
+    "cache": true,
+    "profile": false,
+    "query": {
+      "median_ms": 1.47576961517334,
+      "min_ms": 1.4756447792053222,
+      "max_ms": 1.4794912338256836,
+      "wall_median_ms": 1.4761648024432361,
+      "samples_ms": [
+        1.4794912338256836,
+        1.4758031845092774,
+        1.4756447792053222,
+        1.47575044631958,
+        1.47576961517334
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "volume",
+    "N": 1000,
+    "Q": 32,
+    "k": 32,
+    "leaf": 4,
+    "cache": false,
+    "profile": true,
+    "query": {
+      "median_ms": 1.445199966430664,
+      "min_ms": 1.4450271606445313,
+      "max_ms": 1.4489007949829102,
+      "wall_median_ms": 1.4456613513175398,
+      "samples_ms": [
+        1.4489007949829102,
+        1.4452239990234375,
+        1.445199966430664,
+        1.4451328277587892,
+        1.4450271606445313
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    },
+    "metrics": {
+      "nodes": {
+        "mean": 109.9375,
+        "max": 212,
+        "p95": 175.45
+      },
+      "points": {
+        "mean": 151.875,
+        "max": 316,
+        "p95": 225.39999999999998
+      },
+      "insertions": {
+        "mean": 82.71875,
+        "max": 159,
+        "p95": 143.25
+      },
+      "stack": {
+        "mean": 8.28125,
+        "max": 9,
+        "p95": 9.0
+      },
+      "fallback": {
+        "mean": 0.0,
+        "max": 0,
+        "p95": 0.0
+      }
+    }
+  },
+  {
+    "kind": "volume",
+    "N": 1000,
+    "Q": 32,
+    "k": 32,
+    "leaf": 16,
+    "cache": false,
+    "profile": false,
+    "query": {
+      "median_ms": 1.3381008148193358,
+      "min_ms": 1.3380831718444823,
+      "max_ms": 1.3408800125122071,
+      "wall_median_ms": 1.3385663041844964,
+      "samples_ms": [
+        1.3408800125122071,
+        1.338099193572998,
+        1.3380831718444823,
+        1.3382111549377442,
+        1.3381008148193358
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "volume",
+    "N": 1000,
+    "Q": 32,
+    "k": 32,
+    "leaf": 16,
+    "cache": true,
+    "profile": false,
+    "query": {
+      "median_ms": 1.3634271621704102,
+      "min_ms": 1.3632752418518066,
+      "max_ms": 1.3652943611145019,
+      "wall_median_ms": 1.3639153039548546,
+      "samples_ms": [
+        1.3652943611145019,
+        1.3635583877563477,
+        1.3634271621704102,
+        1.3633983612060547,
+        1.3632752418518066
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "volume",
+    "N": 1000,
+    "Q": 32,
+    "k": 32,
+    "leaf": 16,
+    "cache": false,
+    "profile": true,
+    "query": {
+      "median_ms": 1.3511088371276856,
+      "min_ms": 1.3510767936706543,
+      "max_ms": 1.353705596923828,
+      "wall_median_ms": 1.3515343016479164,
+      "samples_ms": [
+        1.353705596923828,
+        1.3512304306030274,
+        1.351097583770752,
+        1.3511088371276856,
+        1.3510767936706543
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    },
+    "metrics": {
+      "nodes": {
+        "mean": 49.1875,
+        "max": 86,
+        "p95": 81.0
+      },
+      "points": {
+        "mean": 294.0,
+        "max": 528,
+        "p95": 455.2
+      },
+      "insertions": {
+        "mean": 94.28125,
+        "max": 172,
+        "p95": 151.9
+      },
+      "stack": {
+        "mean": 6.03125,
+        "max": 7,
+        "p95": 6.449999999999999
+      },
+      "fallback": {
+        "mean": 0.0,
+        "max": 0,
+        "p95": 0.0
+      }
+    }
+  },
+  {
+    "kind": "surface",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 1,
+    "leaf": 4,
+    "cache": false,
+    "profile": false,
+    "query": {
+      "median_ms": 1.4117712020874023,
+      "min_ms": 1.4082799911499024,
+      "max_ms": 1.4139696121215821,
+      "wall_median_ms": 1.4122407999821007,
+      "samples_ms": [
+        1.4139696121215821,
+        1.4082799911499024,
+        1.4097951889038085,
+        1.4117712020874023,
+        1.4133888244628907
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "surface",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 1,
+    "leaf": 4,
+    "cache": true,
+    "profile": false,
+    "query": {
+      "median_ms": 1.3030400276184082,
+      "min_ms": 1.3008432388305664,
+      "max_ms": 1.309499168395996,
+      "wall_median_ms": 1.3034823525231332,
+      "samples_ms": [
+        1.309499168395996,
+        1.3063520431518554,
+        1.3030400276184082,
+        1.3008591651916503,
+        1.3008432388305664
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "surface",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 1,
+    "leaf": 4,
+    "cache": false,
+    "profile": true,
+    "query": {
+      "median_ms": 1.4415599822998046,
+      "min_ms": 1.4341216087341309,
+      "max_ms": 1.4503664016723632,
+      "wall_median_ms": 1.4419908518902957,
+      "samples_ms": [
+        1.4503664016723632,
+        1.4341216087341309,
+        1.4399696350097657,
+        1.4469759941101075,
+        1.4415599822998046
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    },
+    "metrics": {
+      "nodes": {
+        "mean": 90.30549,
+        "max": 594,
+        "p95": 239.0
+      },
+      "points": {
+        "mean": 32.69756,
+        "max": 324,
+        "p95": 108.0
+      },
+      "insertions": {
+        "mean": 8.89091,
+        "max": 96,
+        "p95": 28.0
+      },
+      "stack": {
+        "mean": 19.18776,
+        "max": 26,
+        "p95": 23.0
+      },
+      "fallback": {
+        "mean": 0.0,
+        "max": 0,
+        "p95": 0.0
+      }
+    }
+  },
+  {
+    "kind": "surface",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 1,
+    "leaf": 16,
+    "cache": false,
+    "profile": false,
+    "query": {
+      "median_ms": 2.2575279235839845,
+      "min_ms": 2.2554367065429686,
+      "max_ms": 2.2608352661132813,
+      "wall_median_ms": 2.2579852025955915,
+      "samples_ms": [
+        2.2608352661132813,
+        2.255636787414551,
+        2.2575279235839845,
+        2.259854316711426,
+        2.2554367065429686
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "surface",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 1,
+    "leaf": 16,
+    "cache": true,
+    "profile": false,
+    "query": {
+      "median_ms": 2.2258176803588867,
+      "min_ms": 2.222324752807617,
+      "max_ms": 2.235380744934082,
+      "wall_median_ms": 2.226254699053243,
+      "samples_ms": [
+        2.2294559478759766,
+        2.225048065185547,
+        2.2258176803588867,
+        2.222324752807617,
+        2.235380744934082
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "surface",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 1,
+    "leaf": 16,
+    "cache": false,
+    "profile": true,
+    "query": {
+      "median_ms": 2.30600643157959,
+      "min_ms": 2.3029504776000977,
+      "max_ms": 2.3115728378295897,
+      "wall_median_ms": 2.3064356995746493,
+      "samples_ms": [
+        2.3029504776000977,
+        2.30600643157959,
+        2.3115728378295897,
+        2.3044975280761717,
+        2.3073535919189454
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    },
+    "metrics": {
+      "nodes": {
+        "mean": 80.43382,
+        "max": 482,
+        "p95": 200.0
+      },
+      "points": {
+        "mean": 143.84384,
+        "max": 1488,
+        "p95": 464.0
+      },
+      "insertions": {
+        "mean": 15.36967,
+        "max": 115,
+        "p95": 42.0
+      },
+      "stack": {
+        "mean": 16.83501,
+        "max": 22,
+        "p95": 20.0
+      },
+      "fallback": {
+        "mean": 0.0,
+        "max": 0,
+        "p95": 0.0
+      }
+    }
+  },
+  {
+    "kind": "surface",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 11,
+    "leaf": 4,
+    "cache": false,
+    "profile": false,
+    "query": {
+      "median_ms": 10.04589614868164,
+      "min_ms": 9.99365463256836,
+      "max_ms": 10.103292846679688,
+      "wall_median_ms": 10.046397702535614,
+      "samples_ms": [
+        9.99365463256836,
+        10.017350769042968,
+        10.103292846679688,
+        10.097892761230469,
+        10.04589614868164
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "surface",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 11,
+    "leaf": 4,
+    "cache": true,
+    "profile": false,
+    "query": {
+      "median_ms": 10.589476776123046,
+      "min_ms": 10.570220947265625,
+      "max_ms": 10.647824096679688,
+      "wall_median_ms": 10.590343095827848,
+      "samples_ms": [
+        10.589476776123046,
+        10.586444854736328,
+        10.607691192626953,
+        10.570220947265625,
+        10.647824096679688
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "surface",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 11,
+    "leaf": 4,
+    "cache": false,
+    "profile": true,
+    "query": {
+      "median_ms": 10.297838592529297,
+      "min_ms": 10.273715209960937,
+      "max_ms": 10.359625244140625,
+      "wall_median_ms": 10.298704699380323,
+      "samples_ms": [
+        10.273715209960937,
+        10.297838592529297,
+        10.314208221435546,
+        10.296733093261718,
+        10.359625244140625
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    },
+    "metrics": {
+      "nodes": {
+        "mean": 151.86415,
+        "max": 1048,
+        "p95": 479.0
+      },
+      "points": {
+        "mean": 126.97272,
+        "max": 1112,
+        "p95": 436.0
+      },
+      "insertions": {
+        "mean": 68.99369,
+        "max": 628,
+        "p95": 217.0
+      },
+      "stack": {
+        "mean": 19.6488,
+        "max": 26,
+        "p95": 23.0
+      },
+      "fallback": {
+        "mean": 0.0,
+        "max": 0,
+        "p95": 0.0
+      }
+    }
+  },
+  {
+    "kind": "surface",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 11,
+    "leaf": 16,
+    "cache": false,
+    "profile": false,
+    "query": {
+      "median_ms": 12.780462646484375,
+      "min_ms": 12.732415771484375,
+      "max_ms": 12.820994567871093,
+      "wall_median_ms": 12.78092284919694,
+      "samples_ms": [
+        12.783708953857422,
+        12.820994567871093,
+        12.780462646484375,
+        12.753368377685547,
+        12.732415771484375
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "surface",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 11,
+    "leaf": 16,
+    "cache": true,
+    "profile": false,
+    "query": {
+      "median_ms": 13.117352294921876,
+      "min_ms": 13.08623046875,
+      "max_ms": 13.236062622070312,
+      "wall_median_ms": 13.117937801871449,
+      "samples_ms": [
+        13.117352294921876,
+        13.08623046875,
+        13.091093444824219,
+        13.231599426269531,
+        13.236062622070312
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "surface",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 11,
+    "leaf": 16,
+    "cache": false,
+    "profile": true,
+    "query": {
+      "median_ms": 13.033346557617188,
+      "min_ms": 12.918441772460938,
+      "max_ms": 13.047288513183593,
+      "wall_median_ms": 13.033876795088872,
+      "samples_ms": [
+        12.918441772460938,
+        13.033346557617188,
+        12.971450805664062,
+        13.036599731445312,
+        13.047288513183593
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    },
+    "metrics": {
+      "nodes": {
+        "mean": 102.66712,
+        "max": 3045,
+        "p95": 271.0
+      },
+      "points": {
+        "mean": 289.22016,
+        "max": 13296,
+        "p95": 912.0
+      },
+      "insertions": {
+        "mean": 84.17114,
+        "max": 1184,
+        "p95": 247.0
+      },
+      "stack": {
+        "mean": 17.06822,
+        "max": 22,
+        "p95": 20.0
+      },
+      "fallback": {
+        "mean": 0.0,
+        "max": 0,
+        "p95": 0.0
+      }
+    }
+  },
+  {
+    "kind": "volume",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 11,
+    "leaf": 4,
+    "cache": false,
+    "profile": false,
+    "query": {
+      "median_ms": 9.833930969238281,
+      "min_ms": 9.802913665771484,
+      "max_ms": 9.888406372070312,
+      "wall_median_ms": 9.834736248012632,
+      "samples_ms": [
+        9.822341156005859,
+        9.888406372070312,
+        9.839497375488282,
+        9.833930969238281,
+        9.802913665771484
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "volume",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 11,
+    "leaf": 4,
+    "cache": true,
+    "profile": false,
+    "query": {
+      "median_ms": 10.362586975097656,
+      "min_ms": 10.308745574951171,
+      "max_ms": 10.37811050415039,
+      "wall_median_ms": 10.363341151969507,
+      "samples_ms": [
+        10.308745574951171,
+        10.315961456298828,
+        10.362586975097656,
+        10.370025634765625,
+        10.37811050415039
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "volume",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 11,
+    "leaf": 4,
+    "cache": false,
+    "profile": true,
+    "query": {
+      "median_ms": 10.133930969238282,
+      "min_ms": 10.12001724243164,
+      "max_ms": 10.150039672851562,
+      "wall_median_ms": 10.134510649368167,
+      "samples_ms": [
+        10.141404724121093,
+        10.133930969238282,
+        10.150039672851562,
+        10.120692443847656,
+        10.12001724243164
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    },
+    "metrics": {
+      "nodes": {
+        "mean": 158.92393,
+        "max": 1739,
+        "p95": 362.0
+      },
+      "points": {
+        "mean": 127.831,
+        "max": 1588,
+        "p95": 352.0
+      },
+      "insertions": {
+        "mean": 52.14983,
+        "max": 666,
+        "p95": 158.0
+      },
+      "stack": {
+        "mean": 18.0928,
+        "max": 21,
+        "p95": 19.0
+      },
+      "fallback": {
+        "mean": 0.0,
+        "max": 0,
+        "p95": 0.0
+      }
+    }
+  },
+  {
+    "kind": "volume",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 11,
+    "leaf": 16,
+    "cache": false,
+    "profile": false,
+    "query": {
+      "median_ms": 14.557980346679688,
+      "min_ms": 14.443106079101563,
+      "max_ms": 14.635824584960938,
+      "wall_median_ms": 14.558739599306136,
+      "samples_ms": [
+        14.443106079101563,
+        14.635824584960938,
+        14.542056274414062,
+        14.627955627441406,
+        14.557980346679688
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "volume",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 11,
+    "leaf": 16,
+    "cache": true,
+    "profile": false,
+    "query": {
+      "median_ms": 15.146867370605468,
+      "min_ms": 15.130865478515625,
+      "max_ms": 15.189183044433594,
+      "wall_median_ms": 15.14755054959096,
+      "samples_ms": [
+        15.18099365234375,
+        15.189183044433594,
+        15.146867370605468,
+        15.130865478515625,
+        15.141700744628906
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  {
+    "kind": "volume",
+    "N": 1000000,
+    "Q": 100000,
+    "k": 11,
+    "leaf": 16,
+    "cache": false,
+    "profile": true,
+    "query": {
+      "median_ms": 14.848228454589844,
+      "min_ms": 14.812528991699219,
+      "max_ms": 14.891140747070313,
+      "wall_median_ms": 14.848779101157561,
+      "samples_ms": [
+        14.812528991699219,
+        14.848466491699218,
+        14.848228454589844,
+        14.891140747070313,
+        14.817845153808594
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    },
+    "metrics": {
+      "nodes": {
+        "mean": 134.75783,
+        "max": 1164,
+        "p95": 293.0
+      },
+      "points": {
+        "mean": 439.40368,
+        "max": 4112,
+        "p95": 1088.0
+      },
+      "insertions": {
+        "mean": 81.58964,
+        "max": 799,
+        "p95": 210.0
+      },
+      "stack": {
+        "mean": 16.00698,
+        "max": 17,
+        "p95": 17.0
+      },
+      "fallback": {
+        "mean": 0.0,
+        "max": 0,
+        "p95": 0.0
+      }
+    }
+  }
+]

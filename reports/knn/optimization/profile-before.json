@@ -1,0 +1,486 @@
+{
+  "1000": {
+    "build_activities": [
+      {
+        "name": "memset",
+        "ms": 0.008415999822318554,
+        "kind": 8
+      },
+      {
+        "name": "memset",
+        "ms": 0.003967999946326017,
+        "kind": 8
+      },
+      {
+        "name": "builtin kernel memset_kernel",
+        "ms": 0.0030400000978261232,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel memset_kernel",
+        "ms": 0.00470399996265769,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel compute_total_bounds",
+        "ms": 0.007040000054985285,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel compute_total_inv_edges",
+        "ms": 0.002368000103160739,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel compute_morton_codes",
+        "ms": 0.002848000032827258,
+        "kind": 2
+      },
+      {
+        "name": "memcpy DtoD",
+        "ms": 0.004095999989658594,
+        "kind": 4
+      },
+      {
+        "name": "memcpy DtoD",
+        "ms": 0.0035520000383257866,
+        "kind": 4
+      },
+      {
+        "name": "memcpy DtoD",
+        "ms": 0.002047999994829297,
+        "kind": 4
+      },
+      {
+        "name": "builtin kernel compute_key_deltas",
+        "ms": 0.003135999897494912,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel build_leaves",
+        "ms": 0.004927999805659056,
+        "kind": 2
+      },
+      {
+        "name": "memset",
+        "ms": 0.0030400000978261232,
+        "kind": 8
+      },
+      {
+        "name": "builtin kernel build_hierarchy",
+        "ms": 0.039103999733924866,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel mark_packed_leaf_nodes",
+        "ms": 0.005024000070989132,
+        "kind": 2
+      },
+      {
+        "name": "memcpy HtoD",
+        "ms": 0.0007999999797903001,
+        "kind": 4
+      }
+    ],
+    "block32": {
+      "median_ms": 1.1308176040649414,
+      "min_ms": 1.1306079864501952,
+      "max_ms": 1.1443519592285156,
+      "wall_median_ms": 1.1312353482935578,
+      "samples_ms": [
+        1.1443519592285156,
+        1.1309568405151367,
+        1.1308176040649414,
+        1.1306575775146483,
+        1.1306079864501952
+      ],
+      "graph_iterations": 20
+    },
+    "block64": {
+      "median_ms": 1.1271615982055665,
+      "min_ms": 1.1271360397338868,
+      "max_ms": 1.1306559562683105,
+      "wall_median_ms": 1.127589849056676,
+      "samples_ms": [
+        1.1306559562683105,
+        1.1272607803344727,
+        1.1271360397338868,
+        1.1271535873413085,
+        1.1271615982055665
+      ],
+      "graph_iterations": 20
+    },
+    "block128": {
+      "median_ms": 1.1309519767761231,
+      "min_ms": 1.1306336402893067,
+      "max_ms": 1.1346256256103515,
+      "wall_median_ms": 1.131303352303803,
+      "samples_ms": [
+        1.1346256256103515,
+        1.1309519767761231,
+        1.1306943893432617,
+        1.131004810333252,
+        1.1306336402893067
+      ],
+      "graph_iterations": 20
+    },
+    "block256": {
+      "median_ms": 1.1298144340515137,
+      "min_ms": 1.129692840576172,
+      "max_ms": 1.131332778930664,
+      "wall_median_ms": 1.1302353523205966,
+      "samples_ms": [
+        1.131332778930664,
+        1.129849624633789,
+        1.1298144340515137,
+        1.1297087669372559,
+        1.129692840576172
+      ],
+      "graph_iterations": 20
+    },
+    "refit_activities": [
+      {
+        "name": "memset",
+        "ms": 0.011392000131309032,
+        "kind": 8
+      },
+      {
+        "name": "builtin kernel bvh_refit_kernel",
+        "ms": 0.0451200008392334,
+        "kind": 2
+      }
+    ],
+    "rebuild_activities": [
+      {
+        "name": "builtin kernel memset_kernel",
+        "ms": 0.004255999810993671,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel memset_kernel",
+        "ms": 0.005024000070989132,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel compute_total_bounds",
+        "ms": 0.008063999935984612,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel compute_total_inv_edges",
+        "ms": 0.002368000103160739,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel compute_morton_codes",
+        "ms": 0.0025599999353289604,
+        "kind": 2
+      },
+      {
+        "name": "memcpy DtoD",
+        "ms": 0.004095999989658594,
+        "kind": 4
+      },
+      {
+        "name": "memcpy DtoD",
+        "ms": 0.0029440000653266907,
+        "kind": 4
+      },
+      {
+        "name": "memcpy DtoD",
+        "ms": 0.002976000076159835,
+        "kind": 4
+      },
+      {
+        "name": "builtin kernel compute_key_deltas",
+        "ms": 0.002976000076159835,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel build_leaves",
+        "ms": 0.0027199999894946814,
+        "kind": 2
+      },
+      {
+        "name": "memset",
+        "ms": 0.0033919999841600657,
+        "kind": 8
+      },
+      {
+        "name": "builtin kernel build_hierarchy",
+        "ms": 0.039264000952243805,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel mark_packed_leaf_nodes",
+        "ms": 0.004767999984323978,
+        "kind": 2
+      }
+    ],
+    "rebuild_graph": {
+      "median_ms": 1.1992015838623047,
+      "min_ms": 1.1990256309509277,
+      "max_ms": 1.2921168327331543,
+      "wall_median_ms": 1.1995923472568393,
+      "samples_ms": [
+        1.2921168327331543,
+        1.1992575645446777,
+        1.1992015838623047,
+        1.1990976333618164,
+        1.1990256309509277
+      ],
+      "graph_iterations": 20
+    },
+    "refit_graph": {
+      "median_ms": 1.1498191833496094,
+      "min_ms": 1.1497056007385253,
+      "max_ms": 1.1539631843566895,
+      "wall_median_ms": 1.150198350660503,
+      "samples_ms": [
+        1.1539631843566895,
+        1.1498656272888184,
+        1.149745559692383,
+        1.1498191833496094,
+        1.1497056007385253
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  },
+  "1000000": {
+    "build_activities": [
+      {
+        "name": "memset",
+        "ms": 0.05462399870157242,
+        "kind": 8
+      },
+      {
+        "name": "memset",
+        "ms": 0.08649600297212601,
+        "kind": 8
+      },
+      {
+        "name": "builtin kernel memset_kernel",
+        "ms": 0.004832000005990267,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel memset_kernel",
+        "ms": 0.003967999946326017,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel compute_total_bounds",
+        "ms": 0.055135998874902725,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel compute_total_inv_edges",
+        "ms": 0.004863999783992767,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel compute_morton_codes",
+        "ms": 0.021376000717282295,
+        "kind": 2
+      },
+      {
+        "name": "memcpy DtoD",
+        "ms": 0.010239999741315842,
+        "kind": 4
+      },
+      {
+        "name": "builtin kernel compute_key_deltas",
+        "ms": 0.00979200005531311,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel build_leaves",
+        "ms": 0.20230400562286377,
+        "kind": 2
+      },
+      {
+        "name": "memset",
+        "ms": 0.017983999103307724,
+        "kind": 8
+      },
+      {
+        "name": "builtin kernel build_hierarchy",
+        "ms": 1.5119999647140503,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel mark_packed_leaf_nodes",
+        "ms": 0.48902401328086853,
+        "kind": 2
+      },
+      {
+        "name": "memcpy HtoD",
+        "ms": 0.0007999999797903001,
+        "kind": 4
+      }
+    ],
+    "block32": {
+      "median_ms": 5.414944076538086,
+      "min_ms": 5.408014297485352,
+      "max_ms": 5.427196884155274,
+      "wall_median_ms": 5.415390245616436,
+      "samples_ms": [
+        5.4150337219238285,
+        5.408014297485352,
+        5.412555313110351,
+        5.414944076538086,
+        5.427196884155274
+      ],
+      "graph_iterations": 20
+    },
+    "block64": {
+      "median_ms": 5.5996849060058596,
+      "min_ms": 5.584396743774414,
+      "max_ms": 5.60022087097168,
+      "wall_median_ms": 5.600185802904889,
+      "samples_ms": [
+        5.597867202758789,
+        5.584396743774414,
+        5.5996849060058596,
+        5.600120162963867,
+        5.60022087097168
+      ],
+      "graph_iterations": 20
+    },
+    "block128": {
+      "median_ms": 5.577097702026367,
+      "min_ms": 5.571491241455078,
+      "max_ms": 5.592979049682617,
+      "wall_median_ms": 5.577554751653224,
+      "samples_ms": [
+        5.592979049682617,
+        5.577097702026367,
+        5.571920013427734,
+        5.578057479858399,
+        5.571491241455078
+      ],
+      "graph_iterations": 20
+    },
+    "block256": {
+      "median_ms": 5.618580627441406,
+      "min_ms": 5.610139083862305,
+      "max_ms": 5.623358535766601,
+      "wall_median_ms": 5.619033251423389,
+      "samples_ms": [
+        5.610139083862305,
+        5.619895935058594,
+        5.623358535766601,
+        5.612031936645508,
+        5.618580627441406
+      ],
+      "graph_iterations": 20
+    },
+    "refit_activities": [
+      {
+        "name": "memset",
+        "ms": 0.02473600022494793,
+        "kind": 8
+      },
+      {
+        "name": "builtin kernel bvh_refit_kernel",
+        "ms": 0.49622398614883423,
+        "kind": 2
+      }
+    ],
+    "rebuild_activities": [
+      {
+        "name": "builtin kernel memset_kernel",
+        "ms": 0.007071999832987785,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel memset_kernel",
+        "ms": 0.0049600000493228436,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel compute_total_bounds",
+        "ms": 0.035679999738931656,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel compute_total_inv_edges",
+        "ms": 0.0029120000544935465,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel compute_morton_codes",
+        "ms": 0.019231999292969704,
+        "kind": 2
+      },
+      {
+        "name": "memcpy DtoD",
+        "ms": 0.010239999741315842,
+        "kind": 4
+      },
+      {
+        "name": "builtin kernel compute_key_deltas",
+        "ms": 0.00979200005531311,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel build_leaves",
+        "ms": 0.20640000700950623,
+        "kind": 2
+      },
+      {
+        "name": "memset",
+        "ms": 0.018015999346971512,
+        "kind": 8
+      },
+      {
+        "name": "builtin kernel build_hierarchy",
+        "ms": 1.5170880556106567,
+        "kind": 2
+      },
+      {
+        "name": "builtin kernel mark_packed_leaf_nodes",
+        "ms": 0.4808320105075836,
+        "kind": 2
+      }
+    ],
+    "rebuild_graph": {
+      "median_ms": 8.283191680908203,
+      "min_ms": 8.265207672119141,
+      "max_ms": 8.355401611328125,
+      "wall_median_ms": 8.283718902384862,
+      "samples_ms": [
+        8.355401611328125,
+        8.267507171630859,
+        8.265207672119141,
+        8.285870361328126,
+        8.283191680908203
+      ],
+      "graph_iterations": 20
+    },
+    "refit_graph": {
+      "median_ms": 6.125468826293945,
+      "min_ms": 6.114468765258789,
+      "max_ms": 6.1339984893798825,
+      "wall_median_ms": 6.125896197045222,
+      "samples_ms": [
+        6.120412826538086,
+        6.114468765258789,
+        6.128571319580078,
+        6.125468826293945,
+        6.1339984893798825
+      ],
+      "graph_iterations": 20
+    },
+    "validation": {
+      "checked_rows": 32,
+      "float32_mismatch_rows": 0,
+      "float64_mismatch_rows": 0
+    }
+  }
+}
