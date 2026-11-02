@@ -93,10 +93,20 @@ def main():
     parser.add_argument("--scan", type=Path, required=True)
     parser.add_argument("--losses-only", action="store_true")
     parser.add_argument("--repeats", type=int, default=7)
+    parser.add_argument(
+        "--mempool-release-threshold-mib",
+        type=int,
+        help="Retain freed CUDA pool memory across synchronization (MiB); omit to preserve the current policy",
+    )
     args = parser.parse_args()
+    if args.mempool_release_threshold_mib is not None and args.mempool_release_threshold_mib < 0:
+        parser.error("The memory-pool release threshold must be nonnegative")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     wp.init()
     device = wp.get_device("cuda:0")
+    initial_threshold = wp.get_mempool_release_threshold(device)
+    if args.mempool_release_threshold_mib is not None:
+        wp.set_mempool_release_threshold(device, args.mempool_release_threshold_mib * 1024**2)
     original = json.loads(args.original.read_text())
     baseline, sha = load_physicsnemo(args.output.parent / "physicsnemo")
     import torch  # noqa: PLC0415 - optional comparison dependency
@@ -112,6 +122,9 @@ def main():
             Path("warp/examples/benchmarks/point_query_common.py").read_bytes()
         ).hexdigest(),
         "repeats": args.repeats,
+        "mempool_release_threshold_bytes": wp.get_mempool_release_threshold(device),
+        "initial_mempool_release_threshold_bytes": initial_threshold,
+        "torch_allocator_backend": torch.cuda.memory.get_allocator_backend(),
         "cases": [],
     }
     for case_id, old in enumerate(original["cases"], 1):

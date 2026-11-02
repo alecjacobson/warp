@@ -131,3 +131,11 @@ This preserves scalar query semantics; it is not a cooperative nearest-neighbor
 algorithm. Large batches generally benefit from dense launches. Leaf size and
 Morton ordering must also be measured: the tuning harness does not establish a
 universal dispatch threshold.
+
+For repeated one-shot calls, also measure the CUDA memory-pool release policy.
+A zero release threshold permits unused pool memory to be returned to the driver
+at synchronization, so warmup alone does not guarantee allocation reuse. The
+comparison accepts ``--mempool-release-threshold-mib 512`` to retain memory across
+samples, and ``benchmark_point_query_allocator`` isolates this effect with
+alternating pool policies and paired comparisons. This is an explicit application
+memory/performance tradeoff, not a change to Warp's default allocator policy.
