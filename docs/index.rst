@@ -238,6 +238,7 @@ warp/examples/tile
     user_guide/compatibility
     user_guide/basics
     user_guide/runtime
+    user_guide/point_queries
     user_guide/differentiability
     user_guide/programming_model
     user_guide/interoperability
