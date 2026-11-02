@@ -9,7 +9,15 @@ import warp as wp
 
 
 @functools.cache
-def make_api_query(k, euclidean64=False):
+def make_api_query(k, euclidean64=False, query_stride=1):
+    """Build a scalar API wrapper, optionally spreading a small batch across warps.
+
+    Launch ``Q * query_stride`` threads. A stride of 32 with block_dim=32
+    gives each query its own warp; it trades inactive lanes for less divergence
+    and more blocks when the batch is too small to fill the GPU otherwise.
+    """
+    if query_stride < 1:
+        raise ValueError("query_stride must be positive")
     index_type = wp.int64 if euclidean64 else wp.int32
 
     @wp.kernel(module="unique", enable_backward=False)
@@ -24,6 +32,9 @@ def make_api_query(k, euclidean64=False):
         counts: wp.array[int],
     ):
         t = wp.tid()
+        if t % wp.static(query_stride) != 0:
+            return
+        t = t // wp.static(query_stride)
         search = wp.point_query_knn(bvh, points, queries[t], cutoff, wp.static(k), excludes[t])
         i = int(-1)
         count = int(0)
