@@ -8,6 +8,7 @@ import numpy as np
 
 import warp as wp
 from warp.examples.benchmarks.point_query_common import (
+    make_api_query,
     make_ordered_query,
     make_query,
     make_tiled,
@@ -370,6 +371,78 @@ def test_scales_readers(test, device):
             np.testing.assert_array_equal(a[5].numpy(), reference(p, q, 8, np.inf, [-1] * len(q))[0])
 
 
+def test_sparse_queries(test, device):
+    rng = np.random.default_rng(47)
+    p = rng.normal(size=(37, 3)).astype(np.float32)
+    q = rng.normal(size=(35, 3)).astype(np.float32)
+    q[-1] = np.nan
+    points = wp.array(p, dtype=wp.vec3, device=device)
+    queries = wp.array(q, dtype=wp.vec3, device=device)
+    bvh = wp.Bvh(points, points, leaf_size=16)
+    exclude = np.arange(len(q), dtype=np.int32)
+    excludes = wp.array(exclude, dtype=int, device=device)
+    for k in (1, 32, 64):
+        expected, distances = reference(p, q, k, 0.8, exclude)
+        ids = wp.empty((len(q), k), dtype=wp.int64, device=device)
+        ds = wp.empty((len(q), k), dtype=float, device=device)
+        counts = wp.empty(len(q), dtype=int, device=device)
+        wp.launch(
+            make_api_query(k, True, 32),
+            len(q) * 32,
+            inputs=[bvh.id, points, queries, 0.8, excludes, ids, ds, counts],
+            block_dim=32,
+            device=device,
+        )
+        np.testing.assert_array_equal(ids.numpy(), expected)
+        np.testing.assert_allclose(ds.numpy(), np.sqrt(distances), rtol=2.0e-6)
+        np.testing.assert_array_equal(counts.numpy(), (expected >= 0).sum(axis=1))
+
+
+def test_lbvh_capture_construction(test, device):
+    rng = np.random.default_rng(97)
+    p = np.zeros((4099, 3), dtype=np.float32)
+    p[::7] = rng.normal(size=p[::7].shape)
+    q = rng.normal(size=(35, 3)).astype(np.float32)
+    for leaf in (1, 4, 32, 64):
+        check(test, device, p, q, 32, constructor="lbvh", leaf_size=leaf)
+
+    extents = rng.uniform(0.001, 0.1, size=p.shape).astype(np.float32)
+    lower = wp.array(p - extents, dtype=wp.vec3, device=device)
+    upper = wp.array(p + extents, dtype=wp.vec3, device=device)
+    enclosed = wp.array(p, dtype=wp.vec3, device=device)
+    enclosing_bvh = wp.Bvh(lower, upper, constructor="lbvh", leaf_size=32)
+    check(test, device, p, q, 32, bvh=enclosing_bvh, points=enclosed)
+
+    points = wp.array(p, dtype=wp.vec3, device=device)
+    queries = wp.array(q, dtype=wp.vec3, device=device)
+    excludes = wp.full(len(q), -1, dtype=int, device=device)
+    ids = wp.empty((len(q), 32), dtype=wp.int64, device=device)
+    ds = wp.empty((len(q), 32), dtype=float, device=device)
+    counts = wp.empty(len(q), dtype=int, device=device)
+    kernel = make_api_query(32, True, 32)
+    wp.load_module(module=kernel.module, device=device, block_dim=32)
+    with wp.ScopedCapture(device=device) as capture:
+        bvh = wp.Bvh(points, points, constructor="lbvh", leaf_size=32)
+        wp.launch(
+            kernel,
+            len(q) * 32,
+            inputs=[bvh.id, points, queries, wp.inf, excludes, ids, ds, counts],
+            block_dim=32,
+            device=device,
+        )
+    # Exercise constructor stack reuse before replaying the captured descriptor
+    # initialization. The graph must own its descriptor arguments, not host stack data.
+    other = wp.Bvh(points, points, constructor="lbvh", leaf_size=1)
+    for _ in range(3):
+        moved = rng.normal(size=p.shape).astype(np.float32)
+        points.assign(moved)
+        wp.capture_launch(capture.graph)
+        expected, distances = reference(moved, q, 32, np.inf, [-1] * len(q))
+        np.testing.assert_array_equal(ids.numpy(), expected)
+        np.testing.assert_allclose(ds.numpy(), np.sqrt(distances), rtol=2.0e-6)
+    test.assertNotEqual(other.id, bvh.id)
+
+
 def test_query_tiles(test, device):
     rng = np.random.default_rng(44)
     p = rng.normal(size=(259, 3)).astype(np.float32)
@@ -405,6 +478,7 @@ class TestPointQuery(unittest.TestCase):
 
 
 for name, fn in (
+    ("sparse_queries", test_sparse_queries),
     ("query_tiles", test_query_tiles),
     ("stored_gradients", test_stored_gradients),
     ("empty_builders", test_empty_builders),
@@ -418,6 +492,13 @@ for name, fn in (
     ("motion_capture", test_motion_capture),
 ):
     add_function_test(TestPointQuery, "test_" + name, fn, devices=get_test_devices())
+
+add_function_test(
+    TestPointQuery,
+    "test_lbvh_capture_construction",
+    test_lbvh_capture_construction,
+    devices=[device for device in get_test_devices() if device.is_cuda and wp.is_mempool_enabled(device)],
+)
 
 
 if __name__ == "__main__":

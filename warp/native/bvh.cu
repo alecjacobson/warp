@@ -183,6 +183,7 @@ private:
 ////////////////////////////////////////////////////////
 
 
+template <typename Key>
 __global__ void compute_morton_codes(
     const vec3* __restrict__ item_lowers,
     const vec3* __restrict__ item_uppers,
@@ -190,7 +191,7 @@ __global__ void compute_morton_codes(
     const vec3* grid_lower,
     const vec3* grid_inv_edges,
     int* __restrict__ indices,
-    uint64_t* __restrict__ keys,
+    Key* __restrict__ keys,
     const int* __restrict__ item_groups
 )
 {
@@ -231,6 +232,7 @@ __global__ void build_leaves(
     const vec3* __restrict__ item_lowers,
     const vec3* __restrict__ item_uppers,
     int n,
+    bool compute_bounds,
     const int* __restrict__ indices,
     int* __restrict__ range_lefts,
     int* __restrict__ range_rights,
@@ -241,16 +243,13 @@ __global__ void build_leaves(
     const int index = blockDim.x * blockIdx.x + threadIdx.x;
 
     if (index < n) {
-        const int item = indices[index];
-
-        vec3 lower = item_lowers[item];
-        vec3 upper = item_uppers[item];
-
-        // write leaf nodes using position indices and [start, end) range
-        lowers[index] = make_node(lower, index, true);
-        uppers[index] = make_node(upper, index, false);
-
-        // write leaf key ranges
+        bounds3 bounds;
+        if (compute_bounds) {
+            const int item = indices[index];
+            bounds.add_bounds(item_lowers[item], item_uppers[item]);
+        }
+        lowers[index] = make_node(bounds.lower, index, true);
+        uppers[index] = make_node(bounds.upper, index + 1, false);
         range_lefts[index] = index;
         range_rights[index] = index;
     }
@@ -394,6 +393,79 @@ __global__ void build_hierarchy(
     }
 }
 
+// A sorted-position suffix gives coincident Morton keys a unique, deterministic
+// ordering without modifying the caller's primitive permutation.
+template <typename Key> __device__ inline int radix_prefix(const Key* keys, int n, int a, int b)
+{
+    if (b < 0 || b >= n)
+        return -1;
+    const uint64_t diff = keys[a] ^ keys[b];
+    return diff ? __clzll(diff) : 64 + __clz(a ^ b);
+}
+
+// Determine every internal node independently. Unlike the agglomerative path,
+// topology construction does not serialize upward through atomic counters.
+// Karras, "Maximizing Parallelism in the Construction of BVHs, Octrees, and k-d Trees" (2012).
+template <typename Key>
+__global__ void build_radix_topology(
+    int n,
+    const Key* keys,
+    int* root,
+    int* parents,
+    int* range_lefts,
+    int* range_rights,
+    BVHPackedNodeHalf* lowers,
+    BVHPackedNodeHalf* uppers
+)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n - 1)
+        return;
+    const int direction = radix_prefix(keys, n, i, i + 1) > radix_prefix(keys, n, i, i - 1) ? 1 : -1;
+    const int minimum = radix_prefix(keys, n, i, i - direction);
+    int limit = 2;
+    while (radix_prefix(keys, n, i, i + limit * direction) > minimum)
+        limit *= 2;
+    int length = 0;
+    for (int step = limit / 2; step; step /= 2) {
+        if (radix_prefix(keys, n, i, i + (length + step) * direction) > minimum)
+            length += step;
+    }
+    const int j = i + length * direction;
+    const int first = min(i, j);
+    const int last = max(i, j);
+    const int prefix = radix_prefix(keys, n, first, last);
+    int split = first;
+    int step = last - first;
+    do {
+        step = (step + 1) / 2;
+        const int candidate = split + step;
+        if (candidate < last && radix_prefix(keys, n, first, candidate) > prefix)
+            split = candidate;
+    } while (step > 1);
+    const int left = split == first ? split : n + split;
+    const int right = split + 1 == last ? split + 1 : n + split + 1;
+    const int node = n + i;
+    lowers[node] = make_node(vec3(0.0f), left, false);
+    uppers[node] = make_node(vec3(0.0f), right, false);
+    parents[left] = node;
+    parents[right] = node;
+    range_lefts[node] = first;
+    range_rights[node] = last;
+    if (first == 0 && last == n - 1) {
+        parents[node] = -1;
+        *root = node;
+    }
+}
+
+__global__ void set_single_leaf_root(int* root, int* parents)
+{
+    if (threadIdx.x == 0) {
+        *root = 0;
+        parents[0] = -1;
+    }
+}
+
 /*
  * LBVH uses a bottom-up constructor which makes variable-sized leaf nodes more challenging to achieve.
  * Simply splitting the ordered primitives into uniform groups of size leaf_size will result in poor
@@ -401,29 +473,25 @@ __global__ void build_hierarchy(
  * <= leaf_size into a new leaf node. This process is done using the new kernel function called
  * mark_packed_leaf_nodes .
  */
+template <typename Key>
 __global__ void mark_packed_leaf_nodes(
     int n,
+    int num_items,
+    bool radix_tree,
     const int* __restrict__ range_lefts,
     const int* __restrict__ range_rights,
     const int* __restrict__ parents,
-    const uint64_t* __restrict__ keys,
+    const Key* __restrict__ keys,
     BVHPackedNodeHalf* __restrict__ lowers,
     BVHPackedNodeHalf* __restrict__ uppers,
     const int leaf_size
 )
 {
-    int node_index = blockDim.x * blockIdx.x + threadIdx.x;
+    // Original primitive leaves already have final [start, end) metadata.
+    int node_index = num_items + blockDim.x * blockIdx.x + threadIdx.x;
     if (node_index < n) {
         // mark the node as leaf if its range is less than leaf_size or it is deeper than BVH_QUERY_STACK_SIZE
         // this will forever mute its child nodes so that they will never be accessed
-
-        // calculate depth
-        int depth = 1;
-        int parent = parents[node_index];
-        while (parent != -1) {
-            parent = parents[parent];
-            depth++;
-        }
 
         int left = range_lefts[node_index];
         // the LBVH constructor's range is defined as left <= i <= right
@@ -432,10 +500,26 @@ __global__ void mark_packed_leaf_nodes(
 
         // avoid creating packed leaves that straddle group boundaries
         bool single_group = true;
-        const uint64_t group_left = keys[left] >> 32;
-        const uint64_t group_right = keys[right - 1] >> 32;
+        const uint64_t group_left = uint64_t(keys[left]) >> 32;
+        const uint64_t group_right = uint64_t(keys[right - 1]) >> 32;
         single_group = (group_left == group_right);
 
+        // Small subtrees will be packed regardless of depth. Avoid chasing their
+        // parent chains (most nodes in the tree) just to rediscover that fact.
+        int depth = 1;
+        // A compressed radix path gains at least one prefix bit per level.
+        // Most nodes can therefore prove they are below the stack limit without
+        // walking any parents. Equal Morton keys use sorted-position suffixes.
+        const bool needs_depth = !radix_tree
+            || radix_prefix(keys, num_items, left, right - 1) - radix_prefix(keys, num_items, 0, num_items - 1) + 1
+                >= BVH_QUERY_STACK_SIZE;
+        if (single_group && right - left > leaf_size && needs_depth) {
+            int parent = parents[node_index];
+            while (parent != -1 && depth < BVH_QUERY_STACK_SIZE) {
+                parent = parents[parent];
+                ++depth;
+            }
+        }
         if (single_group && (right - left <= leaf_size || depth >= BVH_QUERY_STACK_SIZE)) {
             lowers[node_index].b = 1;
             lowers[node_index].i = left;
@@ -447,6 +531,62 @@ __global__ void mark_packed_leaf_nodes(
 
 CUDA_CALLABLE inline vec3 Vec3Max(const vec3& a, const vec3& b) { return wp::max(a, b); }
 CUDA_CALLABLE inline vec3 Vec3Min(const vec3& a, const vec3& b) { return wp::min(a, b); }
+
+__device__ inline void propagate_active_bounds(
+    int node, const int* parents, int* child_count, BVHPackedNodeHalf* lowers, BVHPackedNodeHalf* uppers
+)
+{
+    int parent = parents[node];
+    const volatile BVHPackedNodeHalf* visible_lowers = lowers;
+    const volatile BVHPackedNodeHalf* visible_uppers = uppers;
+    while (parent != -1) {
+        __threadfence();
+        if (atomicAdd(child_count + parent, 1) != 1)
+            return;
+        const int left = lowers[parent].i;
+        const int right = uppers[parent].i;
+        // Volatile reads bypass stale per-SM cache lines after the other child
+        // publishes its bounds through the fence/counter protocol.
+        const vec3 left_lower(visible_lowers[left].x, visible_lowers[left].y, visible_lowers[left].z);
+        const vec3 right_lower(visible_lowers[right].x, visible_lowers[right].y, visible_lowers[right].z);
+        const vec3 left_upper(visible_uppers[left].x, visible_uppers[left].y, visible_uppers[left].z);
+        const vec3 right_upper(visible_uppers[right].x, visible_uppers[right].y, visible_uppers[right].z);
+        (vec3&)lowers[parent] = min(left_lower, right_lower);
+        (vec3&)uppers[parent] = max(left_upper, right_upper);
+        node = parent;
+        parent = parents[node];
+    }
+}
+
+// Start one bounds reduction per maximal packed leaf, rather than per original
+// primitive. Muted descendants need no bounds until a later rebuild changes the
+// topology; ordinary refit already handles these packed leaves.
+__global__ void refit_active_leaves(
+    int n,
+    const int* parents,
+    int* child_count,
+    const int* primitive_indices,
+    BVHPackedNodeHalf* lowers,
+    BVHPackedNodeHalf* uppers,
+    const vec3* item_lowers,
+    const vec3* item_uppers
+)
+{
+    int node = blockIdx.x * blockDim.x + threadIdx.x;
+    if (node >= n || !lowers[node].b)
+        return;
+    int parent = parents[node];
+    if (parent != -1 && lowers[parent].b)
+        return;
+    bounds3 bounds;
+    for (int p = lowers[node].i; p < int(uppers[node].i); ++p) {
+        const int item = primitive_indices[p];
+        bounds.add_bounds(item_lowers[item], item_uppers[item]);
+    }
+    (vec3&)lowers[node] = bounds.lower;
+    (vec3&)uppers[node] = bounds.upper;
+    propagate_active_bounds(node, parents, child_count, lowers, uppers);
+}
 
 __global__ void compute_total_bounds(
     const vec3* item_lowers, const vec3* item_uppers, vec3* total_lower, vec3* total_upper, int num_items
@@ -523,11 +663,14 @@ void LinearBVHBuilderGPU::build(
     indices
         = (int*)wp_alloc_device(WP_CURRENT_CONTEXT, sizeof(int) * num_items * 2, "(native:bvh)");  // *2 for radix sort
     keys = (uint64_t*)wp_alloc_device(
-        WP_CURRENT_CONTEXT, sizeof(uint64_t) * num_items * 2, "(native:bvh)"
+        WP_CURRENT_CONTEXT, (item_groups ? sizeof(uint64_t) : sizeof(uint32_t)) * num_items * 2, "(native:bvh)"
     );  // *2 for radix sort
-    deltas = (int*)wp_alloc_device(
-        WP_CURRENT_CONTEXT, sizeof(int) * num_items, "(native:bvh)"
-    );  // highest differentiating bit between keys for item i and i+1
+    uint32_t* point_keys = reinterpret_cast<uint32_t*>(keys);
+    if (item_groups) {
+        deltas = (int*)wp_alloc_device(
+            WP_CURRENT_CONTEXT, sizeof(int) * num_items, "(native:bvh)"
+        );  // adjacent key prefixes for the group-aware agglomerative constructor
+    }
     range_lefts = (int*)wp_alloc_device(WP_CURRENT_CONTEXT, sizeof(int) * bvh.max_nodes, "(native:bvh)");
     range_rights = (int*)wp_alloc_device(WP_CURRENT_CONTEXT, sizeof(int) * bvh.max_nodes, "(native:bvh)");
     num_children = (int*)wp_alloc_device(WP_CURRENT_CONTEXT, sizeof(int) * bvh.max_nodes, "(native:bvh)");
@@ -570,40 +713,78 @@ void LinearBVHBuilderGPU::build(
     }
 
     // assign 30-bit Morton code based on the centroid of each triangle and bounds for each leaf
-    wp_launch_device(
-        WP_CURRENT_CONTEXT, compute_morton_codes, num_items,
-        (item_lowers, item_uppers, num_items, total_lower, total_inv_edges, indices, keys, item_groups)
-    );
+    if (item_groups) {
+        wp_launch_device(
+            WP_CURRENT_CONTEXT, compute_morton_codes, num_items,
+            (item_lowers, item_uppers, num_items, total_lower, total_inv_edges, indices, keys, item_groups)
+        );
+        radix_sort_pairs_device(WP_CURRENT_CONTEXT, keys, indices, num_items);
+    } else {
+        wp_launch_device(
+            WP_CURRENT_CONTEXT, compute_morton_codes, num_items,
+            (item_lowers, item_uppers, num_items, total_lower, total_inv_edges, indices, point_keys, item_groups)
+        );
+        // Ungrouped Morton codes contain only 30 meaningful bits. Narrow keys
+        // halve key-buffer traffic as well as eliminating unused radix passes.
+        radix_sort_pairs_device(WP_CURRENT_CONTEXT, point_keys, indices, num_items, 0, 30);
+    }
 
-    // sort items based on Morton key (note the 64-bit sort key includes group in upper 32 bits and morton code in lower
-    // 32 bits)
-    radix_sort_pairs_device(WP_CURRENT_CONTEXT, keys, indices, num_items);
+    // Preserve the original row mapping independently of the temporary sort keys.
     wp_memcpy_d2d(WP_CURRENT_CONTEXT, bvh.primitive_indices, indices, sizeof(int) * num_items);
 
     // calculate deltas between adjacent keys
-    wp_launch_device(WP_CURRENT_CONTEXT, compute_key_deltas, num_items, (keys, deltas, num_items - 1));
+    if (item_groups) {
+        wp_launch_device(WP_CURRENT_CONTEXT, compute_key_deltas, num_items, (keys, deltas, num_items - 1));
+    }
 
     // initialize leaf nodes
     wp_launch_device(
         WP_CURRENT_CONTEXT, build_leaves, num_items,
-        (item_lowers, item_uppers, num_items, indices, range_lefts, range_rights, bvh.node_lowers, bvh.node_uppers)
+        (item_lowers, item_uppers, num_items, item_groups != nullptr, indices, range_lefts, range_rights,
+         bvh.node_lowers, bvh.node_uppers)
     );
 
     // reset children count, this is our atomic counter so we know when an internal node is complete, only used during
     // building
     wp_memset_device(WP_CURRENT_CONTEXT, num_children, 0, sizeof(int) * bvh.max_nodes);
 
-    // build the tree and internal node bounds
-    wp_launch_device(
-        WP_CURRENT_CONTEXT, build_hierarchy, num_items,
-        (num_items, bvh.root, deltas, keys, num_children, bvh.primitive_indices, range_lefts, range_rights,
-         bvh.node_parents, bvh.node_lowers, bvh.node_uppers)
-    );
-    wp_launch_device(
-        WP_CURRENT_CONTEXT, mark_packed_leaf_nodes, bvh.max_nodes,
-        (bvh.max_nodes, range_lefts, range_rights, bvh.node_parents, keys, bvh.node_lowers, bvh.node_uppers,
-         bvh.leaf_size)
-    );
+    if (num_items == 1) {
+        wp_launch_device(WP_CURRENT_CONTEXT, set_single_leaf_root, 1, (bvh.root, bvh.node_parents));
+    } else if (!item_groups) {
+        wp_launch_device(
+            WP_CURRENT_CONTEXT, build_radix_topology, num_items - 1,
+            (num_items, point_keys, bvh.root, bvh.node_parents, range_lefts, range_rights, bvh.node_lowers,
+             bvh.node_uppers)
+        );
+    } else {
+        // Preserve the group-aware topology and the single-leaf root handling.
+        wp_launch_device(
+            WP_CURRENT_CONTEXT, build_hierarchy, num_items,
+            (num_items, bvh.root, deltas, keys, num_children, bvh.primitive_indices, range_lefts, range_rights,
+             bvh.node_parents, bvh.node_lowers, bvh.node_uppers)
+        );
+    }
+    if (item_groups) {
+        wp_launch_device(
+            WP_CURRENT_CONTEXT, mark_packed_leaf_nodes, bvh.max_nodes - num_items,
+            (bvh.max_nodes, num_items, false, range_lefts, range_rights, bvh.node_parents, keys, bvh.node_lowers,
+             bvh.node_uppers, bvh.leaf_size)
+        );
+    } else {
+        wp_launch_device(
+            WP_CURRENT_CONTEXT, mark_packed_leaf_nodes, bvh.max_nodes - num_items,
+            (bvh.max_nodes, num_items, true, range_lefts, range_rights, bvh.node_parents, point_keys, bvh.node_lowers,
+             bvh.node_uppers, bvh.leaf_size)
+        );
+    }
+
+    if (!item_groups) {
+        wp_launch_device(
+            WP_CURRENT_CONTEXT, refit_active_leaves, bvh.max_nodes,
+            (bvh.max_nodes, bvh.node_parents, num_children, bvh.primitive_indices, bvh.node_lowers, bvh.node_uppers,
+             item_lowers, item_uppers)
+        );
+    }
 
     // free temporary memory
     free_device_on_stream(WP_CURRENT_CONTEXT, indices, stream);
@@ -727,22 +908,26 @@ void bvh_create_device(
     } else if (constructor_type == BVH_CONSTRUCTOR_LBVH) {
         bvh_device_on_host.leaf_size = leaf_size;
         bvh_device_on_host.num_items = num_items;
-        bvh_device_on_host.max_nodes = 2 * num_items - 1;
         bvh_device_on_host.num_leaf_nodes = num_items;
+        bvh_device_on_host.max_nodes = 2 * num_items - 1;
         bvh_device_on_host.node_lowers = (BVHPackedNodeHalf*)wp_alloc_device(
             WP_CURRENT_CONTEXT, sizeof(BVHPackedNodeHalf) * bvh_device_on_host.max_nodes, "(native:bvh)"
         );
-        wp_memset_device(
-            WP_CURRENT_CONTEXT, bvh_device_on_host.node_lowers, 0,
-            sizeof(BVHPackedNodeHalf) * bvh_device_on_host.max_nodes
-        );
+        if (groups) {
+            wp_memset_device(
+                WP_CURRENT_CONTEXT, bvh_device_on_host.node_lowers, 0,
+                sizeof(BVHPackedNodeHalf) * bvh_device_on_host.max_nodes
+            );
+        }
         bvh_device_on_host.node_uppers = (BVHPackedNodeHalf*)wp_alloc_device(
             WP_CURRENT_CONTEXT, sizeof(BVHPackedNodeHalf) * bvh_device_on_host.max_nodes, "(native:bvh)"
         );
-        wp_memset_device(
-            WP_CURRENT_CONTEXT, bvh_device_on_host.node_uppers, 0,
-            sizeof(BVHPackedNodeHalf) * bvh_device_on_host.max_nodes
-        );
+        if (groups) {
+            wp_memset_device(
+                WP_CURRENT_CONTEXT, bvh_device_on_host.node_uppers, 0,
+                sizeof(BVHPackedNodeHalf) * bvh_device_on_host.max_nodes
+            );
+        }
         bvh_device_on_host.node_parents
             = (int*)wp_alloc_device(WP_CURRENT_CONTEXT, sizeof(int) * bvh_device_on_host.max_nodes, "(native:bvh)");
         bvh_device_on_host.node_counts
@@ -820,6 +1005,14 @@ void bvh_rebuild_device(BVH& bvh)
 }
 
 
+// Graph kernel arguments own this descriptor value. A captured HtoD copy from
+// the constructor's stack would instead retain a dangling host source address.
+__global__ void initialize_bvh_descriptor(BVH* target, BVH value)
+{
+    if (threadIdx.x == 0)
+        *target = value;
+}
+
 }  // namespace wp
 
 
@@ -884,7 +1077,7 @@ uint64_t wp_bvh_create_device(
 
     // create device-side BVH descriptor
     bvh_device_ptr = (wp::BVH*)wp_alloc_device(WP_CURRENT_CONTEXT, sizeof(wp::BVH), "(native:bvh)");
-    wp_memcpy_h2d(WP_CURRENT_CONTEXT, bvh_device_ptr, &bvh_device_on_host, sizeof(wp::BVH));
+    wp_launch_device(WP_CURRENT_CONTEXT, wp::initialize_bvh_descriptor, 1, (bvh_device_ptr, bvh_device_on_host));
 
     uint64_t bvh_id = (uint64_t)bvh_device_ptr;
     wp::bvh_add_descriptor(bvh_id, bvh_device_on_host);

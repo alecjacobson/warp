@@ -81,6 +81,13 @@ point bounds work with SAH, median, LBVH, and cuBQL constructors. Leaf size 4 is
 starting point; benchmark the builder and leaf size for your workloads. Concurrent
 readers are safe; updates and refits must be ordered with readers on their streams.
 
+CUDA LBVH construction, rebuild, refit, and point queries can be captured in CUDA
+graphs. Construction and rebuild require CUDA memory-pool support to be enabled.
+Warm up kernel compilation before capture, and keep the BVH, point arrays, and
+outputs alive through replay. Other constructors retain their existing capture
+restrictions. Construction initializes its device descriptor from graph-owned
+kernel arguments, so replay does not depend on a temporary host descriptor.
+
 Selection, sorting, and cursor updates are nondifferentiable. Ordinary gathers
 and distance calculations differentiate with selected indices held fixed. For
 ``d2 = wp.length_sq(q - points[i])``, gradients are ``2*(q-points[i])`` for the query
@@ -109,3 +116,18 @@ they require cooperative launches and are not scalar per-thread functions.
 The scan input is the unresampled Redwood fragment from Open3D's
 ``DemoICPPointClouds.zip``, with its normalization and checksum recorded.
 Synthetic surface/volume inputs each run with and without Gaussian noise.
+
+``warp.examples.benchmarks.profile_point_query`` collects individual native
+kernel timings and, with ``--trace``, a PyTorch/CUPTI trace including CUB kernels,
+allocations, and transfers. ``benchmark_point_query_optimization`` reruns the
+original matrix with both the original launch configuration and explicitly tuned
+configurations. It charges query ordering and construction to one-shot timings.
+
+For tiny batches, placing many independent traversals in the same warp can
+serialize divergent paths while leaving most SMs idle. The benchmark wrapper
+``make_api_query(K, euclidean64=True, query_stride=32)`` can instead be launched
+with ``dim=Q*32, block_dim=32`` to give each query one active lane in its own warp.
+This preserves scalar query semantics; it is not a cooperative nearest-neighbor
+algorithm. Large batches generally benefit from dense launches. Leaf size and
+Morton ordering must also be measured: the tuning harness does not establish a
+universal dispatch threshold.
