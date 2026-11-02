@@ -1,0 +1,11 @@
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+Phase 0, threshold 0 MiB: {'warp': 1.8160319924354553, 'physicsnemo': 2.2264959812164307}
+Phase 1, threshold 512 MiB: {'warp': 1.7307360172271729, 'physicsnemo': 2.224832057952881}
+Phase 2, threshold 0 MiB: {'warp': 1.824064016342163, 'physicsnemo': 2.2336959838867188}
+Phase 3, threshold 512 MiB: {'warp': 1.7303999662399292, 'physicsnemo': 2.224511981010437}

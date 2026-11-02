@@ -1,5 +1,7 @@
 # Profile-guided follow-up: the 12 losing cases
 
+**Case-25 follow-up:** [Allocator-stall diagnosis and retained-pool rerun](case25/README.md) identifies the remaining loss mechanism and reaches 42/42 with an explicit memory retention policy. The measurements below preserve the prior zero-threshold run.
+
 The configured implementation improves **all 12 original losses by 1.34–5.65×**; **11 of those 12 now beat the pinned PhysicsNeMo PR**. Across the full 42-case matrix it wins **41/42**, with a **2.56× geometric-mean speedup** against a fresh run of the unchanged PR. The remaining loss is case 25, discussed below. Close wins in cases 5 and 16 have overlapping timing ranges and should not be treated as robust margins.
 
 With the original leaf size and query launch configuration, the native changes alone win **31/42**, with a **1.67× geometric-mean speedup** against the fresh PR. The original report was 30/42 and 1.45× against its earlier PR run. The 41/42 result includes explicit workload configurations; it is not an automatic dispatch feature or a universal speed guarantee.
