@@ -1,0 +1,11 @@
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+phase 0 mib 0 {'warp': {'gpu_ms': 1.8524, 'wall_ms': 2.0508, 'submit_ms': 0.333, 'sync_ms': 1.6885, 'reserved_before': 167772160.0, 'reserved_after': 167772160.0}, 'pr': {'gpu_ms': 2.2222, 'wall_ms': 2.2339, 'submit_ms': 0.8354, 'sync_ms': 1.4052, 'reserved_before': 167772160.0, 'reserved_after': 167772160.0}}
+phase 1 mib 512 {'warp': {'gpu_ms': 1.7356, 'wall_ms': 1.7478, 'submit_ms': 0.2296, 'sync_ms': 1.4956, 'reserved_before': 436207616.0, 'reserved_after': 436207616.0}, 'pr': {'gpu_ms': 2.2252, 'wall_ms': 2.2369, 'submit_ms': 0.9639, 'sync_ms': 1.2767, 'reserved_before': 436207616.0, 'reserved_after': 436207616.0}}
+phase 2 mib 0 {'warp': {'gpu_ms': 1.8283, 'wall_ms': 2.019, 'submit_ms': 0.3407, 'sync_ms': 1.6532, 'reserved_before': 201326592.0, 'reserved_after': 201326592.0}, 'pr': {'gpu_ms': 2.2445, 'wall_ms': 2.2576, 'submit_ms': 0.9937, 'sync_ms': 1.2675, 'reserved_before': 201326592.0, 'reserved_after': 201326592.0}}
+phase 3 mib 512 {'warp': {'gpu_ms': 1.7342, 'wall_ms': 1.7462, 'submit_ms': 0.2293, 'sync_ms': 1.4984, 'reserved_before': 436207616.0, 'reserved_after': 436207616.0}, 'pr': {'gpu_ms': 2.2234, 'wall_ms': 2.2332, 'submit_ms': 0.9521, 'sync_ms': 1.275, 'reserved_before': 436207616.0, 'reserved_after': 436207616.0}}

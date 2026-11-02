@@ -1,6 +1,6 @@
 # Exact point-cloud nearest neighbors in Warp
 
-**Follow-up:** [Profile-guided optimization of the 12 losses](optimization/README.md) improves all 12 and reaches 41/42 wins with explicit workload configurations (31/42 with the original configuration). The report below preserves the original baseline measurements.
+**Follow-up:** [Profile-guided optimization of the 12 losses](optimization/README.md) improves all 12 and reaches 41/42 wins with explicit workload configurations (31/42 with the original configuration). [The case-25 allocator investigation](optimization/case25/README.md) reaches 42/42 with explicit memory retention. The report below preserves the original baseline measurements.
 
 Temporary report bundle. [Download the HTML version](report.html) to view it locally.
 
