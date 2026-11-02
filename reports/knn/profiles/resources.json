@@ -1,0 +1,62 @@
+[
+  {
+    "capacity": 11,
+    "module": "wp_make_api_query__locals__api_43c00150_43c0015",
+    "status": 0,
+    "compiler_report": "ptxas info    : 161 bytes gmem\nptxas info    : Compiling entry function 'make_api_query__locals__api_638eaf99_cuda_kernel_forward' for 'sm_120'\nptxas info    : Function properties for make_api_query__locals__api_638eaf99_cuda_kernel_forward\n    448 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 42 registers, used 0 barriers, 448 bytes cumulative stack size, 1024 bytes smem\nptxas info    : Compile time = 38.245 ms"
+  },
+  {
+    "capacity": 8,
+    "module": "wp_make_api_query__locals__api_6a67f0bf_6a67f0b",
+    "status": 0,
+    "compiler_report": "ptxas info    : 161 bytes gmem\nptxas info    : Compiling entry function 'make_api_query__locals__api_cd6c6329_cuda_kernel_forward' for 'sm_120'\nptxas info    : Function properties for make_api_query__locals__api_cd6c6329_cuda_kernel_forward\n    400 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 44 registers, used 0 barriers, 400 bytes cumulative stack size, 1024 bytes smem\nptxas info    : Compile time = 30.824 ms"
+  },
+  {
+    "capacity": 32,
+    "module": "wp_make_api_query__locals__api_9254b061_9254b06",
+    "status": 0,
+    "compiler_report": "ptxas info    : 161 bytes gmem\nptxas info    : Compiling entry function 'make_api_query__locals__api_a461dfe3_cuda_kernel_forward' for 'sm_120'\nptxas info    : Function properties for make_api_query__locals__api_a461dfe3_cuda_kernel_forward\n    784 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 78 registers, used 0 barriers, 784 bytes cumulative stack size, 1024 bytes smem\nptxas info    : Compile time = 40.034 ms"
+  },
+  {
+    "capacity": 64,
+    "module": "wp_make_api_query__locals__api_9a083768_9a08376",
+    "status": 0,
+    "compiler_report": "ptxas info    : 161 bytes gmem\nptxas info    : Compiling entry function 'make_api_query__locals__api_b51914b5_cuda_kernel_forward' for 'sm_120'\nptxas info    : Function properties for make_api_query__locals__api_b51914b5_cuda_kernel_forward\n    1296 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 146 registers, used 0 barriers, 1296 bytes cumulative stack size, 1024 bytes smem\nptxas info    : Compile time = 38.975 ms"
+  },
+  {
+    "capacity": 64,
+    "module": "wp_make_api_query__locals__api_b80dc239_b80dc23",
+    "status": 0,
+    "compiler_report": "ptxas info    : 161 bytes gmem\nptxas info    : Compiling entry function 'make_api_query__locals__api_f56bf8d5_cuda_kernel_forward' for 'sm_120'\nptxas info    : Function properties for make_api_query__locals__api_f56bf8d5_cuda_kernel_forward\n    1296 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 146 registers, used 0 barriers, 1296 bytes cumulative stack size, 1024 bytes smem\nptxas info    : Compile time = 44.731 ms"
+  },
+  {
+    "capacity": 1,
+    "module": "wp_make_api_query__locals__api_bde7221b_bde7221",
+    "status": 0,
+    "compiler_report": "ptxas info    : 161 bytes gmem\nptxas info    : Compiling entry function 'make_api_query__locals__api_429a34d4_cuda_kernel_forward' for 'sm_120'\nptxas info    : Function properties for make_api_query__locals__api_429a34d4_cuda_kernel_forward\n    256 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 40 registers, used 0 barriers, 256 bytes cumulative stack size, 1024 bytes smem\nptxas info    : Compile time = 26.603 ms"
+  },
+  {
+    "capacity": 8,
+    "module": "wp_make_api_query__locals__api_d74dfcbc_d74dfcb",
+    "status": 0,
+    "compiler_report": "ptxas info    : 161 bytes gmem\nptxas info    : Compiling entry function 'make_api_query__locals__api_a5d7731b_cuda_kernel_forward' for 'sm_120'\nptxas info    : Function properties for make_api_query__locals__api_a5d7731b_cuda_kernel_forward\n    400 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 42 registers, used 0 barriers, 400 bytes cumulative stack size, 1024 bytes smem\nptxas info    : Compile time = 35.246 ms"
+  },
+  {
+    "capacity": 11,
+    "module": "wp_make_api_query__locals__api_db350dc4_db350dc",
+    "status": 0,
+    "compiler_report": "ptxas info    : 161 bytes gmem\nptxas info    : Compiling entry function 'make_api_query__locals__api_b691d850_cuda_kernel_forward' for 'sm_120'\nptxas info    : Function properties for make_api_query__locals__api_b691d850_cuda_kernel_forward\n    448 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 44 registers, used 0 barriers, 448 bytes cumulative stack size, 1024 bytes smem\nptxas info    : Compile time = 30.999 ms"
+  },
+  {
+    "capacity": 32,
+    "module": "wp_make_api_query__locals__api_dc45b9ca_dc45b9c",
+    "status": 0,
+    "compiler_report": "ptxas info    : 161 bytes gmem\nptxas info    : Compiling entry function 'make_api_query__locals__api_b9001e7b_cuda_kernel_forward' for 'sm_120'\nptxas info    : Function properties for make_api_query__locals__api_b9001e7b_cuda_kernel_forward\n    784 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 78 registers, used 0 barriers, 784 bytes cumulative stack size, 1024 bytes smem\nptxas info    : Compile time = 35.086 ms"
+  },
+  {
+    "capacity": 1,
+    "module": "wp_make_api_query__locals__api_efdc7e22_efdc7e2",
+    "status": 0,
+    "compiler_report": "ptxas info    : 161 bytes gmem\nptxas info    : Compiling entry function 'make_api_query__locals__api_c1d079af_cuda_kernel_forward' for 'sm_120'\nptxas info    : Function properties for make_api_query__locals__api_c1d079af_cuda_kernel_forward\n    256 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 40 registers, used 0 barriers, 256 bytes cumulative stack size, 1024 bytes smem\nptxas info    : Compile time = 23.824 ms"
+  }
+]
