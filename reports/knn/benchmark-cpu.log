@@ -1,0 +1,57 @@
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+Running surface noise=0.0 N=32 Q=32 k=8
+Module make_api_query__locals__api_6a67f0bf ad17195 load on device 'cpu' took 1285.61 ms  (compiled)
+Module make_query__locals__query_acf409b8 4ad1de7 load on device 'cpu' took 160.87 ms  (compiled)
+Module make_query__locals__query_ad844996 1945398 load on device 'cpu' took 135.54 ms  (compiled)
+Module warp.examples.benchmarks.point_query_common 5af3623 load on device 'cpu' took 0.14 ms  (cached)
+Module make_api_query__locals__api_d74dfcbc 4e0c6f9 load on device 'cpu' took 172.38 ms  (compiled)
+Module make_ordered_query__locals__ordered_b5d4297d 6579781 load on device 'cpu' took 174.60 ms  (compiled)
+Module make_query__locals__query_a9054002 571ab3f load on device 'cpu' took 0.15 ms  (cached)
+Module make_query__locals__query_b6989c43 449377a load on device 'cpu' took 0.13 ms  (cached)
+Module make_query__locals__query_55ecb460 09a60ee load on device 'cpu' took 0.13 ms  (cached)
+Module make_tiled__locals__tiled_dcb50251 d1cda2e load on device 'cpu' took 0.15 ms  (cached)
+Module make_tiled__locals__merge_b40517b8 cc6220b load on device 'cpu' took 0.13 ms  (cached)
+Module make_tiled__locals__tiled_7336ec4e 80dbda2 load on device 'cpu' took 533.78 ms  (compiled)
+  one-shot 0.0403 ms; PhysicsNeMo None
+Running surface noise=0.0 N=1000 Q=1000 k=8
+  one-shot 0.9173 ms; PhysicsNeMo None
+Running surface noise=0.0 N=100000 Q=1 k=8
+  one-shot 32.9872 ms; PhysicsNeMo None
+Running surface noise=0.0 N=100000 Q=8192 k=11
+Module make_api_query__locals__api_db350dc4 20967f9 load on device 'cpu' took 181.35 ms  (compiled)
+Module make_query__locals__query_2ed317ca b32eec5 load on device 'cpu' took 161.09 ms  (compiled)
+Module make_query__locals__query_de3b3ec3 128b3a5 load on device 'cpu' took 132.82 ms  (compiled)
+Module make_api_query__locals__api_43c00150 544d4c6 load on device 'cpu' took 174.87 ms  (compiled)
+Module make_ordered_query__locals__ordered_dd9734ab efcf934 load on device 'cpu' took 175.63 ms  (compiled)
+Module make_query__locals__query_980f279f 4d021f9 load on device 'cpu' took 154.63 ms  (compiled)
+  one-shot 42.7910 ms; PhysicsNeMo None
+Running surface noise=0.01 N=32 Q=32 k=8
+  one-shot 0.0364 ms; PhysicsNeMo None
+Running surface noise=0.01 N=1000 Q=1000 k=8
+  one-shot 0.9269 ms; PhysicsNeMo None
+Running surface noise=0.01 N=100000 Q=1 k=8
+  one-shot 33.0750 ms; PhysicsNeMo None
+Running surface noise=0.01 N=100000 Q=8192 k=11
+  one-shot 44.5126 ms; PhysicsNeMo None
+Running volume noise=0.0 N=32 Q=32 k=8
+  one-shot 0.0384 ms; PhysicsNeMo None
+Running volume noise=0.0 N=1000 Q=1000 k=8
+  one-shot 1.2115 ms; PhysicsNeMo None
+Running volume noise=0.0 N=100000 Q=1 k=8
+  one-shot 32.8714 ms; PhysicsNeMo None
+Running volume noise=0.0 N=100000 Q=8192 k=11
+  one-shot 48.2428 ms; PhysicsNeMo None
+Running volume noise=0.01 N=32 Q=32 k=8
+  one-shot 0.0380 ms; PhysicsNeMo None
+Running volume noise=0.01 N=1000 Q=1000 k=8
+  one-shot 1.2309 ms; PhysicsNeMo None
+Running volume noise=0.01 N=100000 Q=1 k=8
+  one-shot 32.9401 ms; PhysicsNeMo None
+Running volume noise=0.01 N=100000 Q=8192 k=11
+  one-shot 47.8889 ms; PhysicsNeMo None

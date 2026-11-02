@@ -1,0 +1,20 @@
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+Module make_tiled__locals__tiled_b908b21d e5ddef5 load on device 'cuda:0' took 658.85 ms  (compiled)
+Module make_tiled__locals__merge_b40517b8 b40517b load on device 'cuda:0' took 0.64 ms  (cached)
+Module make_tiled_batched__locals__tiled_batched_75efcb0a b4f6bbc load on device 'cuda:0' took 1168.82 ms  (compiled)
+Module make_tiled_batched__locals__tiled_batched_b819d708 3459530 load on device 'cuda:0' took 3488.00 ms  (compiled)
+Module make_tiled__locals__tiled_dcb50251 b5f6a83 load on device 'cuda:0' took 0.92 ms  (cached)
+Module make_tiled_batched__locals__tiled_batched_b254ff05 de65ce0 load on device 'cuda:0' took 2789.09 ms  (compiled)
+Module make_tiled_batched__locals__tiled_batched_c05e72d8 5eead74 load on device 'cuda:0' took 8381.85 ms  (compiled)
+Module make_tiled__locals__tiled_7336ec4e 57f35aa load on device 'cuda:0' took 0.94 ms  (cached)
+Module make_tiled_batched__locals__tiled_batched_4f6fc95d 7c00750 load on device 'cuda:0' took 2822.85 ms  (compiled)
+Module make_tiled_batched__locals__tiled_batched_26e67c9b 2e9a608 load on device 'cuda:0' took 8494.28 ms  (compiled)
+Module __main__ 1d77e9f load on device 'cuda:0' took 246.50 ms  (compiled)
+Module make_api_query__locals__api_db350dc4 db350dc load on device 'cuda:0' took 0.61 ms  (cached)
+Wrote ../artifacts/tuning.json

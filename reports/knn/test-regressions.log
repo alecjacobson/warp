@@ -1,0 +1,26 @@
+Warp DeprecationWarning: wp.bvh_query_aabb_tiled() is deprecated in Warp 1.18 and is targeted for removal in Warp 1.22. Use wp.tile_bvh_query_aabb() instead.
+Warp DeprecationWarning: wp.bvh_query_next_tiled() is deprecated in Warp 1.18 and is targeted for removal in Warp 1.22. Use wp.tile_bvh_query_next() instead.
+Warp DeprecationWarning: wp.bvh_query_ray_tiled() is deprecated in Warp 1.18 and is targeted for removal in Warp 1.22. Use wp.tile_bvh_query_ray() instead.
+----------------------------------------------------------------------
+Ran 56 tests in 41.485s
+
+OK
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+Module warp.tests.geometry.test_bvh 710f32b load on device 'cpu' took 2571.15 ms  (compiled)
+Module warp.tests.geometry.test_bvh 98c4489 load on device 'cuda:0' took 1692.93 ms  (compiled)
+Module warp.tests.geometry.test_bvh 1bccf8e load on device 'cpu' took 1497.99 ms  (compiled)
+Module warp.tests.geometry.test_bvh 64cb074 load on device 'cuda:0' took 1549.39 ms  (compiled)
+Module warp.tests.geometry.test_bvh e93b8f1 load on device 'cpu' took 2600.66 ms  (compiled)
+Module warp.tests.geometry.test_bvh e93b8f1 load on device 'cuda:0' took 1719.15 ms  (compiled)
+Module warp.tests.geometry.test_mesh_query_point d8ab0bc load on device 'cpu' took 4688.56 ms  (compiled)
+Module warp.tests.geometry.test_mesh_query_point f0c03e5 load on device 'cuda:0' took 3575.40 ms  (compiled)
+Module warp.tests.geometry.test_mesh_query_point fc676e6 load on device 'cpu' took 11039.83 ms  (compiled)
+Module warp.tests.geometry.test_mesh_query_point 149bb57 load on device 'cuda:0' took 4670.99 ms  (compiled)
+Module warp.tests.geometry.test_grouped_bvh ff03074 load on device 'cpu' took 1316.55 ms  (compiled)
+Module warp.tests.geometry.test_grouped_bvh 050fd15 load on device 'cuda:0' took 903.41 ms  (compiled)

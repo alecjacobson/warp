@@ -1,0 +1,256 @@
+ptxas info    : 41 bytes gmem
+ptxas info    : Compiling entry function '_ZN5cuBQL15elhBuilder_impl10writeNodesIfLi3EEEvPNS_9BinaryBVHIT_XT0_EE4NodeEPNS0_8TempNodeIS3_XT0_EEEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15elhBuilder_impl10writeNodesIfLi3EEEvPNS_9BinaryBVHIT_XT0_EE4NodeEPNS0_8TempNodeIS3_XT0_EEEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 12 registers, used 0 barriers
+ptxas info    : Compile time = 2.089 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15elhBuilder_impl24writePrimsAndLeafOffsetsIfLi3EEEvPNS0_8TempNodeIT_XT0_EEEPjPNS_15gpuBuilder_impl9PrimStateEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15elhBuilder_impl24writePrimsAndLeafOffsetsIfLi3EEEvPNS0_8TempNodeIT_XT0_EEEPjPNS_15gpuBuilder_impl9PrimStateEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 14 registers, used 0 barriers
+ptxas info    : Compile time = 1.312 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15elhBuilder_impl11updatePrimsIfLi3EEEvPNS_15gpuBuilder_impl9NodeStateEPNS0_8TempNodeIT_XT0_EEEPNS2_9PrimStateEPKNS_5box_tIS6_XT0_EEEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15elhBuilder_impl11updatePrimsIfLi3EEEvPNS_15gpuBuilder_impl9NodeStateEPNS0_8TempNodeIT_XT0_EEEPNS2_9PrimStateEPKNS_5box_tIS6_XT0_EEEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 25 registers, used 0 barriers
+ptxas info    : Compile time = 7.480 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15elhBuilder_impl12selectSplitsIfLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS0_7ELHBinsIT_XT0_EEEiiPNS2_9NodeStateEPNS0_8TempNodeIS6_XT0_EEENS_11BuildConfigE' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15elhBuilder_impl12selectSplitsIfLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS0_7ELHBinsIT_XT0_EEEiiPNS2_9NodeStateEPNS0_8TempNodeIS6_XT0_EEENS_11BuildConfigE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 93 registers, used 0 barriers
+ptxas info    : Compile time = 12.045 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15elhBuilder_impl8binPrimsIfLi3EEEvPNS0_7ELHBinsIT_XT0_EEEiiPNS0_8TempNodeIS3_XT0_EEEPNS_15gpuBuilder_impl9PrimStateEPKNS_5box_tIS3_XT0_EEEj' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15elhBuilder_impl8binPrimsIfLi3EEEvPNS0_7ELHBinsIT_XT0_EEEiiPNS0_8TempNodeIS3_XT0_EEEPNS_15gpuBuilder_impl9PrimStateEPKNS_5box_tIS3_XT0_EEEj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 28 registers, used 0 barriers
+ptxas info    : Compile time = 9.200 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15elhBuilder_impl9clearBinsIfLi3EEEvPNS0_7ELHBinsIT_XT0_EEEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15elhBuilder_impl9clearBinsIfLi3EEEvPNS0_7ELHBinsIT_XT0_EEEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 10 registers, used 0 barriers
+ptxas info    : Compile time = 7.997 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15elhBuilder_impl14closeOpenNodesIfLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS2_9NodeStateEPNS0_8TempNodeIT_XT0_EEEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15elhBuilder_impl14closeOpenNodesIfLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS2_9NodeStateEPNS0_8TempNodeIT_XT0_EEEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 10 registers, used 0 barriers
+ptxas info    : Compile time = 1.223 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15elhBuilder_impl9initPrimsIfLi3EEEvPNS0_8TempNodeIT_XT0_EEEPNS_15gpuBuilder_impl9PrimStateEPKNS_5box_tIS3_XT0_EEEj' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15elhBuilder_impl9initPrimsIfLi3EEEvPNS0_8TempNodeIT_XT0_EEEPNS_15gpuBuilder_impl9PrimStateEPKNS_5box_tIS3_XT0_EEEj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 24 registers, used 0 barriers
+ptxas info    : Compile time = 2.823 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15elhBuilder_impl9initStateIfLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS2_9NodeStateEPNS0_8TempNodeIT_XT0_EEE' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15elhBuilder_impl9initStateIfLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS2_9NodeStateEPNS0_8TempNodeIT_XT0_EEE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 16 registers, used 0 barriers
+ptxas info    : Compile time = 0.839 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl10writeNodesIdLi3EEEvPNS_9BinaryBVHIT_XT0_EE4NodeEPNS0_8TempNodeINS_5box_tIS3_XT0_EEEEEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl10writeNodesIdLi3EEEvPNS_9BinaryBVHIT_XT0_EE4NodeEPNS0_8TempNodeINS_5box_tIS3_XT0_EEEEEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 12 registers, used 0 barriers
+ptxas info    : Compile time = 1.089 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl24writePrimsAndLeafOffsetsIdLi3EEEvPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEPjPNS_15gpuBuilder_impl9PrimStateEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl24writePrimsAndLeafOffsetsIdLi3EEEvPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEPjPNS_15gpuBuilder_impl9PrimStateEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 14 registers, used 0 barriers
+ptxas info    : Compile time = 1.190 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl11updatePrimsIdLi3EEEvPNS_15gpuBuilder_impl9NodeStateEPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEPNS2_9PrimStateEPKS8_i' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl11updatePrimsIdLi3EEEvPNS_15gpuBuilder_impl9NodeStateEPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEPNS2_9PrimStateEPKS8_i
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 39 registers, used 0 barriers
+ptxas info    : Compile time = 7.701 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl12selectSplitsIdLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS0_7SAHBinsINS_5box_tIT_XT0_EEEEEiiPNS2_9NodeStateEPNS0_8TempNodeIS8_EENS_11BuildConfigE' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl12selectSplitsIdLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS0_7SAHBinsINS_5box_tIT_XT0_EEEEEiiPNS2_9NodeStateEPNS0_8TempNodeIS8_EENS_11BuildConfigE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 90 registers, used 0 barriers
+ptxas info    : Compile time = 47.137 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl8binPrimsIdLi3EEEvPNS0_7SAHBinsINS_5box_tIT_XT0_EEEEEiiPNS0_8TempNodeIS5_EEPNS_15gpuBuilder_impl9PrimStateEPKS5_j' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl8binPrimsIdLi3EEEvPNS0_7SAHBinsINS_5box_tIT_XT0_EEEEEiiPNS0_8TempNodeIS5_EEPNS_15gpuBuilder_impl9PrimStateEPKS5_j
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 50 registers, used 0 barriers
+ptxas info    : Compile time = 10.324 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl9clearBinsIdLi3EEEvPNS0_7SAHBinsINS_5box_tIT_XT0_EEEEEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl9clearBinsIdLi3EEEvPNS0_7SAHBinsINS_5box_tIT_XT0_EEEEEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 10 registers, used 0 barriers
+ptxas info    : Compile time = 16.496 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl14closeOpenNodesIdLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS2_9NodeStateEPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl14closeOpenNodesIdLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS2_9NodeStateEPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 10 registers, used 0 barriers
+ptxas info    : Compile time = 1.216 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl9initPrimsIdLi3EEEvPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEPNS_15gpuBuilder_impl9PrimStateEPKS5_j' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl9initPrimsIdLi3EEEvPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEPNS_15gpuBuilder_impl9PrimStateEPKS5_j
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 30 registers, used 0 barriers
+ptxas info    : Compile time = 2.607 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl9initStateIdLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS2_9NodeStateEPNS0_8TempNodeINS_5box_tIT_XT0_EEEEE' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl9initStateIdLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS2_9NodeStateEPNS0_8TempNodeINS_5box_tIT_XT0_EEEEE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 16 registers, used 0 barriers
+ptxas info    : Compile time = 0.838 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl10writeNodesIfLi3EEEvPNS_9BinaryBVHIT_XT0_EE4NodeEPNS0_8TempNodeINS_5box_tIS3_XT0_EEEEEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl10writeNodesIfLi3EEEvPNS_9BinaryBVHIT_XT0_EE4NodeEPNS0_8TempNodeINS_5box_tIS3_XT0_EEEEEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 12 registers, used 0 barriers
+ptxas info    : Compile time = 1.063 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl24writePrimsAndLeafOffsetsIfLi3EEEvPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEPjPNS_15gpuBuilder_impl9PrimStateEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl24writePrimsAndLeafOffsetsIfLi3EEEvPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEPjPNS_15gpuBuilder_impl9PrimStateEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 14 registers, used 0 barriers
+ptxas info    : Compile time = 1.181 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl11updatePrimsIfLi3EEEvPNS_15gpuBuilder_impl9NodeStateEPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEPNS2_9PrimStateEPKS8_i' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl11updatePrimsIfLi3EEEvPNS_15gpuBuilder_impl9NodeStateEPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEPNS2_9PrimStateEPKS8_i
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 26 registers, used 0 barriers
+ptxas info    : Compile time = 7.123 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl12selectSplitsIfLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS0_7SAHBinsINS_5box_tIT_XT0_EEEEEiiPNS2_9NodeStateEPNS0_8TempNodeIS8_EENS_11BuildConfigE' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl12selectSplitsIfLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS0_7SAHBinsINS_5box_tIT_XT0_EEEEEiiPNS2_9NodeStateEPNS0_8TempNodeIS8_EENS_11BuildConfigE
+    64 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 62 registers, used 0 barriers, 64 bytes cumulative stack size
+ptxas info    : Compile time = 22.076 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl8binPrimsIfLi3EEEvPNS0_7SAHBinsINS_5box_tIT_XT0_EEEEEiiPNS0_8TempNodeIS5_EEPNS_15gpuBuilder_impl9PrimStateEPKS5_j' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl8binPrimsIfLi3EEEvPNS0_7SAHBinsINS_5box_tIT_XT0_EEEEEiiPNS0_8TempNodeIS5_EEPNS_15gpuBuilder_impl9PrimStateEPKS5_j
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 28 registers, used 0 barriers
+ptxas info    : Compile time = 9.530 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl9clearBinsIfLi3EEEvPNS0_7SAHBinsINS_5box_tIT_XT0_EEEEEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl9clearBinsIfLi3EEEvPNS0_7SAHBinsINS_5box_tIT_XT0_EEEEEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 10 registers, used 0 barriers
+ptxas info    : Compile time = 15.941 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl14closeOpenNodesIfLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS2_9NodeStateEPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl14closeOpenNodesIfLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS2_9NodeStateEPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 12 registers, used 0 barriers
+ptxas info    : Compile time = 1.246 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl9initPrimsIfLi3EEEvPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEPNS_15gpuBuilder_impl9PrimStateEPKS5_j' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl9initPrimsIfLi3EEEvPNS0_8TempNodeINS_5box_tIT_XT0_EEEEEPNS_15gpuBuilder_impl9PrimStateEPKS5_j
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 24 registers, used 0 barriers
+ptxas info    : Compile time = 2.798 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15sahBuilder_impl9initStateIfLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS2_9NodeStateEPNS0_8TempNodeINS_5box_tIT_XT0_EEEEE' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15sahBuilder_impl9initStateIfLi3EEEvPNS_15gpuBuilder_impl10BuildStateEPNS2_9NodeStateEPNS0_8TempNodeINS_5box_tIT_XT0_EEEEE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 16 registers, used 0 barriers
+ptxas info    : Compile time = 0.834 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15gpuBuilder_impl10writeNodesIfLi3EEEvPNS_9BinaryBVHIT_XT0_EE4NodeEPNS0_8TempNodeIS3_XT0_EEEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15gpuBuilder_impl10writeNodesIfLi3EEEvPNS_9BinaryBVHIT_XT0_EE4NodeEPNS0_8TempNodeIS3_XT0_EEEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 12 registers, used 0 barriers
+ptxas info    : Compile time = 1.067 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15gpuBuilder_impl24writePrimsAndLeafOffsetsIfLi3EEEvPNS0_8TempNodeIT_XT0_EEEPjPNS0_9PrimStateEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15gpuBuilder_impl24writePrimsAndLeafOffsetsIfLi3EEEvPNS0_8TempNodeIT_XT0_EEEPjPNS0_9PrimStateEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 14 registers, used 0 barriers
+ptxas info    : Compile time = 1.189 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15gpuBuilder_impl11updatePrimsIfLi3EEEvPNS0_9NodeStateEPNS0_8TempNodeIT_XT0_EEEPNS0_9PrimStateEPKNS_5box_tIS5_XT0_EEEi' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15gpuBuilder_impl11updatePrimsIfLi3EEEvPNS0_9NodeStateEPNS0_8TempNodeIT_XT0_EEEPNS0_9PrimStateEPKNS_5box_tIS5_XT0_EEEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 20 registers, used 0 barriers
+ptxas info    : Compile time = 3.326 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15gpuBuilder_impl15updatePrims_shmIfLi3EEEvPNS0_9NodeStateEPNS0_8TempNodeIT_XT0_EEEPNS0_9PrimStateEPKNS_5box_tIS5_XT0_EEEiii' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15gpuBuilder_impl15updatePrims_shmIfLi3EEEvPNS0_9NodeStateEPNS0_8TempNodeIT_XT0_EEEPNS0_9PrimStateEPKNS_5box_tIS5_XT0_EEEiii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 30 registers, used 1 barriers, 14336 bytes smem
+ptxas info    : Compile time = 12.815 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15gpuBuilder_impl12selectSplitsIfLi3EEEvPNS0_10BuildStateEPNS0_9NodeStateEPNS0_8TempNodeIT_XT0_EEEjNS_11BuildConfigE' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15gpuBuilder_impl12selectSplitsIfLi3EEEvPNS0_10BuildStateEPNS0_9NodeStateEPNS0_8TempNodeIT_XT0_EEEjNS_11BuildConfigE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 20 registers, used 1 barriers, 4 bytes smem
+ptxas info    : Compile time = 4.880 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15gpuBuilder_impl9initPrimsIfLi3EEEvPNS0_8TempNodeIT_XT0_EEEPNS0_9PrimStateEPKNS_5box_tIS3_XT0_EEEj' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15gpuBuilder_impl9initPrimsIfLi3EEEvPNS0_8TempNodeIT_XT0_EEEPNS0_9PrimStateEPKNS_5box_tIS3_XT0_EEEj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 24 registers, used 0 barriers
+ptxas info    : Compile time = 2.821 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL15gpuBuilder_impl9initStateIfLi3EEEvPNS0_10BuildStateEPNS0_9NodeStateEPNS0_8TempNodeIT_XT0_EEE' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL15gpuBuilder_impl9initStateIfLi3EEEvPNS0_10BuildStateEPNS0_9NodeStateEPNS0_8TempNodeIT_XT0_EEE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 16 registers, used 0 barriers
+ptxas info    : Compile time = 0.837 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL4cuda9refit_runIdLi3EEEvNS_9BinaryBVHIT_XT0_EEEPjPKNS_5box_tIS3_XT0_EEE' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL4cuda9refit_runIdLi3EEEvNS_9BinaryBVHIT_XT0_EEEPjPKNS_5box_tIS3_XT0_EEE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 46 registers, used 0 barriers
+ptxas info    : Compile time = 11.055 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL4cuda10refit_initIdLi3EEEvPKNS_9BinaryBVHIT_XT0_EE4NodeEPji' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL4cuda10refit_initIdLi3EEEvPKNS_9BinaryBVHIT_XT0_EE4NodeEPji
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 14 registers, used 0 barriers
+ptxas info    : Compile time = 1.462 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL4cuda9refit_runIfLi3EEEvNS_9BinaryBVHIT_XT0_EEEPjPKNS_5box_tIS3_XT0_EEE' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL4cuda9refit_runIfLi3EEEvNS_9BinaryBVHIT_XT0_EEEPjPKNS_5box_tIS3_XT0_EEE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 0 barriers
+ptxas info    : Compile time = 5.585 ms
+ptxas info    : Compiling entry function '_ZN5cuBQL4cuda10refit_initIfLi3EEEvPKNS_9BinaryBVHIT_XT0_EE4NodeEPji' for 'sm_120'
+ptxas info    : Function properties for _ZN5cuBQL4cuda10refit_initIfLi3EEEvPKNS_9BinaryBVHIT_XT0_EE4NodeEPji
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 14 registers, used 0 barriers
+ptxas info    : Compile time = 1.476 ms
+ptxas info    : Compiling entry function '_ZN3cub18CUB_200802_SM_120029DeviceRadixSortOnesweepKernelINS0_6detail5radix10policy_hubImNS0_8NullTypeEjE10Policy1000ELb0EmS5_jiiNS2_21identity_decomposer_tEEEvPT5_SA_PT3_PKSB_PT1_PKSF_PT2_PKSJ_T4_iiT6_' for 'sm_120'
+ptxas info    : Function properties for _ZN3cub18CUB_200802_SM_120029DeviceRadixSortOnesweepKernelINS0_6detail5radix10policy_hubImNS0_8NullTypeEjE10Policy1000ELb0EmS5_jiiNS2_21identity_decomposer_tEEEvPT5_SA_PT3_PKSB_PT1_PKSF_PT2_PKSJ_T4_iiT6_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 94 registers, used 1 barriers, 47104 bytes smem
+ptxas info    : Compile time = 40.944 ms
+ptxas info    : Compiling entry function '_ZN3cub18CUB_200802_SM_120033DeviceRadixSortExclusiveSumKernelINS0_6detail5radix10policy_hubImNS0_8NullTypeEjE10Policy1000EjEEvPT0_' for 'sm_120'
+ptxas info    : Function properties for _ZN3cub18CUB_200802_SM_120033DeviceRadixSortExclusiveSumKernelINS0_6detail5radix10policy_hubImNS0_8NullTypeEjE10Policy1000EjEEvPT0_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 26 registers, used 1 barriers, 1184 bytes smem
+ptxas info    : Compile time = 2.516 ms
+ptxas info    : Compiling entry function '_ZN3cub18CUB_200802_SM_120030DeviceRadixSortHistogramKernelINS0_6detail5radix10policy_hubImNS0_8NullTypeEjE10Policy1000ELb0EmjNS2_21identity_decomposer_tEEEvPT2_PKT1_S9_iiT3_' for 'sm_120'
+ptxas info    : Function properties for _ZN3cub18CUB_200802_SM_120030DeviceRadixSortHistogramKernelINS0_6detail5radix10policy_hubImNS0_8NullTypeEjE10Policy1000ELb0EmjNS2_21identity_decomposer_tEEEvPT2_PKT1_S9_iiT3_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 48 registers, used 1 barriers, 8192 bytes smem
+ptxas info    : Compile time = 16.700 ms
+ptxas info    : Compiling entry function '_ZN3cub18CUB_200802_SM_120031DeviceRadixSortSingleTileKernelINS0_6detail5radix10policy_hubImNS0_8NullTypeEjE10Policy1000ELb0EmS5_jNS2_21identity_decomposer_tEEEvPKT1_PS9_PKT2_PSD_T3_iiT4_' for 'sm_120'
+ptxas info    : Function properties for _ZN3cub18CUB_200802_SM_120031DeviceRadixSortSingleTileKernelINS0_6detail5radix10policy_hubImNS0_8NullTypeEjE10Policy1000ELb0EmS5_jNS2_21identity_decomposer_tEEEvPKT1_PS9_PKT2_PSD_T3_iiT4_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 92 registers, used 1 barriers, 33856 bytes smem
+ptxas info    : Compile time = 11.176 ms
+ptxas info    : Compiling entry function '_ZN3cub18CUB_200802_SM_120011EmptyKernelIvEEvv' for 'sm_120'
+ptxas info    : Function properties for _ZN3cub18CUB_200802_SM_120011EmptyKernelIvEEvv
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 4 registers, used 0 barriers
+ptxas info    : Compile time = 0.329 ms
+ptxas info    : Compiling entry function '_Z12query_kernelILi64EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_' for 'sm_120'
+ptxas info    : Function properties for _Z12query_kernelILi64EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_
+    1024 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 168 registers, used 0 barriers, 1024 bytes cumulative stack size
+ptxas info    : Compile time = 20.559 ms
+ptxas info    : Compiling entry function '_Z12query_kernelILi32EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_' for 'sm_120'
+ptxas info    : Function properties for _Z12query_kernelILi32EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_
+    768 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 80 registers, used 0 barriers, 768 bytes cumulative stack size
+ptxas info    : Compile time = 12.964 ms
+ptxas info    : Compiling entry function '_Z12query_kernelILi16EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_' for 'sm_120'
+ptxas info    : Function properties for _Z12query_kernelILi16EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_
+    640 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 48 registers, used 0 barriers, 640 bytes cumulative stack size
+ptxas info    : Compile time = 10.088 ms
+ptxas info    : Compiling entry function '_Z12query_kernelILi11EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_' for 'sm_120'
+ptxas info    : Function properties for _Z12query_kernelILi11EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_
+    608 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 48 registers, used 0 barriers, 608 bytes cumulative stack size
+ptxas info    : Compile time = 9.451 ms
+ptxas info    : Compiling entry function '_Z12query_kernelILi8EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_' for 'sm_120'
+ptxas info    : Function properties for _Z12query_kernelILi8EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_
+    576 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 44 registers, used 0 barriers, 576 bytes cumulative stack size
+ptxas info    : Compile time = 8.798 ms
+ptxas info    : Compiling entry function '_Z12query_kernelILi4EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_' for 'sm_120'
+ptxas info    : Function properties for _Z12query_kernelILi4EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_
+    544 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 44 registers, used 0 barriers, 544 bytes cumulative stack size
+ptxas info    : Compile time = 8.201 ms
+ptxas info    : Compiling entry function '_Z12query_kernelILi1EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_' for 'sm_120'
+ptxas info    : Function properties for _Z12query_kernelILi1EEvN5cuBQL9BinaryBVHIfLi3EEEPKNS0_5vec_tIfLi3EEES6_ifPKiPiPfS9_
+    512 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 0 barriers, 512 bytes cumulative stack size
+ptxas info    : Compile time = 6.291 ms
+ptxas info    : Compiling entry function '_Z10make_boxesPKN5cuBQL5vec_tIfLi3EEEPNS_5box_tIfLi3EEEi' for 'sm_120'
+ptxas info    : Function properties for _Z10make_boxesPKN5cuBQL5vec_tIfLi3EEEPNS_5box_tIfLi3EEEi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 14 registers, used 0 barriers
+ptxas info    : Compile time = 1.057 ms
