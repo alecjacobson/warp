@@ -1643,7 +1643,8 @@ def cg(
             If `check_every` is 0, the callback should be a Warp kernel.
         check_every: number of iterations every which to call `callback`, check the residual against the tolerance and possibility terminate the algorithm.
             Setting `check_every` to 0 disables host-side residual checks, making the solver fully CUDA-graph capturable.
-            On CPU, the solver still stops once converged. On CUDA without a graph, it runs all ``maxiter`` iterations.
+            On CPU, the solver still stops once converged. On CUDA without a graph, it runs whole cycles until the
+            iteration count reaches ``maxiter``, which restarted solvers can exceed by less than one cycle.
             If conditional CUDA graphs are supported, convergence checks are performed device-side; otherwise, the solver will always run
             to the maximum number of iterations.
         use_cuda_graph: If true and when run on a CUDA device, capture the solver iteration as a CUDA graph for reduced launch overhead.
@@ -1897,7 +1898,8 @@ def cr(
             If `check_every` is 0, the callback should be a Warp kernel.
         check_every: number of iterations every which to call `callback`, check the residual against the tolerance and possibility terminate the algorithm.
             Setting `check_every` to 0 disables host-side residual checks, making the solver fully CUDA-graph capturable.
-            On CPU, the solver still stops once converged. On CUDA without a graph, it runs all ``maxiter`` iterations.
+            On CPU, the solver still stops once converged. On CUDA without a graph, it runs whole cycles until the
+            iteration count reaches ``maxiter``, which restarted solvers can exceed by less than one cycle.
             If conditional CUDA graphs are supported, convergence checks are performed device-side; otherwise, the solver will always run
             to the maximum number of iterations.
         use_cuda_graph: If true and when run on a CUDA device, capture the solver iteration as a CUDA graph for reduced launch overhead.
@@ -2183,7 +2185,8 @@ def bicgstab(
             If `check_every` is 0, the callback should be a Warp kernel.
         check_every: number of iterations every which to call `callback`, check the residual against the tolerance and possibility terminate the algorithm.
             Setting `check_every` to 0 disables host-side residual checks, making the solver fully CUDA-graph capturable.
-            On CPU, the solver still stops once converged. On CUDA without a graph, it runs all ``maxiter`` iterations.
+            On CPU, the solver still stops once converged. On CUDA without a graph, it runs whole cycles until the
+            iteration count reaches ``maxiter``, which restarted solvers can exceed by less than one cycle.
             If conditional CUDA graphs are supported, convergence checks are performed device-side; otherwise, the solver will always run
             to the maximum number of iterations.
         use_cuda_graph: If true and when run on a CUDA device, capture the solver iteration as a CUDA graph for reduced launch overhead.
@@ -2528,7 +2531,8 @@ def gmres(
             If `check_every` is 0, the callback should be a Warp kernel.
         check_every: number of iterations every which to call `callback`, check the residual against the tolerance and possibility terminate the algorithm.
             Setting `check_every` to 0 disables host-side residual checks, making the solver fully CUDA-graph capturable.
-            On CPU, the solver still stops once converged. On CUDA without a graph, it runs all ``maxiter`` iterations.
+            On CPU, the solver still stops once converged. On CUDA without a graph, it runs whole cycles until the
+            iteration count reaches ``maxiter``, which restarted solvers can exceed by less than one cycle.
             If conditional CUDA graphs are supported, convergence checks are performed device-side; otherwise, the solver will always run
             to the maximum number of iterations.
         use_cuda_graph: If true and when run on a CUDA device, capture the solver iteration as a CUDA graph for reduced launch overhead.

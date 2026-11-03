@@ -1463,6 +1463,7 @@ def test_capturable_solvers_stop_on_cpu(test, device):
             niter = int(niter.numpy()[0])
             test.assertLess(niter, maxiter, func.__name__)
             test.assertLessEqual(err_sq.numpy()[0], atol_sq.numpy()[0], func.__name__)
+            np.testing.assert_allclose(x.numpy(), np.linalg.solve(a, b.numpy()), rtol=1e-7, atol=1e-9)
             # Host-checked solves stop at a check boundary, so they never do fewer iterations.
             x.zero_()
             niter_checked, _, _ = func(A, b, x, tol=1e-10, maxiter=maxiter, check_every=1)
