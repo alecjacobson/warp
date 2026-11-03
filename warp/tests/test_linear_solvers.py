@@ -1446,6 +1446,30 @@ def test_fsai_preconditioned_solvers(test, device):
             _check_linear_solve(test, A, b, solver, M=M, maxiter=1000, tol=tol, is_left_preconditioner=True)
 
 
+def test_capturable_solvers_stop_on_cpu(test, device):
+    """Check that solvers without host checks stop at convergence on CPU instead of running maxiter."""
+    n = 64
+    a = np.diag(np.linspace(1.0, 4.0, n)) + np.diag(np.full(n - 1, 0.3), 1) + np.diag(np.full(n - 1, 0.3), -1)
+    rows, cols = np.nonzero(a)
+    with wp.ScopedDevice(device):
+        A = bsr_from_triplets(
+            n, n, wp.array(rows, dtype=int), wp.array(cols, dtype=int), wp.array(a[rows, cols], dtype=wp.float64)
+        )
+        b = wp.array(np.linspace(-1.0, 1.0, n), dtype=wp.float64)
+        maxiter = 5000
+        for func in (cg, cr, bicgstab, gmres):
+            x = wp.zeros_like(b)
+            niter, err_sq, atol_sq = func(A, b, x, tol=1e-10, maxiter=maxiter, check_every=0)
+            niter = int(niter.numpy()[0])
+            test.assertLess(niter, maxiter, func.__name__)
+            test.assertLessEqual(err_sq.numpy()[0], atol_sq.numpy()[0], func.__name__)
+            # Host-checked solves stop at a check boundary, so they never do fewer iterations.
+            x.zero_()
+            niter_checked, _, _ = func(A, b, x, tol=1e-10, maxiter=maxiter, check_every=1)
+            test.assertLessEqual(niter, niter_checked, func.__name__)
+            np.testing.assert_allclose(x.numpy(), np.linalg.solve(a, b.numpy()), rtol=1e-7, atol=1e-9)
+
+
 class TestLinearSolvers(unittest.TestCase):
     pass
 
@@ -1633,6 +1657,9 @@ add_function_test(
 )
 add_function_test(
     TestLinearSolvers, "test_float16_preconditioned_solvers", test_float16_preconditioned_solvers, devices=devices
+)
+add_function_test(
+    TestLinearSolvers, "test_capturable_solvers_stop_on_cpu", test_capturable_solvers_stop_on_cpu, devices=["cpu"]
 )
 
 if __name__ == "__main__":
