@@ -1984,6 +1984,117 @@ def _make_jet_space(width: int, dtype):
         return JetMat33(a * b.value, m)
 
     # ------------------------------------------------------------------
+    # Decompositions. The factors come from the float decomposition of the
+    # value; their derivatives use the analytic rules that Warp's reverse
+    # mode uses (the transpose of adj_svd3, adj_svd2 and adj_eig3), with the
+    # same clamping of nearly repeated singular values or eigenvalues, rather
+    # than differentiating the iterations.
+    # ------------------------------------------------------------------
+
+    svd_epsilon = 1.0e-12 if dtype == wp.float64 else 1.0e-6
+
+    @wp.func
+    def jet_svd3(a: JetMat33):
+        U, sigma, V = wp.svd3(a.value)
+        eps = dtype(svd_epsilon)
+        sx2 = sigma[0] * sigma[0]
+        sy2 = sigma[1] * sigma[1]
+        sz2 = sigma[2] * sigma[2]
+        f01 = dtype(1.0) / wp.min(sy2 - sx2, -eps)
+        f02 = dtype(1.0) / wp.min(sz2 - sx2, -eps)
+        f12 = dtype(1.0) / wp.min(sz2 - sy2, -eps)
+        zero = dtype(0.0)
+        F = NativeMat33(zero, f01, f02, -f01, zero, f12, -f02, -f12, zero)
+        S = wp.diag(sigma)
+        UT = wp.transpose(U)
+        dU = CoeffMat9()
+        dsigma = CoeffVec3()
+        dV = CoeffMat9()
+        for q in range(wp.static(width)):
+            dA = NativeMat33()
+            for r in range(3):
+                for c in range(3):
+                    dA[r, c] = a.coeff[r * 3 + c, q]
+            # P = U^T dA V: dsigma = diag(P), dU = U W_u, dV = V W_v.
+            P = UT * dA * V
+            Yu = wp.cw_mul(F, P * S)
+            Yv = wp.cw_mul(F, S * P)
+            dUq = U * (Yu - wp.transpose(Yu))
+            dVq = V * (Yv - wp.transpose(Yv))
+            for r in range(3):
+                dsigma[r, q] = P[r, r]
+                for c in range(3):
+                    dU[r * 3 + c, q] = dUq[r, c]
+                    dV[r * 3 + c, q] = dVq[r, c]
+        return JetMat33(U, dU), JetVec3(sigma, dsigma), JetMat33(V, dV)
+
+    @wp.func
+    def jet_svd2(a: JetMat22):
+        U, sigma, V = wp.svd2(a.value)
+        eps = dtype(svd_epsilon)
+        f01 = dtype(1.0) / wp.min(sigma[1] * sigma[1] - sigma[0] * sigma[0], -eps)
+        zero = dtype(0.0)
+        F = NativeMat22(zero, f01, -f01, zero)
+        S = wp.diag(sigma)
+        UT = wp.transpose(U)
+        dU = CoeffMat4()
+        dsigma = CoeffVec2()
+        dV = CoeffMat4()
+        for q in range(wp.static(width)):
+            dA = NativeMat22()
+            for r in range(2):
+                for c in range(2):
+                    dA[r, c] = a.coeff[r * 2 + c, q]
+            P = UT * dA * V
+            Yu = wp.cw_mul(F, P * S)
+            Yv = wp.cw_mul(F, S * P)
+            dUq = U * (Yu - wp.transpose(Yu))
+            dVq = V * (Yv - wp.transpose(Yv))
+            for r in range(2):
+                dsigma[r, q] = P[r, r]
+                for c in range(2):
+                    dU[r * 2 + c, q] = dUq[r, c]
+                    dV[r * 2 + c, q] = dVq[r, c]
+        return JetMat22(U, dU), JetVec2(sigma, dsigma), JetMat22(V, dV)
+
+    @wp.func
+    def _eigen_gap(x: dtype) -> dtype:
+        # adj_eig3 keeps eigenvalue gaps at least 1e-6 in magnitude. It leaves an
+        # exact zero alone, which forward mode cannot afford: without knowing
+        # whether dQ is used, it would turn dQ into inf or NaN at every matrix
+        # with a repeated eigenvalue, such as the identity.
+        if x < dtype(0.0) and x > dtype(-1.0e-6):
+            return dtype(-1.0e-6)
+        if x >= dtype(0.0) and x < dtype(1.0e-6):
+            return dtype(1.0e-6)
+        return x
+
+    @wp.func
+    def jet_eig3(a: JetMat33):
+        Q, d = wp.eig3(a.value)
+        f01 = dtype(1.0) / _eigen_gap(d[1] - d[0])
+        f02 = dtype(1.0) / _eigen_gap(d[2] - d[0])
+        f12 = dtype(1.0) / _eigen_gap(d[2] - d[1])
+        zero = dtype(0.0)
+        F = NativeMat33(zero, f01, f02, -f01, zero, f12, -f02, -f12, zero)
+        QT = wp.transpose(Q)
+        dQ = CoeffMat9()
+        dd = CoeffVec3()
+        for q in range(wp.static(width)):
+            dA = NativeMat33()
+            for r in range(3):
+                for c in range(3):
+                    dA[r, c] = a.coeff[r * 3 + c, q]
+            # P = Q^T dA Q: dd = diag(P), dQ = Q (F o P).
+            P = QT * dA * Q
+            dQq = Q * wp.cw_mul(F, P)
+            for r in range(3):
+                dd[r, q] = P[r, r]
+                for c in range(3):
+                    dQ[r * 3 + c, q] = dQq[r, c]
+        return JetMat33(Q, dQ), JetVec3(d, dd)
+
+    # ------------------------------------------------------------------
     # Publish into Warp's builtin overload table.
     #
     # From here on, ordinary Warp syntax resolves on jets by argument type,
@@ -2049,6 +2160,18 @@ def _make_jet_space(width: int, dtype):
     _register("smoothstep", jet_smoothstep)
     _register("assign_copy", jet_assign_copy)
     _register("skew", jet_skew)
+    # Multiple assignment (U, sigma, V = wp.svd3(A)) picks a builtin overload by
+    # its number of outputs, which a @wp.func overload reports through value_func.
+    for fn, outputs in (
+        (jet_svd3, (JetMat33, JetVec3, JetMat33)),
+        (jet_svd2, (JetMat22, JetVec2, JetMat22)),
+        (jet_eig3, (JetMat33, JetVec3)),
+    ):
+        for overload in tuple(fn.user_overloads.values()) or (fn,):
+            overload.value_func = lambda arg_types, arg_values, outputs=outputs: outputs
+    _register("svd3", jet_svd3)
+    _register("svd2", jet_svd2)
+    _register("eig3", jet_eig3)
 
     return SimpleNamespace(
         width=width,

@@ -1369,5 +1369,154 @@ class TestJetFemBuiltins(unittest.TestCase):
             np.testing.assert_allclose(coeff.numpy(), expected, rtol=1.0e-5, atol=1.0e-6)
 
 
+# --------------------------------------------------------------------------
+# Decompositions: the jet's directional derivative of a weighted sum of the
+# factors must equal reverse mode's <A_bar, dA> (the same analytic rules), and
+# central differences at a matrix with well-separated singular values.
+# --------------------------------------------------------------------------
+
+JD3 = wp.JetSpace((wp.mat33,), width=1)
+JD2 = wp.JetSpace((wp.mat22,), width=1)
+
+
+@wp.func
+def svd3_objective(A: Any, Ubar: wp.mat33, sbar: wp.vec3, Vbar: wp.mat33):
+    U, s, V = wp.svd3(A)
+    return wp.ddot(Ubar, U) + wp.dot(sbar, s) + wp.ddot(Vbar, V)
+
+
+@wp.func
+def svd2_objective(A: Any, Ubar: wp.mat22, sbar: wp.vec2, Vbar: wp.mat22):
+    U, s, V = wp.svd2(A)
+    return wp.ddot(Ubar, U) + wp.dot(sbar, s) + wp.ddot(Vbar, V)
+
+
+@wp.func
+def eig3_objective(A: Any, Qbar: wp.mat33, dbar: wp.vec3, unused: wp.mat33):
+    Q, d = wp.eig3(A)
+    return wp.ddot(Qbar, Q) + wp.dot(dbar, d)
+
+
+@wp.kernel(enable_backward=False)
+def svd3_jet_kernel(A: wp.mat33, dA: wp.mat33, Ubar: wp.mat33, sbar: wp.vec3, Vbar: wp.mat33, out: wp.array[float]):
+    out[0] = svd3_objective(JD3.directional(A, dA), Ubar, sbar, Vbar).coeff[0]
+
+
+@wp.kernel
+def svd3_plain_kernel(A: wp.array[wp.mat33], Ubar: wp.mat33, sbar: wp.vec3, Vbar: wp.mat33, out: wp.array[float]):
+    out[0] = svd3_objective(A[0], Ubar, sbar, Vbar)
+
+
+@wp.kernel(enable_backward=False)
+def svd2_jet_kernel(A: wp.mat22, dA: wp.mat22, Ubar: wp.mat22, sbar: wp.vec2, Vbar: wp.mat22, out: wp.array[float]):
+    out[0] = svd2_objective(JD2.directional(A, dA), Ubar, sbar, Vbar).coeff[0]
+
+
+@wp.kernel
+def svd2_plain_kernel(A: wp.array[wp.mat22], Ubar: wp.mat22, sbar: wp.vec2, Vbar: wp.mat22, out: wp.array[float]):
+    out[0] = svd2_objective(A[0], Ubar, sbar, Vbar)
+
+
+@wp.kernel(enable_backward=False)
+def eig3_jet_kernel(A: wp.mat33, dA: wp.mat33, Qbar: wp.mat33, dbar: wp.vec3, unused: wp.mat33, out: wp.array[float]):
+    out[0] = eig3_objective(JD3.directional(A, dA), Qbar, dbar, unused).coeff[0]
+
+
+@wp.kernel
+def eig3_plain_kernel(A: wp.array[wp.mat33], Qbar: wp.mat33, dbar: wp.vec3, unused: wp.mat33, out: wp.array[float]):
+    out[0] = eig3_objective(A[0], Qbar, dbar, unused)
+
+
+class TestJetDecompositions(unittest.TestCase):
+    def _check(self, jet_kernel, plain_kernel, mat, vec, A_np, dA_np, seed):
+        rng = np.random.default_rng(seed)
+        n = A_np.shape[0]
+        weights = [
+            mat(*rng.uniform(-1.0, 1.0, n * n).astype(np.float32)),
+            vec(*rng.uniform(-1.0, 1.0, n).astype(np.float32)),
+            mat(*rng.uniform(-1.0, 1.0, n * n).astype(np.float32)),
+        ]
+        for device in DEVICES:
+            out = wp.zeros(1, dtype=float, device=device)
+            wp.launch(
+                jet_kernel,
+                dim=1,
+                inputs=[mat(*A_np.ravel()), mat(*dA_np.ravel()), *weights],
+                outputs=[out],
+                device=device,
+            )
+            jet = out.numpy()[0]
+
+            A = wp.array(A_np[None], dtype=mat, requires_grad=True, device=device)
+            value = wp.zeros(1, dtype=float, requires_grad=True, device=device)
+            tape = wp.Tape()
+            with tape:
+                wp.launch(plain_kernel, dim=1, inputs=[A, *weights], outputs=[value], device=device)
+            tape.backward(grads={value: wp.ones(1, dtype=float, device=device)})
+            reverse = float((A.grad.numpy()[0] * dA_np).sum())
+
+            def evaluate(M, device=device):
+                result = wp.zeros(1, dtype=float, device=device)
+                wp.launch(
+                    plain_kernel,
+                    dim=1,
+                    inputs=[wp.array(M[None].astype(np.float32), dtype=mat, device=device), *weights],
+                    outputs=[result],
+                    device=device,
+                )
+                return float(result.numpy()[0])
+
+            h = 1.0e-3
+            fd = (evaluate(A_np + h * dA_np) - evaluate(A_np - h * dA_np)) / (2.0 * h)
+
+            np.testing.assert_allclose(jet, reverse, rtol=1.0e-4, atol=1.0e-5)
+            np.testing.assert_allclose(jet, fd, rtol=5.0e-3, atol=5.0e-3)
+
+    def test_svd3(self):
+        """Check the svd3 jet against reverse mode and central differences."""
+        rng = np.random.default_rng(7)
+        A = rng.uniform(-1.0, 1.0, (3, 3)).astype(np.float32)
+        dA = rng.uniform(-1.0, 1.0, (3, 3)).astype(np.float32)
+        self._check(svd3_jet_kernel, svd3_plain_kernel, wp.mat33, wp.vec3, A, dA, seed=8)
+
+    def test_svd2(self):
+        """Check the svd2 jet against reverse mode and central differences."""
+        rng = np.random.default_rng(9)
+        A = rng.uniform(-1.0, 1.0, (2, 2)).astype(np.float32)
+        dA = rng.uniform(-1.0, 1.0, (2, 2)).astype(np.float32)
+        self._check(svd2_jet_kernel, svd2_plain_kernel, wp.mat22, wp.vec2, A, dA, seed=10)
+
+    def test_eig3(self):
+        """Check the eig3 jet of a symmetric matrix against reverse mode and central differences."""
+        rng = np.random.default_rng(11)
+        B = rng.uniform(-1.0, 1.0, (3, 3)).astype(np.float32)
+        dB = rng.uniform(-1.0, 1.0, (3, 3)).astype(np.float32)
+        self._check(eig3_jet_kernel, eig3_plain_kernel, wp.mat33, wp.vec3, B + B.T, dB + dB.T, seed=12)
+
+    def test_eig3_repeated_eigenvalues(self):
+        """Check that the eig3 jet of the identity keeps finite derivatives with exact eigenvalue derivatives."""
+        rng = np.random.default_rng(13)
+        dB = rng.uniform(-1.0, 1.0, (3, 3)).astype(np.float32)
+        dA = dB + dB.T
+        zero = wp.mat33(0.0)
+        for device in DEVICES:
+            out = wp.zeros(1, dtype=float, device=device)
+            # Eigenvalues only: the derivative of sum(d) = trace(A) is trace(dA).
+            wp.launch(
+                eig3_jet_kernel,
+                dim=1,
+                inputs=[
+                    wp.mat33(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+                    wp.mat33(*dA.ravel()),
+                    zero,
+                    wp.vec3(1.0),
+                    zero,
+                ],
+                outputs=[out],
+                device=device,
+            )
+            np.testing.assert_allclose(out.numpy()[0], np.trace(dA), rtol=1.0e-5, atol=1.0e-5)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
