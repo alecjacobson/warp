@@ -21,6 +21,7 @@ import warp as wp
 from warp._src import sparse as sp
 from warp._src.optim._fsai_multi_rhs import FSAIMultiRHS
 from warp._src.optim.linear import LinearOperator
+from warp._src.sparse_multi_rhs import BsrMvAlgorithm
 from warp._src.utils import array_scan
 
 __all__ = ["FSAI"]
@@ -527,7 +528,9 @@ class FSAI(LinearOperator):
         self.source = A
         return self
 
-    def as_multi_rhs(self, nrhs: int, dtype: type | None = None, layout: str = "columns") -> FSAIMultiRHS:
+    def as_multi_rhs(
+        self, nrhs: int, dtype: type | None = None, algorithm: BsrMvAlgorithm = BsrMvAlgorithm.AUTO
+    ) -> FSAIMultiRHS:
         """Prepare a shared-factor operator for independent right-hand sides.
 
         The returned :class:`LinearOperator` acts on contiguous scalar arrays of
@@ -552,15 +555,18 @@ class FSAI(LinearOperator):
             dtype: Scalar working precision, float32 or float64. Defaults to the
                 source matrix scalar type (float32 for a float16 source). Stored
                 factors are cast during products.
-            layout: ``"columns"`` retains adjacent RHS values across both factor
-                products on CUDA. ``"rows"`` reads each factor row once for up to
-                four RHSs on CUDA and may be faster for narrow batches. CPU always
-                uses one thread per row and RHS.
+            algorithm: Product strategy, as in :func:`warp.sparse.bsr_mv`.
+                ``COLUMNS`` retains adjacent RHS values across both factor products
+                on CUDA. ``ROWS`` reads each factor row once for up to four RHSs on
+                CUDA and may be faster for narrow batches; on CPU it uses one thread
+                per row and RHS. ``AUTO`` selects ``COLUMNS`` on CUDA and ``ROWS``
+                on CPU. Explicit choices that the device cannot run raise
+                :class:`ValueError`.
 
         Returns:
             A reusable :class:`LinearOperator` with preallocated scratch storage.
         """
-        return FSAIMultiRHS(self, nrhs, dtype, layout)
+        return FSAIMultiRHS(self, nrhs, dtype, algorithm)
 
     def _apply(self, x, y, z, alpha, beta):
         x, y, z = (self._flat(v) for v in (x, y, z))

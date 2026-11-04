@@ -11,6 +11,7 @@ import warp as wp
 import warp.sparse as sp
 from warp._src.optim import fsai as fsai_module
 from warp.optim.linear import FSAI, FSAIMultiRHS, cg, cr, preconditioner
+from warp.sparse import BsrMvAlgorithm
 from warp.tests.unittest_utils import add_function_test, get_cuda_test_devices, get_test_devices
 
 
@@ -922,8 +923,15 @@ def test_float16_capture_refit(test, device):
     np.testing.assert_array_equal(y.numpy(), before)
 
 
+def _multi_rhs_algorithms(device):
+    """Return the FSAI multiple-RHS strategies available on ``device``."""
+    if wp.get_device(device).is_cuda:
+        return (BsrMvAlgorithm.ROWS, BsrMvAlgorithm.COLUMNS)
+    return (BsrMvAlgorithm.ROWS,)
+
+
 def test_multi_rhs(test, device, dtype):
-    """Check multiple-RHS application across factor types, widths, layouts and aliases."""
+    """Check multiple-RHS application across factor types, widths, strategies and aliases."""
     # Odd rows/widths exercise both transpose and RHS tile tails. References use
     # the stored coefficients, so factor quantization is not application error.
     rng = np.random.default_rng(37)
@@ -937,8 +945,9 @@ def test_multi_rhs(test, device, dtype):
         g = _dense(pre.G).astype(np.float64)
         for nrhs in (1, 4, 7, 24, 33):
             host = rng.normal(size=(nrhs, 41))
-            for layout in ("rows", "columns"):
-                action = pre.as_multi_rhs(33, dtype=dtype, layout=layout).with_nrhs(nrhs)
+            for algorithm in _multi_rhs_algorithms(device):
+                action = pre.as_multi_rhs(33, dtype=dtype, algorithm=algorithm).with_nrhs(nrhs)
+                test.assertEqual(action.algorithm, algorithm)
                 test.assertEqual(action.shape, (nrhs * 41, nrhs * 41))
                 np.testing.assert_array_equal(action.batch_offsets.numpy(), np.arange(nrhs + 1) * 41)
                 for alias in (False, True):
@@ -1003,9 +1012,14 @@ def test_multi_rhs_capture(test, device):
 def test_multi_rhs_validation(test, device):
     """Check that invalid arguments and arrays are rejected before output mutation."""
     pre = FSAI(_matrix(_path(5), device))
-    for kwargs in ({"nrhs": 0}, {"nrhs": 2, "dtype": wp.float16}, {"nrhs": 2, "layout": "invalid"}):
+    for kwargs in ({"nrhs": 0}, {"nrhs": 2, "dtype": wp.float16}, {"nrhs": 2, "algorithm": BsrMvAlgorithm.LOOP}):
         with test.assertRaises(ValueError):
             pre.as_multi_rhs(**kwargs)
+    with test.assertRaises(TypeError):
+        pre.as_multi_rhs(2, algorithm="rows")
+    if not wp.get_device(device).is_cuda:
+        with test.assertRaises(ValueError):
+            pre.as_multi_rhs(2, algorithm=BsrMvAlgorithm.COLUMNS)
     with test.assertRaises(TypeError):
         pre.as_multi_rhs(True)
     # Direct construction and the factory resolve the same default working dtype.

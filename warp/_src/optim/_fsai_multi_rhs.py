@@ -11,14 +11,15 @@ from operator import index
 from typing import Any
 
 import warp as wp
-from warp._src.optim._multi_rhs_kernels import (
+from warp._src.optim.linear import LinearOperator
+from warp._src.sparse_multi_rhs import (
+    BsrMvAlgorithm,
     csr_block_product,
     csr_eight_rhs,
     csr_eight_rhs_padded,
     transpose_axpby,
     transpose_rows,
 )
-from warp._src.optim.linear import LinearOperator
 
 
 @wp.kernel(enable_backward=False)
@@ -71,11 +72,12 @@ class FSAIMultiRHS(LinearOperator):
         nrhs: Positive RHS count.
         dtype: Working scalar dtype, float32 or float64. Defaults to the factor's
             scalar type, or float32 for float16 factors.
-        layout: ``"columns"`` for coalesced CUDA products or ``"rows"`` for
-            row-oriented products. CPU always uses the latter.
+        algorithm: Product strategy, as in :func:`warp.sparse.bsr_mv`: ``COLUMNS``
+            for coalesced CUDA products or ``ROWS`` for row-oriented products.
+            ``AUTO`` selects ``COLUMNS`` on CUDA and ``ROWS`` on CPU.
     """
 
-    def __init__(self, factor, nrhs: int, dtype: type | None = None, layout: str = "columns"):
+    def __init__(self, factor, nrhs: int, dtype: type | None = None, algorithm: BsrMvAlgorithm = BsrMvAlgorithm.AUTO):
         from warp._src.optim.fsai import FSAI  # noqa: PLC0415
 
         if not isinstance(factor, FSAI):
@@ -88,11 +90,18 @@ class FSAIMultiRHS(LinearOperator):
             dtype = wp.float32 if factor.scalar_type == wp.float16 else factor.scalar_type
         if dtype not in (wp.float32, wp.float64):
             raise ValueError("Working dtype must be float32 or float64")
-        if layout not in ("rows", "columns"):
-            raise ValueError("layout must be 'rows' or 'columns'")
+        if not isinstance(algorithm, BsrMvAlgorithm):
+            raise TypeError("algorithm must be a BsrMvAlgorithm")
+        if algorithm == BsrMvAlgorithm.AUTO:
+            algorithm = BsrMvAlgorithm.COLUMNS if factor.device.is_cuda else BsrMvAlgorithm.ROWS
+        elif algorithm == BsrMvAlgorithm.LOOP:
+            raise ValueError("FSAI application supports BsrMvAlgorithm.ROWS and COLUMNS")
+        elif algorithm == BsrMvAlgorithm.COLUMNS and not factor.device.is_cuda:
+            raise ValueError("BsrMvAlgorithm.COLUMNS requires a CUDA device")
         self.factor, self.nrhs, self.n = factor, index(nrhs), factor.G.nrow
-        self.layout = layout if factor.device.is_cuda else "rows"
-        shape = (self.n, self.nrhs) if self.layout == "columns" else (self.nrhs, self.n)
+        self.algorithm = algorithm
+        columns = algorithm == BsrMvAlgorithm.COLUMNS
+        shape = (self.n, self.nrhs) if columns else (self.nrhs, self.n)
         self._first = wp.empty(shape, dtype=dtype, device=factor.device)
         self._second = wp.empty_like(self._first)
         offsets = wp.empty(self.nrhs + 1, dtype=int, device=factor.device)
@@ -128,7 +137,7 @@ class FSAIMultiRHS(LinearOperator):
             raise ValueError("nrhs must be positive and no greater than the prepared capacity")
         result = copy.copy(self)
         result.nrhs = index(nrhs)
-        shape = (self.n, result.nrhs) if self.layout == "columns" else (result.nrhs, self.n)
+        shape = (self.n, result.nrhs) if self.algorithm == BsrMvAlgorithm.COLUMNS else (result.nrhs, self.n)
         count = result.nrhs * self.n
         result._first = self._first.flatten()[:count].reshape(shape)
         result._second = self._second.flatten()[:count].reshape(shape)
@@ -161,7 +170,7 @@ class FSAIMultiRHS(LinearOperator):
         if alpha == 0:
             wp.launch(_combine, z.size, [x, y, z, wp.float64(0), wp.float64(beta)], device=self.device)
             return
-        if self.layout == "rows":
+        if self.algorithm == BsrMvAlgorithm.ROWS:
             source = x.reshape((self.nrhs, self.n))
             for factor, src, dst in ((self.factor.G, source, self._first), (self.factor.GT, self._first, self._second)):
                 if self.device.is_cuda:
