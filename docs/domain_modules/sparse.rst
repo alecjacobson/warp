@@ -512,3 +512,61 @@ While primarily intended for sparse matrices, these solvers also work with dense
 Custom operators can be implemented using the :class:`warp.optim.linear.LinearOperator` interface.
 
 For a complete listing of all sparse matrix functions and their signatures, see the :doc:`../api_reference/warp_sparse` API reference.
+
+
+.. currentmodule:: warp.optim.linear
+
+Prepared Krylov solves
+----------------------
+
+:class:`KrylovSolve` allocates its workspace once and then solves many
+right-hand sides (RHSs) against the same system with :func:`cg`, :func:`cr`,
+:func:`bicgstab` or :func:`gmres`. It suits solves nested inside another
+algorithm and CUDA graph replay::
+
+    import warp as wp
+    from warp.optim.linear import KrylovMethod, KrylovSolve
+
+    action = KrylovSolve(A, nrhs=24, method=KrylovMethod.CG,
+                         working_dtype=wp.float32, tol=0.01, maxiter=25)
+    action.solve(rhs, out)
+    # action.converged, action.absolute_residual, ... stay on device.
+
+The functional solvers keep every algorithmic option; a prepared solve adds what
+a reusable object needs:
+
+* ``solve(rhs, out)`` takes contiguous ``(nrhs, n)`` arrays, or ``(n,)`` when
+  ``nrhs == 1``, in the system's scalar dtype and device. Every solve starts
+  from zero. Exact in-place aliasing is supported; partially overlapping views
+  are rejected before any output is written.
+* Several RHSs iterate together as independent systems sharing one operator, so
+  each reports the batch's scheduled iteration count. This is not a coupled
+  block method. Sparse matrices apply all RHSs with the batched
+  :func:`warp.sparse.bsr_mv`; ``algorithm`` pins its kernel strategy.
+* ``update()`` makes in-place value changes to a sparse matrix visible, copying
+  them into the ``working_dtype`` matrix when that differs. ``solve()`` does
+  this on every call.
+* ``with_nrhs(k)`` prepares a smaller capacity that shares the workspace. The
+  two must not run concurrently.
+* The device arrays ``iterations``, ``absolute_residual``,
+  ``relative_residual``, ``tolerance`` and ``converged`` describe each RHS of
+  the latest call. ``stats`` (total iterations, maximum iterations, failed
+  RHSs, solved RHSs) and ``residual_maxima`` accumulate until
+  ``reset_stats()``, which leaves the latest per-RHS diagnostics untouched.
+  Nonfinite norms fail acceptance.
+* ``residual`` selects the residual that is reported and used for acceptance:
+  :attr:`ResidualMode.RECURRENCE` reports the solver's own estimate at no extra
+  cost, and :attr:`ResidualMode.FRESH` recomputes ``||A x - b||`` with the
+  source system and precision, which validates mixed-precision or truncated
+  solves at the cost of one batched product per call.
+
+``M`` is a fixed linear preconditioner, either a single-system operator or a
+prepared operator with independent RHS partitions, such as a
+:class:`MultiRHSOperator` or an FSAI application prepared for several RHSs. When
+the preconditioner is partitioned, pass a matching ``M=`` to ``with_nrhs``.
+
+Construct and warm up actions outside CUDA graph capture. Prepared replay
+performs no host convergence checks or work-array allocations. Eager calls
+from different CUDA streams are ordered automatically, but captured graphs
+that share one workspace must not execute concurrently. Reverse-mode
+derivatives through prepared solves are not supplied.

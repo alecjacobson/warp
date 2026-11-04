@@ -18,8 +18,12 @@ API
    CR
    FSAI
    GMRES
+   KrylovMethod
+   KrylovSolve
    LinearOperator
    LinearSolverState
+   MultiRHSOperator
+   ResidualMode
    aslinearoperator
    bicgstab
    cg

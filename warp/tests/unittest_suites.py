@@ -259,6 +259,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
     from warp.tests.test_sgd import TestSGD
     from warp.tests.test_smoothstep import TestSmoothstep
     from warp.tests.test_snippet import TestSnippets
+    from warp.tests.test_solve_action import TestSolveAction
     from warp.tests.test_sparse import TestSparse
     from warp.tests.test_spatial import TestSpatial
     from warp.tests.test_special_values import TestSpecialValues
@@ -417,6 +418,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
         TestLaunch,
         TestLerp,
         TestLinearSolvers,
+        TestSolveAction,
         TestLogger,
         TestLValue,
         TestMarchingCubes,
@@ -1081,6 +1083,7 @@ def llvm_cuda_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoade
         "warp.tests.test_grad_customs.TestGradCustoms": [mathdx],
         "warp.tests.test_linear_solvers.TestLinearSolvers": [no_shfl_64, no_shfl_up, mathdx],
         "warp.tests.test_map.TestMap": [ulp],
+        "warp.tests.test_solve_action.TestSolveAction": [tile_h],
         "warp.tests.test_sparse.TestSparse": [no_shfl_64],
         "warp.tests.test_tuple.TestTuple": [ulp],
         "warp.tests.test_verify_fp.TestVerifyFP": [verify_fp],
