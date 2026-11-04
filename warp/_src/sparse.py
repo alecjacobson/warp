@@ -5100,6 +5100,7 @@ def bsr_mv(
         work_buffer: Temporary storage is required if and only if ``x`` and ``y`` are the same vector.
           If provided, the ``work_buffer`` array will be used for this purpose,
           otherwise a temporary allocation will be performed. For a batch with
+          :attr:`BsrMvAlgorithm.LOOP`, its first output-vector-sized part serves each row in turn. With
           :attr:`BsrMvAlgorithm.ROWS` or :attr:`BsrMvAlgorithm.COLUMNS`, it is instead a contiguous
           1D array of ``A``'s scalar type with at least ``count * A.shape[0]`` or
           ``count * (A.shape[0] + A.shape[1])`` entries respectively, and reusing one avoids a
@@ -5264,8 +5265,10 @@ def _bsr_mv_batch(A, x, y, alpha, beta, transpose, work_buffer, tile_size, algor
         algorithm = BsrMvAlgorithm.LOOP
     algorithm = _multi_rhs.resolve(algorithm, A, count, device, transpose)
     if algorithm == BsrMvAlgorithm.LOOP:
+        # Each aliased row needs exactly one row of scratch.
+        row_buffer = None if work_buffer is None else work_buffer.flatten()[: y_rows.shape[1]]
         for r in range(count):
-            bsr_mv(A, x_rows[r], y_rows[r], alpha, beta, transpose, work_buffer, tile_size)
+            bsr_mv(A, x_rows[r], y_rows[r], alpha, beta, transpose, row_buffer, tile_size)
         return
     if tile_size != 0:
         raise ValueError(f"tile_size applies to BsrMvAlgorithm.LOOP, not {algorithm.name}")

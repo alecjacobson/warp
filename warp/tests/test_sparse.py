@@ -2146,6 +2146,22 @@ def test_bsr_mv_batch(test, device):
                         x = wp.array(X, dtype=dtype, device=device)
                         bsr_mv(A, x, x, 2.0, 1.0, algorithm=algorithm)
                         np.testing.assert_allclose(x.numpy(), 2.0 * X @ dense.T + X, rtol=tol, atol=tol)
+    # A zero alpha leaves x unread, so NaN inputs cannot reach the result.
+    for block in (1, 3):
+        A, dense = _batch_matrix(device, wp.float64, block, False)
+        Y = rng.normal(size=(5, dense.shape[0]))
+        for algorithm in _batch_algorithms(device, A):
+            x = wp.full((5, dense.shape[1]), float("nan"), dtype=wp.float64, device=device)
+            y = wp.array(Y, dtype=wp.float64, device=device)
+            bsr_mv(A, x, y, 0.0, 0.5, algorithm=algorithm)
+            np.testing.assert_allclose(y.numpy(), 0.5 * Y, rtol=1e-15, err_msg=algorithm.name)
+    # A reusable batch-sized work buffer serves every aliased row of the loop.
+    A, dense = _batch_matrix(device, wp.float64, 1, False)
+    X = rng.normal(size=(5, dense.shape[0]))
+    x = wp.array(X, dtype=wp.float64, device=device)
+    work = wp.empty(x.size, dtype=wp.float64, device=device)
+    bsr_mv(A, x, x, algorithm=BsrMvAlgorithm.LOOP, work_buffer=work)
+    np.testing.assert_allclose(x.numpy(), X @ dense.T, rtol=1e-12)
     # Vector-valued rows and an allocated output.
     A, dense = _batch_matrix(device, wp.float64, 3, False)
     X = rng.normal(size=(4, dense.shape[0]))
@@ -2169,6 +2185,12 @@ def test_bsr_mv_batch_selection(test, device):
     scalar = bsr_from_triplets(4, 4, diagonal, diagonal, wp.array([1.0, 2.0], dtype=float, device=device))
     blocks = bsr_copy(scalar, block_shape=(2, 2))
     test.assertEqual(resolve(BsrMvAlgorithm.AUTO, blocks, 8, device, False), BsrMvAlgorithm.LOOP)
+    # A 1x1 matrix block type is not a scalar CSR value, so only the loop supports it.
+    unit = bsr_zeros(4, 4, wp.types.matrix(shape=(1, 1), dtype=wp.float64), device=device)
+    bsr_set_from_triplets(unit, diagonal, diagonal, wp.ones(2, dtype=unit.values.dtype, device=device))
+    test.assertEqual(resolve(BsrMvAlgorithm.AUTO, unit, 8, device, False), BsrMvAlgorithm.LOOP)
+    y = bsr_mv(unit, wp.ones((3, 4), dtype=wp.float64, device=device))
+    np.testing.assert_allclose(y.numpy(), np.tile([1.0, 1.0, 0.0, 0.0], (3, 1)))
     for algorithm in (BsrMvAlgorithm.ROWS, BsrMvAlgorithm.COLUMNS):
         with test.assertRaises(ValueError):
             resolve(algorithm, blocks, 8, device, False)

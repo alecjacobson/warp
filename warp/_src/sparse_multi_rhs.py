@@ -288,6 +288,9 @@ def supports(algorithm, A, device):
     """Return whether a row or column strategy can run ``A`` on ``device``."""
     if A.block_shape not in ((1, 1), (3, 3)):
         return False
+    # The CSR kernels read scalar values; a 1x1 matrix block type is not one.
+    if A.block_shape == (1, 1) and A.values.dtype != A.scalar_type:
+        return False
     if algorithm == BsrMvAlgorithm.COLUMNS and not device.is_cuda:
         return False
     # Only CSR has padded-row CUDA kernels.
@@ -335,6 +338,12 @@ def product(algorithm, A, x, y, z, alpha, beta, scratch):
     """
     device = A.values.device
     count, rows, cols = x.shape[0], A.shape[0], A.shape[1]
+    if alpha == 0:
+        # Leave x unread, so uninitialized or nonfinite inputs cannot reach z.
+        wp.launch(
+            _combine, z.size, [y.flatten(), y.flatten(), z.flatten(), wp.float64(0), wp.float64(beta)], device=device
+        )
+        return
     if algorithm == BsrMvAlgorithm.COLUMNS:
         first = scratch[: cols * count].reshape((cols, count))
         second = scratch[cols * count : (cols + rows) * count].reshape((rows, count))
