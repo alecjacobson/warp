@@ -14,6 +14,7 @@ Python API
    :toctree: _generated
 
    BsrMatrix
+   BsrMvAlgorithm
    BsrTripletMap
    bsr_axpy_work_arrays
    bsr_mm_work_arrays

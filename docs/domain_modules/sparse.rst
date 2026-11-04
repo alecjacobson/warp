@@ -440,6 +440,29 @@ For more control about memory allocations, you may use the underlying lower-leve
         alpha,             # Scale factor
     )
 
+Batches of Vectors
+~~~~~~~~~~~~~~~~~~
+
+:func:`bsr_mv` also multiplies one matrix with many vectors at once. Store the vectors as the
+rows of a contiguous 2D array, for example of shape ``(count, A.shape[1])``, and the result has
+one row per vector:
+
+.. code-block:: python
+
+    import warp as wp
+    from warp.sparse import BsrMvAlgorithm, bsr_mv
+
+    X = wp.ones((8, A.shape[1]), dtype=A.scalar_type)
+    Y = wp.zeros((8, A.shape[0]), dtype=A.scalar_type)
+    bsr_mv(A, X, Y)  # Y[r] = A @ X[r] for every row r
+    bsr_mv(A, X, Y, algorithm=BsrMvAlgorithm.ROWS)  # pin a strategy
+
+Reading each matrix row once for several vectors is usually faster than separate products.
+:class:`BsrMvAlgorithm` selects the kernel strategy: ``AUTO`` chooses one from the matrix,
+batch size and device, while ``LOOP``, ``ROWS`` and ``COLUMNS`` pin a strategy, which helps when
+the best choice for a workload is known. Pass ``work_buffer`` to reuse scratch storage across
+calls, for example inside a captured graph.
+
 
 Kernel-level utilities
 ~~~~~~~~~~~~~~~~~~~~~~

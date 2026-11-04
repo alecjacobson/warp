@@ -12,6 +12,7 @@ from warp.sparse import (
     BSR_STATUS_ROW_CAPACITY_EXCEEDED,
     BSR_STATUS_SUCCESS,
     BsrMatrix,
+    BsrMvAlgorithm,
     BsrTripletMap,
     bsr_assign,
     bsr_axpy,
@@ -2082,6 +2083,124 @@ cuda_test_devices = get_selected_cuda_test_devices()
 cuda_test_devices_with_mempool = get_selected_cuda_test_devices_with_mempool()
 
 
+def _batch_matrix(device, dtype, block, padded, nrow=11, ncol=11, seed=0):
+    """Return a random sparse matrix in the requested storage and its dense equivalent."""
+    rng = np.random.default_rng(seed)
+    dense = (rng.random((nrow * block, ncol * block)) < 0.3) * rng.normal(size=(nrow * block, ncol * block))
+    dense[np.arange(min(nrow, ncol) * block), np.arange(min(nrow, ncol) * block)] += 4.0
+    rows, cols = np.nonzero(dense)
+    scalar = bsr_from_triplets(
+        nrow * block,
+        ncol * block,
+        wp.array(rows, dtype=int, device=device),
+        wp.array(cols, dtype=int, device=device),
+        wp.array(dense[rows, cols], dtype=dtype, device=device),
+    )
+    A = bsr_copy(scalar, block_shape=(block, block)) if block > 1 else scalar
+    if padded:
+        block_rows, block_cols = np.nonzero(_bsr_to_dense(A).reshape(nrow, block, ncol, block).any(axis=(1, 3)))
+        values = _bsr_to_dense(A).reshape(nrow, block, ncol, block).transpose(0, 2, 1, 3)[block_rows, block_cols]
+        block_type = dtype if block == 1 else wp.types.matrix(shape=(block, block), dtype=dtype)
+        A = bsr_zeros(nrow, ncol, block_type, device=device, row_capacity=ncol)
+        bsr_set_from_triplets(
+            A,
+            wp.array(block_rows, dtype=int, device=device),
+            wp.array(block_cols, dtype=int, device=device),
+            wp.array(values if block > 1 else values.reshape(-1), dtype=block_type, device=device),
+            topology="padded",
+        )
+    return A, dense
+
+
+def _batch_algorithms(device, A):
+    """Return every strategy that supports ``A`` on ``device``."""
+    result = [BsrMvAlgorithm.AUTO, BsrMvAlgorithm.LOOP, BsrMvAlgorithm.ROWS]
+    if device.is_cuda:
+        result.append(BsrMvAlgorithm.COLUMNS)
+    if A.row_counts is not None and A.block_shape != (1, 1) and device.is_cuda:
+        result = result[:2]
+    return result
+
+
+def test_bsr_mv_batch(test, device):
+    """Check batched products against NumPy for every strategy, storage, scaling and aliasing."""
+    device = wp.get_device(device)
+    rng = np.random.default_rng(7)
+    for dtype, tol in ((wp.float32, 1e-4), (wp.float64, 1e-12)):
+        for block in (1, 3):
+            for padded in (False, True):
+                A, dense = _batch_matrix(device, dtype, block, padded)
+                n = dense.shape[0]
+                for count in (2, 9, 33):
+                    X = rng.normal(size=(count, n))
+                    Y = rng.normal(size=(count, n))
+                    for algorithm in _batch_algorithms(device, A):
+                        for alpha, beta in ((1.0, 0.0), (2.0, 0.5), (0.0, 1.5)):
+                            x = wp.array(X, dtype=dtype, device=device)
+                            y = wp.array(Y, dtype=dtype, device=device)
+                            bsr_mv(A, x, y, alpha, beta, algorithm=algorithm)
+                            np.testing.assert_allclose(
+                                y.numpy(), alpha * X @ dense.T + beta * Y, rtol=tol, atol=tol, err_msg=algorithm.name
+                            )
+                        # Exact in-place aliasing.
+                        x = wp.array(X, dtype=dtype, device=device)
+                        bsr_mv(A, x, x, 2.0, 1.0, algorithm=algorithm)
+                        np.testing.assert_allclose(x.numpy(), 2.0 * X @ dense.T + X, rtol=tol, atol=tol)
+    # Vector-valued rows and an allocated output.
+    A, dense = _batch_matrix(device, wp.float64, 3, False)
+    X = rng.normal(size=(4, dense.shape[0]))
+    x = wp.array(X.reshape(4, -1, 3), dtype=wp.vec3d, device=device)
+    y = bsr_mv(A, x, algorithm=BsrMvAlgorithm.ROWS)
+    test.assertEqual(y.shape, (4, dense.shape[0]))
+    np.testing.assert_allclose(y.numpy(), X @ dense.T, rtol=1e-12)
+
+
+def test_bsr_mv_batch_selection(test, device):
+    """Check which strategy AUTO selects and that explicit strategies reject what they cannot run."""
+    from warp._src.sparse_multi_rhs import resolve  # noqa: PLC0415
+
+    device = wp.get_device(device)
+    A, dense = _batch_matrix(device, wp.float64, 1, False)
+    preferred = BsrMvAlgorithm.COLUMNS if device.is_cuda else BsrMvAlgorithm.ROWS
+    test.assertEqual(resolve(BsrMvAlgorithm.AUTO, A, 8, device, False), preferred)
+    test.assertEqual(resolve(BsrMvAlgorithm.AUTO, A, 1, device, False), BsrMvAlgorithm.LOOP)
+    test.assertEqual(resolve(BsrMvAlgorithm.AUTO, A, 8, device, True), BsrMvAlgorithm.LOOP)
+    diagonal = wp.array([0, 1], dtype=int, device=device)
+    scalar = bsr_from_triplets(4, 4, diagonal, diagonal, wp.array([1.0, 2.0], dtype=float, device=device))
+    blocks = bsr_copy(scalar, block_shape=(2, 2))
+    test.assertEqual(resolve(BsrMvAlgorithm.AUTO, blocks, 8, device, False), BsrMvAlgorithm.LOOP)
+    for algorithm in (BsrMvAlgorithm.ROWS, BsrMvAlgorithm.COLUMNS):
+        with test.assertRaises(ValueError):
+            resolve(algorithm, blocks, 8, device, False)
+        with test.assertRaises(ValueError):
+            resolve(algorithm, A, 8, device, True)
+    if not device.is_cuda:
+        with test.assertRaises(ValueError):
+            resolve(BsrMvAlgorithm.COLUMNS, A, 8, device, False)
+
+    n = dense.shape[0]
+    x = wp.ones((3, n), dtype=wp.float64, device=device)
+    y = wp.zeros((3, n), dtype=wp.float64, device=device)
+    with test.assertRaises(TypeError):
+        bsr_mv(A, x, y, algorithm="rows")
+    with test.assertRaises(ValueError):
+        bsr_mv(A, x[0], y[0], algorithm=BsrMvAlgorithm.ROWS)
+    with test.assertRaises(ValueError):
+        bsr_mv(A, x, wp.zeros((2, n), dtype=wp.float64, device=device), algorithm=BsrMvAlgorithm.ROWS)
+    with test.assertRaises(ValueError):
+        bsr_mv(A, x, y, algorithm=BsrMvAlgorithm.ROWS, work_buffer=wp.zeros(3 * n - 1, dtype=wp.float64, device=device))
+    with test.assertRaises(ValueError):
+        bsr_mv(A, x, y, algorithm=BsrMvAlgorithm.ROWS, tile_size=-1)
+    # A single row keeps its single-vector meaning under AUTO.
+    single = bsr_mv(A, wp.ones((1, n), dtype=wp.float64, device=device))
+    test.assertEqual(single.shape, (n,))
+    np.testing.assert_allclose(single.numpy(), dense.sum(axis=1), rtol=1e-12)
+    # Transposed batches loop over the single-vector product.
+    X = np.random.default_rng(9).normal(size=(3, n))
+    y = bsr_mv(A, wp.array(X, dtype=wp.float64, device=device), transpose=True)
+    np.testing.assert_allclose(y.numpy(), X @ dense, rtol=1e-12, atol=1e-12)
+
+
 class TestSparse(unittest.TestCase):
     def test_bsr_copy_scale(self):
         nrow = 6
@@ -2228,6 +2347,8 @@ add_function_test(
 )
 
 add_function_test(TestSparse, "test_csr_mv", make_test_bsr_mv((1, 1), wp.float32), devices=devices)
+add_function_test(TestSparse, "test_bsr_mv_batch", test_bsr_mv_batch, devices=devices)
+add_function_test(TestSparse, "test_bsr_mv_batch_selection", test_bsr_mv_batch_selection, devices=devices)
 add_function_test(TestSparse, "test_bsr_mv_1_3", make_test_bsr_mv((1, 3), wp.float32), devices=devices)
 add_function_test(TestSparse, "test_bsr_mv_3_3", make_test_bsr_mv((3, 3), wp.float64), devices=devices)
 
