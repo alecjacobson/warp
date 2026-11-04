@@ -769,6 +769,9 @@ Limitations
 * Only builtins with jet overloads accept jets. Others, such as spatial queries like
   :func:`wp.mesh_query_point() <warp._src.lang.mesh_query_point>`, operate on floats only and need a custom derivative
   (see :ref:`jets_custom_derivatives`).
+* Vector and matrix constructors such as ``wp.vec3(a, b, c)`` and ``wp.mat33(...)`` do not accept jets. Build vector
+  and matrix jets with ``J.make_vec3()`` and ``J.make_mat33()`` (from columns), or assign components of an existing jet
+  (``v[i] = s``, ``F[i, j] = s``).
 * Second-order jets take scalar, ``vec2`` and ``vec3`` slots. Matrix slots are not supported; a matrix input
   decomposes into its components.
 * Jet dtypes must be floating point.

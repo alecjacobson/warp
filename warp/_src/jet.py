@@ -1459,6 +1459,531 @@ def _make_jet_space(width: int, dtype):
         return JetMat22(ainv, m)
 
     # ------------------------------------------------------------------
+    # More scalar functions: chain rule with f'.
+    # ------------------------------------------------------------------
+
+    @wp.func
+    def jet_sinh(a: JetScalar) -> JetScalar:
+        return _lift1(wp.sinh(a.value), wp.cosh(a.value), a)
+
+    @wp.func
+    def jet_cosh(a: JetScalar) -> JetScalar:
+        return _lift1(wp.cosh(a.value), wp.sinh(a.value), a)
+
+    @wp.func
+    def jet_tanh(a: JetScalar) -> JetScalar:
+        t = wp.tanh(a.value)
+        return _lift1(t, dtype(1.0) - t * t, a)
+
+    @wp.func
+    def jet_log2(a: JetScalar) -> JetScalar:
+        return _lift1(wp.log2(a.value), dtype(1.0) / (a.value * dtype(0.6931471805599453)), a)
+
+    @wp.func
+    def jet_log10(a: JetScalar) -> JetScalar:
+        return _lift1(wp.log10(a.value), dtype(1.0) / (a.value * dtype(2.302585092994046)), a)
+
+    @wp.func
+    def jet_cbrt(a: JetScalar) -> JetScalar:
+        # Infinite slope at zero, as for sqrt.
+        c = wp.cbrt(a.value)
+        return _lift1(c, dtype(1.0) / (dtype(3.0) * c * c), a)
+
+    @wp.func
+    def jet_erf(a: JetScalar) -> JetScalar:
+        # erf'(x) = 2 / sqrt(pi) * exp(-x^2)
+        return _lift1(wp.erf(a.value), dtype(1.1283791670955126) * wp.exp(-a.value * a.value), a)
+
+    @wp.func
+    def jet_floor(a: JetScalar) -> JetScalar:
+        # Piecewise constant: zero derivative away from the integers.
+        return JetScalar(wp.floor(a.value), Coeff())
+
+    @wp.func
+    def jet_lerp(a: JetScalar, b: JetScalar, t: JetScalar) -> JetScalar:
+        return a + t * (b - a)
+
+    @wp.func
+    def jet_lerp(a: JetScalar, b: JetScalar, t: dtype) -> JetScalar:
+        return a + t * (b - a)
+
+    @wp.func
+    def jet_lerp(a: dtype, b: dtype, t: JetScalar) -> JetScalar:
+        return a + t * (b - a)
+
+    @wp.func
+    def jet_smoothstep(a: dtype, b: dtype, x: JetScalar) -> JetScalar:
+        # Constant outside [a, b]; t^2 (3 - 2t) inside, as wp.smoothstep.
+        t = (x - a) / (b - a)
+        if t.value <= dtype(0.0):
+            return JetScalar(dtype(0.0), Coeff())
+        if t.value >= dtype(1.0):
+            return JetScalar(dtype(1.0), Coeff())
+        return t * t * (dtype(3.0) - dtype(2.0) * t)
+
+    @wp.func
+    def jet_smoothstep(a: JetScalar, b: JetScalar, x: JetScalar) -> JetScalar:
+        t = (x - a) / (b - a)
+        if t.value <= dtype(0.0):
+            return JetScalar(dtype(0.0), Coeff())
+        if t.value >= dtype(1.0):
+            return JetScalar(dtype(1.0), Coeff())
+        return t * t * (dtype(3.0) - dtype(2.0) * t)
+
+    # ------------------------------------------------------------------
+    # Vector reductions, component assignment, and outer products
+    # ------------------------------------------------------------------
+
+    @wp.func
+    def jet_abs(v: JetVec2) -> JetVec2:
+        return vec2_from_scalars(jet_abs(jet_extract(v, 0)), jet_abs(jet_extract(v, 1)))
+
+    @wp.func
+    def jet_abs(v: JetVec3) -> JetVec3:
+        return vec3_from_scalars(jet_abs(jet_extract(v, 0)), jet_abs(jet_extract(v, 1)), jet_abs(jet_extract(v, 2)))
+
+    @wp.func
+    def jet_min(v: JetVec2) -> JetScalar:
+        # The smallest component, carrying that component's derivatives.
+        return jet_extract(v, int(wp.argmin(v.value)))
+
+    @wp.func
+    def jet_min(v: JetVec3) -> JetScalar:
+        return jet_extract(v, int(wp.argmin(v.value)))
+
+    @wp.func
+    def jet_max(v: JetVec2) -> JetScalar:
+        return jet_extract(v, int(wp.argmax(v.value)))
+
+    @wp.func
+    def jet_max(v: JetVec3) -> JetScalar:
+        return jet_extract(v, int(wp.argmax(v.value)))
+
+    @wp.func
+    def jet_assign_copy(v: JetVec2, i: int, x: JetScalar) -> JetVec2:
+        # Built entry by entry into new values: writing into a copy of v's
+        # fields would alias v and break the reverse pass.
+        value = NativeVec2()
+        c = CoeffVec2()
+        for k in range(2):
+            if k == i:
+                value[k] = x.value
+                for q in range(wp.static(width)):
+                    c[k, q] = x.coeff[q]
+            else:
+                value[k] = v.value[k]
+                for q in range(wp.static(width)):
+                    c[k, q] = v.coeff[k, q]
+        return JetVec2(value, c)
+
+    @wp.func
+    def jet_assign_copy(v: JetVec3, i: int, x: JetScalar) -> JetVec3:
+        # Built entry by entry into new values: writing into a copy of v's
+        # fields would alias v and break the reverse pass.
+        value = NativeVec3()
+        c = CoeffVec3()
+        for k in range(3):
+            if k == i:
+                value[k] = x.value
+                for q in range(wp.static(width)):
+                    c[k, q] = x.coeff[q]
+            else:
+                value[k] = v.value[k]
+                for q in range(wp.static(width)):
+                    c[k, q] = v.coeff[k, q]
+        return JetVec3(value, c)
+
+    @wp.func
+    def jet_assign_copy(v: JetVec2, i: int, x: dtype) -> JetVec2:
+        return jet_assign_copy(v, i, scalar_constant(x))
+
+    @wp.func
+    def jet_assign_copy(v: JetVec3, i: int, x: dtype) -> JetVec3:
+        return jet_assign_copy(v, i, scalar_constant(x))
+
+    @wp.func
+    def jet_skew(v: JetVec3) -> JetMat33:
+        # [v]_x, the cross-product matrix: entries are signed copies of v's components.
+        value = wp.skew(v.value)
+        m = CoeffMat9()
+        for q in range(wp.static(width)):
+            m[1, q] = -v.coeff[2, q]
+            m[2, q] = v.coeff[1, q]
+            m[3, q] = v.coeff[2, q]
+            m[5, q] = -v.coeff[0, q]
+            m[6, q] = -v.coeff[1, q]
+            m[7, q] = v.coeff[0, q]
+        return JetMat33(value, m)
+
+    # Vector jets by length, matrix jets by shape: (jet type, coeff type, plain type).
+    vec_types = {2: (JetVec2, CoeffVec2, NativeVec2), 3: (JetVec3, CoeffVec3, NativeVec3)}
+    mat_types = {
+        (2, 2): (JetMat22, CoeffMat4, NativeMat22),
+        (3, 3): (JetMat33, CoeffMat9, NativeMat33),
+        (3, 2): (JetMat32, CoeffMat6, NativeMat32),
+        (2, 3): (JetMat23, CoeffMat6, NativeMat23),
+    }
+
+    def _matrix_ops(rows: int, cols: int):
+        JM, CM, NM = mat_types[(rows, cols)]
+        JRow, CRow, NRow = vec_types[cols]
+        JCol, CCol, NCol = vec_types[rows]
+
+        @wp.func
+        def jet_neg(a: JM) -> JM:
+            return JM(-a.value, -a.coeff)
+
+        @wp.func
+        def jet_pos(a: JM) -> JM:
+            return a
+
+        @wp.func
+        def jet_div(a: JM, s: dtype) -> JM:
+            return JM(a.value / s, a.coeff / s)
+
+        @wp.func
+        def jet_mul(s: JetScalar, a: JM) -> JM:
+            m = CM()
+            for r in range(rows):
+                for c in range(cols):
+                    for q in range(wp.static(width)):
+                        m[r * cols + c, q] = s.value * a.coeff[r * cols + c, q] + a.value[r, c] * s.coeff[q]
+            return JM(s.value * a.value, m)
+
+        @wp.func
+        def jet_mul(a: JM, s: JetScalar) -> JM:
+            return jet_mul(s, a)
+
+        @wp.func
+        def jet_mul(s: JetScalar, a: NM) -> JM:
+            m = CM()
+            for r in range(rows):
+                for c in range(cols):
+                    for q in range(wp.static(width)):
+                        m[r * cols + c, q] = a[r, c] * s.coeff[q]
+            return JM(s.value * a, m)
+
+        @wp.func
+        def jet_mul(a: NM, s: JetScalar) -> JM:
+            return jet_mul(s, a)
+
+        @wp.func
+        def jet_div(a: JM, s: JetScalar) -> JM:
+            return jet_mul(dtype(1.0) / s, a)
+
+        @wp.func
+        def jet_div(a: NM, s: JetScalar) -> JM:
+            return jet_mul(dtype(1.0) / s, a)
+
+        @wp.func
+        def jet_ddot(a: JM, b: JM) -> JetScalar:
+            g = Coeff()
+            for r in range(rows):
+                for c in range(cols):
+                    for q in range(wp.static(width)):
+                        g[q] += a.coeff[r * cols + c, q] * b.value[r, c] + a.value[r, c] * b.coeff[r * cols + c, q]
+            return JetScalar(wp.ddot(a.value, b.value), g)
+
+        @wp.func
+        def jet_ddot(a: JM, b: NM) -> JetScalar:
+            g = Coeff()
+            for r in range(rows):
+                for c in range(cols):
+                    for q in range(wp.static(width)):
+                        g[q] += a.coeff[r * cols + c, q] * b[r, c]
+            return JetScalar(wp.ddot(a.value, b), g)
+
+        @wp.func
+        def jet_ddot(a: NM, b: JM) -> JetScalar:
+            return jet_ddot(b, a)
+
+        @wp.func
+        def jet_cw_mul(a: JM, b: JM) -> JM:
+            m = CM()
+            for r in range(rows):
+                for c in range(cols):
+                    for q in range(wp.static(width)):
+                        m[r * cols + c, q] = (
+                            a.coeff[r * cols + c, q] * b.value[r, c] + a.value[r, c] * b.coeff[r * cols + c, q]
+                        )
+            return JM(wp.cw_mul(a.value, b.value), m)
+
+        @wp.func
+        def jet_cw_mul(a: JM, b: NM) -> JM:
+            m = CM()
+            for r in range(rows):
+                for c in range(cols):
+                    for q in range(wp.static(width)):
+                        m[r * cols + c, q] = a.coeff[r * cols + c, q] * b[r, c]
+            return JM(wp.cw_mul(a.value, b), m)
+
+        @wp.func
+        def jet_cw_mul(a: NM, b: JM) -> JM:
+            return jet_cw_mul(b, a)
+
+        @wp.func
+        def jet_cw_div(a: JM, b: JM) -> JM:
+            value = wp.cw_div(a.value, b.value)
+            m = CM()
+            for r in range(rows):
+                for c in range(cols):
+                    for q in range(wp.static(width)):
+                        m[r * cols + c, q] = (
+                            a.coeff[r * cols + c, q] - value[r, c] * b.coeff[r * cols + c, q]
+                        ) / b.value[r, c]
+            return JM(value, m)
+
+        @wp.func
+        def jet_cw_div(a: JM, b: NM) -> JM:
+            m = CM()
+            for r in range(rows):
+                for c in range(cols):
+                    for q in range(wp.static(width)):
+                        m[r * cols + c, q] = a.coeff[r * cols + c, q] / b[r, c]
+            return JM(wp.cw_div(a.value, b), m)
+
+        @wp.func
+        def jet_cw_div(a: NM, b: JM) -> JM:
+            value = wp.cw_div(a, b.value)
+            m = CM()
+            for r in range(rows):
+                for c in range(cols):
+                    for q in range(wp.static(width)):
+                        m[r * cols + c, q] = -value[r, c] * b.coeff[r * cols + c, q] / b.value[r, c]
+            return JM(value, m)
+
+        @wp.func
+        def jet_extract(a: JM, i: int, j: int) -> JetScalar:
+            g = Coeff()
+            for q in range(wp.static(width)):
+                g[q] = a.coeff[i * cols + j, q]
+            return JetScalar(a.value[i, j], g)
+
+        @wp.func
+        def jet_extract(a: JM, i: int) -> JRow:
+            m = CRow()
+            for c in range(cols):
+                for q in range(wp.static(width)):
+                    m[c, q] = a.coeff[i * cols + c, q]
+            return JRow(a.value[i], m)
+
+        @wp.func
+        def jet_assign_copy(a: JM, i: int, j: int, x: JetScalar) -> JM:
+            # Built entry by entry into new values, as for vectors above.
+            value = NM()
+            m = CM()
+            for r in range(rows):
+                for c in range(cols):
+                    if r == i and c == j:
+                        value[r, c] = x.value
+                        for q in range(wp.static(width)):
+                            m[r * cols + c, q] = x.coeff[q]
+                    else:
+                        value[r, c] = a.value[r, c]
+                        for q in range(wp.static(width)):
+                            m[r * cols + c, q] = a.coeff[r * cols + c, q]
+            return JM(value, m)
+
+        @wp.func
+        def jet_assign_copy(a: JM, i: int, j: int, x: dtype) -> JM:
+            return jet_assign_copy(a, i, j, scalar_constant(x))
+
+        @wp.func
+        def jet_assign_copy(a: JM, i: int, row: JRow) -> JM:
+            value = NM()
+            m = CM()
+            for r in range(rows):
+                for c in range(cols):
+                    if r == i:
+                        value[r, c] = row.value[c]
+                        for q in range(wp.static(width)):
+                            m[r * cols + c, q] = row.coeff[c, q]
+                    else:
+                        value[r, c] = a.value[r, c]
+                        for q in range(wp.static(width)):
+                            m[r * cols + c, q] = a.coeff[r * cols + c, q]
+            return JM(value, m)
+
+        @wp.func
+        def jet_outer(a: JCol, b: JRow) -> JM:
+            m = CM()
+            for r in range(rows):
+                for c in range(cols):
+                    for q in range(wp.static(width)):
+                        m[r * cols + c, q] = a.coeff[r, q] * b.value[c] + a.value[r] * b.coeff[c, q]
+            return JM(wp.outer(a.value, b.value), m)
+
+        @wp.func
+        def jet_outer(a: JCol, b: NRow) -> JM:
+            m = CM()
+            for r in range(rows):
+                for c in range(cols):
+                    for q in range(wp.static(width)):
+                        m[r * cols + c, q] = a.coeff[r, q] * b[c]
+            return JM(wp.outer(a.value, b), m)
+
+        @wp.func
+        def jet_outer(a: NCol, b: JRow) -> JM:
+            m = CM()
+            for r in range(rows):
+                for c in range(cols):
+                    for q in range(wp.static(width)):
+                        m[r * cols + c, q] = a[r] * b.coeff[c, q]
+            return JM(wp.outer(a, b.value), m)
+
+        @wp.func
+        def jet_mul(v: JCol, a: JM) -> JRow:
+            # Row vector times matrix: (v^T A)_c = sum_r v_r A_rc.
+            m = CRow()
+            for c in range(cols):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for r in range(rows):
+                        acc += v.coeff[r, q] * a.value[r, c] + v.value[r] * a.coeff[r * cols + c, q]
+                    m[c, q] = acc
+            return JRow(v.value * a.value, m)
+
+        @wp.func
+        def jet_mul(v: JCol, a: NM) -> JRow:
+            m = CRow()
+            for c in range(cols):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for r in range(rows):
+                        acc += v.coeff[r, q] * a[r, c]
+                    m[c, q] = acc
+            return JRow(v.value * a, m)
+
+        @wp.func
+        def jet_mul(v: NCol, a: JM) -> JRow:
+            m = CRow()
+            for c in range(cols):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for r in range(rows):
+                        acc += v[r] * a.coeff[r * cols + c, q]
+                    m[c, q] = acc
+            return JRow(v * a.value, m)
+
+        defined = {
+            "neg": jet_neg,
+            "pos": jet_pos,
+            "mul": jet_mul,
+            "div": jet_div,
+            "ddot": jet_ddot,
+            "cw_mul": jet_cw_mul,
+            "cw_div": jet_cw_div,
+            "extract": jet_extract,
+            "assign_copy": jet_assign_copy,
+            "outer": jet_outer,
+        }
+
+        # Square and vector-length-matched overloads that only some shapes take.
+        if rows == cols:
+
+            @wp.func
+            def jet_get_diag(a: JM) -> JCol:
+                m = CCol()
+                for r in range(rows):
+                    for q in range(wp.static(width)):
+                        m[r, q] = a.coeff[r * cols + r, q]
+                return JCol(wp.get_diag(a.value), m)
+
+            @wp.func
+            def jet_diag(v: JCol) -> JM:
+                m = CM()
+                for r in range(rows):
+                    for q in range(wp.static(width)):
+                        m[r * cols + r, q] = v.coeff[r, q]
+                return JM(wp.diag(v.value), m)
+
+            defined["get_diag"] = jet_get_diag
+            defined["diag"] = jet_diag
+
+        else:
+            # mat22 and mat33 already have these above.
+
+            @wp.func
+            def jet_add(a: JM, b: JM) -> JM:
+                return JM(a.value + b.value, a.coeff + b.coeff)
+
+            @wp.func
+            def jet_add(a: JM, b: NM) -> JM:
+                return JM(a.value + b, a.coeff)
+
+            @wp.func
+            def jet_add(a: NM, b: JM) -> JM:
+                return JM(a + b.value, b.coeff)
+
+            @wp.func
+            def jet_sub(a: JM, b: JM) -> JM:
+                return JM(a.value - b.value, a.coeff - b.coeff)
+
+            @wp.func
+            def jet_sub(a: JM, b: NM) -> JM:
+                return JM(a.value - b, a.coeff)
+
+            @wp.func
+            def jet_sub(a: NM, b: JM) -> JM:
+                return JM(a - b.value, -b.coeff)
+
+            @wp.func
+            def jet_mul(a: JM, s: dtype) -> JM:
+                return JM(a.value * s, a.coeff * s)
+
+            @wp.func
+            def jet_mul(s: dtype, a: JM) -> JM:
+                return JM(s * a.value, s * a.coeff)
+
+            defined["add"] = jet_add
+            defined["sub"] = jet_sub
+            defined["mul"] = jet_mul
+
+        # Each call defines a separate overload set, so register it per shape.
+        for name, fn in defined.items():
+            _register(name, fn)
+
+    for shape in mat_types:
+        _matrix_ops(*shape)
+
+    @wp.func
+    def jet_mul(a: JetMat32, b: JetMat23) -> JetMat33:
+        # (3x2)(2x3) = 3x3, e.g. A^T A for a 2x3 A.
+        m = CoeffMat9()
+        for i in range(3):
+            for j in range(3):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for k in range(2):
+                        acc += a.coeff[i * 2 + k, q] * b.value[k, j] + a.value[i, k] * b.coeff[k * 3 + j, q]
+                    m[i * 3 + j, q] = acc
+        return JetMat33(a.value * b.value, m)
+
+    @wp.func
+    def jet_mul(a: JetMat32, b: NativeMat23) -> JetMat33:
+        m = CoeffMat9()
+        for i in range(3):
+            for j in range(3):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for k in range(2):
+                        acc += a.coeff[i * 2 + k, q] * b[k, j]
+                    m[i * 3 + j, q] = acc
+        return JetMat33(a.value * b, m)
+
+    @wp.func
+    def jet_mul(a: NativeMat32, b: JetMat23) -> JetMat33:
+        m = CoeffMat9()
+        for i in range(3):
+            for j in range(3):
+                for q in range(wp.static(width)):
+                    acc = dtype(0.0)
+                    for k in range(2):
+                        acc += a[i, k] * b.coeff[k * 3 + j, q]
+                    m[i * 3 + j, q] = acc
+        return JetMat33(a * b.value, m)
+
+    # ------------------------------------------------------------------
     # Publish into Warp's builtin overload table.
     #
     # From here on, ordinary Warp syntax resolves on jets by argument type,
@@ -1511,6 +2036,19 @@ def _make_jet_space(width: int, dtype):
     _register("determinant", jet_determinant)
     _register("trace", jet_trace)
     _register("inverse", jet_inverse)
+
+    _register("sinh", jet_sinh)
+    _register("cosh", jet_cosh)
+    _register("tanh", jet_tanh)
+    _register("log2", jet_log2)
+    _register("log10", jet_log10)
+    _register("cbrt", jet_cbrt)
+    _register("erf", jet_erf)
+    _register("floor", jet_floor)
+    _register("lerp", jet_lerp)
+    _register("smoothstep", jet_smoothstep)
+    _register("assign_copy", jet_assign_copy)
+    _register("skew", jet_skew)
 
     return SimpleNamespace(
         width=width,
@@ -2605,6 +3143,131 @@ def _make_jet_space2(width: int, dtype):
     def jet_cross(a: NativeVec3, b: Jet2Vec3) -> Jet2Vec3:
         return Jet2Vec3(a[1] * b.z - a[2] * b.y, a[2] * b.x - a[0] * b.z, a[0] * b.y - a[1] * b.x)
 
+    # ---- more scalar functions: chain rule with f' and f'' ----
+
+    @wp.func
+    def jet_sinh(a: Jet2Scalar) -> Jet2Scalar:
+        s = wp.sinh(a.value)
+        c = wp.cosh(a.value)
+        return _lift(s, c, s, a)
+
+    @wp.func
+    def jet_cosh(a: Jet2Scalar) -> Jet2Scalar:
+        s = wp.sinh(a.value)
+        c = wp.cosh(a.value)
+        return _lift(c, s, c, a)
+
+    @wp.func
+    def jet_tanh(a: Jet2Scalar) -> Jet2Scalar:
+        t = wp.tanh(a.value)
+        fp = dtype(1.0) - t * t
+        return _lift(t, fp, -dtype(2.0) * t * fp, a)
+
+    @wp.func
+    def jet_log2(a: Jet2Scalar) -> Jet2Scalar:
+        inv = dtype(1.0) / a.value
+        k = dtype(1.0) / dtype(0.6931471805599453)
+        return _lift(wp.log2(a.value), k * inv, -k * inv * inv, a)
+
+    @wp.func
+    def jet_log10(a: Jet2Scalar) -> Jet2Scalar:
+        inv = dtype(1.0) / a.value
+        k = dtype(1.0) / dtype(2.302585092994046)
+        return _lift(wp.log10(a.value), k * inv, -k * inv * inv, a)
+
+    @wp.func
+    def jet_cbrt(a: Jet2Scalar) -> Jet2Scalar:
+        c = wp.cbrt(a.value)
+        fp = dtype(1.0) / (dtype(3.0) * c * c)
+        return _lift(c, fp, -dtype(2.0) * fp / (dtype(3.0) * a.value), a)
+
+    @wp.func
+    def jet_erf(a: Jet2Scalar) -> Jet2Scalar:
+        fp = dtype(1.1283791670955126) * wp.exp(-a.value * a.value)
+        return _lift(wp.erf(a.value), fp, -dtype(2.0) * a.value * fp, a)
+
+    @wp.func
+    def jet_floor(a: Jet2Scalar) -> Jet2Scalar:
+        return Jet2Scalar(wp.floor(a.value), Grad(), Hess())
+
+    @wp.func
+    def jet_lerp(a: Jet2Scalar, b: Jet2Scalar, t: Jet2Scalar) -> Jet2Scalar:
+        return a + t * (b - a)
+
+    @wp.func
+    def jet_lerp(a: Jet2Scalar, b: Jet2Scalar, t: dtype) -> Jet2Scalar:
+        return a + t * (b - a)
+
+    @wp.func
+    def jet_lerp(a: dtype, b: dtype, t: Jet2Scalar) -> Jet2Scalar:
+        return a + t * (b - a)
+
+    @wp.func
+    def jet_smoothstep(a: dtype, b: dtype, x: Jet2Scalar) -> Jet2Scalar:
+        t = (x - a) / (b - a)
+        if t.value <= dtype(0.0):
+            return Jet2Scalar(dtype(0.0), Grad(), Hess())
+        if t.value >= dtype(1.0):
+            return Jet2Scalar(dtype(1.0), Grad(), Hess())
+        return t * t * (dtype(3.0) - dtype(2.0) * t)
+
+    @wp.func
+    def jet_smoothstep(a: Jet2Scalar, b: Jet2Scalar, x: Jet2Scalar) -> Jet2Scalar:
+        t = (x - a) / (b - a)
+        if t.value <= dtype(0.0):
+            return Jet2Scalar(dtype(0.0), Grad(), Hess())
+        if t.value >= dtype(1.0):
+            return Jet2Scalar(dtype(1.0), Grad(), Hess())
+        return t * t * (dtype(3.0) - dtype(2.0) * t)
+
+    # ---- vector reductions and component assignment ----
+
+    @wp.func
+    def jet_abs(v: Jet2Vec2) -> Jet2Vec2:
+        return Jet2Vec2(jet_abs(v.x), jet_abs(v.y))
+
+    @wp.func
+    def jet_abs(v: Jet2Vec3) -> Jet2Vec3:
+        return Jet2Vec3(jet_abs(v.x), jet_abs(v.y), jet_abs(v.z))
+
+    @wp.func
+    def jet_min(v: Jet2Vec2) -> Jet2Scalar:
+        return jet_extract(v, int(wp.argmin(wp.vector(v.x.value, v.y.value))))
+
+    @wp.func
+    def jet_min(v: Jet2Vec3) -> Jet2Scalar:
+        return jet_extract(v, int(wp.argmin(wp.vector(v.x.value, v.y.value, v.z.value))))
+
+    @wp.func
+    def jet_max(v: Jet2Vec2) -> Jet2Scalar:
+        return jet_extract(v, int(wp.argmax(wp.vector(v.x.value, v.y.value))))
+
+    @wp.func
+    def jet_max(v: Jet2Vec3) -> Jet2Scalar:
+        return jet_extract(v, int(wp.argmax(wp.vector(v.x.value, v.y.value, v.z.value))))
+
+    @wp.func
+    def jet_assign_copy(v: Jet2Vec2, i: int, s: Jet2Scalar) -> Jet2Vec2:
+        if i == 0:
+            return Jet2Vec2(s, v.y)
+        return Jet2Vec2(v.x, s)
+
+    @wp.func
+    def jet_assign_copy(v: Jet2Vec3, i: int, s: Jet2Scalar) -> Jet2Vec3:
+        if i == 0:
+            return Jet2Vec3(s, v.y, v.z)
+        if i == 1:
+            return Jet2Vec3(v.x, s, v.z)
+        return Jet2Vec3(v.x, v.y, s)
+
+    @wp.func
+    def jet_assign_copy(v: Jet2Vec2, i: int, s: dtype) -> Jet2Vec2:
+        return jet_assign_copy(v, i, scalar_constant(s))
+
+    @wp.func
+    def jet_assign_copy(v: Jet2Vec3, i: int, s: dtype) -> Jet2Vec3:
+        return jet_assign_copy(v, i, scalar_constant(s))
+
     @wp.func
     def scalar_value(x: Jet2Scalar) -> dtype:
         return x.value
@@ -2646,6 +3309,18 @@ def _make_jet_space2(width: int, dtype):
     _register("length_sq", jet_length_sq)
     _register("normalize", jet_normalize)
     _register("cross", jet_cross)
+
+    _register("sinh", jet_sinh)
+    _register("cosh", jet_cosh)
+    _register("tanh", jet_tanh)
+    _register("log2", jet_log2)
+    _register("log10", jet_log10)
+    _register("cbrt", jet_cbrt)
+    _register("erf", jet_erf)
+    _register("floor", jet_floor)
+    _register("lerp", jet_lerp)
+    _register("smoothstep", jet_smoothstep)
+    _register("assign_copy", jet_assign_copy)
 
     return SimpleNamespace(
         width=width,

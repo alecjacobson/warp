@@ -1071,5 +1071,303 @@ class TestJetValue(unittest.TestCase):
             np.testing.assert_allclose(hess.numpy(), on[:, None, None] * np.array([[0.0, 1.0], [1.0, 0.0]]))
 
 
+# --------------------------------------------------------------------------
+# Builtins needed by FEM-style energies: matrix entries and rows, scalar-jet
+# and matrix-jet products, ddot, outer, row-vector products, diagonals, skew,
+# component assignment, and more scalar functions. Each probe is one generic
+# function evaluated on jets and, for central differences, on plain values.
+# --------------------------------------------------------------------------
+
+JF = wp.JetSpace((float, wp.vec3, wp.mat33))  # width 13
+JR2 = wp.JetSpace((mat23, wp.vec2, wp.vec3))  # width 11
+J2F = wp.JetSpace2((float, wp.vec3))  # width 4
+J1F = wp.JetSpace((float, wp.vec3))  # width 4, for finite differences of the gradient
+
+
+@wp.func
+def square_matrix_energy(s: Any, v: Any, F: Any):
+    W = wp.mat33(0.3, -0.2, 0.5, 0.1, 0.7, -0.4, -0.6, 0.2, 0.9)
+    G = F
+    G[0, 1] = s * s
+    w = v
+    w[2] = s + v[0]
+    e = F[0, 1] * F[2, 0] + wp.dot(F[1], v)
+    e += wp.ddot(s * F, W) + wp.ddot(F * s, W) + wp.ddot(-F, W) + wp.ddot(F / 2.0, W) + wp.ddot(F / s, W)
+    e += wp.ddot(F, F) + wp.ddot(wp.outer(v, w), W) + wp.dot(v * F, w)
+    e += wp.ddot(wp.cw_mul(F, F), W) + wp.ddot(wp.cw_div(F, W + wp.identity(n=3, dtype=float) * 2.0), W)
+    e += wp.dot(wp.get_diag(F), v) + wp.ddot(wp.diag(v), W) + wp.ddot(wp.skew(w), W)
+    e += wp.ddot(G, W) + wp.dot(w, wp.vec3(1.0, 2.0, 3.0)) + wp.ddot(s * W, F) + wp.ddot(W / s, F)
+    e += wp.min(v) + wp.max(w) + wp.dot(wp.abs(w), wp.vec3(0.5, -1.0, 2.0))
+    return e
+
+
+@wp.func
+def rectangular_matrix_energy(A: Any, u: Any, w: Any):
+    W23 = mat23(0.3, -0.2, 0.5, 0.1, 0.7, -0.4)
+    W33 = wp.mat33(0.2, 0.1, -0.3, 0.4, -0.5, 0.6, 0.7, 0.8, -0.9)
+    G = A
+    G[1, 2] = u[0] * u[1]
+    G[0] = w
+    M = A * wp.transpose(A)  # mat22
+    e = wp.ddot(wp.transpose(A) * A, W33) + wp.dot(A[1], w) + A[0, 2] * A[1, 0]
+    e += wp.ddot(wp.outer(u, w), A) + wp.dot(u * A, w) + wp.ddot(wp.outer(w, u), wp.transpose(W23))
+    e += wp.ddot(u[0] * A, W23) + wp.ddot(A * u[1], W23) + wp.ddot(-A, W23) + wp.ddot(A / u[0], W23)
+    e += wp.ddot(A - wp.outer(u, w), A + wp.outer(u, w)) + wp.ddot(wp.cw_mul(A, A), W23) + wp.ddot(G, W23)
+    e += wp.dot(wp.get_diag(M), u) + wp.ddot(wp.diag(u), M) + M[0, 1]
+    return e
+
+
+@wp.func
+def scalar_functions_energy(s: Any, v: Any):
+    w = v
+    w[1] = s * v[2]
+    e = wp.tanh(s) + wp.sinh(s) + wp.cosh(s) + wp.log2(s) + wp.log10(s) + wp.cbrt(s) + wp.erf(s) + wp.floor(s)
+    e += wp.lerp(s, v[0], v[1]) + wp.lerp(s, v[0], 0.3) + wp.lerp(0.5, 2.0, v[2] * s)
+    e += wp.smoothstep(0.0, 4.0, s) + wp.smoothstep(v[0], 4.0 + v[1], s)
+    e += wp.min(w) * wp.max(w) + wp.dot(wp.abs(w), wp.vec3(0.5, -1.0, 2.0))
+    return e
+
+
+@wp.kernel(enable_backward=False)
+def square_matrix_energy_kernel(
+    x_s: float, x_v: wp.vec3, x_F: wp.mat33, jet_grad: wp.array[JF.coeff_type_scalar], fd_grad: wp.array[float]
+):
+    s, v, F = JF.seed(x_s, x_v, x_F)
+    jet_grad[0] = square_matrix_energy(s, v, F).coeff
+    h = 1.0e-3
+    for k in range(13):
+        ds = float(0.0)
+        dv = wp.vec3(0.0)
+        dF = wp.mat33(0.0)
+        if k == 0:
+            ds = 1.0
+        elif k < 4:
+            dv[k - 1] = 1.0
+        else:
+            dF[(k - 4) // 3, (k - 4) % 3] = 1.0
+        fp = square_matrix_energy(x_s + h * ds, x_v + h * dv, x_F + h * dF)
+        fm = square_matrix_energy(x_s - h * ds, x_v - h * dv, x_F - h * dF)
+        fd_grad[k] = (fp - fm) / (2.0 * h)
+
+
+@wp.kernel(enable_backward=False)
+def rectangular_matrix_energy_kernel(
+    x_A: mat23, x_u: wp.vec2, x_w: wp.vec3, jet_grad: wp.array[JR2.coeff_type_scalar], fd_grad: wp.array[float]
+):
+    A, u, w = JR2.seed(x_A, x_u, x_w)
+    jet_grad[0] = rectangular_matrix_energy(A, u, w).coeff
+    h = 1.0e-3
+    for k in range(11):
+        dA = mat23(0.0)
+        du = wp.vec2(0.0)
+        dw = wp.vec3(0.0)
+        if k < 6:
+            dA[k // 3, k % 3] = 1.0
+        elif k < 8:
+            du[k - 6] = 1.0
+        else:
+            dw[k - 8] = 1.0
+        fp = rectangular_matrix_energy(x_A + h * dA, x_u + h * du, x_w + h * dw)
+        fm = rectangular_matrix_energy(x_A - h * dA, x_u - h * du, x_w - h * dw)
+        fd_grad[k] = (fp - fm) / (2.0 * h)
+
+
+@wp.kernel(enable_backward=False)
+def scalar_functions_energy_kernel(
+    x_s: float,
+    x_v: wp.vec3,
+    grad: wp.array[J2F.grad_type_scalar],
+    hess: wp.array[J2F.hess_type_scalar],
+    fd_grad: wp.array[float],
+    fd_hess: wp.array2d[float],
+):
+    s2, v2 = J2F.seed(x_s, x_v)
+    e2 = scalar_functions_energy(s2, v2)
+    grad[0] = e2.grad
+    hess[0] = e2.hess
+    # The gradient by central differences of the value, and the Hessian by
+    # central differences of the first-order jet's gradient.
+    h = 1.0e-3
+    for k in range(4):
+        ds = float(0.0)
+        dv = wp.vec3(0.0)
+        if k == 0:
+            ds = 1.0
+        else:
+            dv[k - 1] = 1.0
+        fp = scalar_functions_energy(x_s + h * ds, x_v + h * dv)
+        fm = scalar_functions_energy(x_s - h * ds, x_v - h * dv)
+        fd_grad[k] = (fp - fm) / (2.0 * h)
+        sp, vp = J1F.seed(x_s + h * ds, x_v + h * dv)
+        sm, vm = J1F.seed(x_s - h * ds, x_v - h * dv)
+        dg = (scalar_functions_energy(sp, vp).coeff - scalar_functions_energy(sm, vm).coeff) / (2.0 * h)
+        for j in range(4):
+            fd_hess[k, j] = dg[j]
+
+
+@wp.struct
+class PlainPair:
+    a: float
+    b: float
+
+
+@wp.kernel(enable_backward=False)
+def jet_norm_huber_kernel(x: wp.array[wp.vec3], value: wp.array[float], coeff: wp.array[J1F.coeff_type_scalar]):
+    i = wp.tid()
+    s, v = J1F.seed(1.0, x[i])
+    h = wp.norm_huber(s * v)
+    value[i] = h.value
+    coeff[i] = h.coeff
+
+
+JA = wp.JetSpace((wp.vec3, wp.mat33), width=1)
+
+
+@wp.func
+def assigned_directional_derivative(x: wp.vec3, F: wp.mat33, dx: wp.vec3, dF: wp.mat33):
+    v, A = JA.directional(x, F, dx, dF)
+    w = v
+    w[1] = v[0] * v[2]
+    G = A
+    G[2, 0] = w[1] * A[0, 0]
+    G[1] = w
+    # A is used after G = A; G[...] = ... so that writing G must leave A alone.
+    return (wp.ddot(G, G) + wp.dot(w, w) + wp.ddot(A, A)).coeff[0]
+
+
+@wp.kernel
+def assigned_directional_derivative_kernel(
+    x: wp.array[wp.vec3], F: wp.array[wp.mat33], dx: wp.vec3, dF: wp.mat33, out: wp.array[float]
+):
+    out[0] = assigned_directional_derivative(x[0], F[0], dx, dF)
+
+
+class TestJetFemBuiltins(unittest.TestCase):
+    def test_square_matrix_ops(self):
+        """Check mat33 entry, row, product, ddot, outer, diagonal and assignment overloads against central differences."""
+        for device in DEVICES:
+            jet_grad = wp.zeros(1, dtype=JF.coeff_type_scalar, device=device)
+            fd_grad = wp.zeros(13, dtype=float, device=device)
+            x_F = wp.mat33(1.2, -0.7, 0.4, 0.3, 0.9, -1.1, 0.8, 0.5, 1.5)
+            wp.launch(
+                square_matrix_energy_kernel,
+                dim=1,
+                inputs=[1.7, wp.vec3(0.6, -0.8, 1.3), x_F],
+                outputs=[jet_grad, fd_grad],
+                device=device,
+            )
+            np.testing.assert_allclose(jet_grad.numpy()[0], fd_grad.numpy(), rtol=2.0e-3, atol=2.0e-2)
+
+    def test_rectangular_matrix_ops(self):
+        """Check mat23, mat32 and mat22 overloads, including mat32 times mat23, against central differences."""
+        for device in DEVICES:
+            jet_grad = wp.zeros(1, dtype=JR2.coeff_type_scalar, device=device)
+            fd_grad = wp.zeros(11, dtype=float, device=device)
+            wp.launch(
+                rectangular_matrix_energy_kernel,
+                dim=1,
+                inputs=[mat23(1.2, -0.7, 0.4, 0.3, 0.9, -1.1), wp.vec2(0.6, -0.8), wp.vec3(1.3, 0.2, -0.5)],
+                outputs=[jet_grad, fd_grad],
+                device=device,
+            )
+            np.testing.assert_allclose(jet_grad.numpy()[0], fd_grad.numpy(), rtol=2.0e-3, atol=2.0e-2)
+
+    def test_scalar_functions_second_order(self):
+        """Check the hyperbolic, log, cbrt, erf, floor, lerp and smoothstep overloads and vector reductions to second order."""
+        for device in DEVICES:
+            grad = wp.zeros(1, dtype=J2F.grad_type_scalar, device=device)
+            hess = wp.zeros(1, dtype=J2F.hess_type_scalar, device=device)
+            fd_grad = wp.zeros(4, dtype=float, device=device)
+            fd_hess = wp.zeros((4, 4), dtype=float, device=device)
+            wp.launch(
+                scalar_functions_energy_kernel,
+                dim=1,
+                inputs=[1.7, wp.vec3(0.6, -0.8, 1.3)],
+                outputs=[grad, hess, fd_grad, fd_hess],
+                device=device,
+            )
+            np.testing.assert_allclose(grad.numpy()[0], fd_grad.numpy(), rtol=2.0e-3, atol=2.0e-2)
+            np.testing.assert_allclose(hess.numpy()[0], fd_hess.numpy(), rtol=2.0e-3, atol=2.0e-2)
+
+    def test_subscript_assignment_adjoint(self):
+        """Check reverse mode through jet subscript assignment against central differences."""
+        rng = np.random.default_rng(6)
+        x_np = rng.uniform(-1.0, 1.0, (1, 3)).astype(np.float32)
+        F_np = rng.uniform(-1.0, 1.0, (1, 3, 3)).astype(np.float32)
+        dx = wp.vec3(0.3, -0.5, 0.2)
+        dF = wp.mat33(*rng.uniform(-1.0, 1.0, 9).astype(np.float32))
+        for device in DEVICES:
+
+            def evaluate(z, device=device):
+                out = wp.zeros(1, dtype=float, device=device)
+                wp.launch(
+                    assigned_directional_derivative_kernel,
+                    dim=1,
+                    inputs=[
+                        wp.array(z[:3].reshape(1, 3), dtype=wp.vec3, device=device),
+                        wp.array(z[3:].reshape(1, 3, 3), dtype=wp.mat33, device=device),
+                        dx,
+                        dF,
+                    ],
+                    outputs=[out],
+                    device=device,
+                )
+                return float(out.numpy()[0])
+
+            x = wp.array(x_np, dtype=wp.vec3, requires_grad=True, device=device)
+            F = wp.array(F_np, dtype=wp.mat33, requires_grad=True, device=device)
+            out = wp.zeros(1, dtype=float, requires_grad=True, device=device)
+            tape = wp.Tape()
+            with tape:
+                wp.launch(
+                    assigned_directional_derivative_kernel, dim=1, inputs=[x, F, dx, dF], outputs=[out], device=device
+                )
+            tape.backward(grads={out: wp.ones(1, dtype=float, device=device)})
+            adjoint = np.concatenate([x.grad.numpy().ravel(), F.grad.numpy().ravel()])
+
+            z = np.concatenate([x_np.ravel(), F_np.ravel()])
+            h = 1.0e-3
+            fd = np.array(
+                [(evaluate(z + h * e) - evaluate(z - h * e)) / (2.0 * h) for e in np.eye(12, dtype=np.float32)]
+            )
+            np.testing.assert_allclose(adjoint, fd, rtol=1.0e-3, atol=1.0e-3)
+
+    def test_subscript_assign_without_overload(self):
+        """Check that subscript assignment on a struct without an assign_copy overload raises a codegen error."""
+
+        # A module of its own, so that the failing build leaves the other kernels alone.
+        @wp.kernel(enable_backward=False, module="unique")
+        def struct_subscript_assign_kernel(out: wp.array[float]):
+            p = PlainPair()
+            p[0] = 1.0
+            out[0] = p.a
+
+        with self.assertRaisesRegex(wp._src.codegen.WarpCodegenError, "assign_copy"):
+            wp.launch(
+                struct_subscript_assign_kernel, dim=1, outputs=[wp.zeros(1, dtype=float, device="cpu")], device="cpu"
+            )
+
+    def test_norm_huber(self):
+        """Check that wp.norm_huber differentiates on jets on both sides of its threshold."""
+        x_np = np.array([[0.3, 0.4, 0.0], [3.0, 4.0, 0.0]], dtype=np.float32)
+        for device in DEVICES:
+            value = wp.zeros(2, dtype=float, device=device)
+            coeff = wp.zeros(2, dtype=J1F.coeff_type_scalar, device=device)
+            wp.launch(
+                jet_norm_huber_kernel,
+                dim=2,
+                inputs=[wp.array(x_np, dtype=wp.vec3, device=device)],
+                outputs=[value, coeff],
+                device=device,
+            )
+            # Quadratic 0.5 |x|^2 inside delta = 1, linear |x| - 0.5 outside; s scales x.
+            norms = np.linalg.norm(x_np, axis=1)
+            np.testing.assert_allclose(value.numpy(), [0.5 * norms[0] ** 2, norms[1] - 0.5], rtol=1.0e-6)
+            ds = [norms[0] ** 2, norms[1]]
+            dx = [x_np[0], x_np[1] / norms[1]]
+            expected = np.stack([np.concatenate([[ds[i]], dx[i]]) for i in range(2)])
+            np.testing.assert_allclose(coeff.numpy(), expected, rtol=1.0e-5, atol=1.0e-6)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

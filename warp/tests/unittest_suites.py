@@ -227,6 +227,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
     from warp.tests.test_jet import TestJet, TestJetSpace
     from warp.tests.test_jet_ops import (
         TestJetComponentWise,
+        TestJetFemBuiltins,
         TestJetMatrix,
         TestJetMixedOperands,
         TestJetOps,
@@ -422,6 +423,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
         TestJetMixedOperands,
         TestJetComponentWise,
         TestJetValue,
+        TestJetFemBuiltins,
         TestKernelAttributes,
         TestKernelCache,
         TestLarge,

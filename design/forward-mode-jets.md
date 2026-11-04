@@ -303,13 +303,19 @@ like any other match and generates a normal user-function call with its
 adjoint, which is what makes R2 work.
 
 Registered names: `add`, `sub`, `mul`, `div`, `pow`, `neg`, `pos`, `sin`,
-`cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `log`, `sqrt`, `abs`,
-`sign`, `min`, `max`, `clamp`, `where`, `extract`, `dot`, `cw_mul`, `cw_div`,
-`length`, `length_sq`, `normalize`, `cross`, `transpose`, `determinant`, `trace`,
+`cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`, `tanh`, `exp`,
+`log`, `log2`, `log10`, `sqrt`, `cbrt`, `erf`, `floor`, `lerp`, `smoothstep`,
+`abs`, `sign`, `min`, `max`, `clamp`, `where`, `extract`, `assign_copy`, `dot`,
+`ddot`, `outer`, `cw_mul`, `cw_div`, `length`, `length_sq`, `normalize`,
+`cross`, `skew`, `diag`, `get_diag`, `transpose`, `determinant`, `trace`,
 `inverse`. `wp.JetSpace2` registers the same scalar arithmetic, transcendental,
 and branching families (up through `where`), plus the vector arithmetic,
-`extract`, `dot`, `cw_mul`, `cw_div`, `length`, `length_sq`, `normalize` and
-`cross`.
+`extract`, `assign_copy`, `dot`, `cw_mul`, `cw_div`, `length`, `length_sq`,
+`normalize` and `cross`.
+
+Subscript assignment on a local struct value (`v[i] = s`, `F[i, j] = s`) is
+lowered to the struct's `assign_copy` overload, and the result is rebound to
+the assigned name, so `w = v; w[i] = s` leaves `v` unchanged.
 
 The value-branching builtins (`min`, `max`, `clamp`, `where`, `abs`, `sign`)
 select or pass through the derivative of the branch they take, alongside the
@@ -454,6 +460,9 @@ operation family. "FD" marks families verified against finite differences in
 | Geometry (`dot length length_sq normalize cross`)         |        ✓         |          ✓          |            –            |        –         |       ✓ — FD        |
 | Component-wise (`cw_mul cw_div`)                          |        –         |          ✓          |            –            |        –         |          ✓          |
 | Matrix (`transpose trace determinant inverse`, matmul)    |        –         |          –          |    ✓ (mat22/33/32/23)    |        –         |          –          |
+| Matrix (`F[i, j]` `F[i]` `ddot outer diag get_diag skew`, scalar-jet scaling) — FD | – | ✓ | ✓ (mat22/33/32/23) | – | – |
+| More scalar functions (`sinh cosh tanh log2 log10 cbrt erf floor lerp smoothstep`) — FD | ✓ | – | – | ✓ | – |
+| Subscript assignment (`v[i] = s`, `F[i, j] = s`), incl. reverse mode — FD | – | ✓ | ✓ | – | ✓ |
 | Reverse-over-jet Hessian via `wp.Tape`                    |        ✓         |          ✓          |            ✓            |     n/a          |         n/a         |
 | Reverse-over-jet Hessian via in-kernel `wp.grad` (no tape) |        ✓         |          ✓          |            ✓            |     n/a          |         n/a         |
 | Pure-forward Hessian (no tape, no reverse)                |       n/a        |         n/a         |           n/a           |        ✓         |          ✓          |
