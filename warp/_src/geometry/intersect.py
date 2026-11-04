@@ -29,6 +29,18 @@ from warp._src.context import register_api_function
 _DEFAULT_INTERSECTION_TOL = wp.float64(1.0e-6)
 
 
+def _register_predicate(function):
+    """Document a predicate in ``warp.geometry`` and skip its adjoint at every call site.
+
+    The predicates return ``bool``, so their adjoints are identically zero. Marking every
+    overload non-differentiable stops backward-enabled kernels from calling those adjoints,
+    which otherwise dominate the compile time of kernels that use the predicates.
+    """
+    for overload in (function, *function.user_overloads.values()):
+        overload.is_differentiable = False
+    register_api_function(function, module="warp.geometry", python_callable=True, differentiable=False)
+
+
 @wp.func(inline=True)
 def _component(v: Any, index: int):
     # Dynamic vector subscripts force CUDA to materialize local arrays. Select
@@ -340,7 +352,7 @@ def intersect_tri_tri(
 
 
 intersect_tri_tri.__doc__ = intersect_tri_tri.doc
-register_api_function(intersect_tri_tri, module="warp.geometry", differentiable=False)
+_register_predicate(intersect_tri_tri)
 
 
 @wp.func(inline=True)
@@ -507,7 +519,7 @@ def intersect_seg_tri(p0: wp.vec3d, p1: wp.vec3d, v0: wp.vec3d, v1: wp.vec3d, v2
 
 
 intersect_seg_tri.__doc__ = intersect_seg_tri.doc
-register_api_function(intersect_seg_tri, module="warp.geometry", differentiable=False)
+_register_predicate(intersect_seg_tri)
 
 
 @wp.func(inline=True)
@@ -554,7 +566,7 @@ def intersect_aabb_aabb(a_lower: wp.vec3d, a_upper: wp.vec3d, b_lower: wp.vec3d,
 
 
 intersect_aabb_aabb.__doc__ = intersect_aabb_aabb.doc
-register_api_function(intersect_aabb_aabb, module="warp.geometry", differentiable=False)
+_register_predicate(intersect_aabb_aabb)
 
 
 @wp.func(inline=True)
@@ -609,7 +621,7 @@ def intersect_seg_aabb(p0: wp.vec3d, p1: wp.vec3d, lower: wp.vec3d, upper: wp.ve
 
 
 intersect_seg_aabb.__doc__ = intersect_seg_aabb.doc
-register_api_function(intersect_seg_aabb, module="warp.geometry", differentiable=False)
+_register_predicate(intersect_seg_aabb)
 
 
 @wp.func(inline=True)
@@ -685,7 +697,7 @@ def intersect_tri_aabb(v0: wp.vec3d, v1: wp.vec3d, v2: wp.vec3d, lower: wp.vec3d
 
 
 intersect_tri_aabb.__doc__ = intersect_tri_aabb.doc
-register_api_function(intersect_tri_aabb, module="warp.geometry", differentiable=False)
+_register_predicate(intersect_tri_aabb)
 
 
 @wp.func(inline=True)
@@ -902,4 +914,4 @@ def self_intersect_tri_tri(
 
 
 self_intersect_tri_tri.__doc__ = self_intersect_tri_tri.doc
-register_api_function(self_intersect_tri_tri, module="warp.geometry", differentiable=False)
+_register_predicate(self_intersect_tri_tri)

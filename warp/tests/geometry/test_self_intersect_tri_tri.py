@@ -24,7 +24,7 @@ import warp.geometry
 from warp.tests.unittest_utils import add_function_test, get_test_devices
 
 
-@wp.kernel(module="unique", enable_backward=False)
+@wp.kernel(enable_backward=False)
 def self_intersect_kernel(points: wp.array2d[Any], ids: wp.array2d[wp.vec3i], tol: wp.array[Any], hits: wp.array[bool]):
     i = wp.tid()
     hits[i] = wp.geometry.self_intersect_tri_tri(
@@ -40,7 +40,7 @@ def self_intersect_kernel(points: wp.array2d[Any], ids: wp.array2d[wp.vec3i], to
     )
 
 
-@wp.kernel(module="unique", enable_backward=False)
+@wp.kernel(enable_backward=False)
 def compare_unrelated_kernel(points: wp.array2d[Any], tol: wp.array[Any], hits: wp.array2d[bool]):
     i = wp.tid()
     a, b = wp.vec3i(0, 1, 2), wp.vec3i(3, 4, 5)
@@ -56,7 +56,7 @@ def compare_unrelated_kernel(points: wp.array2d[Any], tol: wp.array[Any], hits: 
     hits[i, 7] = wp.geometry.intersect_tri_tri(a0, a1, a2, b0, b1, b2, tol=1e-6)
 
 
-@wp.kernel(module="unique", enable_backward=False)
+@wp.kernel(enable_backward=False)
 def tolerance_forms_kernel(points: wp.array2d[Any], ids: wp.array2d[wp.vec3i], hits: wp.array2d[bool]):
     i = wp.tid()
     a0, a1, a2 = points[i, 0], points[i, 1], points[i, 2]
@@ -66,6 +66,18 @@ def tolerance_forms_kernel(points: wp.array2d[Any], ids: wp.array2d[wp.vec3i], h
     hits[i, 1] = wp.geometry.self_intersect_tri_tri(a0, a1, a2, b0, b1, b2, a, b, wp.float64(1e-6))
     hits[i, 2] = wp.geometry.self_intersect_tri_tri(a0, a1, a2, b0, b1, b2, a, b, tol=1e-6)
     hits[i, 3] = wp.geometry.self_intersect_tri_tri(a0, a1, a2, b0, b1, b2, a, b, tol=0.0)
+
+
+wp.overload(self_intersect_kernel, [wp.array2d[wp.vec3], wp.array2d[wp.vec3i], wp.array[wp.float32], wp.array[bool]])
+wp.overload(self_intersect_kernel, [wp.array2d[wp.vec3], wp.array2d[wp.vec3i], wp.array[wp.float64], wp.array[bool]])
+wp.overload(self_intersect_kernel, [wp.array2d[wp.vec3d], wp.array2d[wp.vec3i], wp.array[wp.float32], wp.array[bool]])
+wp.overload(self_intersect_kernel, [wp.array2d[wp.vec3d], wp.array2d[wp.vec3i], wp.array[wp.float64], wp.array[bool]])
+wp.overload(compare_unrelated_kernel, [wp.array2d[wp.vec3], wp.array[wp.float32], wp.array2d[bool]])
+wp.overload(compare_unrelated_kernel, [wp.array2d[wp.vec3], wp.array[wp.float64], wp.array2d[bool]])
+wp.overload(compare_unrelated_kernel, [wp.array2d[wp.vec3d], wp.array[wp.float32], wp.array2d[bool]])
+wp.overload(compare_unrelated_kernel, [wp.array2d[wp.vec3d], wp.array[wp.float64], wp.array2d[bool]])
+wp.overload(tolerance_forms_kernel, [wp.array2d[wp.vec3], wp.array2d[wp.vec3i], wp.array2d[bool]])
+wp.overload(tolerance_forms_kernel, [wp.array2d[wp.vec3d], wp.array2d[wp.vec3i], wp.array2d[bool]])
 
 
 def sub(a, b):

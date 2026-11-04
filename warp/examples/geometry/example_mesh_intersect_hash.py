@@ -1,37 +1,26 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Visualize hashed intersection candidates with headless Polyscope.
+"""Find intersecting triangle pairs between two meshes with a spatial hash.
 
-Run from the repository root::
+Run with::
 
-    uv run --with polyscope==2.6.1 -m warp.examples.geometry.example_mesh_intersect_hash --device cuda:0
+    uv run -m warp.examples.geometry.example_mesh_intersect_hash
 
-The screenshot shows the overlapping boxes on the left, and separated display
-copies of A and B in the middle and right. Gray faces have no candidate pairs,
-amber faces participate in candidates, and red faces participate in confirmed
-intersections. Display offsets do not affect the intersection calculation.
+The broad phase hashes the bounding-sphere center of every primitive in a
+:class:`warp.HashGrid` and keeps pairs whose spheres overlap. The narrow phase
+tests each candidate pair with :func:`warp.geometry.intersect_tri_tri`, or with
+:func:`warp.geometry.intersect_seg_tri` when ``--segments`` replaces mesh A with
+its unique edges. The example prints how many pairs survive each phase.
 
-Use ``--segments`` to replace model A with its unique geometric edge segments,
-including triangulation diagonals. Colors then classify segments in A and faces
-in B. Exactly coincident vertices and duplicate undirected edges are merged.
-
-Hash primitive bounding-sphere centers and query with the source radius plus the
-largest target radius, then filter by sphere overlap. Triangle bounds receive
-simple spatial padding ``tol / max(abs(normal))`` for the unnormalized plane
-tolerance. This does not guarantee all hits of the narrow phase: for positive
-``tol``, nearly parallel planes can amplify snapping beyond that padding, so
-some candidate pairs may be skipped. Use ``--tol 0`` to disable plane snapping.
-The pure Warp predicates
-``wp.geometry.intersect_tri_tri`` and ``wp.geometry.intersect_seg_tri`` provide
-the narrow phase. Dense pair masks intentionally
-limit this testbed to small models. Surface intersections do not detect containment.
-Polyscope is an optional dependency, imported only when rendering.
+Triangle bounds are padded by ``tol / max(abs(normal))`` to account for the
+narrow phase's plane tolerance. This padding is a heuristic: for nearly parallel
+triangles, a positive ``tol`` can accept hits outside it. Pass ``--tol 0`` to
+disable plane snapping. Candidate pairs are stored in dense masks, so the
+example is meant for small meshes.
 """
 
 import argparse
-import json
-from pathlib import Path
 
 import numpy as np
 
@@ -211,61 +200,6 @@ def intersect_models(model_a, model_b, device, *, cell_size=0.5, grid_dim=16, to
     return candidates.numpy(), hashed.numpy()
 
 
-def render_screenshot(model_a, model_b, candidates, hits, path):
-    """Render the original configuration and separated display copies using EGL."""
-    import polyscope as ps  # noqa: PLC0415
-
-    ps.set_use_prefs_file(False)
-    ps.set_window_size(1800, 800)
-    # Explicit EGL initialization: no window, X server, or ps.show() loop.
-    # https://polyscope.run/py/features/headless_rendering/
-    ps.init("openGL3_egl")
-    ps.set_background_color((0.96, 0.97, 0.99))
-    ps.set_ground_plane_mode("none")
-    ps.set_up_dir("z_up")
-    ps.set_view_projection_mode("orthographic")
-
-    try:
-        for index, (vertices, faces) in enumerate((model_a, model_b)):
-            axis = 1 if index == 0 else 0
-            candidate_faces = np.any(candidates != 0, axis=axis)
-            hit_faces = np.any(hits != 0, axis=axis)
-            colors = np.tile((0.66, 0.72, 0.79), (len(faces), 1))
-            colors[candidate_faces] = (1.0, 0.62, 0.12)
-            colors[hit_faces] = (0.88, 0.12, 0.22)
-            center = (vertices.min(axis=0) + vertices.max(axis=0)) * 0.5
-            offsets = (
-                ("overlap", np.array((-4.15, -0.15, -0.1))),
-                ("isolated", np.array((0.0 if index == 0 else 3.5, 0.0, 0.0)) - center),
-            )
-            for view, offset in offsets:
-                if faces.shape[1] == 2:
-                    network = ps.register_curve_network(f"{view}: segments A", vertices + offset, faces, material="wax")
-                    network.set_radius(0.012, relative=False)
-                    network.add_color_quantity("segment classification", colors, defined_on="edges", enabled=True)
-                    continue
-                mesh = ps.register_surface_mesh(
-                    f"{view}: mesh {'A' if index == 0 else 'B'}",
-                    vertices + offset,
-                    faces,
-                    edge_width=1.0,
-                    edge_color=(0.13, 0.17, 0.24),
-                    smooth_shade=False,
-                    material="wax",
-                )
-                mesh.add_color_quantity("triangle classification", colors, defined_on="faces", enabled=True)
-
-        # Oblique view avoids superimposing opposite wireframe faces.
-        eye_x = -4.4 if model_a[1].shape[1] == 2 else -0.4
-        ps.look_at((eye_x, -12.0, 7.0), (-0.4, 0.0, 0.0))
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        ps.screenshot(str(path), transparent_bg=False)
-        return {"polyscope_version": ps.__version__, "headless": ps.is_headless(), "backend": "openGL3_egl"}
-    finally:
-        ps.shutdown()
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--device", default=None, help="Warp device; defaults to GPU when available.")
@@ -278,8 +212,6 @@ def main():
         "--tol", type=float, default=1.0e-6, help="Nonnegative plane-equation tolerance for the narrow phase."
     )
     parser.add_argument("--segments", action="store_true", help="Replace model A with its unique mesh-edge segments.")
-    parser.add_argument("--screenshot", type=Path, default=Path("outputs/mesh_intersect_hash.png"))
-    parser.add_argument("--stats", type=Path, default=Path("outputs/mesh_intersect_hash.json"))
     args = parser.parse_args()
     if args.subdivisions < 1:
         parser.error("--subdivisions must be positive")
@@ -299,37 +231,14 @@ def main():
     )
     candidate_count = int(np.count_nonzero(candidates))
     hit_count = int(np.count_nonzero(hits))
-    stats = {
-        "warp_version": wp.__version__,
-        "device": str(device),
-        "device_name": device.name,
-        "subdivisions": args.subdivisions,
-        "triangles_a": len(model_a[1]),
-        "triangles_b": len(model_b[1]),
-        "cell_size": args.cell_size,
-        "plane_tolerance": args.tol,
-        "tolerance_padding": "tol / max(abs(triangle_normal))",
-        "grid_dimensions": [args.grid_dim] * 3,
-        "all_pairs": int(candidates.size),
-        "candidate_pairs": candidate_count,
-        "intersecting_pairs": hit_count,
-        "candidate_pairs_rejected_by_narrow_phase": candidate_count - hit_count,
-        "pair_reduction_percent": 100.0 * (1.0 - candidate_count / candidates.size),
-        "candidate_faces_a": int(np.count_nonzero(np.any(candidates, axis=1))),
-        "candidate_faces_b": int(np.count_nonzero(np.any(candidates, axis=0))),
-        "intersecting_faces_a": int(np.count_nonzero(np.any(hits, axis=1))),
-        "intersecting_faces_b": int(np.count_nonzero(np.any(hits, axis=0))),
-        "screenshot": str(args.screenshot),
-    }
-    if args.segments:
-        stats["mode"] = "segment_triangle"
-        stats["segments_a"] = stats.pop("triangles_a")
-        stats["candidate_segments_a"] = stats.pop("candidate_faces_a")
-        stats["intersecting_segments_a"] = stats.pop("intersecting_faces_a")
-    stats.update(render_screenshot(model_a, model_b, candidates, hits, args.screenshot))
-    args.stats.parent.mkdir(parents=True, exist_ok=True)
-    args.stats.write_text(json.dumps(stats, indent=2) + "\n")
-    print(json.dumps(stats, indent=2))
+    kind_a = "segments" if args.segments else "triangles"
+    print(f"Device: {device}")
+    print(f"Mesh A: {len(model_a[1])} {kind_a}, mesh B: {len(model_b[1])} triangles")
+    print(f"All pairs: {candidates.size}")
+    print(f"Candidate pairs: {candidate_count} ({100.0 * candidate_count / candidates.size:.2f}% of all pairs)")
+    print(f"Intersecting pairs: {hit_count}")
+    print(f"Intersecting {kind_a} in A: {int(np.count_nonzero(np.any(hits, axis=1)))}")
+    print(f"Intersecting triangles in B: {int(np.count_nonzero(np.any(hits, axis=0)))}")
 
 
 if __name__ == "__main__":

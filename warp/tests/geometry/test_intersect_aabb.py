@@ -28,34 +28,42 @@ return wp::intersect_ray_aabb_robust(p0, d, rcp, lower, upper, t) && t <= 1.0f;
 def native_ray(p0: wp.vec3, p1: wp.vec3, lower: wp.vec3, upper: wp.vec3) -> bool: ...
 
 
-@wp.kernel(module="unique", enable_backward=False)
+@wp.kernel(enable_backward=False)
 def native_aabb_kernel(points: wp.array2d[wp.vec3], hits: wp.array[bool]):
     i = wp.tid()
     hits[i] = native_aabb(points[i, 0], points[i, 1], points[i, 2], points[i, 3])
 
 
-@wp.kernel(module="unique", enable_backward=False)
+@wp.kernel(enable_backward=False)
 def native_ray_kernel(points: wp.array2d[wp.vec3], hits: wp.array[bool]):
     i = wp.tid()
     hits[i] = native_ray(points[i, 0], points[i, 1], points[i, 2], points[i, 3])
 
 
-@wp.kernel(module="unique", enable_backward=False)
+@wp.kernel(enable_backward=False)
 def intersect_aabb_aabb_kernel(points: wp.array2d[Any], hits: wp.array[bool]):
     i = wp.tid()
     hits[i] = wp.geometry.intersect_aabb_aabb(points[i, 0], points[i, 1], points[i, 2], points[i, 3])
 
 
-@wp.kernel(module="unique", enable_backward=False)
+@wp.kernel(enable_backward=False)
 def intersect_seg_aabb_kernel(points: wp.array2d[Any], hits: wp.array[bool]):
     i = wp.tid()
     hits[i] = wp.geometry.intersect_seg_aabb(points[i, 0], points[i, 1], points[i, 2], points[i, 3])
 
 
-@wp.kernel(module="unique", enable_backward=False)
+@wp.kernel(enable_backward=False)
 def intersect_tri_aabb_kernel(points: wp.array2d[Any], hits: wp.array[bool]):
     i = wp.tid()
     hits[i] = wp.geometry.intersect_tri_aabb(points[i, 0], points[i, 1], points[i, 2], points[i, 3], points[i, 4])
+
+
+wp.overload(intersect_aabb_aabb_kernel, [wp.array2d[wp.vec3], wp.array[bool]])
+wp.overload(intersect_aabb_aabb_kernel, [wp.array2d[wp.vec3d], wp.array[bool]])
+wp.overload(intersect_seg_aabb_kernel, [wp.array2d[wp.vec3], wp.array[bool]])
+wp.overload(intersect_seg_aabb_kernel, [wp.array2d[wp.vec3d], wp.array[bool]])
+wp.overload(intersect_tri_aabb_kernel, [wp.array2d[wp.vec3], wp.array[bool]])
+wp.overload(intersect_tri_aabb_kernel, [wp.array2d[wp.vec3d], wp.array[bool]])
 
 
 def clipped_polygon_intersects_box(points):

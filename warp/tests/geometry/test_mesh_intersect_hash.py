@@ -1,10 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Validate the mesh intersection example on CPU and available CUDA devices.
-
-Run with ``uv run -m warp.tests.geometry.test_mesh_intersect_hash``.
-"""
+"""Validate the mesh intersection example on CPU and available CUDA devices."""
 
 import unittest
 
@@ -21,7 +18,7 @@ from warp.tests.geometry.test_intersect_tri import segment_triangle_reference
 from warp.tests.unittest_utils import add_function_test, get_test_devices
 
 
-@wp.kernel
+@wp.kernel(enable_backward=False)
 def intersect_exhaustive(
     vertices_a: wp.array[wp.vec3],
     faces_a: wp.array2d[int],
@@ -83,7 +80,7 @@ def test_hash_collisions(test, device):
     test.assertLess(candidates, len(model_a[1]) * len(model_b[1]))
 
 
-def test_screenshot_models(test, device):
+def test_default_models(test, device):
     model_a = make_box(subdivisions=6)
     model_b = make_box(subdivisions=6, translation=(0.7, 0.3, 0.2), angle=0.31)
     candidates, hits = check_mesh_pair(test, device, model_a, model_b)
@@ -108,7 +105,7 @@ def test_triangle_contacts(test, device):
 
 
 def test_segment_models(test, device):
-    # Match the screenshot scene, plus coarse triangles and hash collisions.
+    # Match the example's default scene, plus coarse triangles and hash collisions.
     for subdivisions, shift, cell_size, grid_dim in (
         (6, 0.0, 0.5, 16),
         (1, -10.0, 0.125, 2),
@@ -160,7 +157,7 @@ def test_segment_contacts(test, device):
     test.assertLessEqual(int(candidates.max()), 1)
 
 
-@wp.kernel(module="unique", enable_backward=False)
+@wp.kernel(enable_backward=False)
 def intersect_exhaustive_with_tolerance(
     vertices_a: wp.array[wp.vec3],
     faces_a: wp.array2d[int],
@@ -308,7 +305,7 @@ add_function_test(
 )
 add_function_test(TestMeshIntersectHash, "test_box_meshes", test_box_meshes, devices=devices, check_output=False)
 add_function_test(TestMeshIntersectHash, "test_hash_collisions", test_hash_collisions, devices=devices)
-add_function_test(TestMeshIntersectHash, "test_screenshot_models", test_screenshot_models, devices=devices)
+add_function_test(TestMeshIntersectHash, "test_default_models", test_default_models, devices=devices)
 add_function_test(TestMeshIntersectHash, "test_triangle_contacts", test_triangle_contacts, devices=devices)
 add_function_test(TestMeshIntersectHash, "test_segment_models", test_segment_models, devices=devices)
 add_function_test(TestMeshIntersectHash, "test_segment_contacts", test_segment_contacts, devices=devices)

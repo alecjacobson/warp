@@ -51,13 +51,17 @@ def make_segment_kernel(predicate):
     return segment_predicate_kernel
 
 
-@wp.kernel
+@wp.kernel(enable_backward=False)
 def compare_tri_tri_kernel(points: wp.array2d[Any], native: wp.array[int], geometry: wp.array[bool]):
     i = wp.tid()
     native[i] = wp.intersect_tri_tri(points[i, 0], points[i, 1], points[i, 2], points[i, 3], points[i, 4], points[i, 5])
     geometry[i] = wp.geometry.intersect_tri_tri(
         points[i, 0], points[i, 1], points[i, 2], points[i, 3], points[i, 4], points[i, 5]
     )
+
+
+wp.overload(compare_tri_tri_kernel, [wp.array2d[wp.vec3], wp.array[int], wp.array[bool]])
+wp.overload(compare_tri_tri_kernel, [wp.array2d[wp.vec3d], wp.array[int], wp.array[bool]])
 
 
 def check_triangles(test, device, points, expected=None):
@@ -128,10 +132,14 @@ def test_tri_tolerance(test, device):
     check_triangles(test, device, np.asarray(points))
 
 
-@wp.kernel
+@wp.kernel(enable_backward=False)
 def intersect_seg_tri_kernel(points: wp.array2d[Any], hits: wp.array[bool]):
     i = wp.tid()
     hits[i] = wp.geometry.intersect_seg_tri(points[i, 0], points[i, 1], points[i, 2], points[i, 3], points[i, 4])
+
+
+wp.overload(intersect_seg_tri_kernel, [wp.array2d[wp.vec3], wp.array[bool]])
+wp.overload(intersect_seg_tri_kernel, [wp.array2d[wp.vec3d], wp.array[bool]])
 
 
 def check_segments(test, device, points, expected):
@@ -360,7 +368,7 @@ def test_seg_snapped_endpoints(test, device):
     check_segments(test, device, np.asarray(points), expected)
 
 
-@wp.kernel(module="unique")
+@wp.kernel(enable_backward=False)
 def intersect_custom_tolerances_kernel(
     triangles: wp.array2d[Any], segments: wp.array2d[Any], tolerances: wp.array[Any], hits: wp.array2d[bool]
 ):
@@ -373,6 +381,24 @@ def intersect_custom_tolerances_kernel(
     hits[i, 1] = wp.geometry.intersect_tri_tri(v0, v1, v2, u0, u1, u2, tol=tol)
     hits[i, 2] = wp.geometry.intersect_seg_tri(p0, p1, v0, v1, v2, tol)
     hits[i, 3] = wp.geometry.intersect_seg_tri(p0, p1, v0, v1, v2, tol=tol)
+
+
+wp.overload(
+    intersect_custom_tolerances_kernel,
+    [wp.array2d[wp.vec3], wp.array2d[wp.vec3], wp.array[wp.float32], wp.array2d[bool]],
+)
+wp.overload(
+    intersect_custom_tolerances_kernel,
+    [wp.array2d[wp.vec3], wp.array2d[wp.vec3], wp.array[wp.float64], wp.array2d[bool]],
+)
+wp.overload(
+    intersect_custom_tolerances_kernel,
+    [wp.array2d[wp.vec3d], wp.array2d[wp.vec3d], wp.array[wp.float32], wp.array2d[bool]],
+)
+wp.overload(
+    intersect_custom_tolerances_kernel,
+    [wp.array2d[wp.vec3d], wp.array2d[wp.vec3d], wp.array[wp.float64], wp.array2d[bool]],
+)
 
 
 def test_custom_tolerances(test, device):
@@ -401,7 +427,7 @@ def test_custom_tolerances(test, device):
                 np.testing.assert_array_equal(hits.numpy(), expected)
 
 
-@wp.kernel(module="unique")
+@wp.kernel(enable_backward=False)
 def intersect_tolerance_call_forms_kernel(points: wp.array2d[Any], hits: wp.array2d[bool]):
     i = wp.tid()
     v0, v1, v2 = points[i, 0], points[i, 1], points[i, 2]
@@ -414,6 +440,10 @@ def intersect_tolerance_call_forms_kernel(points: wp.array2d[Any], hits: wp.arra
     hits[i, 5] = wp.geometry.intersect_seg_tri(u0, u1, v0, v1, v2, tol=wp.float64(1.0e-6))
     hits[i, 6] = wp.geometry.intersect_seg_tri(u0, u1, v0, v1, v2, tol=1.0e-6)
     hits[i, 7] = wp.geometry.intersect_seg_tri(u0, u1, v0, v1, v2, 0.0)
+
+
+wp.overload(intersect_tolerance_call_forms_kernel, [wp.array2d[wp.vec3], wp.array2d[bool]])
+wp.overload(intersect_tolerance_call_forms_kernel, [wp.array2d[wp.vec3d], wp.array2d[bool]])
 
 
 def test_tolerance_call_forms(test, device):
@@ -430,8 +460,46 @@ def test_tolerance_call_forms(test, device):
             np.testing.assert_array_equal(hits.numpy(), expected)
 
 
+PREDICATES = (
+    "intersect_tri_tri",
+    "intersect_seg_tri",
+    "intersect_aabb_aabb",
+    "intersect_seg_aabb",
+    "intersect_tri_aabb",
+    "self_intersect_tri_tri",
+)
+
+
 class TestIntersectTri(unittest.TestCase):
-    pass
+    def test_python_scope(self):
+        """Evaluate every intersection predicate overload at Python scope."""
+        for vec in (wp.vec3, wp.vec3d):
+            with self.subTest(dtype=vec):
+                a, b, c = vec(0.0, 0.0, 0.0), vec(1.0, 0.0, 0.0), vec(0.0, 1.0, 0.0)
+                p, q, r = vec(0.25, 0.25, -1.0), vec(0.25, 0.25, 1.0), vec(0.75, 0.25, 0.0)
+                far = vec(5.0, 5.0, 5.0)
+                ids = (wp.vec3i(0, 1, 2), wp.vec3i(3, 4, 5))
+                for tol in ((), (wp.float32(0.0),), (wp.float64(0.0),)):
+                    self.assertTrue(wp.geometry.intersect_tri_tri(a, b, c, p, q, r, *tol))
+                    self.assertFalse(wp.geometry.intersect_tri_tri(a, b, c, far, far + p, far + r, *tol))
+                    self.assertTrue(wp.geometry.intersect_seg_tri(p, q, a, b, c, *tol))
+                    self.assertFalse(wp.geometry.intersect_seg_tri(far, far + q, a, b, c, *tol))
+                    self.assertTrue(wp.geometry.self_intersect_tri_tri(a, b, c, p, q, r, *ids, *tol))
+                lower, upper = vec(0.0, 0.0, 0.0), vec(1.0, 1.0, 1.0)
+                self.assertTrue(wp.geometry.intersect_aabb_aabb(lower, upper, p, upper))
+                self.assertFalse(wp.geometry.intersect_aabb_aabb(lower, upper, far, far + upper))
+                self.assertTrue(wp.geometry.intersect_seg_aabb(p, q, lower, upper))
+                self.assertFalse(wp.geometry.intersect_seg_aabb(far, far + q, lower, upper))
+                self.assertTrue(wp.geometry.intersect_tri_aabb(a, b, c, lower, upper))
+                self.assertFalse(wp.geometry.intersect_tri_aabb(far + a, far + b, far + c, lower, upper))
+
+    def test_predicates_not_differentiable(self):
+        """Mark every intersection predicate overload as non-differentiable."""
+        for name in PREDICATES:
+            function = getattr(wp.geometry, name)
+            for overload in (function, *function.user_overloads.values()):
+                with self.subTest(name=name, signature=overload.key):
+                    self.assertFalse(overload.is_differentiable)
 
 
 devices = get_test_devices()
