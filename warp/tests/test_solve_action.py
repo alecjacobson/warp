@@ -420,6 +420,30 @@ def test_multiple_rhs_auto_density(test, device):
     test.assertEqual(action.operator.algorithm, expected)
 
 
+def test_multiple_rhs_padded_mixed_precision(test, device):
+    """Check that a padded source keeps its coefficients when copied to another working dtype."""
+    n = 16
+    a = np.diag(np.linspace(3.0, 5.0, n)) + np.diag(np.full(n - 1, -1.0), 1) + np.diag(np.full(n - 1, -1.0), -1)
+    rows, cols = np.nonzero(a)
+    padded = sp.bsr_zeros(n, n, wp.float64, device=device, row_capacity=5)
+    sp.bsr_set_from_triplets(
+        padded,
+        wp.array(rows, dtype=int, device=device),
+        wp.array(cols, dtype=int, device=device),
+        wp.array(a[rows, cols], dtype=wp.float64, device=device),
+        topology="padded",
+    )
+    rhs = np.random.default_rng(91).normal(size=(2, n))
+    for working_dtype in (wp.float32, float):
+        action = _cg(padded, 2, working_dtype=working_dtype, tol=1e-6, maxiter=100)
+        test.assertEqual(action.working_dtype, wp.float32)
+        b = wp.array(rhs, dtype=wp.float64, device=device)
+        out = wp.empty_like(b)
+        action.solve(b, out)
+        np.testing.assert_array_equal(action.converged.numpy(), [1, 1])
+        np.testing.assert_allclose(out.numpy(), np.linalg.solve(a, rhs.T).T, rtol=1e-4, atol=1e-5)
+
+
 def test_multiple_rhs_operator(test, device):
     """Check aliased matvec semantics and that zero coefficients ignore nonfinite inputs."""
     a = np.diag(np.arange(1.0, 16.0)) + np.diag(np.full(14, 0.2), 1)
@@ -675,6 +699,7 @@ for func in (
     test_multiple_rhs_capture,
     test_multiple_rhs_operator,
     test_multiple_rhs_auto_density,
+    test_multiple_rhs_padded_mixed_precision,
     test_multiple_rhs_failure_validation,
     test_multiple_rhs_tiny_rhs,
     test_multiple_rhs_block_diagonal,

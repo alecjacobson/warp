@@ -15,6 +15,7 @@ from warp._src.context import is_conditional_graph_supported
 from warp._src.optim._multi_rhs import MultiRHSOperator, _scalar_shape, _StreamOrder
 from warp._src.optim.linear import _get_dtype_epsilon, aslinearoperator, bicgstab, cg, cr, gmres
 from warp._src.sparse_multi_rhs import BsrMvAlgorithm
+from warp._src.types import type_to_warp
 
 
 class ResidualMode(enum.IntEnum):
@@ -344,7 +345,7 @@ class KrylovSolve(_SolveAction):
         dtype = single.scalar_type
         if dtype not in (wp.float32, wp.float64):
             raise ValueError("A must have float32 or float64 scalar type")
-        working_dtype = dtype if working_dtype is None else working_dtype
+        working_dtype = dtype if working_dtype is None else type_to_warp(working_dtype)
         if working_dtype not in (wp.float32, wp.float64):
             raise ValueError("working_dtype must be float32 or float64")
         if working_dtype != dtype and not self._sparse:
@@ -358,7 +359,9 @@ class KrylovSolve(_SolveAction):
         if working_dtype == dtype:
             self.working_matrix = A
         else:
-            self.working_matrix = sp.bsr_copy(A, scalar_type=working_dtype)
+            # update() copies values slot by slot, so the copy keeps any padded row layout.
+            topology = "compact" if A.row_counts is None else "padded"
+            self.working_matrix = sp.bsr_copy(A, scalar_type=working_dtype, topology=topology)
         self._storage = self._storage_identity()
         # One RHS without a pinned strategy keeps the plain single-system operator.
         self._batched = self.nrhs > 1 or algorithm != BsrMvAlgorithm.AUTO

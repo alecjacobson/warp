@@ -1083,7 +1083,7 @@ def llvm_cuda_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoade
         "warp.tests.test_grad_customs.TestGradCustoms": [mathdx],
         "warp.tests.test_linear_solvers.TestLinearSolvers": [no_shfl_64, no_shfl_up, mathdx],
         "warp.tests.test_map.TestMap": [ulp],
-        "warp.tests.test_solve_action.TestSolveAction": [tile_h],
+        "warp.tests.test_solve_action.TestSolveAction": [no_shfl_64, no_shfl_up, mathdx],
         "warp.tests.test_sparse.TestSparse": [no_shfl_64],
         "warp.tests.test_tuple.TestTuple": [ulp],
         "warp.tests.test_verify_fp.TestVerifyFP": [verify_fp],
