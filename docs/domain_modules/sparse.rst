@@ -462,7 +462,7 @@ products. :class:`BsrMvAlgorithm` selects the kernel strategy, and ``LOOP``, ``R
 ``COLUMNS`` pin one, which helps when the best choice for a workload is known. Pass
 ``work_buffer`` to reuse scratch storage across calls, for example inside a captured graph.
 
-``AUTO`` resolves as follows:
+``AUTO`` chooses differently depending on where it is resolved:
 
 * :func:`bsr_mv` decides on every call and never synchronizes, so it works inside captured
   graphs but cannot see how many entries each row actually stores; the stored count of a
@@ -471,6 +471,12 @@ products. :class:`BsrMvAlgorithm` selects the kernel strategy, and ``LOOP``, ``R
   beyond, ``ROWS`` for CSR matrices of at most 2048 rows, and ``LOOP`` for larger CSR
   matrices. Large CSR matrices with dense or irregular rows can be several times faster
   with ``COLUMNS`` pinned.
+* Prepared operators such as :class:`warp.optim.linear.MultiRHSOperator` and
+  :class:`warp.optim.linear.KrylovSolve` decide once at construction. There they read back
+  the stored-entry count, and for CSR matrices with more than 2048 rows they keep ``LOOP``
+  up to 16 entries per row, use ``ROWS`` for up to four vectors and ``COLUMNS`` beyond
+  between 16 and 32 entries per row, and use ``COLUMNS`` above 32. The choice then stays
+  fixed, including for smaller capacities from ``with_nrhs``.
 
 On the CPU, ``AUTO`` uses ``ROWS``. The thresholds were fitted to finite-element and
 irregular matrices on one GPU model and may change between releases.

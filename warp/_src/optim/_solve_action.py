@@ -288,8 +288,9 @@ class KrylovSolve(_SolveAction):
         working_dtype: float32 or float64 inner arithmetic for a sparse ``A``;
             defaults to ``A``'s scalar type. RHSs and solutions keep ``A``'s type.
             Every solve refreshes the converted matrix values on device.
-        algorithm: Batched product strategy for a sparse ``A``, as in
-            :func:`warp.sparse.bsr_mv`; explicit strategies pin a kernel.
+        algorithm: Batched product strategy for a sparse ``A``, resolved once at
+            construction as in :class:`MultiRHSOperator`, which counts stored
+            entries; explicit strategies pin a kernel.
         residual: Residual reported and used for acceptance.
             :attr:`ResidualMode.FRESH` recomputes ``||A x - b||`` with the source
             system and precision after every solve.

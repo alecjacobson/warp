@@ -395,6 +395,31 @@ def test_multiple_rhs_capture(test, device):
                         test.assertNotIn(forbidden, dot.read_text())
 
 
+def test_multiple_rhs_auto_density(test, device):
+    """Check that prepared AUTO counts stored entries while per-call AUTO does not."""
+    from warp._src.sparse_multi_rhs import resolve  # noqa: PLC0415
+
+    rows = 3000
+    rng = np.random.default_rng(5)
+    columns = rng.integers(0, rows, size=(rows, 40))
+    row_index = np.repeat(np.arange(rows), 40)
+    a = sp.bsr_from_triplets(
+        rows,
+        rows,
+        wp.array(row_index, dtype=int, device=device),
+        wp.array(columns.ravel(), dtype=int, device=device),
+        wp.array(rng.normal(size=row_index.size), dtype=wp.float64, device=device),
+    )
+    operator = MultiRHSOperator(a, 8)
+    expected = BsrMvAlgorithm.COLUMNS if wp.get_device(device).is_cuda else BsrMvAlgorithm.ROWS
+    test.assertEqual(operator.algorithm, expected)
+    test.assertEqual(operator.with_nrhs(2).algorithm, expected)
+    per_call = BsrMvAlgorithm.LOOP if wp.get_device(device).is_cuda else BsrMvAlgorithm.ROWS
+    test.assertEqual(resolve(BsrMvAlgorithm.AUTO, a, 8, wp.get_device(device), False), per_call)
+    action = KrylovSolve(a, 8, method=KrylovMethod.GMRES, maxiter=1)
+    test.assertEqual(action.operator.algorithm, expected)
+
+
 def test_multiple_rhs_operator(test, device):
     """Check aliased matvec semantics and that zero coefficients ignore nonfinite inputs."""
     a = np.diag(np.arange(1.0, 16.0)) + np.diag(np.full(14, 0.2), 1)
@@ -649,6 +674,7 @@ for func in (
     test_gmres_action_block_diagonals,
     test_multiple_rhs_capture,
     test_multiple_rhs_operator,
+    test_multiple_rhs_auto_density,
     test_multiple_rhs_failure_validation,
     test_multiple_rhs_tiny_rhs,
     test_multiple_rhs_block_diagonal,

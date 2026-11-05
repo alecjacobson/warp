@@ -68,9 +68,13 @@ class MultiRHSOperator(LinearOperator):
         A: Square sparse matrix or a single-system :class:`LinearOperator`.
         nrhs: Positive RHS count.
         algorithm: Batched product strategy for a sparse ``A``, fixed at
-            construction. ``AUTO`` follows :func:`warp.sparse.bsr_mv`; explicit
-            strategies pin a kernel and raise :class:`ValueError` where
-            unsupported. Other operators accept only ``AUTO`` or ``LOOP``.
+            construction and kept by ``with_nrhs``. ``AUTO`` reads back the
+            stored-entry count once, so unlike per-call :func:`warp.sparse.bsr_mv`
+            it can also choose ``COLUMNS`` for CSR rows averaging more than 16
+            entries; see :class:`warp.sparse.BsrMvAlgorithm`. Explicit strategies
+            pin a kernel and raise :class:`ValueError` where unsupported. Other
+            operators accept only ``AUTO`` or ``LOOP``. The chosen strategy is
+            available as ``algorithm``.
     """
 
     def __init__(self, A, nrhs: int, algorithm: BsrMvAlgorithm = BsrMvAlgorithm.AUTO):
@@ -95,7 +99,11 @@ class MultiRHSOperator(LinearOperator):
         device = self.single.device
         self.sparse = isinstance(A, sp.BsrMatrix)
         if self.sparse:
-            self.algorithm = batch.resolve(algorithm, A, self.nrhs, device, False)
+            density = None
+            if algorithm == BsrMvAlgorithm.AUTO and not (device.is_cuda and device.stream.is_capturing):
+                # Preparation may read back the stored-entry count once, which per-call AUTO cannot.
+                density = batch.stored_density(A)
+            self.algorithm = batch.resolve(algorithm, A, self.nrhs, device, False, density)
         elif algorithm in (BsrMvAlgorithm.AUTO, BsrMvAlgorithm.LOOP):
             self.algorithm = BsrMvAlgorithm.LOOP
         else:
