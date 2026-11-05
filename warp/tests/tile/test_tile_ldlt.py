@@ -240,7 +240,7 @@ def test_ldlt_backward(test, device):
                     if device.is_cuda and view:
                         tape.zero()
                         seed.assign(weights)
-                        with wp.ScopedCapture(device=device) as capture:
+                        with wp.ScopedCapture(device=device, force_module_load=False) as capture:
                             tape.backward(grads={factors: seed})
                         wp.capture_launch(capture.graph)
                         np.testing.assert_allclose(a.grad.numpy(), expected, rtol=tol, atol=tol)
