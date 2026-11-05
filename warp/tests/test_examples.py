@@ -239,12 +239,6 @@ else:
     )
 add_example_test(
     TestCoreExamples,
-    name="core.example_sample_mesh",
-    devices=test_devices,
-    test_options_cpu={"num_frames": 1},
-)
-add_example_test(
-    TestCoreExamples,
     name="core.example_sph",
     devices=test_devices,
     test_options_cpu={"num_frames": 1},
@@ -400,6 +394,19 @@ add_example_test(
     TestTileExamples,
     name="tile.example_tile_stream_compaction",
     devices=cuda_test_devices,
+)
+
+
+add_example_test(
+    TestGeometryExamples,
+    name="geometry.example_uniform_sampling",
+    devices=test_devices,
+    test_options_cpu={"num_frames": 1},
+)
+add_example_test(
+    TestGeometryExamples,
+    name="geometry.example_poisson_disk_sampling",
+    devices=test_devices,
 )
 
 

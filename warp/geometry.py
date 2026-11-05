@@ -4,8 +4,8 @@
 """Geometry processing operations.
 
 This module provides functions to process 2D and 3D geometry and their
-associated topological data structures (e.g., meshes), and GPU-accelerated
-isosurface extraction.
+associated topological data structures (e.g., meshes), GPU-accelerated
+isosurface extraction, and surface sampling.
 
 Dense-grid isosurface backends take a 3-D ``wp.float32`` field sampled at grid
 nodes and share the :class:`IsoSurfaceBase` interface, so they can be swapped
@@ -21,6 +21,10 @@ The Python API includes array-level functions, such as :func:`swept_volume_mesh`
 that launch kernels over a whole mesh or grid. The kernel API includes Warp
 functions, such as :func:`swept_volume_sdf`, that evaluate a single point and may
 be called from your own :func:`warp.kernel` definitions and other Warp functions.
+
+Surface sampling draws points on triangle meshes, either uniformly by area
+(:func:`uniformly_sample`, :class:`UniformSampler`) or as Poisson-disk
+blue-noise sets (:func:`poisson_disk_sample`, :class:`PoissonDiskSampler`).
 
 Usage:
     This module must be explicitly imported::
@@ -51,7 +55,18 @@ from warp._src.geometry import swept_volume_mesh as swept_volume_mesh
 # from warp._src.geometry import signed_area as signed_area
 from warp._src.geometry import tri_tri_adjacency as tri_tri_adjacency
 
+from warp._src.geometry import MeshSample as MeshSample
+from warp._src.geometry import PoissonDiskSampler as PoissonDiskSampler
+from warp._src.geometry import UniformSampler as UniformSampler
+from warp._src.geometry import UniformSamplerState as UniformSamplerState
+from warp._src.geometry import pair_correlation as pair_correlation
+from warp._src.geometry import poisson_disk_sample as poisson_disk_sample
+from warp._src.geometry import uniformly_sample as uniformly_sample
+
 # category: Kernel API
 
 from warp._src.geometry import find_triangle_neighbor_edge_index as find_triangle_neighbor_edge_index
 from warp._src.geometry import swept_volume_sdf as swept_volume_sdf
+from warp._src.geometry import draw_sample as draw_sample
+from warp._src.geometry import embed_sample as embed_sample
+from warp._src.geometry import sample_barycentrics as sample_barycentrics
