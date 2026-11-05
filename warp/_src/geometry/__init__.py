@@ -56,8 +56,5 @@ from warp._src.geometry.sampling import (
     poisson_disk_sample as poisson_disk_sample,
 )
 from warp._src.geometry.sampling import (
-    sample_barycentrics as sample_barycentrics,
-)
-from warp._src.geometry.sampling import (
-    uniformly_sample as uniformly_sample,
+    uniform_sample as uniform_sample,
 )

@@ -31,7 +31,7 @@ Python API
    swept_volume_field
    swept_volume_mesh
    tri_tri_adjacency
-   uniformly_sample
+   uniform_sample
 
 Kernel API
 ----------
@@ -43,5 +43,4 @@ Kernel API
    draw_sample
    embed_sample
    find_triangle_neighbor_edge_index
-   sample_barycentrics
    swept_volume_sdf

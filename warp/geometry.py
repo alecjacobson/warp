@@ -23,7 +23,7 @@ functions, such as :func:`swept_volume_sdf`, that evaluate a single point and ma
 be called from your own :func:`warp.kernel` definitions and other Warp functions.
 
 Surface sampling draws points on triangle meshes, either uniformly by area
-(:func:`uniformly_sample`, :class:`UniformSampler`) or as Poisson-disk
+(:func:`uniform_sample`, :class:`UniformSampler`) or as Poisson-disk
 blue-noise sets (:func:`poisson_disk_sample`, :class:`PoissonDiskSampler`).
 
 Usage:
@@ -61,7 +61,7 @@ from warp._src.geometry import UniformSampler as UniformSampler
 from warp._src.geometry import UniformSamplerState as UniformSamplerState
 from warp._src.geometry import pair_correlation as pair_correlation
 from warp._src.geometry import poisson_disk_sample as poisson_disk_sample
-from warp._src.geometry import uniformly_sample as uniformly_sample
+from warp._src.geometry import uniform_sample as uniform_sample
 
 # category: Kernel API
 
@@ -69,4 +69,3 @@ from warp._src.geometry import find_triangle_neighbor_edge_index as find_triangl
 from warp._src.geometry import swept_volume_sdf as swept_volume_sdf
 from warp._src.geometry import draw_sample as draw_sample
 from warp._src.geometry import embed_sample as embed_sample
-from warp._src.geometry import sample_barycentrics as sample_barycentrics

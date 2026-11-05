@@ -407,6 +407,7 @@ add_example_test(
     TestGeometryExamples,
     name="geometry.example_poisson_disk_sampling",
     devices=test_devices,
+    test_options={"usd_required": True},
 )
 
 

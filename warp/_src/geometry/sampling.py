@@ -32,8 +32,9 @@ class MeshSample:
     """Index of the sampled triangle (a face of the mesh)."""
 
     uv: wp.vec2
-    """Barycentric coordinates ``(u, v)`` of the sample within :attr:`face`. The
-    third coordinate is ``1 - u - v``."""
+    """Barycentric coordinates ``(u, v)`` of the sample within :attr:`face`: the weights of
+    the face's first and second vertices, with ``1 - u - v`` on the third. This matches
+    :func:`warp.mesh_eval_position`."""
 
 
 @wp.struct
@@ -46,7 +47,7 @@ class UniformSamplerState:
     kernel argument.
     """
 
-    points: wp.array[wp.vec3]
+    vertices: wp.array[wp.vec3]
     """Vertex positions of the mesh being sampled."""
 
     indices: wp.array2d[wp.int32]
@@ -62,7 +63,10 @@ def embed_sample(state: UniformSamplerState, sample: MeshSample) -> wp.vec3:
 
     A sample is an intrinsic location on the surface, a face plus barycentric
     coordinates. This maps it to where that point lies in space for the current
-    vertex positions.
+    vertex positions. The barycentric convention matches
+    :func:`warp.mesh_eval_position`, so a sample's ``face`` and ``uv`` can be passed
+    to the mesh builtins of a :class:`warp.Mesh` built from the same vertices and
+    indices.
 
     Args:
         state: Sampler state, as passed to :func:`draw_sample`.
@@ -72,33 +76,13 @@ def embed_sample(state: UniformSamplerState, sample: MeshSample) -> wp.vec3:
         The position of ``sample`` on the surface, using the current vertex
         positions in ``state``.
     """
-    p0 = state.points[state.indices[sample.face, 0]]
-    p1 = state.points[state.indices[sample.face, 1]]
-    p2 = state.points[state.indices[sample.face, 2]]
+    p0 = state.vertices[state.indices[sample.face, 0]]
+    p1 = state.vertices[state.indices[sample.face, 1]]
+    p2 = state.vertices[state.indices[sample.face, 2]]
     u = sample.uv[0]
     v = sample.uv[1]
-    return p0 * (1.0 - u - v) + p1 * u + p2 * v
-
-
-@wp.func
-def sample_barycentrics(rng: wp.uint32) -> wp.vec2:
-    """Draw barycentric coordinates uniformly over the unit triangle.
-
-    Args:
-        rng: Random number generator state. Passed by value, so the caller's
-            state is not advanced; use a distinct state for each draw.
-
-    Returns:
-        Barycentric coordinates ``(u, v)`` uniformly distributed over a triangle,
-        with ``u >= 0``, ``v >= 0``, and ``u + v <= 1``.
-    """
-    r0 = wp.randf(rng)
-    r1 = wp.randf(rng)
-    # Map the unit square to the triangle so that area is preserved (Turk, 1990).
-    su = wp.sqrt(r0)
-    u = 1.0 - su
-    v = r1 * su
-    return wp.vec2(u, v)
+    # Same convention as wp.mesh_eval_position().
+    return p0 * u + p1 * v + p2 * (1.0 - u - v)
 
 
 @wp.func
@@ -148,7 +132,7 @@ _FACE_RANDOM_LOW_SCALE = wp.constant(wp.float64(5.9604644775390625e-8))  # 2**-2
 
 
 @wp.func
-def draw_sample(state: UniformSamplerState, rng: wp.uint32) -> MeshSample:
+def draw_sample(state: UniformSamplerState, seed: wp.int32, offset: wp.int32) -> MeshSample:
     """Draw one point uniformly over the surface of a mesh.
 
     A triangle is chosen with probability proportional to its area via a binary
@@ -166,14 +150,16 @@ def draw_sample(state: UniformSamplerState, rng: wp.uint32) -> MeshSample:
     Args:
         state: Sampler state, typically ``UniformSampler.state`` passed as a
             kernel argument.
-        rng: Random number generator state. Warp functions receive it by value,
-            so the caller's ``rng`` is *not* advanced: calling ``draw_sample`` twice
-            with the same ``rng`` returns the same sample. Use a distinct state
-            (e.g. ``wp.rand_init(seed, tid * n + i)``) for each draw.
+        seed: Seed of the random number generator, as in :func:`warp.rand_init`.
+        offset: Index of this draw within the ``seed``'s random sequence, as in
+            :func:`warp.rand_init`. Equal ``seed`` and ``offset`` give the same sample,
+            so give every draw its own offset, for example ``tid * n + i`` when each
+            thread draws ``n`` samples.
 
     Returns:
         The sampled :class:`MeshSample` (a triangle index and barycentrics).
     """
+    rng = wp.rand_init(seed, offset)
     high = wp.randf(rng)
     low = wp.randf(rng)
     r = wp.float64(high) + wp.float64(low) * _FACE_RANDOM_LOW_SCALE
@@ -188,7 +174,7 @@ def draw_sample(state: UniformSamplerState, rng: wp.uint32) -> MeshSample:
 
     sample = MeshSample()
     sample.face = wp.min(face, num_faces - 1)
-    sample.uv = sample_barycentrics(rng)
+    sample.uv = wp.sample_triangle(rng)
     return sample
 
 
@@ -196,11 +182,6 @@ def draw_sample(state: UniformSamplerState, rng: wp.uint32) -> MeshSample:
 
 wp._src.context.register_api_function(
     embed_sample,
-    module="warp.geometry",
-    differentiable=False,
-)
-wp._src.context.register_api_function(
-    sample_barycentrics,
     module="warp.geometry",
     differentiable=False,
 )
@@ -283,26 +264,25 @@ def _draw_kernel(
     out_uv: wp.array[wp.vec2],
 ):
     tid = wp.tid()
-    rng = wp.rand_init(seed, tid)
-    sample = draw_sample(state, rng)
+    sample = draw_sample(state, seed, tid)
     out_faces[tid] = sample.face
     out_uv[tid] = sample.uv
 
 
-def _as_vec3_array(points, device) -> wp.array:
-    if isinstance(points, wp.array):
-        return points.to(device) if points.device != device else points
-    return wp.array(np.asarray(points, dtype=np.float32).reshape(-1, 3), dtype=wp.vec3, device=device)
+def _as_vec3_array(vertices, device) -> wp.array:
+    if isinstance(vertices, wp.array):
+        return vertices.to(device) if vertices.device != device else vertices
+    return wp.array(np.asarray(vertices, dtype=np.float32).reshape(-1, 3), dtype=wp.vec3, device=device)
 
 
-def _as_index_array(faces, device) -> wp.array:
+def _as_index_array(indices, device) -> wp.array:
     """Return triangle indices as an ``int32`` array of shape ``(num_triangles, 3)`` on ``device``."""
-    if isinstance(faces, wp.array):
-        arr = faces if faces.dtype == wp.int32 else wp.array(faces.numpy(), dtype=wp.int32, device=faces.device)
+    if isinstance(indices, wp.array):
+        arr = indices if indices.dtype == wp.int32 else wp.array(indices.numpy(), dtype=wp.int32, device=indices.device)
         arr = arr.to(device) if arr.device != device else arr
         shape = arr.shape
     else:
-        arr = np.asarray(faces, dtype=np.int32)
+        arr = np.asarray(indices, dtype=np.int32)
         shape = arr.shape
     if len(shape) == 2:
         valid = shape[1] == 3
@@ -310,9 +290,9 @@ def _as_index_array(faces, device) -> wp.array:
         valid = len(shape) == 1 and shape[0] % 3 == 0
     if not valid:
         raise ValueError(
-            f"`faces` must contain a multiple of 3 indices (flat or (num_triangles, 3)), got shape {tuple(shape)}."
+            f"`indices` must contain a multiple of 3 indices (flat or (num_triangles, 3)), got shape {tuple(shape)}."
         )
-    if isinstance(faces, wp.array):
+    if isinstance(indices, wp.array):
         return arr if len(shape) == 2 else arr.reshape((-1, 3))
     return wp.array(arr.reshape(-1, 3), dtype=wp.int32, device=device)
 
@@ -366,45 +346,46 @@ class UniformSampler:
     When the vertex positions move but the triangles do not, :meth:`update`
     rebuilds the area distribution from the new positions without any host
     synchronization, so it can be recorded in a CUDA graph. The vertex positions are
-    read from the array passed as ``points`` when it is a :class:`warp.array` on
+    read from the array passed as ``vertices`` when it is a :class:`warp.array` on
     ``device``; otherwise the sampler holds its own copy, available as
-    ``points``.
+    ``vertices``.
+
+    Methods whose names end in ``_sync`` read results back to the host, so they
+    synchronize the device and cannot run during CUDA graph capture. Nothing else
+    synchronizes after construction.
 
     Args:
-        points: Vertex positions, either a :class:`warp.array` of
+        vertices: Vertex positions, either a :class:`warp.array` of
             :class:`warp.vec3` or an array-like of shape ``(num_vertices, 3)``.
-        faces: Triangle vertex indices, as a :class:`warp.array` of
+        indices: Triangle vertex indices, as a :class:`warp.array` of
             :class:`warp.int32` or an array-like, either with shape
             ``(num_triangles, 3)`` or flat with length ``3 * num_triangles``.
         face_areas: Optional per-triangle areas of length ``num_triangles``,
             either a :class:`warp.array` of :class:`warp.float32` or an array-like.
             Supply them to reuse areas the caller already has; when ``None`` they
-            are computed from ``points`` and ``faces``. A :class:`warp.float32`
+            are computed from ``vertices`` and ``indices``. A :class:`warp.float32`
             array on ``device`` is read in place by :meth:`update`; anything else
             is a snapshot.
         device: Device on which to build the sampler. Defaults to the device of
-            ``points`` when it is a :class:`warp.array`, otherwise the current
+            ``vertices`` when it is a :class:`warp.array`, otherwise the current
             device.
 
     Attributes:
-        total_area: Total surface area of the mesh when the sampler was built, as a
-            host ``float``. Not refreshed by :meth:`update`, which never reads back to
-            the host.
-        total_area_device: :class:`warp.array` of :class:`warp.float64` and shape
-            ``(1,)`` holding the current total surface area. :meth:`update` refreshes it
-            on the device, so device code and CUDA graphs can read it without a sync.
+        total_area: :class:`warp.array` of :class:`warp.float64` and shape ``(1,)``
+            holding the current total surface area. :meth:`update` refreshes it on the
+            device; :meth:`total_area_sync` reads it on the host.
     """
 
-    def __init__(self, points, faces, *, face_areas=None, device: DeviceLike | None = None):
+    def __init__(self, vertices, indices, *, face_areas=None, device: DeviceLike | None = None):
         if device is None:
-            device = points.device if isinstance(points, wp.array) else wp.get_device()
+            device = vertices.device if isinstance(vertices, wp.array) else wp.get_device()
         self.device = wp.get_device(device)
 
-        self.points = _as_vec3_array(points, self.device)
-        self.indices = _as_index_array(faces, self.device)
+        self.vertices = _as_vec3_array(vertices, self.device)
+        self.indices = _as_index_array(indices, self.device)
         self.num_triangles = self.indices.shape[0]
         if self.num_triangles == 0:
-            raise ValueError("`faces` must describe at least one triangle.")
+            raise ValueError("`indices` must describe at least one triangle.")
 
         self._face_areas = None
         if face_areas is not None:
@@ -420,28 +401,34 @@ class UniformSampler:
         self._areas = wp.empty(self.num_triangles, dtype=wp.float64, device=self.device)
         self._cumulative = wp.empty(self.num_triangles, dtype=wp.float64, device=self.device)
         self.cdf = wp.empty(self.num_triangles, dtype=wp.float64, device=self.device)
-        self.total_area_device = wp.zeros(1, dtype=wp.float64, device=self.device)
+        self.total_area = wp.zeros(1, dtype=wp.float64, device=self.device)
         self._error = wp.zeros(1, dtype=wp.int32, device=self.device)
 
         self.state = UniformSamplerState()
-        self.state.points = self.points
+        self.state.vertices = self.vertices
         self.state.indices = self.indices
         self.state.cdf = self.cdf
 
         self.update()
-        self.check_error()
+        # Raise now, rather than on first use, if the input was invalid.
+        self.status_sync()
 
-        # Handy for sizing candidate pools (e.g. Poisson-disk sampling).
-        self.total_area = float(self.total_area_device.numpy()[0])
+    def status_sync(self) -> None:
+        """Raise ``ValueError`` if the latest :meth:`update` found invalid input, synchronizing the device.
 
-    def check_error(self) -> None:
-        """Raise ``ValueError`` if the last :meth:`update` found invalid input.
-
-        :meth:`update` cannot raise because it never reads back to the host. It
-        records a device-side error instead, which this method reads, so calling it
-        synchronizes the device.
+        :meth:`update` cannot raise because it never reads back to the host, so it
+        records invalid input on the device instead, and this method reads it.
         """
         _raise_for_error(int(self._error.numpy()[0]), supplied_areas=self._face_areas is not None)
+
+    def total_area_sync(self) -> float:
+        """Return the current total surface area on the host, synchronizing the device.
+
+        Raises:
+            ValueError: If the latest :meth:`update` found invalid input.
+        """
+        self.status_sync()
+        return float(self.total_area.numpy()[0])
 
     def update(self) -> None:
         """Rebuild the area distribution from the current vertex positions.
@@ -450,16 +437,15 @@ class UniformSampler:
         construction) have changed in place while the triangles stay the same.
         It launches only device work and allocates nothing, so it can be captured
         in a CUDA graph. Invalid input, such as non-finite areas or a zero total
-        area, is recorded on the device and raised by :meth:`check_error`.
-        :attr:`total_area_device` holds the new total area; :attr:`total_area`
-        keeps the value from construction.
+        area, is recorded on the device and raised by :meth:`status_sync`.
+        :attr:`total_area` receives the new total area.
         """
         self._error.zero_()
         if self._face_areas is None:
             wp.launch(
                 _triangle_areas_kernel,
                 dim=self.num_triangles,
-                inputs=[self.points, self.indices],
+                inputs=[self.vertices, self.indices],
                 outputs=[self._areas, self._error],
                 device=self.device,
             )
@@ -483,7 +469,7 @@ class UniformSampler:
             _store_total_area_kernel,
             dim=1,
             inputs=[self._cumulative],
-            outputs=[self.total_area_device],
+            outputs=[self.total_area],
             device=self.device,
         )
 
@@ -572,14 +558,14 @@ def _eval_positions_kernel(
     out_positions[tid] = embed_sample(state, sample)
 
 
-def uniformly_sample(
-    points,
-    faces,
+def uniform_sample(
+    vertices,
+    indices,
     num_samples: int,
     *,
     seed: int = 0,
     device: DeviceLike | None = None,
-) -> tuple[wp.array, wp.array]:
+) -> tuple[wp.array, wp.array, wp.array]:
     """Sample points uniformly over the surface of a triangle mesh.
 
     Each triangle is chosen with probability proportional to its area, then a
@@ -589,23 +575,31 @@ def uniformly_sample(
     :class:`UniformSampler` directly to amortize the setup over many draws.
 
     Args:
-        points: Vertex positions, either a :class:`warp.array` of
+        vertices: Vertex positions, either a :class:`warp.array` of
             :class:`warp.vec3` or an array-like of shape ``(num_vertices, 3)``.
-        faces: Triangle vertex indices, as a :class:`warp.array` of
+        indices: Triangle vertex indices, as a :class:`warp.array` of
             :class:`warp.int32` or an array-like, either with shape
             ``(num_triangles, 3)`` or flat with length ``3 * num_triangles``.
         num_samples: Number of points to draw.
         seed: Seed for the random number generator.
-        device: Device on which to run. Defaults to the device of ``points``.
+        device: Device on which to run. Defaults to the device of ``vertices``.
 
     Returns:
-        A tuple ``(faces, uv)`` where ``faces`` is a :class:`warp.array` of
-        :class:`warp.int32` triangle indices and ``uv`` is a :class:`warp.array`
-        of :class:`warp.vec2` barycentric coordinates, matching the layout of
-        :class:`MeshSample`.
+        A tuple ``(faces, uv, points)`` of :class:`warp.array` giving each sample's
+        triangle index, barycentric coordinates (as in :class:`MeshSample`) and
+        position, in the same layout as :func:`poisson_disk_sample`.
     """
-    sampler = UniformSampler(points, faces, device=device)
-    return sampler.sample(num_samples, seed=seed)
+    sampler = UniformSampler(vertices, indices, device=device)
+    faces, uv = sampler.sample(num_samples, seed=seed)
+    points = wp.empty(num_samples, dtype=wp.vec3, device=sampler.device)
+    wp.launch(
+        _eval_positions_kernel,
+        dim=num_samples,
+        inputs=[sampler.state, faces, uv],
+        outputs=[points],
+        device=sampler.device,
+    )
+    return faces, uv, points
 
 
 ##########################################################################
@@ -1117,9 +1111,9 @@ class PoissonDiskSampler:
     The geodesic path is a strict addition; the Euclidean path is unchanged.
 
     Args:
-        points: Vertex positions, either a :class:`warp.array` of
+        vertices: Vertex positions, either a :class:`warp.array` of
             :class:`warp.vec3` or an array-like of shape ``(num_vertices, 3)``.
-        faces: Triangle vertex indices, as a :class:`warp.array` of
+        indices: Triangle vertex indices, as a :class:`warp.array` of
             :class:`warp.int32` or an array-like, either with shape
             ``(num_triangles, 3)`` or flat with length ``3 * num_triangles``.
         radius: Minimum distance between any two samples (Euclidean, or geodesic
@@ -1138,31 +1132,33 @@ class PoissonDiskSampler:
             implemented and measured to add nothing under this approximation.
         face_areas: Optional precomputed per-triangle areas forwarded to the
             internal :class:`UniformSampler`; computed from the mesh when ``None``.
-        device: Device on which to run. Defaults to the device of ``points``.
+        device: Device on which to run. Defaults to the device of ``vertices``.
 
     Attributes:
         radius: The minimum-distance radius used.
-        total_area: Total surface area of the mesh when the sampler was built, as a host
-            ``float``. Not refreshed by :meth:`update`.
-        points_buffer: Fixed-capacity :class:`warp.array` of :class:`warp.vec3` backing
-            :attr:`points`, with length ``num_candidates``. Only the first
-            ``sample_count[0]`` entries are valid.
-        faces_buffer: Fixed-capacity :class:`warp.array` backing :attr:`faces`.
-        uv_buffer: Fixed-capacity :class:`warp.array` backing :attr:`uv`.
-        sample_count: Device-side :class:`warp.array` of :class:`warp.int32` and shape
-            ``(1,)`` holding the number of valid samples after the latest solve.
+        points: :class:`warp.array` of :class:`warp.vec3` sample positions with capacity
+            ``num_candidates``. Only the first :attr:`sample_count` entries are valid.
+        faces: :class:`warp.array` of :class:`warp.int32` sample face indices, laid out
+            like :attr:`points`.
+        uv: :class:`warp.array` of :class:`warp.vec2` sample barycentric coordinates (as
+            in :class:`MeshSample`), laid out like :attr:`points`.
+        sample_count: :class:`warp.array` of :class:`warp.int32` and shape ``(1,)``
+            holding the number of valid samples after the latest solve.
+        total_area: :class:`warp.array` of :class:`warp.float64` and shape ``(1,)``
+            holding the current total surface area.
 
-    The host-side properties :attr:`points`, :attr:`faces`, :attr:`uv` and
-    :attr:`num_samples` read the result back, so they synchronize the device and
-    cannot be used while a CUDA graph is being captured. Device code and CUDA graphs
-    use the ``*_buffer`` arrays together with ``sample_count`` instead.
+    These attributes stay on the device and never synchronize, so device code and
+    CUDA graphs can use them directly. Methods whose names end in ``_sync`` read
+    results back to the host: :meth:`num_samples_sync` for the sample count,
+    :meth:`total_area_sync` for the area and :meth:`status_sync` for invalid input.
+    They synchronize the device and cannot run during CUDA graph capture.
 
     **Moving vertices and CUDA graphs.** :meth:`update` re-runs the whole pipeline on
     the current vertex positions with no host synchronization and no allocation, so it
     can be captured in a CUDA graph and replayed each frame while the vertices move
     in place. The triangle connectivity, ``radius``, ``num_candidates`` and ``seed``
     are fixed when the graph is captured. Because the candidate count is fixed, pass an
-    explicit ``num_candidates`` when the mesh area may change a lot. Pass ``points`` as
+    explicit ``num_candidates`` when the mesh area may change a lot. Pass ``vertices`` as
     a :class:`warp.array` on ``device`` so that the sampler reads it in place.
 
     **Memory.** The sampler keeps a workspace of roughly ``150 * num_candidates`` bytes
@@ -1172,8 +1168,8 @@ class PoissonDiskSampler:
 
     def __init__(
         self,
-        points,
-        faces,
+        vertices,
+        indices,
         radius: float,
         *,
         num_candidates: int | None = None,
@@ -1188,7 +1184,7 @@ class PoissonDiskSampler:
         if num_candidates is not None and num_candidates < 1:
             raise ValueError(f"`num_candidates` must be at least 1, got {num_candidates}.")
 
-        self._sampler = UniformSampler(points, faces, face_areas=face_areas, device=device)
+        self._sampler = UniformSampler(vertices, indices, face_areas=face_areas, device=device)
         self.device = self._sampler.device
         self.radius = float(radius)
         self.geodesic = bool(geodesic)
@@ -1197,7 +1193,7 @@ class PoissonDiskSampler:
 
         # Theoretical maximal count assumes hexagonal packing of disks of radius
         # ``radius / 2``, i.e. one sample per ``sqrt(3)/2 * radius^2`` of area.
-        n_est = self.total_area / (0.8660254037844386 * self.radius * self.radius)
+        n_est = self._sampler.total_area_sync() / (0.8660254037844386 * self.radius * self.radius)
         if num_candidates is None:
             num_candidates = int(max(1.0, candidate_multiplier * n_est))
         self.num_candidates = int(num_candidates)
@@ -1214,7 +1210,7 @@ class PoissonDiskSampler:
 
         self.update(self.seed)
         # Raise now, rather than on first use, if the input was invalid.
-        self._read_sample_count()
+        self.status_sync()
 
     def _allocate_workspace(self) -> None:
         """Allocate every array :meth:`update` uses, so that updating never allocates."""
@@ -1256,9 +1252,9 @@ class PoissonDiskSampler:
         # Compaction.
         self._mask = wp.empty(n, dtype=wp.int32, device=device)
         self._offsets = wp.empty(n, dtype=wp.int32, device=device)
-        self.points_buffer = wp.empty(n, dtype=wp.vec3, device=device)
-        self.faces_buffer = wp.empty(n, dtype=wp.int32, device=device)
-        self.uv_buffer = wp.empty(n, dtype=wp.vec2, device=device)
+        self.points = wp.empty(n, dtype=wp.vec3, device=device)
+        self.faces = wp.empty(n, dtype=wp.int32, device=device)
+        self.uv = wp.empty(n, dtype=wp.vec2, device=device)
         self.sample_count = wp.zeros(1, dtype=wp.int32, device=device)
 
     def update(self, seed: int | None = None) -> None:
@@ -1272,9 +1268,8 @@ class PoissonDiskSampler:
 
         Invalid input, such as non-finite vertex positions or a ``radius`` too small
         for the mesh extent, cannot be raised from here. It is recorded on the device,
-        yields no samples, and is raised as ``ValueError`` the next time
-        :attr:`num_samples`, :attr:`points`, :attr:`faces` or :attr:`uv` is read, or by
-        :meth:`check_error`.
+        yields no samples, and is raised as ``ValueError`` by :meth:`status_sync`,
+        :meth:`num_samples_sync` or :meth:`total_area_sync`.
 
         Args:
             seed: Seed for candidate generation and priorities. Defaults to the
@@ -1304,8 +1299,8 @@ class PoissonDiskSampler:
         self._bounds_hi.fill_(-1.0e30)
         wp.launch(
             _bounds_kernel,
-            dim=sampler.points.shape[0],
-            inputs=[sampler.points],
+            dim=sampler.vertices.shape[0],
+            inputs=[sampler.vertices],
             outputs=[self._bounds_lo, self._bounds_hi],
             device=device,
         )
@@ -1325,7 +1320,7 @@ class PoissonDiskSampler:
             wp.launch(
                 _eval_normals_kernel,
                 dim=n,
-                inputs=[sampler.points, sampler.indices, self._sorted_faces],
+                inputs=[sampler.vertices, sampler.indices, self._sorted_faces],
                 outputs=[self._sorted_normals],
                 device=device,
             )
@@ -1492,15 +1487,15 @@ class PoissonDiskSampler:
             _poisson_compact_kernel,
             dim=n,
             inputs=[self._mask, self._offsets, self._sorted_faces, self._sorted_uv, self._sorted_points],
-            outputs=[self.faces_buffer, self.uv_buffer, self.points_buffer],
+            outputs=[self.faces, self.uv, self.points],
             device=device,
         )
 
-    def check_error(self) -> None:
-        """Raise ``ValueError`` if the latest solve found invalid input.
+    def status_sync(self) -> None:
+        """Raise ``ValueError`` if the latest solve found invalid input, synchronizing the device.
 
         :meth:`update` cannot raise because it never reads back to the host, so it
-        records invalid input on the device instead. Reading this synchronizes the device.
+        records invalid input on the device instead, and this method reads it.
         """
         _raise_for_error(
             int(self._sampler._error.numpy()[0]),
@@ -1508,49 +1503,37 @@ class PoissonDiskSampler:
             radius=self.radius,
         )
 
-    def _read_sample_count(self) -> int:
-        self.check_error()
+    def num_samples_sync(self) -> int:
+        """Return the number of valid samples after the latest solve, synchronizing the device.
+
+        Raises:
+            ValueError: If the latest solve found invalid input.
+        """
+        self.status_sync()
         return int(self.sample_count.numpy()[0])
 
-    @property
-    def total_area_device(self) -> wp.array:
-        """Current total surface area as a device array of shape ``(1,)``, refreshed by :meth:`update`."""
-        return self._sampler.total_area_device
+    def total_area_sync(self) -> float:
+        """Return the current total surface area on the host, synchronizing the device.
 
-    @property
-    def num_samples(self) -> int:
-        """Number of samples after the latest solve. Reading it synchronizes the device."""
-        return self._read_sample_count()
-
-    @property
-    def points(self) -> wp.array:
-        """Sample positions (:class:`warp.vec3`), sized to :attr:`num_samples`."""
-        return self.points_buffer[: self._read_sample_count()]
-
-    @property
-    def faces(self) -> wp.array:
-        """Face index (:class:`warp.int32`) of each sample, sized to :attr:`num_samples`."""
-        return self.faces_buffer[: self._read_sample_count()]
-
-    @property
-    def uv(self) -> wp.array:
-        """Barycentric coordinates (:class:`warp.vec2`) of each sample, sized to :attr:`num_samples`."""
-        return self.uv_buffer[: self._read_sample_count()]
+        Raises:
+            ValueError: If the latest solve found invalid input.
+        """
+        self.status_sync()
+        return float(self.total_area.numpy()[0])
 
     def pair_correlation(self, *, r_max: float | None = None, num_bins: int = 64) -> tuple[np.ndarray, np.ndarray]:
         """Pair-correlation function of this sampler's points (see :func:`pair_correlation`).
 
-        Uses :attr:`total_area`, the area when the sampler was built, for the density
-        normalization. After :meth:`update` has changed the mesh area, call the module-level
-        :func:`pair_correlation` with the current area instead. For a Poisson-disk set,
-        ``g(r)`` is near zero below :attr:`radius`.
+        Uses the current sample set and surface area, so it synchronizes the device. For
+        a Poisson-disk set, ``g(r)`` is near zero below :attr:`radius`.
         """
-        return pair_correlation(self.points, self.total_area, r_max=r_max, num_bins=num_bins, device=self.device)
+        points = self.points[: self.num_samples_sync()]
+        return pair_correlation(points, self.total_area_sync(), r_max=r_max, num_bins=num_bins, device=self.device)
 
 
 def poisson_disk_sample(
-    points,
-    faces,
+    vertices,
+    indices,
     radius: float,
     *,
     num_candidates: int | None = None,
@@ -1565,13 +1548,13 @@ def poisson_disk_sample(
     Sampling is driven by a target ``radius``: no two returned samples are closer
     than ``radius`` and the set is maximal (the count is emergent). This is a
     convenience wrapper that builds a :class:`PoissonDiskSampler` and reads back
-    its result; construct the class directly to inspect the sampler or reuse the
-    candidate pool.
+    its sample count, so it synchronizes the device; construct the class directly to
+    inspect the sampler, reuse the candidate pool or avoid synchronization.
 
     Args:
-        points: Vertex positions, either a :class:`warp.array` of
+        vertices: Vertex positions, either a :class:`warp.array` of
             :class:`warp.vec3` or an array-like of shape ``(num_vertices, 3)``.
-        faces: Triangle vertex indices, as a :class:`warp.array` of
+        indices: Triangle vertex indices, as a :class:`warp.array` of
             :class:`warp.int32` or an array-like, either with shape
             ``(num_triangles, 3)`` or flat with length ``3 * num_triangles``.
         radius: Minimum distance between any two samples (Euclidean, or geodesic
@@ -1587,15 +1570,15 @@ def poisson_disk_sample(
             features. See :class:`PoissonDiskSampler`.
         face_areas: Optional precomputed per-triangle areas, forwarded to
             :class:`UniformSampler`. See :class:`PoissonDiskSampler`.
-        device: Device on which to run. Defaults to the device of ``points``.
+        device: Device on which to run. Defaults to the device of ``vertices``.
 
     Returns:
         A tuple ``(faces, uv, points)`` of :class:`warp.array` giving the face
         index, barycentric coordinates, and world-space position of each sample.
     """
     sampler = PoissonDiskSampler(
-        points,
-        faces,
+        vertices,
+        indices,
         radius,
         geodesic=geodesic,
         face_areas=face_areas,
@@ -1604,7 +1587,8 @@ def poisson_disk_sample(
         seed=seed,
         device=device,
     )
-    return sampler.faces, sampler.uv, sampler.points
+    count = sampler.num_samples_sync()
+    return sampler.faces[:count], sampler.uv[:count], sampler.points[:count]
 
 
 ##########################################################################

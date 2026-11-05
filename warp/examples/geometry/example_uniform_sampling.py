@@ -61,10 +61,9 @@ def sample_points_kernel(
     out_points: wp.array[wp.vec3],
 ):
     tid = wp.tid()
-    rng = wp.rand_init(seed, tid)
 
     # Draw one uniform surface sample and evaluate its world-space position.
-    s = warp.geometry.draw_sample(sampler, rng)
+    s = warp.geometry.draw_sample(sampler, seed, tid)
     out_points[tid] = warp.geometry.embed_sample(sampler, s)
 
 
@@ -72,8 +71,8 @@ class Example:
     def __init__(self, stage_path="example_uniform_sampling.usd", num_samples=4000):
         points, faces = build_torus()
         self.sampler = warp.geometry.UniformSampler(
-            points=wp.array(points, dtype=wp.vec3),
-            faces=wp.array(faces, dtype=wp.int32),
+            vertices=wp.array(points, dtype=wp.vec3),
+            indices=wp.array(faces, dtype=wp.int32),
         )
 
         self.points = wp.empty(shape=(num_samples,), dtype=wp.vec3)
@@ -104,7 +103,7 @@ class Example:
             self.renderer.begin_frame(self.frame / self.fps)
             self.renderer.render_mesh(
                 name="mesh",
-                points=self.sampler.points.numpy(),
+                points=self.sampler.vertices.numpy(),
                 indices=self.sampler.indices.numpy().reshape(-1),
                 colors=(0.35, 0.55, 0.9),
             )

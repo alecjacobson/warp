@@ -91,12 +91,13 @@ class Example:
             radius=radius,
             seed=0,
         )
-        self.samples = self.sampler.points.numpy()
+        num_samples = self.sampler.num_samples_sync()
+        self.samples = self.sampler.points.numpy()[:num_samples]
 
         r, g = self.sampler.pair_correlation(num_bins=48)
         inside = float(g[r < 0.85 * radius].mean())
         print(
-            f"radius={radius:.4g}  samples={self.sampler.num_samples}  "
+            f"radius={radius:.4g}  samples={num_samples}  "
             f"candidates={self.sampler.num_candidates}  g(r<0.85r)={inside:.3f}  peak_g={float(g.max()):.2f}"
         )
 

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Uniform surface sampling: warp.geometry.uniformly_sample and UniformSampler."""
+"""Uniform surface sampling: warp.geometry.uniform_sample and UniformSampler."""
 
 import unittest
 
@@ -83,7 +83,7 @@ def _icosahedron():
 
 def test_returns_valid_faces_and_barycentrics(test, device):
     points, faces = _two_triangles()
-    tri, uv = geo.uniformly_sample(points, faces, 4096, seed=0, device=device)
+    tri, uv, positions = geo.uniform_sample(points, faces, 4096, seed=0, device=device)
 
     tri_np = tri.numpy()
     uv_np = uv.numpy()
@@ -96,12 +96,15 @@ def test_returns_valid_faces_and_barycentrics(test, device):
     u, v = uv_np[:, 0], uv_np[:, 1]
     test.assertTrue(np.all(u >= 0.0) and np.all(v >= 0.0))
     test.assertTrue(np.all(u + v <= 1.0 + 1e-5))
+    # Positions come back too, matching the sampler's own evaluation.
+    expected = geo.UniformSampler(points, faces, device=device).sample_points(4096, seed=0)
+    np.testing.assert_array_equal(positions.numpy(), expected.numpy())
 
 
 def test_area_weighting(test, device):
     # A triangle should be selected with probability proportional to its area.
     points, faces = _two_triangles()
-    tri, _ = geo.uniformly_sample(points, faces, 400000, seed=123, device=device)
+    tri, _, _ = geo.uniform_sample(points, faces, 400000, seed=123, device=device)
 
     frac_face1 = float(np.mean(tri.numpy() == 1))
     # Expected 3/4; allow a small statistical margin.
@@ -112,7 +115,7 @@ def test_within_triangle_uniform(test, device):
     # On a single triangle the mean barycentric u and v should approach 1/3.
     points = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float32)
     faces = np.array([0, 1, 2], dtype=np.int32)
-    _, uv = geo.uniformly_sample(points, faces, 500000, seed=5, device=device)
+    _, uv, _ = geo.uniform_sample(points, faces, 500000, seed=5, device=device)
 
     means = uv.numpy().mean(axis=0)
     np.testing.assert_allclose(means, [1.0 / 3.0, 1.0 / 3.0], atol=0.005)
@@ -151,22 +154,34 @@ def test_sample_output_on_other_device_raises(test, device):
         )
 
 
-def test_embed_sample_matches_barycentric_interpolation(test, device):
-    """Evaluate sample positions by barycentric interpolation of the triangle vertices."""
+@wp.kernel
+def _mesh_positions_kernel(mesh: wp.uint64, faces: wp.array[wp.int32], uv: wp.array[wp.vec2], out: wp.array[wp.vec3]):
+    tid = wp.tid()
+    out[tid] = wp.mesh_eval_position(mesh, faces[tid], uv[tid][0], uv[tid][1])
+
+
+def test_embed_sample_matches_mesh_eval_position(test, device):
+    """Evaluate sample positions with the same barycentric convention as wp.mesh_eval_position."""
     points, faces = _two_triangles()
     sampler = geo.UniformSampler(points, faces, device=device)
     f, uv = sampler.sample(1000, seed=4)
     positions = sampler.sample_points(1000, seed=4).numpy()
 
-    f = f.numpy()
+    mesh = wp.Mesh(
+        points=wp.array(points, dtype=wp.vec3, device=device), indices=wp.array(faces, dtype=wp.int32, device=device)
+    )
+    builtin = wp.empty(1000, dtype=wp.vec3, device=device)
+    wp.launch(_mesh_positions_kernel, dim=1000, inputs=[mesh.id, f, uv], outputs=[builtin], device=device)
+    np.testing.assert_allclose(positions, builtin.numpy(), atol=1e-6)
+
+    tri = np.asarray(faces).reshape(-1, 3)[f.numpy()]
     uv = uv.numpy()
-    tri = np.asarray(faces).reshape(-1, 3)[f]
     pts = np.asarray(points, dtype=np.float32)
-    expected = pts[tri[:, 0]] * (1.0 - uv[:, :1] - uv[:, 1:]) + pts[tri[:, 1]] * uv[:, :1] + pts[tri[:, 2]] * uv[:, 1:]
+    expected = pts[tri[:, 0]] * uv[:, :1] + pts[tri[:, 1]] * uv[:, 1:] + pts[tri[:, 2]] * (1.0 - uv[:, :1] - uv[:, 1:])
     np.testing.assert_allclose(positions, expected, atol=1e-6)
 
     # The device state follows vertices that move in place.
-    sampler.points.assign(sampler.points.numpy() + np.array([0.0, 0.0, 1.0], dtype=np.float32))
+    sampler.vertices.assign(sampler.vertices.numpy() + np.array([0.0, 0.0, 1.0], dtype=np.float32))
     moved = sampler.sample_points(1000, seed=4).numpy()
     np.testing.assert_allclose(moved, positions + np.array([0.0, 0.0, 1.0]), atol=1e-6)
 
@@ -232,8 +247,7 @@ def test_draw_sample_in_kernel(test, device):
         out_faces: wp.array[wp.int32],
     ):
         tid = wp.tid()
-        rng = wp.rand_init(seed, tid)
-        s = geo.draw_sample(state, rng)
+        s = geo.draw_sample(state, seed, tid)
         out_faces[tid] = s.face
 
     out_faces = wp.empty(4096, dtype=wp.int32, device=device)
@@ -242,6 +256,30 @@ def test_draw_sample_in_kernel(test, device):
     f = out_faces.numpy()
     test.assertTrue(np.all((f == 0) | (f == 1)))
     test.assertTrue(np.any(f == 0) and np.any(f == 1))
+    # The kernel draws the same samples as the host-side sampler.
+    np.testing.assert_array_equal(f, sampler.sample(4096, seed=9)[0].numpy())
+
+
+@wp.kernel
+def _draw_twice_kernel(
+    state: geo.UniformSamplerState, seed: int, out_first: wp.array[wp.vec2], out_second: wp.array[wp.vec2]
+):
+    tid = wp.tid()
+    out_first[tid] = geo.draw_sample(state, seed, 2 * tid).uv
+    out_second[tid] = geo.draw_sample(state, seed, 2 * tid + 1).uv
+
+
+def test_draw_sample_offsets_give_distinct_draws(test, device):
+    """Draw different samples for different offsets of one seed, and repeat them for equal offsets."""
+    points, faces = _two_triangles()
+    sampler = geo.UniformSampler(points, faces, device=device)
+    first = wp.empty(256, dtype=wp.vec2, device=device)
+    second = wp.empty_like(first)
+    wp.launch(_draw_twice_kernel, dim=256, inputs=[sampler.state, 3], outputs=[first, second], device=device)
+    test.assertFalse(np.any(np.all(first.numpy() == second.numpy(), axis=1)))
+    again = wp.empty_like(first)
+    wp.launch(_draw_twice_kernel, dim=256, inputs=[sampler.state, 3], outputs=[again, second], device=device)
+    np.testing.assert_array_equal(first.numpy(), again.numpy())
 
 
 def test_zero_area_mesh_raises(test, device):
@@ -285,10 +323,9 @@ def test_update_matches_rebuild(test, device):
 
     rebuilt = geo.UniformSampler(moved, faces, device=device)
     np.testing.assert_allclose(sampler.cdf.numpy(), rebuilt.cdf.numpy(), rtol=1.0e-12)
-    # The device-side area follows the update, while the host snapshot keeps its value.
-    np.testing.assert_allclose(sampler.total_area_device.numpy(), [rebuilt.total_area], rtol=1.0e-12)
-    test.assertAlmostEqual(sampler.total_area, 4.0, places=6)
-    test.assertAlmostEqual(rebuilt.total_area, 3.0, places=6)
+    # The device-side area follows the update.
+    np.testing.assert_allclose(sampler.total_area.numpy(), rebuilt.total_area.numpy(), rtol=1.0e-12)
+    test.assertAlmostEqual(sampler.total_area_sync(), 3.0, places=6)
     # Every draw lands on triangle 0 now that triangle 1 has no area.
     draws, _ = sampler.sample(2000, seed=4)
     test.assertTrue(np.all(draws.numpy() == 0))
@@ -313,11 +350,11 @@ def test_update_in_cuda_graph(test, device):
 
     rebuilt = geo.UniformSampler(moved, faces, device=device)
     np.testing.assert_allclose(sampler.cdf.numpy(), rebuilt.cdf.numpy(), rtol=1.0e-12)
-    np.testing.assert_allclose(sampler.total_area_device.numpy(), [rebuilt.total_area], rtol=1.0e-12)
+    np.testing.assert_allclose(sampler.total_area.numpy(), rebuilt.total_area.numpy(), rtol=1.0e-12)
 
 
 def test_update_reports_zero_area_on_check(test, device):
-    """Raise ValueError from check_error after an update collapses the whole mesh."""
+    """Raise ValueError from status_sync after an update collapses the whole mesh."""
     points, faces = _two_triangles()
     vertices = wp.array(points, dtype=wp.vec3, device=device)
     sampler = geo.UniformSampler(vertices, faces, device=device)
@@ -325,7 +362,9 @@ def test_update_reports_zero_area_on_check(test, device):
     vertices.zero_()
     sampler.update()
     with test.assertRaises(ValueError):
-        sampler.check_error()
+        sampler.status_sync()
+    with test.assertRaises(ValueError):
+        sampler.total_area_sync()
 
 
 def test_empty_faces_raises(test, device):
@@ -347,8 +386,8 @@ def test_face_areas_match_computed(test, device):
         points, faces, face_areas=wp.array(areas, dtype=wp.float32, device=device), device=device
     )
 
-    np.testing.assert_allclose(default.total_area, 4.0)
-    np.testing.assert_allclose(provided.total_area, 4.0)
+    np.testing.assert_allclose(default.total_area_sync(), 4.0)
+    np.testing.assert_allclose(provided.total_area_sync(), 4.0)
     np.testing.assert_array_equal(default.cdf.numpy(), provided.cdf.numpy())
     np.testing.assert_array_equal(default.cdf.numpy(), as_wp.cdf.numpy())
 
@@ -362,7 +401,7 @@ def test_face_areas_override_weighting(test, device):
     # The provided areas drive the weighting: passing equal areas for a mesh whose
     # triangles have geometric areas 1 and 3 must sample the two faces equally.
     points, faces = _two_triangles()
-    tri, _ = geo.uniformly_sample(points, faces, 200000, seed=1, device=device)  # geometric weighting -> ~3/4 face 1
+    tri, _, _ = geo.uniform_sample(points, faces, 200000, seed=1, device=device)  # geometric weighting -> ~3/4 face 1
     sampler = geo.UniformSampler(points, faces, face_areas=np.array([1.0, 1.0], dtype=np.float32), device=device)
     eq_tri, _ = sampler.sample(200000, seed=1)
 
@@ -414,13 +453,19 @@ add_function_test(
 )
 add_function_test(
     TestGeometrySampling,
-    "test_embed_sample_matches_barycentric_interpolation",
-    test_embed_sample_matches_barycentric_interpolation,
+    "test_embed_sample_matches_mesh_eval_position",
+    test_embed_sample_matches_mesh_eval_position,
     devices=devices,
 )
 add_function_test(TestGeometrySampling, "test_faces_as_2d_array", test_faces_as_2d_array, devices=devices)
 add_function_test(TestGeometrySampling, "test_seed_behavior", test_seed_behavior, devices=devices)
 add_function_test(TestGeometrySampling, "test_draw_sample_in_kernel", test_draw_sample_in_kernel, devices=devices)
+add_function_test(
+    TestGeometrySampling,
+    "test_draw_sample_offsets_give_distinct_draws",
+    test_draw_sample_offsets_give_distinct_draws,
+    devices=devices,
+)
 add_function_test(
     TestGeometrySampling,
     "test_cdf_resolves_equal_areas_on_large_mesh",
