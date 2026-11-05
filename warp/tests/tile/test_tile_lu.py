@@ -208,7 +208,7 @@ def check_lu_backward(test, device, mathdx):
                     # Tape.zero() also zeros the installed seed arrays.
                     seeds[lu].assign(weights)
                     seeds[original].assign(direct_weights)
-                    with wp.ScopedCapture(device=device) as capture:
+                    with wp.ScopedCapture(device=device, force_module_load=False) as capture:
                         tape.backward(grads=seeds)
                     wp.capture_launch(capture.graph)
 
@@ -283,6 +283,19 @@ class TestTileLU(unittest.TestCase):
                 with mock.patch.object(builtin_functions["tile_lu"], "is_differentiable", False):
                     old_hash = factor_kernel.module.hash_module()
                 self.assertNotEqual(old_hash, factor_kernel.module.hash_module())
+
+    def test_backward_cache_key_alias(self):
+        """Invalidate cached LU kernels that call the builtin through a local alias."""
+
+        @wp.kernel(module="unique", enable_backward=True)
+        def alias_kernel(matrices: wp.array2d[float], factors: wp.array2d[float]):
+            factor = wp.tile_lu
+            lu, _p, _info = factor(wp.tile_load(matrices, shape=(3, 3)))
+            wp.tile_store(factors, lu)
+
+        with mock.patch.object(builtin_functions["tile_lu"], "is_differentiable", False):
+            old_hash = alias_kernel.module.hash_module()
+        self.assertNotEqual(old_hash, alias_kernel.module.hash_module())
 
     def test_invalid_arguments(self):
         """Reject unsupported tile ranks, shapes, and precisions before launch."""
