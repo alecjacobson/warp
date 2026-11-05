@@ -5111,9 +5111,10 @@ def bsr_mv(
           tile-based computation. Defaults to ``0``, which determines whether to use tiles using a heuristic
           based on the matrix shape and number of non-zeros.
         algorithm: Kernel strategy for a batch of vectors. :attr:`BsrMvAlgorithm.AUTO` selects one
-          from the matrix, batch size and device; explicit choices always run the named strategy and
-          raise :class:`ValueError` where it is unsupported. Must be ``AUTO`` or ``LOOP`` for a
-          single vector.
+          from the matrix block shape and size, the batch size and the device, without synchronizing;
+          it does not count stored entries, so pin ``COLUMNS`` for large CSR matrices with dense or
+          irregular rows. Explicit choices always run the named strategy and raise
+          :class:`ValueError` where it is unsupported. Must be ``AUTO`` or ``LOOP`` for a single vector.
     """
 
     A, A_scale = _extract_matrix_and_scale(A)

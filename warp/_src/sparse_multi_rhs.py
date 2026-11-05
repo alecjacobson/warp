@@ -20,7 +20,16 @@ class BsrMvAlgorithm(enum.IntEnum):
     """
 
     AUTO = 0
-    """Select a strategy from the matrix, batch size and device. The selection rule may change between releases."""
+    """Select a strategy from the matrix block shape and size, the batch size and the device.
+
+    :func:`warp.sparse.bsr_mv` decides on every call without synchronizing, so it cannot
+    see how many entries each row actually stores. On CUDA it uses ``ROWS`` for 3x3 BSR
+    up to four vectors and ``COLUMNS`` beyond, ``ROWS`` for CSR matrices of at most 2048
+    rows, and ``LOOP`` for larger CSR matrices, which forgoes ``COLUMNS`` speedups on
+    dense or irregular rows. Prepared operators that decide once at construction can count
+    stored entries and choose ``COLUMNS`` for such rows. The CPU uses ``ROWS``. The rule was fitted on one GPU model and may change
+    between releases; pin a strategy when the best choice for a workload is known.
+    """
 
     LOOP = 1
     """Apply the single-vector product to each row in turn. Supports every matrix, device and ``transpose``."""
@@ -297,15 +306,64 @@ def supports(algorithm, A, device):
     return A.row_counts is None or A.block_shape == (1, 1) or not device.is_cuda
 
 
-def resolve(algorithm, A, count, device, transpose):
-    """Return the concrete strategy for a batch of ``count`` vectors, validating explicit choices."""
+def auto_strategy(block_shape, rows, count, is_cuda, density=None):
+    """Return the strategy ``AUTO`` selects for a supported matrix.
+
+    Args:
+        block_shape: ``(1, 1)`` or ``(3, 3)``.
+        rows: Scalar row count.
+        count: Batch size.
+        is_cuda: Whether the product runs on CUDA.
+        density: Mean stored blocks per block row, or ``None`` when unknown, which
+            selects the rule that needs no stored-entry count.
+    """
+    if not is_cuda:
+        return BsrMvAlgorithm.ROWS
+    # Thresholds come from a sweep over FEM and irregular matrices on an L40 GPU
+    # (asv/benchmarks/sparse/matrix_vector_batch.py).
+    if block_shape == (3, 3):
+        return BsrMvAlgorithm.ROWS if count <= 4 else BsrMvAlgorithm.COLUMNS
+    if count < 2:
+        return BsrMvAlgorithm.LOOP
+    if rows <= 2048:
+        return BsrMvAlgorithm.ROWS
+    if density is None or density <= 16:
+        return BsrMvAlgorithm.LOOP
+    if density <= 32:
+        if count <= 2:
+            return BsrMvAlgorithm.LOOP
+        return BsrMvAlgorithm.ROWS if count <= 4 else BsrMvAlgorithm.COLUMNS
+    return BsrMvAlgorithm.COLUMNS
+
+
+def stored_density(A):
+    """Return the mean stored blocks per block row, reading the count back from the device.
+
+    This synchronizes, so call it once while preparing, outside graph capture.
+    """
+    if A.nrow == 0:
+        return 0.0
+    if A.row_counts is None:
+        stored = int(A.offsets.numpy()[A.nrow])
+    else:
+        stored = int(A.row_counts.numpy()[: A.nrow].sum())
+    return stored / A.nrow
+
+
+def resolve(algorithm, A, count, device, transpose, density=None):
+    """Return the concrete strategy for a batch of ``count`` vectors, validating explicit choices.
+
+    ``density`` is the mean stored blocks per block row when the caller knows it; see
+    :func:`auto_strategy`.
+    """
     if not isinstance(algorithm, BsrMvAlgorithm):
         raise TypeError("algorithm must be a BsrMvAlgorithm")
     if algorithm == BsrMvAlgorithm.AUTO:
-        if transpose or count < 2:
+        if transpose or not supports(BsrMvAlgorithm.ROWS, A, device):
             return BsrMvAlgorithm.LOOP
-        preferred = BsrMvAlgorithm.COLUMNS if device.is_cuda else BsrMvAlgorithm.ROWS
-        return preferred if supports(preferred, A, device) else BsrMvAlgorithm.LOOP
+        if count < 2 and density is None:
+            return BsrMvAlgorithm.LOOP
+        return auto_strategy(A.block_shape, A.shape[0], count, device.is_cuda, density)
     if algorithm == BsrMvAlgorithm.LOOP:
         return algorithm
     if transpose:

@@ -457,11 +457,23 @@ one row per vector:
     bsr_mv(A, X, Y)  # Y[r] = A @ X[r] for every row r
     bsr_mv(A, X, Y, algorithm=BsrMvAlgorithm.ROWS)  # pin a strategy
 
-Reading each matrix row once for several vectors is usually faster than separate products.
-:class:`BsrMvAlgorithm` selects the kernel strategy: ``AUTO`` chooses one from the matrix,
-batch size and device, while ``LOOP``, ``ROWS`` and ``COLUMNS`` pin a strategy, which helps when
-the best choice for a workload is known. Pass ``work_buffer`` to reuse scratch storage across
-calls, for example inside a captured graph.
+Reading each matrix row once for several vectors is often, but not always, faster than separate
+products. :class:`BsrMvAlgorithm` selects the kernel strategy, and ``LOOP``, ``ROWS`` and
+``COLUMNS`` pin one, which helps when the best choice for a workload is known. Pass
+``work_buffer`` to reuse scratch storage across calls, for example inside a captured graph.
+
+``AUTO`` resolves as follows:
+
+* :func:`bsr_mv` decides on every call and never synchronizes, so it works inside captured
+  graphs but cannot see how many entries each row actually stores; the stored count of a
+  compact matrix is only an upper bound on the host, and a padded matrix stores spare
+  capacity. On CUDA it picks ``ROWS`` for 3x3 BSR up to four vectors and ``COLUMNS``
+  beyond, ``ROWS`` for CSR matrices of at most 2048 rows, and ``LOOP`` for larger CSR
+  matrices. Large CSR matrices with dense or irregular rows can be several times faster
+  with ``COLUMNS`` pinned.
+
+On the CPU, ``AUTO`` uses ``ROWS``. The thresholds were fitted to finite-element and
+irregular matrices on one GPU model and may change between releases.
 
 
 Kernel-level utilities

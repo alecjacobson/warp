@@ -2173,12 +2173,15 @@ def test_bsr_mv_batch(test, device):
 
 def test_bsr_mv_batch_selection(test, device):
     """Check which strategy AUTO selects and that explicit strategies reject what they cannot run."""
-    from warp._src.sparse_multi_rhs import resolve  # noqa: PLC0415
+    from warp._src.sparse_multi_rhs import resolve, stored_density  # noqa: PLC0415
 
     device = wp.get_device(device)
     A, dense = _batch_matrix(device, wp.float64, 1, False)
-    preferred = BsrMvAlgorithm.COLUMNS if device.is_cuda else BsrMvAlgorithm.ROWS
-    test.assertEqual(resolve(BsrMvAlgorithm.AUTO, A, 8, device, False), preferred)
+    # The small test matrix uses ROWS on both CPU and CUDA.
+    test.assertEqual(resolve(BsrMvAlgorithm.AUTO, A, 8, device, False), BsrMvAlgorithm.ROWS)
+    test.assertAlmostEqual(stored_density(A), np.count_nonzero(dense) / dense.shape[0])
+    padded, padded_dense = _batch_matrix(device, wp.float64, 1, True)
+    test.assertAlmostEqual(stored_density(padded), np.count_nonzero(padded_dense) / padded_dense.shape[0])
     test.assertEqual(resolve(BsrMvAlgorithm.AUTO, A, 1, device, False), BsrMvAlgorithm.LOOP)
     test.assertEqual(resolve(BsrMvAlgorithm.AUTO, A, 8, device, True), BsrMvAlgorithm.LOOP)
     diagonal = wp.array([0, 1], dtype=int, device=device)
@@ -2224,6 +2227,26 @@ def test_bsr_mv_batch_selection(test, device):
 
 
 class TestSparse(unittest.TestCase):
+    def test_bsr_mv_batch_auto_rule(self):
+        """Check AUTO choices on the benchmarked matrix structures, with and without stored-entry counts."""
+        from warp._src.sparse_multi_rhs import auto_strategy  # noqa: PLC0415
+
+        loop, rows, columns = BsrMvAlgorithm.LOOP, BsrMvAlgorithm.ROWS, BsrMvAlgorithm.COLUMNS
+        counts = (1, 2, 4, 8, 16, 33, 64)
+        # (block shape, scalar rows, stored blocks per row, choices with the count, choices without)
+        cases = {
+            "poisson2d": ((1, 1), 66049, 8.95, (loop,) * 7, (loop,) * 7),
+            "poisson3d": ((1, 1), 68921, 25.7, (loop, loop, rows) + (columns,) * 4, (loop,) * 7),
+            "elastic3d": ((3, 3), 46875, 24.9, (rows,) * 3 + (columns,) * 4, (rows,) * 3 + (columns,) * 4),
+            "irregular": ((1, 1), 32768, 48.5, (loop,) + (columns,) * 6, (loop,) * 7),
+            "warpack": ((1, 1), 1089, 8.64, (loop,) + (rows,) * 6, (loop,) + (rows,) * 6),
+        }
+        for name, (block, size, density, prepared, per_call) in cases.items():
+            for count, with_density, without_density in zip(counts, prepared, per_call, strict=True):
+                self.assertEqual(auto_strategy(block, size, count, True, density), with_density, (name, count))
+                self.assertEqual(auto_strategy(block, size, count, True), without_density, (name, count))
+                self.assertEqual(auto_strategy(block, size, count, False, density), rows, (name, count))
+
     def test_bsr_copy_scale(self):
         nrow = 6
         bsize = 2
