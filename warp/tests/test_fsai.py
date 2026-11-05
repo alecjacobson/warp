@@ -1024,6 +1024,9 @@ def test_multi_rhs_validation(test, device):
         pre.as_multi_rhs(True)
     # Direct construction and the factory resolve the same default working dtype.
     test.assertEqual(FSAIMultiRHS(pre, 2).dtype, pre.as_multi_rhs(2).dtype)
+    # Python float means float32, as elsewhere in Warp.
+    test.assertEqual(pre.as_multi_rhs(2, dtype=float).dtype, wp.float32)
+    test.assertEqual(FSAIMultiRHS(pre, 2, float).dtype, wp.float32)
     action = pre.as_multi_rhs(2)
     x = wp.ones(10, dtype=wp.float64, device=device)
     out = wp.full(10, 123.0, dtype=wp.float64, device=device)

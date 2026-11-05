@@ -20,6 +20,7 @@ from warp._src.sparse_multi_rhs import (
     transpose_axpby,
     transpose_rows,
 )
+from warp._src.types import type_to_warp
 
 
 @wp.kernel(enable_backward=False)
@@ -88,6 +89,7 @@ class FSAIMultiRHS(LinearOperator):
             raise ValueError("nrhs must be a positive integer")
         if dtype is None:
             dtype = wp.float32 if factor.scalar_type == wp.float16 else factor.scalar_type
+        dtype = type_to_warp(dtype)
         if dtype not in (wp.float32, wp.float64):
             raise ValueError("Working dtype must be float32 or float64")
         if not isinstance(algorithm, BsrMvAlgorithm):
