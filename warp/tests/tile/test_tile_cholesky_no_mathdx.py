@@ -465,7 +465,7 @@ def test_cholesky_storage_gradients(test, device):
                     if device.is_cuda and view:
                         tape.zero()
                         seed.assign(weights)
-                        with wp.ScopedCapture(device=device) as capture:
+                        with wp.ScopedCapture(device=device, force_module_load=False) as capture:
                             tape.backward(grads={factors: seed})
                         wp.capture_launch(capture.graph)
 
