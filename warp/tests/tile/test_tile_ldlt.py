@@ -322,6 +322,43 @@ def test_ldlt_mixed_scale(test, device):
                 np.testing.assert_allclose(block_diagonal[2, 2], schur, rtol=rtol)
 
 
+def test_ldlt_large_pivot_rhs(test, device):
+    """Return finite 2-by-2 pivot gradients when the incoming adjoints are near the dtype's range."""
+    # A 2-by-2 pivot block whose inverse overflows float32, plus an isolated third row.
+    # The third row's multipliers are zero, so seeding them with w gives a gradient of
+    # B^-1 w with respect to A[2, :2] and zero elsewhere. Forming w0 - (a / b) * w1 directly
+    # overflows even though B^-1 w = (-1.2, 3.6) is small.
+    a, b, c = 5e37, 1e38, -5e37
+    w = np.array([3e38, -3e38])
+    matrix = np.array([[a, b, 0], [b, c, 0], [0, 0, 1]])
+    expected_solution = np.linalg.solve(matrix[:2, :2], w)
+    for upper in (False, True):
+        with test.subTest(upper=upper):
+            stored = ldlt_input(matrix[None].astype(np.float32), upper, False)
+            a_array = wp.array(stored, dtype=wp.float32, device=device, requires_grad=True)
+            factors = wp.empty((1, 3, 3), dtype=wp.float32, device=device, requires_grad=True)
+            pivots = wp.empty((1, 3), dtype=wp.int32, device=device)
+            status = wp.empty((1, 1), dtype=wp.int32, device=device)
+            with wp.Tape() as tape:
+                wp.launch_tiled(
+                    make_ldlt_kernel(3, wp.float32, upper=upper, backward=True),
+                    dim=1,
+                    inputs=[a_array, factors, pivots, status],
+                    block_dim=64,
+                    device=device,
+                )
+            np.testing.assert_array_equal(status.numpy(), 0)
+            np.testing.assert_array_equal(pivots.numpy()[0], [-2, -2, 2])
+            weights = np.zeros((1, 3, 3), dtype=np.float32)
+            weights[0, 2, :2] = w
+            seed = wp.array(weights.transpose(0, 2, 1) if upper else weights, dtype=wp.float32, device=device)
+            tape.backward(grads={factors: seed})
+            expected = np.zeros((3, 3))
+            expected[2, :2] = expected_solution
+            gradient = a_array.grad.numpy()[0]
+            np.testing.assert_allclose(gradient.T if upper else gradient, expected, rtol=1e-5, atol=0)
+
+
 class TestTileLDLT(unittest.TestCase):
     def test_invalid_arguments(self):
         """Reject nonsquare tiles, integer tiles, and invalid triangle selectors."""
@@ -357,6 +394,7 @@ for name, function in (
     ("test_ldlt_backward", test_ldlt_backward),
     ("test_ldlt_scaling", test_ldlt_scaling),
     ("test_ldlt_mixed_scale", test_ldlt_mixed_scale),
+    ("test_ldlt_large_pivot_rhs", test_ldlt_large_pivot_rhs),
 ):
     add_function_test(TestTileLDLT, name, function, devices=get_test_devices())
     add_function_test(

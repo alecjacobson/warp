@@ -8,20 +8,58 @@
 
 namespace wp {
 
+// Return p - multiplier * r, halved when either operand exceeds one in
+// magnitude. With |multiplier| <= 1 the exact difference is at most twice the
+// larger operand, so halving prevents overflow. Halving is exact for those
+// operands, and small operands are left alone so subnormals keep their bits.
+template <typename T> inline CUDA_CALLABLE T ldlt_pivot_difference(T p, T multiplier, T r, bool& halved)
+{
+    halved = wp::max(wp::abs(p), wp::abs(r)) > T(1);
+    if (halved)
+        return T(0.5) * p - multiplier * (T(0.5) * r);
+    return p - multiplier * r;
+}
+
+// Return numerator / denominator, undoing any halving applied by
+// ldlt_pivot_difference() to either operand.
+template <typename T>
+inline CUDA_CALLABLE T ldlt_pivot_quotient(T numerator, bool numerator_halved, T denominator, bool denominator_halved)
+{
+    const T quotient = numerator / denominator;
+    if (numerator_halved == denominator_halved)
+        return quotient;
+    return numerator_halved ? T(2) * quotient : T(0.5) * quotient;
+}
+
 // Solve [[a, b], [b, c]] * [x0, x1]^T = [w0, w1]^T for a 2x2 diagonal block.
 // Eliminate with the larger of |a| and |b| so that the multiplier is at most
 // one in magnitude. Unlike scaling every entry by b, no intermediate ratio
-// such as c / b can overflow while the solution itself is finite.
+// such as c / b can overflow while the solution itself is finite, and the
+// differences are halved near the dtype's range so that large right-hand
+// sides do not overflow either.
 template <typename T> inline CUDA_CALLABLE void ldlt_solve_pivot_block(T a, T b, T c, T w0, T w1, T& x0, T& x1)
 {
+    bool numerator_halved;
+    bool denominator_halved;
     if (wp::abs(a) >= wp::abs(b)) {
         const T multiplier = b / a;
-        x1 = (w1 - multiplier * w0) / (c - multiplier * b);
-        x0 = (w0 - b * x1) / a;
+        const T numerator = ldlt_pivot_difference(w1, multiplier, w0, numerator_halved);
+        const T denominator = ldlt_pivot_difference(c, multiplier, b, denominator_halved);
+        x1 = ldlt_pivot_quotient(numerator, numerator_halved, denominator, denominator_halved);
+        // (w0 - b * x1) / a, with b / a bounded by one.
+        x0 = w0 / a - multiplier * x1;
     } else {
         const T multiplier = a / b;
-        x1 = (w0 - multiplier * w1) / (b - multiplier * c);
-        x0 = (w1 - c * x1) / b;
+        const T numerator = ldlt_pivot_difference(w0, multiplier, w1, numerator_halved);
+        const T denominator = ldlt_pivot_difference(b, multiplier, c, denominator_halved);
+        x1 = ldlt_pivot_quotient(numerator, numerator_halved, denominator, denominator_halved);
+        if (wp::abs(c) <= wp::abs(b)) {
+            // (w1 - c * x1) / b, with c / b bounded by one.
+            x0 = w1 / b - (c / b) * x1;
+        } else {
+            // c / b can overflow here, so keep the product form.
+            x0 = (w1 - c * x1) / b;
+        }
     }
 }
 
