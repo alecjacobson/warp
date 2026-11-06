@@ -122,10 +122,17 @@ def test_lu_native(test, device):
     check_lu(test, device, False)
 
 
+def skip_unless_mathdx_links(test):
+    """Skip a test that compiles and links cuSOLVERDx code when the build cannot."""
+    if not wp._src.context.runtime.core.wp_is_mathdx_enabled():
+        test.skipTest("Requires MathDx")
+    if wp.config.llvm_cuda:
+        test.skipTest("The Clang CUDA backend cannot link MathDx code")
+
+
 def test_lu_mathdx(test, device):
     """Validate cuSOLVERDx LU factors, pivots, singularities, and tile views."""
-    if not wp._src.context.runtime.core.wp_is_mathdx_enabled():
-        test.skipTest("Requires CUDA and MathDx")
+    skip_unless_mathdx_links(test)
     check_lu(test, device, True)
 
 
@@ -254,8 +261,7 @@ def test_lu_native_backward(test, device):
 
 def test_lu_mathdx_backward(test, device):
     """Check cuSOLVERDx packed-factor gradients through fixed row swaps and tile views."""
-    if not wp._src.context.runtime.core.wp_is_mathdx_enabled():
-        test.skipTest("Requires MathDx")
+    skip_unless_mathdx_links(test)
     check_lu_backward(test, device, True)
 
 
