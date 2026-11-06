@@ -260,12 +260,11 @@ def test_ldlt_scaling(test, device):
     # created with, so they can flush subnormals even when the launching thread does not.
     # Keep subnormal inputs to execution paths that use the launching thread's state.
     subnormal_inputs = not (device.is_cpu and wp.config.enable_cpu_blocks)
-    for dtype, precision, scales, tol in (
+    for dtype, precision, all_scales, tol in (
         (wp.float32, np.float32, [1e-39, 1e-22, 1e30], 2e-5),
         (wp.float64, np.float64, [1e-310, 1e-160, 1e290], 2e-11),
     ):
-        if not subnormal_inputs:
-            scales = [scale for scale in scales if scale >= np.finfo(precision).tiny]
+        scales = [scale for scale in all_scales if subnormal_inputs or scale >= np.finfo(precision).tiny]
         matrices = (np.array(scales)[:, None, None, None] * templates).reshape(-1, 3, 3).astype(precision)
         repeated_scales = np.repeat(scales, len(templates))
         a = wp.array(matrices, dtype=dtype, device=device)
