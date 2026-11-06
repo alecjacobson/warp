@@ -285,6 +285,43 @@ def test_ldlt_scaling(test, device):
             )
 
 
+def test_ldlt_mixed_scale(test, device):
+    """Return finite factors when a 2-by-2 pivot's diagonal-to-off-diagonal ratio overflows."""
+    # The pivot block [[0, b], [b, c]] has c / b beyond the dtype's range and an
+    # unrepresentable inverse, while the exact multipliers stay finite.
+    for dtype, precision, off_diagonal, diagonal, rtol in (
+        (wp.float32, np.float32, 1e-19, 4e19, 1e-5),
+        (wp.float64, np.float64, 1e-100, 2e208, 1e-12),
+    ):
+        b, c = off_diagonal, diagonal
+        matrix = np.array([[0, b, 0.9 * b], [b, c, 1.6 * c], [0.9 * b, 1.6 * c, 2 * c]], dtype=precision)
+        e, f, g = (float(value) for value in (matrix[2, 0], matrix[2, 1], matrix[2, 2]))
+        b, c = float(matrix[1, 0]), float(matrix[1, 1])
+        second = e / b
+        first = (f - c * second) / b
+        schur = g - (first * e + second * f)
+        for upper in (False, True):
+            with test.subTest(dtype=dtype.__name__, upper=upper):
+                a = wp.array(ldlt_input(matrix[None], upper, False), dtype=dtype, device=device)
+                factors = wp.empty_like(a)
+                pivots = wp.empty((1, 3), dtype=wp.int32, device=device)
+                status = wp.empty((1, 1), dtype=wp.int32, device=device)
+                wp.launch_tiled(
+                    make_ldlt_kernel(3, dtype, upper=upper),
+                    dim=1,
+                    inputs=[a, factors, pivots, status],
+                    block_dim=64,
+                    device=device,
+                )
+                np.testing.assert_array_equal(status.numpy(), 0)
+                np.testing.assert_array_equal(pivots.numpy()[0], [-2, -2, 2])
+                lower, block_diagonal, _, _ = unpack_ldlt(
+                    test, factors.numpy()[0].astype(np.float64), pivots.numpy()[0], upper
+                )
+                np.testing.assert_allclose(lower[2, :2], [first, second], rtol=rtol)
+                np.testing.assert_allclose(block_diagonal[2, 2], schur, rtol=rtol)
+
+
 class TestTileLDLT(unittest.TestCase):
     def test_invalid_arguments(self):
         """Reject nonsquare tiles, integer tiles, and invalid triangle selectors."""
@@ -319,6 +356,7 @@ for name, function in (
     ("test_ldlt_forward", test_ldlt_forward),
     ("test_ldlt_backward", test_ldlt_backward),
     ("test_ldlt_scaling", test_ldlt_scaling),
+    ("test_ldlt_mixed_scale", test_ldlt_mixed_scale),
 ):
     add_function_test(TestTileLDLT, name, function, devices=get_test_devices())
     add_function_test(

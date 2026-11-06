@@ -8,6 +8,23 @@
 
 namespace wp {
 
+// Solve [[a, b], [b, c]] * [x0, x1]^T = [w0, w1]^T for a 2x2 diagonal block.
+// Eliminate with the larger of |a| and |b| so that the multiplier is at most
+// one in magnitude. Unlike scaling every entry by b, no intermediate ratio
+// such as c / b can overflow while the solution itself is finite.
+template <typename T> inline CUDA_CALLABLE void ldlt_solve_pivot_block(T a, T b, T c, T w0, T w1, T& x0, T& x1)
+{
+    if (wp::abs(a) >= wp::abs(b)) {
+        const T multiplier = b / a;
+        x1 = (w1 - multiplier * w0) / (c - multiplier * b);
+        x0 = (w0 - b * x1) / a;
+    } else {
+        const T multiplier = a / b;
+        x1 = (w0 - multiplier * w1) / (b - multiplier * c);
+        x0 = (w1 - c * x1) / b;
+    }
+}
+
 // Bunch-Kaufman diagonal pivoting. Previously computed multiplier rows are
 // interchanged too, so the packed triangular factor satisfies P*A*P^T=L*D*L^T.
 // Upper stores L^T and reads the upper input triangle; elimination proceeds
@@ -178,7 +195,7 @@ CUDA_CALLABLE void tile_ldlt(TileA& A, TileLD& LD, TilePivots& pivots, TileInfo&
 
                 // Share inverse coefficients instead of repeating divisions in
                 // every multiplier row. Very small pivots can overflow the inverse
-                // even when L is finite; those use scaled division below.
+                // even when L is finite; those solve each row directly below.
                 if (k + block_size == n) {
                     // No multipliers remain, so no inverse is needed.
                 } else if (block_size == 1) {
@@ -244,14 +261,14 @@ CUDA_CALLABLE void tile_ldlt(TileA& A, TileLD& LD, TilePivots& pivots, TileInfo&
                     LD.data(idx(i, k)) = first_value * inverse[0] + second_value * inverse[1];
                     LD.data(idx(i, k + 1)) = first_value * inverse[1] + second_value * inverse[2];
                 } else {
-                    const T off_diagonal = LD.data(idx(k + 1, k));
-                    const T first_diagonal = LD.data(idx(k, k)) / off_diagonal;
-                    const T second_diagonal = LD.data(idx(k + 1, k + 1)) / off_diagonal;
-                    const T determinant = first_diagonal * second_diagonal - T(1);
-                    const T first_scaled = first_value / off_diagonal;
-                    const T second_scaled = second_value / off_diagonal;
-                    LD.data(idx(i, k)) = (second_diagonal * first_scaled - second_scaled) / determinant;
-                    LD.data(idx(i, k + 1)) = (first_diagonal * second_scaled - first_scaled) / determinant;
+                    T first_multiplier;
+                    T second_multiplier;
+                    ldlt_solve_pivot_block(
+                        LD.data(idx(k, k)), LD.data(idx(k + 1, k)), LD.data(idx(k + 1, k + 1)), first_value,
+                        second_value, first_multiplier, second_multiplier
+                    );
+                    LD.data(idx(i, k)) = first_multiplier;
+                    LD.data(idx(i, k + 1)) = second_multiplier;
                 }
             }
         }
@@ -378,14 +395,13 @@ CUDA_CALLABLE void adj_tile_ldlt(
                 if (!pair) {
                     value = lower_product(i, j) / LD.data(idx(j, j));
                 } else {
-                    const T off_diagonal = LD.data(idx(first + 1, first));
-                    const T first_diagonal = LD.data(idx(first, first)) / off_diagonal;
-                    const T second_diagonal = LD.data(idx(first + 1, first + 1)) / off_diagonal;
-                    const T first_scaled = lower_product(i, first) / off_diagonal;
-                    const T second_scaled = lower_product(i, first + 1) / off_diagonal;
-                    const T determinant = first_diagonal * second_diagonal - T(1);
-                    value = j == first ? (second_diagonal * first_scaled - second_scaled) / determinant
-                                       : (first_diagonal * second_scaled - first_scaled) / determinant;
+                    T first_value;
+                    T second_value;
+                    ldlt_solve_pivot_block(
+                        LD.data(idx(first, first)), LD.data(idx(first + 1, first)), LD.data(idx(first + 1, first + 1)),
+                        lower_product(i, first), lower_product(i, first + 1), first_value, second_value
+                    );
+                    value = j == first ? first_value : second_value;
                 }
             }
             work[i * n + j] = value;

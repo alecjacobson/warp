@@ -298,8 +298,10 @@ forward-equivalent rewrite preserves gradients. Check the complete kernel with
 Compare the total against
 :attr:`Device.max_shared_memory_per_block <warp.Device.max_shared_memory_per_block>` for the
 target device, leaving room for the static shared memory Warp reserves per block: at least
-four bytes per thread, or ``4 * block_dim``. A kernel launches only when its dynamic request
-*plus* that static reservation fits within the device budget. So a request slightly below
+four bytes per thread, or ``4 * block_dim``. Some differentiated tile operations, such as
+the backward pass of :func:`wp.tile_ldlt() <warp._src.lang.tile_ldlt>`, add their own static
+reservations. A kernel launches only when its dynamic request
+*plus* the static reservations fit within the device budget. So a request slightly below
 ``max_shared_memory_per_block`` can still fail, and raising ``block_dim`` lowers the dynamic
 ceiling without changing the tiles themselves. Warp does not report an oversized budget at
 compile time; see `Shared memory overflow`_ for how the failure surfaces.
@@ -739,8 +741,11 @@ matrices using Bunch-Kaufman pivoting with 1-by-1 and 2-by-2 diagonal blocks.
 It returns packed triangular/block-diagonal factors, symmetric swap and block
 information, and singularity status. Both precisions support differentiation
 of the packed factors with the recorded permutation and block choices held
-fixed. The implementation is native on both CPU and CUDA; benchmark the
-intended matrix sizes and workloads when choosing between LDLT and LU.
+fixed. On CUDA, a kernel compiled with backward support reserves
+``N * N * sizeof(dtype) + 8 * N`` bytes of static shared memory per block for
+the ``tile_ldlt`` adjoint, so subtract it from the shared memory budget. The
+implementation is native on both CPU and CUDA; benchmark the intended matrix
+sizes and workloads when choosing between LDLT and LU.
 
 Spatial Queries
 ^^^^^^^^^^^^^^^

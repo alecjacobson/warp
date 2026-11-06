@@ -19332,7 +19332,9 @@ add_builtin(
     are nondifferentiable. Gradients are undefined for singular inputs or at
     boundaries where the pivot or block choices change. Only the selected
     input triangle receives gradients; each off-diagonal input represents
-    both symmetric matrix entries.
+    both symmetric matrix entries. On CUDA, a kernel compiled with backward
+    support reserves ``N * N * sizeof(dtype) + 8 * N`` bytes of static shared
+    memory per block for the adjoint, in addition to its tiles.
 
     Args:
         A: A nonempty real tile with ``shape=(N, N)`` and finite entries in the selected triangle.
