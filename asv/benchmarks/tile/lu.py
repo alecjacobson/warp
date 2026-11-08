@@ -4,6 +4,7 @@
 import numpy as np
 
 import warp as wp
+from warp._src.context import builtin_functions
 
 from ..benchmarks_utils import LAUNCHES_PER_SAMPLE, CudaEventTimer, capture_launches, setup_once
 
@@ -27,20 +28,28 @@ def make_lu_kernel(n, dtype, mathdx):
     return factor_kernel
 
 
+# (tile size, batch count) pairs: single small and large factorizations,
+# plus small and medium tiles across many blocks.
+WORKLOADS = {"8x1": (8, 1), "8x4096": (8, 4096), "32x256": (32, 256), "64x1": (64, 1)}
+
+
 class TileLU:
     """Time 256 batched LU launches, including input/output traffic, on each backend."""
 
-    params = ([8, 32, 64], [1, 256, 4096], ["float32", "float64"], [False, True])
-    param_names = ["tile_size", "batch_count", "precision", "mathdx"]
+    params = (list(WORKLOADS), ["float32", "float64"], [False, True])
+    param_names = ["workload", "precision", "mathdx"]
     timer = CudaEventTimer()
 
     @setup_once
-    def setup(self, n, batches, precision, mathdx):
+    def setup(self, workload, precision, mathdx):
         wp.init()
+        if "tile_lu" not in builtin_functions:
+            raise NotImplementedError("Requires wp.tile_lu")
         if not wp.is_cuda_available():
             raise NotImplementedError("Requires CUDA")
         if mathdx and not wp._src.context.runtime.core.wp_is_mathdx_enabled():
             raise NotImplementedError("Requires MathDx")
+        n, batches = WORKLOADS[workload]
         self.device = wp.get_device("cuda:0")
         dtype = getattr(wp, precision)
         rng = np.random.default_rng(42)
@@ -60,5 +69,5 @@ class TileLU:
         wp.synchronize_device(self.device)
         self.graph = capture_launches(self.cmd.launch, LAUNCHES_PER_SAMPLE, self.device)
 
-    def time_cuda(self, n, batches, precision, mathdx):
+    def time_cuda(self, workload, precision, mathdx):
         wp.capture_launch(self.graph)
