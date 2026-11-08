@@ -11582,16 +11582,7 @@ def tile_lu(
 ) -> tuple[Tile[Float, tuple[int, int]], Tile[int32, tuple[int]], Tile[int32, tuple[int]]]:
     """Compute an LU factorization with partial pivoting of a square tile ``A``.
 
-    Returns ``(lu, pivots, info)`` without modifying ``A``. The upper triangle of
-    ``lu`` contains ``U``; its strict lower triangle contains ``L`` with an implicit
-    unit diagonal. Applying the row swaps ``(k, pivots[k])`` in increasing order
-    to ``A`` gives ``P @ A = L @ U``. Pivot indices are zero-based and describe a
-    sequence of swaps, not a final permutation vector.
-
-    ``info`` is a one-element integer tile. ``info[0] == 0`` indicates success;
-    a positive value ``i`` indicates that ``U[i-1, i-1]`` is exactly zero and the
-    factors cannot be used for a nonsingular solve. The factorization completes
-    even for singular inputs. This status does not estimate conditioning.
+    ``A`` is not modified. The factorization completes even for singular inputs.
 
     Supports ``float32`` and ``float64``. On CUDA, uses cuSOLVERDx when available
     and :attr:`warp.config.enable_mathdx_solver` is enabled (also configurable per
@@ -11599,37 +11590,81 @@ def tile_lu(
     Pivot choices may differ between backends when magnitudes are tied.
 
     This is a cooperative operation, so every thread in the block must call it.
-    Automatic differentiation of the packed factors is supported on both backends
-    for nonsingular inputs, treating the recorded pivot permutation as fixed.
-    Pivot indices and status are nondifferentiable. Gradients are undefined for
-    singular inputs and at boundaries where the selected pivot permutation changes.
+
+    Gradients propagate through ``lu`` to ``A`` with the recorded pivot sequence
+    held fixed. ``pivots`` and ``info`` are nondifferentiable. Gradients are
+    undefined for singular inputs and where the selected pivot sequence changes.
 
     Args:
         A: A square tile with ``shape=(N, N)``.
 
     Returns:
-        A tuple containing packed ``L`` and ``U`` with ``shape=(N, N)``, the
-        zero-based row-swap indices as an ``int32`` tile with ``shape=(N,)``,
-        and an ``int32`` status tile with ``shape=(1,)`` indicating success or
-        the first exactly zero pivot. All outputs use shared storage.
+        A tuple ``(lu, pivots, info)`` of tiles in shared storage:
+
+        - ``lu``: The packed factors, with ``shape=(N, N)``. The upper triangle
+          holds ``U``. The strict lower triangle holds ``L``, whose unit diagonal
+          is implicit and not stored.
+        - ``pivots``: Zero-based row-swap indices, as an ``int32`` tile with
+          ``shape=(N,)``. Swapping rows ``k`` and ``pivots[k]`` of ``A`` for
+          ``k = 0, 1, ..., N-1`` in that order gives ``P @ A = L @ U``. The
+          indices are a sequence of swaps, not a permutation vector.
+        - ``info``: An ``int32`` tile with ``shape=(1,)``. ``info[0] == 0``
+          indicates success. A positive value ``i`` indicates that
+          ``U[i-1, i-1]`` is exactly zero, so the factors cannot be used for a
+          nonsingular solve. ``info`` does not estimate conditioning.
 
     Example:
-        .. code-block:: python
+
+        .. testsetup::
+
+            __name__ = "warp_docs_tile_lu"
+
+        .. testcode::
 
             @wp.kernel
-            def factor_kernel(
-                a: wp.array2d[float],
-                factors: wp.array2d[float],
-                pivots: wp.array1d[int],
-                status: wp.array1d[int],
-            ):
-                lu, p, info = wp.tile_lu(wp.tile_load(a, shape=(8, 8)))
-                wp.tile_store(factors, lu)
-                wp.tile_store(pivots, p)
-                wp.tile_store(status, info)
+            def solve_linear_system(a: wp.array2d[float], b: wp.array[float], x: wp.array[float], status: wp.array[int]):
+                lu, pivots, info = wp.tile_lu(wp.tile_load(a, shape=(3, 3)))
+                status[0] = info[0]
+                if info[0] == 0:
+                    # every thread solves the small system with the shared factors
+                    y = wp.vec3(b[0], b[1], b[2])
 
-            # Launch one cooperative block for the 8x8 matrix.
-            wp.launch_tiled(factor_kernel, dim=1, inputs=[a, factors, pivots, status], block_dim=32)"""
+                    # apply the row swaps to the right-hand side in order
+                    for k in range(3):
+                        p = pivots[k]
+                        swapped = y[k]
+                        y[k] = y[p]
+                        y[p] = swapped
+
+                    # forward substitution with the implicit unit diagonal of L
+                    for i in range(3):
+                        for j in range(i):
+                            y[i] -= lu[i, j] * y[j]
+
+                    # back substitution with U
+                    for i in range(2, -1, -1):
+                        for j in range(i + 1, 3):
+                            y[i] -= lu[i, j] * y[j]
+                        y[i] /= lu[i, i]
+
+                    for i in range(3):
+                        x[i] = y[i]
+
+            # the zero in the top-left corner requires a row swap
+            a = wp.array(np.array([[0.0, 2.0, 1.0], [1.0, 1.0, 1.0], [2.0, 1.0, 0.0]], dtype=np.float32))
+            b = wp.array(np.array([7.0, 6.0, 4.0], dtype=np.float32))
+            x = wp.zeros(3, dtype=float)
+            status = wp.zeros(1, dtype=int)
+
+            wp.launch_tiled(solve_linear_system, dim=1, inputs=[a, b], outputs=[x, status], block_dim=32)
+
+            print(status.numpy()[0])
+            print(np.round(x.numpy(), 3))
+
+        .. testoutput::
+
+            0
+            [1. 2. 3.]"""
     ...
 
 def tile_cholesky(A: Tile[Float, tuple[int, int]], fill_mode: str = "lower") -> Tile[Float, tuple[int, int]]:
