@@ -2757,12 +2757,11 @@ def _run_capturable_loop(
                 wp.capture_while(condition, do_cycle_with_condition)
             wp.capture_launch(capture.graph)
     elif device.is_cpu:
-        # CPU launches finish before returning, so reading the device-side
-        # condition adds no synchronization and stops the loop once converged.
-        for _ in range(0, maxiter, cycle_size):
-            if not condition.numpy()[0]:
-                break
-            do_cycle_with_condition()
+        # Outside capture, CPU launches finish before returning, so the host
+        # loop reads the condition without synchronizing. During CPU capture,
+        # launches only record, so capture_while records a while op instead
+        # of reading the not-yet-updated condition.
+        wp.capture_while(condition, do_cycle_with_condition)
     else:
         for _ in range(0, maxiter, cycle_size):
             do_cycle_with_condition()
