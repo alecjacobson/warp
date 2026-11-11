@@ -4638,10 +4638,11 @@ def _bsr_mm_record_adjoint(
         alpha: Scaling factor of the product, including any scaling of ``x`` and ``y``.
         beta: Scaling factor of the input ``z``.
     """
-    # Keep references to the arrays the forward product read, since the attributes of the matrices may be
-    # reassigned. The output topology is snapshot since later operations commonly rebuild it in place.
-    x = _bsr_topology_view(x, x.values)
-    y = _bsr_topology_view(y, y.values)
+    # Keep references to the values the forward product read, and snapshot the topologies, since later
+    # operations may rebuild them in place while the values arrays they replace still hold recorded data.
+    x_snapshot = _bsr_topology_view(x, x.values, clone_topology=True)
+    y = x_snapshot if y == x else _bsr_topology_view(y, y.values, clone_topology=True)
+    x = x_snapshot
     z = _bsr_topology_view(z, z.values, clone_topology=True)
     alpha = float(alpha)
     beta = float(beta)
@@ -5326,8 +5327,9 @@ def _bsr_mv_record_adjoint(
         beta: Scaling factor of the input ``y``.
         transpose: Whether the forward product used the transpose of ``A``.
     """
-    # Keep references to the arrays the forward product read, since the attributes of A may be reassigned.
-    A = _bsr_topology_view(A, A.values)
+    # Keep a reference to the values the forward product read, and snapshot the topology, since later
+    # operations may rebuild it in place while the values array it replaces still holds recorded data.
+    A = _bsr_topology_view(A, A.values, clone_topology=True)
 
     def backward():
         with _ScopedTapePause():

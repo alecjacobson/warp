@@ -2374,6 +2374,36 @@ def test_bsr_mv_gradient_aliasing(test, device):
     assert_np_equal(_bsr_dense_grad(A), np.outer(x_adj, x_in) * _bsr_dense_mask(A), tol=1.0e-10)
 
 
+def test_bsr_product_gradient_operand_rebuilt(test, device):
+    """Check product gradients when a later recorded bsr_mm rebuilds an operand's topology and replaces its values."""
+    rng = np.random.default_rng(123)
+    A = _make_gradient_test_bsr(4, 4, (1, 1), wp.float64, "compact", rng, device, nnz=3)
+    B = _make_gradient_test_bsr(4, 4, (1, 1), wp.float64, "compact", rng, device, nnz=8)
+    E = _make_dense_bsr(4, 4, (1, 1), rng, device)
+    x = wp.array(rng.random(4), dtype=wp.float64, device=device, requires_grad=True)
+
+    A_in = _bsr_with_values(A, A.values)
+    A_in.offsets, A_in.columns = wp.clone(A.offsets), wp.clone(A.columns)
+    A_dense, B_dense, x_np = _bsr_to_dense(A), _bsr_to_dense(B), x.numpy()
+
+    with wp.Tape() as tape:
+        D = bsr_mm(A, B)
+        y = bsr_mv(A, x)
+        bsr_mm(E, E, A, beta=0.5)
+
+    # The scenario requires the rebuild to replace the values array of A
+    test.assertIsNot(A.values, A_in.values)
+    test.assertFalse(np.array_equal(_bsr_dense_mask(A), _bsr_dense_mask(A_in)))
+
+    D.values.grad.fill_(1.0)
+    y.grad.fill_(1.0)
+    tape.backward()
+
+    D_adj_dense = np.ones_like(A_dense) * _bsr_dense_mask(D)
+    expected = (D_adj_dense @ B_dense.T + np.outer(np.ones(4), x_np)) * _bsr_dense_mask(A_in)
+    assert_np_equal(_bsr_dense_grad(A_in), expected, tol=1.0e-10)
+
+
 @wp.kernel
 def _overwrite_values_kernel(values: wp.array[wp.float64]):
     values[wp.tid()] = wp.float64(0.0)
@@ -2700,6 +2730,9 @@ add_function_test(
     TestSparse, "test_bsr_mm_gradient_2_3", make_test_bsr_mm_gradient((2, 3), wp.float64), devices=devices
 )
 add_function_test(TestSparse, "test_bsr_mm_gradient_aliasing", test_bsr_mm_gradient_aliasing, devices=devices)
+add_function_test(
+    TestSparse, "test_bsr_product_gradient_operand_rebuilt", test_bsr_product_gradient_operand_rebuilt, devices=devices
+)
 add_function_test(
     TestSparse, "test_bsr_product_gradient_retain_grad", test_bsr_product_gradient_retain_grad, devices=devices
 )
