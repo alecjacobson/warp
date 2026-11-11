@@ -1,0 +1,133 @@
+{
+  "case": {
+    "family": "sphere",
+    "requested_N": 1000000,
+    "Q": 8192,
+    "sigma": 0.0,
+    "seed": 1605,
+    "query_generation": "independent samples of the same distribution",
+    "N": 1000000,
+    "center": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": 2.0,
+    "noise_units": "fraction of original longest bounding-box edge",
+    "points_sha256": "7157dec553e41fd77b01209bb2f5a04de02c174578ae1fc2fab2c3ca86073348",
+    "queries_sha256": "bc13510abd283e372c680b0560be67fda6f947df118bcd75036d0dd7b8af5581",
+    "id": "sphere-n1000000-q8192-sigma0-k11",
+    "k": 11,
+    "file": "sphere-n1000000-q8192-sigma0.npz",
+    "file_sha256": "8594a6eeee0c31c2cbab1876c1da93a41ce66c02515cf4db4ab7133e59044ff2"
+  },
+  "counter_names": [
+    "traversal_iterations",
+    "point_distances",
+    "candidate_insert_calls"
+  ],
+  "variants": {
+    "isotropic0-leaf4": {
+      "mean": [
+        64.1326904296875,
+        25.25537109375,
+        19.493896484375
+      ],
+      "p99": [
+        89.0,
+        40.0,
+        30.0
+      ],
+      "max": [
+        114,
+        49,
+        38
+      ]
+    },
+    "isotropic1-leaf4": {
+      "mean": [
+        64.1324462890625,
+        25.2568359375,
+        19.493408203125
+      ],
+      "p99": [
+        89.0,
+        40.0,
+        30.0
+      ],
+      "max": [
+        114,
+        49,
+        38
+      ]
+    },
+    "isotropic0-leaf8": {
+      "mean": [
+        54.4227294921875,
+        33.2911376953125,
+        20.1875
+      ],
+      "p99": [
+        76.0,
+        54.090000000000146,
+        31.0
+      ],
+      "max": [
+        95,
+        67,
+        40
+      ]
+    },
+    "isotropic1-leaf8": {
+      "mean": [
+        54.4193115234375,
+        33.294921875,
+        20.1866455078125
+      ],
+      "p99": [
+        76.0,
+        54.0,
+        31.0
+      ],
+      "max": [
+        95,
+        67,
+        40
+      ]
+    },
+    "isotropic0-leaf32": {
+      "mean": [
+        42.1390380859375,
+        67.517822265625,
+        23.8414306640625
+      ],
+      "p99": [
+        60.0,
+        127.0,
+        41.0
+      ],
+      "max": [
+        77,
+        173,
+        55
+      ]
+    },
+    "isotropic1-leaf32": {
+      "mean": [
+        42.138427734375,
+        67.5186767578125,
+        23.8438720703125
+      ],
+      "p99": [
+        60.0,
+        127.0,
+        41.0
+      ],
+      "max": [
+        77,
+        173,
+        55
+      ]
+    }
+  }
+}

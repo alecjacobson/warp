@@ -621,9 +621,14 @@ __global__ void compute_total_bounds(
 }
 
 // compute inverse edge length, this is just done on the GPU to avoid a CPU->GPU sync point
-__global__ void compute_total_inv_edges(const vec3* total_lower, const vec3* total_upper, vec3* total_inv_edges)
+__global__ void
+compute_total_inv_edges(const vec3* total_lower, const vec3* total_upper, vec3* total_inv_edges, bool isotropic)
 {
     vec3 edges = (total_upper[0] - total_lower[0]);
+    // Per-axis normalization stretches thin point clouds into a cube. Preserve
+    // Euclidean proportions so Morton neighbors remain spatial neighbors.
+    if (isotropic)
+        edges = vec3(max(max(edges[0], edges[1]), edges[2]));
     edges += vec3(0.0001f);
 
     total_inv_edges[0] = vec3(1.0f / edges[0], 1.0f / edges[1], 1.0f / edges[2]);
@@ -709,7 +714,10 @@ void LinearBVHBuilderGPU::build(
         );
 
         // compute the total edge length
-        wp_launch_device(WP_CURRENT_CONTEXT, compute_total_inv_edges, 1, (total_lower, total_upper, total_inv_edges));
+        wp_launch_device(
+            WP_CURRENT_CONTEXT, compute_total_inv_edges, 1,
+            (total_lower, total_upper, total_inv_edges, item_lowers == item_uppers && !item_groups)
+        );
     }
 
     // assign 30-bit Morton code based on the centroid of each triangle and bounds for each leaf

@@ -1,0 +1,8 @@
+--- a/physicsnemo_standalone.py
++++ b/physicsnemo_isotropic.py
+@@ -128 +128 @@
+-    extent = points.max(dim=0).values - lo
++    extent = (points.max(dim=0).values - lo).max().expand(3)
+@@ -408 +408 @@
+-@torch.library.custom_op("physicsnemo::knn_warp", mutates_args=())
++@torch.library.custom_op("physicsnemo::physicsnemo_isotropic_experiment", mutates_args=())

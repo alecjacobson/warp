@@ -1,0 +1,84 @@
+--- a/warp/native/bvh.cu
++++ b/warp/native/bvh.cu
+@@ -590,0 +591,59 @@
++// Packed leaves are sparse in the original radix-node array. Let every lane
++// in a warp help each active leaf encountered by that warp, instead of leaving
++// most lanes idle during its reference gathers and bounds reduction.
++__global__ void refit_active_leaves_cooperative(
++    int n,
++    const int* parents,
++    int* child_count,
++    const int* primitive_indices,
++    BVHPackedNodeHalf* lowers,
++    BVHPackedNodeHalf* uppers,
++    const vec3* item_lowers,
++    const vec3* item_uppers
++)
++{
++    const int node = blockIdx.x * blockDim.x + threadIdx.x;
++    const int lane = threadIdx.x & 31;
++    int first = 0, last = 0;
++    bool active = false;
++    if (node < n && lowers[node].b) {
++        const int parent = parents[node];
++        active = parent == -1 || !lowers[parent].b;
++        if (active) {
++            first = lowers[node].i;
++            last = uppers[node].i;
++        }
++    }
++    unsigned mask = __ballot_sync(0xffffffff, active);
++    while (mask) {
++        const int owner = __ffs(mask) - 1;
++        const int start = __shfl_sync(0xffffffff, first, owner);
++        const int end = __shfl_sync(0xffffffff, last, owner);
++        const int leaf = __shfl_sync(0xffffffff, node, owner);
++        bounds3 bounds;
++        for (int p = start + lane; p < end; p += 32) {
++            const int item = primitive_indices[p];
++            bounds.add_bounds(item_lowers[item], item_uppers[item]);
++        }
++        for (int offset = 16; offset; offset /= 2) {
++            const vec3 lo(
++                __shfl_down_sync(0xffffffff, bounds.lower[0], offset),
++                __shfl_down_sync(0xffffffff, bounds.lower[1], offset),
++                __shfl_down_sync(0xffffffff, bounds.lower[2], offset)
++            );
++            const vec3 hi(
++                __shfl_down_sync(0xffffffff, bounds.upper[0], offset),
++                __shfl_down_sync(0xffffffff, bounds.upper[1], offset),
++                __shfl_down_sync(0xffffffff, bounds.upper[2], offset)
++            );
++            bounds.add_bounds(lo, hi);
++        }
++        if (lane == 0) {
++            (vec3&)lowers[leaf] = bounds.lower;
++            (vec3&)uppers[leaf] = bounds.upper;
++            propagate_active_bounds(leaf, parents, child_count, lowers, uppers);
++        }
++        mask &= mask - 1;
++    }
++}
++
+@@ -624 +683,2 @@
+-__global__ void compute_total_inv_edges(const vec3* total_lower, const vec3* total_upper, vec3* total_inv_edges)
++__global__ void
++compute_total_inv_edges(const vec3* total_lower, const vec3* total_upper, vec3* total_inv_edges, bool isotropic)
+@@ -626,0 +687,2 @@
++    if (isotropic)
++        edges = vec3(max(max(edges[0], edges[1]), edges[2]));
+@@ -712 +774,4 @@
+-        wp_launch_device(WP_CURRENT_CONTEXT, compute_total_inv_edges, 1, (total_lower, total_upper, total_inv_edges));
++        wp_launch_device(
++            WP_CURRENT_CONTEXT, compute_total_inv_edges, 1,
++            (total_lower, total_upper, total_inv_edges, item_lowers == item_uppers && !item_groups)
++        );
+@@ -781 +846,7 @@
+-    if (!item_groups) {
++    if (!item_groups && item_lowers == item_uppers && bvh.leaf_size >= 16) {
++        wp_launch_device(
++            WP_CURRENT_CONTEXT, refit_active_leaves_cooperative, bvh.max_nodes,
++            (bvh.max_nodes, bvh.node_parents, num_children, bvh.primitive_indices, bvh.node_lowers, bvh.node_uppers,
++             item_lowers, item_uppers)
++        );
++    } else if (!item_groups) {

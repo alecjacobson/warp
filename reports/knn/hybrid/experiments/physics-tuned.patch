@@ -1,0 +1,35 @@
+--- a/physicsnemo_standalone.py
++++ b/physicsnemo_tuned.py
+@@ -128 +128 @@
+-    extent = points.max(dim=0).values - lo
++    extent = (points.max(dim=0).values - lo).max().expand(3)
+@@ -191 +191 @@
+-def get_tree_knn_kernel(capacity: int, static_k: bool):
++def get_tree_knn_kernel(capacity: int, static_k: bool, stride: int = 1):
+@@ -202 +202 @@
+-    key = (capacity, static_k)
++    key = (capacity, static_k, stride)
+@@ -237 +237,4 @@
+-        qi = query_order[wp.tid()]
++        tid = wp.tid()
++        if tid % wp.static(stride) != 0:
++            return
++        qi = query_order[tid // wp.static(stride)]
+@@ -352 +355,4 @@
+-    kernel = get_tree_knn_kernel(*_kernel_key(k))
++    stride = 1
++    while stride < 32 and m * stride < 512 * wp.device_from_torch(queries.device).sm_count:
++        stride *= 2
++    kernel = get_tree_knn_kernel(*_kernel_key(k), stride)
+@@ -364 +370,2 @@
+-            dim=m,
++            dim=m * stride,
++            block_dim=32 if stride > 1 else 256,
+@@ -397 +404,3 @@
+-    query_order = torch.argsort(q_codes).int()
++    query_order = (torch.arange(len(queries), dtype=torch.int32, device=queries.device)
++        if len(queries) < 512 * wp.device_from_torch(queries.device).sm_count
++        else torch.argsort(q_codes).int())
+@@ -408 +417 @@
+-@torch.library.custom_op("physicsnemo::knn_warp", mutates_args=())
++@torch.library.custom_op("physicsnemo::physicsnemo_tuned_experiment", mutates_args=())

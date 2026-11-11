@@ -1,0 +1,14 @@
+{
+  "warp/native/bvh.cu": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb",
+  "warp/native/point_query.h": "ccf0e04a1f8424f890dc466cc1f0b8e7aec989e7679844861cef2b7c6c339625",
+  "warp/examples/benchmarks/benchmark_point_query_hybrid.py": "cfbddfc49bc0dad846eb8e4a3dd6b27774a9950881573ba138465fb0baa0f319",
+  "warp/examples/benchmarks/point_query_hybrid_holdout.py": "35ba19051c1a32aed7266d1b3311d88f0c25f1df64a0cb25dec3a11507f86b95",
+  "warp/examples/benchmarks/point_query_hybrid.py": "0082ecb9ca13b4be0f0a4a554b2210c7292abec4b0f21e43cd3f0a1f3fd771e8",
+  "warp/examples/benchmarks/profile_point_query_hybrid.py": "19bdc4fce6b07875436b235135bf8cedf080d4b549247e8dcdd082c567f1bff3",
+  "warp/examples/benchmarks/probe_point_query_hybrid_capture.py": "7c57d3663958d7a31d4286a75008e12b85d33077a4e08a6b200613b190e92720",
+  "warp/examples/benchmarks/point_query_common.py": "26c9f54679617297076a4109ba2816ddb3b4061185c5ea47339b303f62819b95",
+  "warp/examples/benchmarks/point_query_backends.py": "721fc0528516df551f50ca55e3978b5b0650d151ff13daefc084b39ca504fab1",
+  "warp/examples/benchmarks/probe_point_tree.py": "371a96167b3a58c34dabd5f0951d3f3a74e01e59d44a9f37677e0fc91b17ac23",
+  "warp/examples/benchmarks/benchmark_point_query_comparison.py": "3cdc9240bb1380f9a2a824d39a60a434426c779f2fbb8a1c53089aa846b0c217",
+  "warp/tests/geometry/test_point_query.py": "793ff4ba0742d49cbbebd2fc950ca99365e1f631899a29bdd27f0431405b6bb3"
+}

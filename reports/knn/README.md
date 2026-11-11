@@ -1,5 +1,7 @@
 # Exact point-cloud nearest neighbors in Warp
 
+**Latest investigation:** [Comparing and improving Warp and PhysicsNeMo](hybrid/README.md) retains the adaptive BVH and heap, fixes anisotropic Morton scaling, and generalizes sparse query launches. Configured Warp beats pinned PhysicsNeMo in 40/40 pilot and 56/56 holdout cases; equally tuned PhysicsNeMo nearly ties the million-point Q=8,192 regime. Warp now beats direct-L2 cuVS in all 16 medium k=32 cases; tiny cases still favor cuVS. Earlier measurements below remain historical.
+
 **Broader comparison:** [Twelve configurations across seven competing GPU libraries and 40 scan/surface/volume cases](comparison/README.md) finds configured Warp fastest one-shot in 16/40 cases. Direct-L2 cuVS wins the medium k=32 cases; the earlier PhysicsNeMo-only results below remain historical measurements.
 
 **Follow-up:** [Profile-guided optimization of the 12 losses](optimization/README.md) improves all 12 and reaches 41/42 wins with explicit workload configurations (31/42 with the original configuration). [The case-25 allocator investigation](optimization/case25/README.md) reaches 42/42 with explicit memory retention. The report below preserves the original baseline measurements.

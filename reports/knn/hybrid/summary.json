@@ -1,0 +1,476 @@
+{
+  "pilot": {
+    "physicsnemo": {
+      "cases": 40,
+      "lower_median": 40,
+      "more_than_5_percent_faster": 40,
+      "within_5_percent": 0,
+      "more_than_5_percent_slower": 0,
+      "geomean_ratio": 4.7032655515329,
+      "minimum_ratio": 1.1290747027105654,
+      "maximum_ratio": 19.045234062970355
+    },
+    "physicsnemo_isotropic": {
+      "cases": 40,
+      "lower_median": 40,
+      "more_than_5_percent_faster": 40,
+      "within_5_percent": 0,
+      "more_than_5_percent_slower": 0,
+      "geomean_ratio": 4.228944528776161,
+      "minimum_ratio": 1.1421599612582094,
+      "maximum_ratio": 8.718369129695802
+    },
+    "physicsnemo_tuned": {
+      "cases": 40,
+      "lower_median": 38,
+      "more_than_5_percent_faster": 36,
+      "within_5_percent": 4,
+      "more_than_5_percent_slower": 0,
+      "geomean_ratio": 2.5515065872744884,
+      "minimum_ratio": 0.9731040685979258,
+      "maximum_ratio": 3.546190337323834
+    },
+    "warp_before": {
+      "cases": 40,
+      "lower_median": 39,
+      "more_than_5_percent_faster": 36,
+      "within_5_percent": 4,
+      "more_than_5_percent_slower": 0,
+      "geomean_ratio": 2.4776031442357587,
+      "minimum_ratio": 0.9948727682275038,
+      "maximum_ratio": 18.683826026373847
+    },
+    "warp_default": {
+      "cases": 40,
+      "lower_median": 40,
+      "more_than_5_percent_faster": 40,
+      "within_5_percent": 0,
+      "more_than_5_percent_slower": 0,
+      "geomean_ratio": 2.634819251479407,
+      "minimum_ratio": 1.1495316686456352,
+      "maximum_ratio": 6.216424869427263
+    },
+    "cuvs_unexpanded": {
+      "cases": 40,
+      "lower_median": 36,
+      "more_than_5_percent_faster": 36,
+      "within_5_percent": 0,
+      "more_than_5_percent_slower": 4,
+      "geomean_ratio": 3.601302553244493,
+      "minimum_ratio": 0.39917918497823374,
+      "maximum_ratio": 52.09397471140263
+    },
+    "regimes": {
+      "Q=1024 k=1": {
+        "physicsnemo": {
+          "cases": 16,
+          "lower_median": 16,
+          "more_than_5_percent_faster": 16,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 3.670124665595868,
+          "minimum_ratio": 3.1990826386547475,
+          "maximum_ratio": 6.060024884242345
+        },
+        "physicsnemo_isotropic": {
+          "cases": 16,
+          "lower_median": 16,
+          "more_than_5_percent_faster": 16,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 3.472841704824738,
+          "minimum_ratio": 3.1480199293583775,
+          "maximum_ratio": 3.9277059870948534
+        },
+        "physicsnemo_tuned": {
+          "cases": 16,
+          "lower_median": 16,
+          "more_than_5_percent_faster": 16,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 3.0766698066700573,
+          "minimum_ratio": 2.919323418208257,
+          "maximum_ratio": 3.4536989218992438
+        },
+        "warp_before": {
+          "cases": 16,
+          "lower_median": 16,
+          "more_than_5_percent_faster": 16,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.3472680213919916,
+          "minimum_ratio": 1.1661286224056462,
+          "maximum_ratio": 3.0296314543503584
+        },
+        "warp_default": {
+          "cases": 16,
+          "lower_median": 16,
+          "more_than_5_percent_faster": 16,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.2501519080581072,
+          "minimum_ratio": 1.1495316686456352,
+          "maximum_ratio": 1.3202193989430835
+        },
+        "cuvs_unexpanded": {
+          "cases": 16,
+          "lower_median": 16,
+          "more_than_5_percent_faster": 16,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 4.338661883491906,
+          "minimum_ratio": 2.466275507726805,
+          "maximum_ratio": 5.071008813865032
+        }
+      },
+      "Q=1024 k=32": {
+        "physicsnemo": {
+          "cases": 16,
+          "lower_median": 16,
+          "more_than_5_percent_faster": 16,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 8.494934544345444,
+          "minimum_ratio": 5.91634776824748,
+          "maximum_ratio": 19.045234062970355
+        },
+        "physicsnemo_isotropic": {
+          "cases": 16,
+          "lower_median": 16,
+          "more_than_5_percent_faster": 16,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 6.864245746779857,
+          "minimum_ratio": 4.649415925688631,
+          "maximum_ratio": 8.718369129695802
+        },
+        "physicsnemo_tuned": {
+          "cases": 16,
+          "lower_median": 16,
+          "more_than_5_percent_faster": 16,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 2.511869207685272,
+          "minimum_ratio": 2.057838133042695,
+          "maximum_ratio": 3.351036749357929
+        },
+        "warp_before": {
+          "cases": 16,
+          "lower_median": 16,
+          "more_than_5_percent_faster": 16,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 6.504352035155349,
+          "minimum_ratio": 4.681313658681937,
+          "maximum_ratio": 18.683826026373847
+        },
+        "warp_default": {
+          "cases": 16,
+          "lower_median": 16,
+          "more_than_5_percent_faster": 16,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 5.392599115361863,
+          "minimum_ratio": 4.223086361669783,
+          "maximum_ratio": 6.216424869427263
+        },
+        "cuvs_unexpanded": {
+          "cases": 16,
+          "lower_median": 16,
+          "more_than_5_percent_faster": 16,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 2.65791312754121,
+          "minimum_ratio": 1.5305158068771278,
+          "maximum_ratio": 3.220775813529578
+        }
+      },
+      "N=1M Q=8192 k=11": {
+        "physicsnemo": {
+          "cases": 4,
+          "lower_median": 4,
+          "more_than_5_percent_faster": 4,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.177962931356371,
+          "minimum_ratio": 1.1290747027105654,
+          "maximum_ratio": 1.2005830145020266
+        },
+        "physicsnemo_isotropic": {
+          "cases": 4,
+          "lower_median": 4,
+          "more_than_5_percent_faster": 4,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.1823296684011735,
+          "minimum_ratio": 1.1421599612582094,
+          "maximum_ratio": 1.2129917743867522
+        },
+        "physicsnemo_tuned": {
+          "cases": 4,
+          "lower_median": 2,
+          "more_than_5_percent_faster": 0,
+          "within_5_percent": 4,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 0.991419832364749,
+          "minimum_ratio": 0.9731040685979258,
+          "maximum_ratio": 1.010536698467498
+        },
+        "warp_before": {
+          "cases": 4,
+          "lower_median": 4,
+          "more_than_5_percent_faster": 4,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.451282617918786,
+          "minimum_ratio": 1.3453788943570737,
+          "maximum_ratio": 1.513012546332491
+        },
+        "warp_default": {
+          "cases": 4,
+          "lower_median": 4,
+          "more_than_5_percent_faster": 4,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.456642324510277,
+          "minimum_ratio": 1.3949335884583522,
+          "maximum_ratio": 1.492806360272524
+        },
+        "cuvs_unexpanded": {
+          "cases": 4,
+          "lower_median": 4,
+          "more_than_5_percent_faster": 4,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 47.331753510804795,
+          "minimum_ratio": 44.81123941010115,
+          "maximum_ratio": 52.09397471140263
+        }
+      },
+      "Q=32 k=32": {
+        "physicsnemo": {
+          "cases": 4,
+          "lower_median": 4,
+          "more_than_5_percent_faster": 4,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 4.758827519133239,
+          "minimum_ratio": 4.406405181122293,
+          "maximum_ratio": 5.210716781722469
+        },
+        "physicsnemo_isotropic": {
+          "cases": 4,
+          "lower_median": 4,
+          "more_than_5_percent_faster": 4,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 4.791484103105721,
+          "minimum_ratio": 4.474045073189166,
+          "maximum_ratio": 5.177623495329904
+        },
+        "physicsnemo_tuned": {
+          "cases": 4,
+          "lower_median": 4,
+          "more_than_5_percent_faster": 4,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 3.3067220415579097,
+          "minimum_ratio": 3.0611759478150184,
+          "maximum_ratio": 3.546190337323834
+        },
+        "warp_before": {
+          "cases": 4,
+          "lower_median": 3,
+          "more_than_5_percent_faster": 0,
+          "within_5_percent": 4,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.0184349175076581,
+          "minimum_ratio": 0.9948727682275038,
+          "maximum_ratio": 1.046497427700914
+        },
+        "warp_default": {
+          "cases": 4,
+          "lower_median": 4,
+          "more_than_5_percent_faster": 4,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 5.359344299800598,
+          "minimum_ratio": 4.913268320132394,
+          "maximum_ratio": 5.739888117476649
+        },
+        "cuvs_unexpanded": {
+          "cases": 4,
+          "lower_median": 0,
+          "more_than_5_percent_faster": 0,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 4,
+          "geomean_ratio": 0.43838646878823384,
+          "minimum_ratio": 0.39917918497823374,
+          "maximum_ratio": 0.47264871884521253
+        }
+      }
+    }
+  },
+  "holdout": {
+    "physicsnemo": {
+      "cases": 56,
+      "lower_median": 56,
+      "more_than_5_percent_faster": 55,
+      "within_5_percent": 1,
+      "more_than_5_percent_slower": 0,
+      "geomean_ratio": 3.7683139828458425,
+      "minimum_ratio": 1.0490784816745764,
+      "maximum_ratio": 19.45172329801486
+    },
+    "physicsnemo_isotropic": {
+      "cases": 56,
+      "lower_median": 56,
+      "more_than_5_percent_faster": 56,
+      "within_5_percent": 0,
+      "more_than_5_percent_slower": 0,
+      "geomean_ratio": 3.337821391972774,
+      "minimum_ratio": 1.0602492068101588,
+      "maximum_ratio": 8.911097682624467
+    },
+    "physicsnemo_tuned": {
+      "cases": 56,
+      "lower_median": 52,
+      "more_than_5_percent_faster": 42,
+      "within_5_percent": 14,
+      "more_than_5_percent_slower": 0,
+      "geomean_ratio": 1.740565678290352,
+      "minimum_ratio": 0.9648915746536014,
+      "maximum_ratio": 3.541896934647147
+    },
+    "regimes": {
+      "Q=1024 k=32": {
+        "physicsnemo": {
+          "cases": 32,
+          "lower_median": 32,
+          "more_than_5_percent_faster": 32,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 8.548150975744335,
+          "minimum_ratio": 4.978447469827758,
+          "maximum_ratio": 19.45172329801486
+        },
+        "physicsnemo_isotropic": {
+          "cases": 32,
+          "lower_median": 32,
+          "more_than_5_percent_faster": 32,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 6.908254058786107,
+          "minimum_ratio": 4.514802313270568,
+          "maximum_ratio": 8.911097682624467
+        },
+        "physicsnemo_tuned": {
+          "cases": 32,
+          "lower_median": 32,
+          "more_than_5_percent_faster": 32,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 2.52752996252761,
+          "minimum_ratio": 2.0534184871908714,
+          "maximum_ratio": 3.541896934647147
+        }
+      },
+      "N=1M Q=1024 k=11": {
+        "physicsnemo": {
+          "cases": 8,
+          "lower_median": 8,
+          "more_than_5_percent_faster": 8,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.493744265279462,
+          "minimum_ratio": 1.3008086694158338,
+          "maximum_ratio": 1.5863721305299692
+        },
+        "physicsnemo_isotropic": {
+          "cases": 8,
+          "lower_median": 8,
+          "more_than_5_percent_faster": 8,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.4990732081252662,
+          "minimum_ratio": 1.3058889049393247,
+          "maximum_ratio": 1.5927655602485238
+        },
+        "physicsnemo_tuned": {
+          "cases": 8,
+          "lower_median": 8,
+          "more_than_5_percent_faster": 2,
+          "within_5_percent": 6,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.0336934477060575,
+          "minimum_ratio": 1.0011160201217955,
+          "maximum_ratio": 1.0656007282783821
+        }
+      },
+      "N=1M Q=8192 k=11": {
+        "physicsnemo": {
+          "cases": 8,
+          "lower_median": 8,
+          "more_than_5_percent_faster": 8,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.1820700498644725,
+          "minimum_ratio": 1.1341753930354543,
+          "maximum_ratio": 1.2832125018012837
+        },
+        "physicsnemo_isotropic": {
+          "cases": 8,
+          "lower_median": 8,
+          "more_than_5_percent_faster": 8,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.1804849158693445,
+          "minimum_ratio": 1.1352849846722415,
+          "maximum_ratio": 1.2182985067908072
+        },
+        "physicsnemo_tuned": {
+          "cases": 8,
+          "lower_median": 4,
+          "more_than_5_percent_faster": 0,
+          "within_5_percent": 8,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 0.9963805744105957,
+          "minimum_ratio": 0.9648915746536014,
+          "maximum_ratio": 1.0149997318547683
+        }
+      },
+      "N=1M Q=100000 k=11": {
+        "physicsnemo": {
+          "cases": 8,
+          "lower_median": 8,
+          "more_than_5_percent_faster": 7,
+          "within_5_percent": 1,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.144514692585229,
+          "minimum_ratio": 1.0490784816745764,
+          "maximum_ratio": 1.2425323555387207
+        },
+        "physicsnemo_isotropic": {
+          "cases": 8,
+          "lower_median": 8,
+          "more_than_5_percent_faster": 8,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.1452100961126481,
+          "minimum_ratio": 1.0602492068101588,
+          "maximum_ratio": 1.246308373744956
+        },
+        "physicsnemo_tuned": {
+          "cases": 8,
+          "lower_median": 8,
+          "more_than_5_percent_faster": 8,
+          "within_5_percent": 0,
+          "more_than_5_percent_slower": 0,
+          "geomean_ratio": 1.151411712792789,
+          "minimum_ratio": 1.06106249875215,
+          "maximum_ratio": 1.2564018200705744
+        }
+      }
+    }
+  }
+}

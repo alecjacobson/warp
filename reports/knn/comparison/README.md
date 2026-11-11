@@ -1,5 +1,7 @@
 # Broader GPU kNN comparison
 
+**Follow-up:** [The Warp/PhysicsNeMo investigation](../hybrid/README.md) improves point-tree geometry and query scheduling, reruns cuVS, and adds 56 holdouts plus an equally tuned PhysicsNeMo variant. The measurements on this page preserve the original comparison before those changes.
+
 This extends the PhysicsNeMo-only comparison with CuPy GPU KD-tree, KeOps, Faiss GPU Flat, cuVS brute force, PyTorch3D, and cuVS CAGRA. CAGRA is approximate and is scored separately. The experiment measures 3D float32 point queries; it does not claim to characterize high-dimensional vector search.
 
 [Reproduce](reproduce.md) · [Dataset manifest](manifest.json) · [Per-case CSV](cases.csv) · [Full JSON and logs](results/) · [Summary](summary.json)
