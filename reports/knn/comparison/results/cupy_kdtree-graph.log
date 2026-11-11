@@ -24,4 +24,3 @@ Traceback (most recent call last):
   File "cupy/_core/core.pyx", line 2203, in cupy._core.core._ndarray_base.get
   File "cupy/cuda/memory.pyx", line 717, in cupy.cuda.memory.MemoryPointer.copy_to_host_async
 RuntimeError: the current stream is capturing, so D2H transfers are disallowed
-

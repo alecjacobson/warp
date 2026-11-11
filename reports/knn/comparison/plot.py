@@ -62,7 +62,7 @@ def main():
                 labels[i, j] = f"{ratio:.1f}x"
             else:
                 labels[i, j] = f"checks\n{len(ratios)}/{len(ids)}"
-    with plt.rc_context({"font.size": 10, "svg.fonttype": "none"}):
+    with plt.rc_context({"font.size": 10, "svg.fonttype": "none", "svg.hashsalt": "point-query-comparison"}):
         fig, ax = plt.subplots(figsize=(13, 11))
         cmap = plt.get_cmap("RdBu").copy()
         cmap.set_bad("#e8e8e8")
@@ -87,6 +87,8 @@ def main():
         )
         fig.tight_layout(rect=(0, 0.055, 1, 1))
         fig.savefig(ROOT / "one-shot.svg", metadata={"Date": None})
+        svg = ROOT / "one-shot.svg"
+        svg.write_text("\n".join(line.rstrip() for line in svg.read_text().splitlines()) + "\n")
         fig.savefig(ROOT / "one-shot.png", dpi=140)
 
 
