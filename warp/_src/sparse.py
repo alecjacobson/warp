@@ -4549,12 +4549,152 @@ def bsr_mm(
           ``z`` unchanged, and ``"padded"`` writes the result topology into
           existing destination row capacity and records capacity overflow in
           ``z.status_sync()``.
+
+    When recorded on a :class:`warp.Tape`, the product is differentiable with respect to the values of ``x``,
+    ``y`` and the input ``z``, restricted to their respective non-zero topologies. Differentiating a product in
+    which ``z`` aliases ``x`` or ``y`` is not supported.
     """
 
     x, x_scale = _extract_matrix_and_scale(x)
     alpha *= x_scale
     y, y_scale = _extract_matrix_and_scale(y)
     alpha *= y_scale
+
+    tape = wp._src.context.runtime.tape
+    if tape is None:
+        return _bsr_mm_forward(x, y, z, alpha, beta, work_arrays, reuse_topology, tile_size, max_new_nnz, topology)
+
+    if z is not None and z.requires_grad and (z == x or z == y):
+        raise NotImplementedError(
+            "Differentiating bsr_mm() with an output matrix 'z' that aliases 'x' or 'y' is not supported; "
+            "pass a separate output matrix"
+        )
+
+    # Snapshot the input topology of z, which the product may overwrite,
+    # to map the adjoint of its values back from the output topology.
+    z_in = None
+    if z is not None and beta != 0.0 and z.requires_grad:
+        z_in = _bsr_topology_view(z, z.values, clone_topology=True)
+
+    # The product kernels are not differentiable; launch them off the tape and record a custom adjoint.
+    with _ScopedTapePause():
+        z = _bsr_mm_forward(x, y, z, alpha, beta, work_arrays, reuse_topology, tile_size, max_new_nnz, topology)
+
+    if z.requires_grad:
+        _bsr_mm_record_adjoint(tape, x, y, z, z_in, alpha, beta)
+
+    return z
+
+
+@wp.kernel(enable_backward=False)
+def _bsr_mm_input_values_adjoint_kernel(
+    beta: Any,
+    z_in_row_count: int,
+    z_in_offsets: wp.array[int],
+    z_in_row_counts: wp.array[int],
+    z_in_columns: wp.array[int],
+    z_offsets: wp.array[int],
+    z_row_counts: wp.array[int],
+    z_columns: wp.array[int],
+    z_values_adj: wp.array[Any],
+    z_in_values_adj: wp.array[Any],
+):
+    # Gather beta * adjoint of the output block at the coordinates of each input block of z.
+    block = wp.tid()
+
+    row = bsr_row_index(z_in_offsets, z_in_row_count, block, z_in_row_counts)
+    if row == -1:
+        return
+
+    out_block = bsr_block_index(row, z_in_columns[block], z_offsets, z_columns, z_row_counts)
+    if out_block != -1:
+        z_in_values_adj[block] += beta * z_values_adj[out_block]
+
+
+def _bsr_mm_record_adjoint(
+    tape: wp.Tape,
+    x: BsrMatrix,
+    y: BsrMatrix,
+    z: BsrMatrix,
+    z_in: BsrMatrix | None,
+    alpha: float,
+    beta: float,
+):
+    """Record the adjoint of ``z := alpha * x @ y + beta * z`` on ``tape``.
+
+    Args:
+        tape: Tape receiving the adjoint.
+        x: Left operand.
+        y: Right operand.
+        z: Result matrix. Its gradient is consumed and replaced by the gradient of the input ``z``.
+        z_in: Snapshot of the topology and values array of the input ``z``, or ``None`` if the
+          input ``z`` does not contribute to the result or does not require gradients.
+        alpha: Scaling factor of the product, including any scaling of ``x`` and ``y``.
+        beta: Scaling factor of the input ``z``.
+    """
+    # Keep references to the arrays the forward product read, since the attributes of the matrices may be
+    # reassigned. The output topology is snapshot since later operations commonly rebuild it in place.
+    x = _bsr_topology_view(x, x.values)
+    y = _bsr_topology_view(y, y.values)
+    z = _bsr_topology_view(z, z.values, clone_topology=True)
+    alpha = float(alpha)
+    beta = float(beta)
+
+    def backward():
+        with _ScopedTapePause():
+            z_adj = _bsr_view(z.nrow, z.ncol, z.nnz, z.offsets, z.row_counts, z.columns, z.values.grad)
+
+            if alpha != 0.0:
+                # The adjoints of x and y are the products with the adjoint of z, restricted to their topologies
+                if x.values.grad is not None:
+                    x_adj = _bsr_topology_view(x, x.values.grad)
+                    bsr_mm(z_adj, bsr_transposed(y), x_adj, alpha=alpha, beta=1.0, topology="masked")
+                if y.values.grad is not None:
+                    y_adj = _bsr_topology_view(y, y.values.grad)
+                    bsr_mm(bsr_transposed(x), z_adj, y_adj, alpha=alpha, beta=1.0, topology="masked")
+
+            # The input values of z may share storage with the output values, so gather from a copy
+            z_values_adj = wp.clone(z.values.grad[: z.nnz]) if z_in is not None and z.nnz > 0 else None
+            z.values.grad.zero_()
+
+            if z_values_adj is not None and z_in.nnz > 0:
+                wp.launch(
+                    kernel=_bsr_mm_input_values_adjoint_kernel,
+                    device=z.device,
+                    dim=z_in.nnz,
+                    inputs=[
+                        z.scalar_type(beta),
+                        z_in.nrow,
+                        z_in.offsets,
+                        z_in.row_counts,
+                        z_in.columns,
+                        z.offsets,
+                        z.row_counts,
+                        z.columns,
+                        z_values_adj,
+                    ],
+                    outputs=[z_in.values.grad],
+                )
+
+    arrays = [a for a in (x.values, y.values, z.values) if a.grad is not None]
+    if z_in is not None and z_in.values is not z.values:
+        arrays.append(z_in.values)
+    tape.record_func(backward, arrays=arrays)
+
+
+def _bsr_mm_forward(
+    x: BsrMatrix,
+    y: BsrMatrix,
+    z: BsrMatrix | None,
+    alpha,
+    beta,
+    work_arrays: bsr_mm_work_arrays | None,
+    reuse_topology: bool,
+    tile_size: int,
+    max_new_nnz: int | None,
+    topology: Literal["compact", "masked", "padded"] | None,
+) -> BsrMatrix:
+    """Compute ``z := alpha * x @ y + beta * z`` for unscaled matrices without recording on a tape."""
 
     if topology is None:
         topology = "compact"
@@ -5043,6 +5183,165 @@ def make_bsr_mv_transpose_kernel(block_rows: int):
     return bsr_mv_transpose_kernel
 
 
+@cache
+def make_bsr_mv_values_adjoint_kernel(transpose: bool):
+
+    @wp.kernel(enable_backward=False, module="unique")
+    def bsr_mv_values_adjoint_kernel(
+        alpha: Any,
+        A_row_count: int,
+        A_offsets: wp.array[int],
+        A_row_counts: wp.array[int],
+        A_columns: wp.array[int],
+        x: wp.array[Any],
+        y_adj: wp.array[Any],
+        A_values_adj: wp.array3d[Any],
+    ):
+        # Accumulate the adjoint of the stored blocks of A for y = alpha * op(A) x,
+        # which is alpha * outer(y_adj, x) restricted to the topology of A.
+        block, subrow, subcol = wp.tid()
+
+        row = bsr_row_index(A_offsets, A_row_count, block, A_row_counts)
+        if row == -1:
+            return
+
+        block_rows = A_values_adj.shape[1]
+        block_cols = A_values_adj.shape[2]
+        col = A_columns[block]
+
+        if wp.static(transpose):
+            g = x[row * block_rows + subrow] * y_adj[col * block_cols + subcol]
+        else:
+            g = y_adj[row * block_rows + subrow] * x[col * block_cols + subcol]
+
+        A_values_adj[block, subrow, subcol] += alpha * g
+
+    return bsr_mv_values_adjoint_kernel
+
+
+class _ScopedTapePause:
+    """Suspend recording onto the active :class:`warp.Tape`, if any.
+
+    Sparse operations whose kernels are not differentiable launch them while
+    the tape is paused and record a custom adjoint with :meth:`warp.Tape.record_func`.
+    The paused tape is available as ``tape`` within the scope.
+    """
+
+    def __enter__(self):
+        runtime = wp._src.context.runtime
+        self.tape = runtime.tape
+        runtime.tape = None
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        wp._src.context.runtime.tape = self.tape
+
+
+def _bsr_view(
+    nrow: int,
+    ncol: int,
+    nnz: int,
+    offsets: wp.array,
+    row_counts: wp.array | None,
+    columns: wp.array,
+    values: wp.array,
+) -> BsrMatrix:
+    """Return a matrix sharing the given topology and values arrays."""
+    view = bsr_matrix_t(values.dtype)()
+    view.nrow = nrow
+    view.ncol = ncol
+    view.nnz = nnz
+    view.offsets = offsets
+    view.row_counts = row_counts
+    view.columns = columns
+    view.values = values
+    return view
+
+
+def _bsr_topology_view(A: BsrMatrix, values: wp.array, clone_topology: bool = False) -> BsrMatrix:
+    """Return a matrix with the topology of ``A`` and the given values, optionally snapshotting the topology."""
+    if not clone_topology:
+        return _bsr_view(A.nrow, A.ncol, A.nnz, A.offsets, A.row_counts, A.columns, values)
+
+    return _bsr_view(
+        A.nrow,
+        A.ncol,
+        A.nnz,
+        wp.clone(A.offsets[: A.nrow + 1]),
+        None if A.row_counts is None else wp.clone(A.row_counts[: A.nrow]),
+        wp.clone(A.columns[: A.nnz]),
+        values,
+    )
+
+
+def _scale_adjoint(adj: wp.array, beta: float) -> None:
+    """Scale an adjoint array in place, as required for the ``beta`` term of in-place affine operations."""
+    if beta == 0.0:
+        adj.zero_()
+    elif beta != 1.0:
+        beta = type_scalar_type(adj.dtype)(beta)
+        wp.launch(kernel=_bsr_scale_1d_kernel, device=adj.device, dim=adj.shape[0], inputs=[beta, adj])
+
+
+def _bsr_mv_record_adjoint(
+    tape: wp.Tape,
+    A: BsrMatrix,
+    x: wp.array,
+    x_values: wp.array,
+    y: wp.array,
+    alpha: float,
+    beta: float,
+    transpose: bool,
+):
+    """Record the adjoint of ``y := alpha * op(A) x + beta * y`` on ``tape``.
+
+    Args:
+        tape: Tape receiving the adjoint.
+        A: Matrix operand, possibly with padded row storage.
+        x: Vector operand as passed by the caller, whose gradient receives ``alpha * op(A)^T y.grad``.
+        x_values: Scalar view of the values of ``x`` read by the forward product. Differs from ``x``
+          only when ``x`` and ``y`` alias, in which case it is a copy of the input ``y``.
+        y: Result vector. Its gradient is consumed and replaced by ``beta * y.grad``.
+        alpha: Scaling factor of the product, including any scaling of ``A``.
+        beta: Scaling factor of the input ``y``.
+        transpose: Whether the forward product used the transpose of ``A``.
+    """
+    # Keep references to the arrays the forward product read, since the attributes of A may be reassigned.
+    A = _bsr_topology_view(A, A.values)
+
+    def backward():
+        with _ScopedTapePause():
+            scalar_type = A.scalar_type
+            y_adj = _vec_array_view(y.grad, scalar_type, expected_scalar_count=y.size * type_size(y.dtype))
+            x_adj = None
+            if x.grad is not None:
+                x_adj = _vec_array_view(x.grad, scalar_type, expected_scalar_count=x.size * type_size(x.dtype))
+
+            # If x and y alias, keep the incoming adjoint of y before replacing it with the adjoint of the input y
+            x_adj_aliases_y_adj = x_adj is not None and x_adj.ptr == y_adj.ptr
+            y_adj_in = wp.clone(y_adj) if x_adj_aliases_y_adj else y_adj
+
+            if A.values.grad is not None and A.nnz > 0:
+                wp.launch(
+                    kernel=make_bsr_mv_values_adjoint_kernel(transpose),
+                    device=A.device,
+                    dim=(A.nnz, *A.block_shape),
+                    inputs=[scalar_type(alpha), A.nrow, A.offsets, A.row_counts, A.columns, x_values, y_adj_in],
+                    outputs=[_as_3d_array(A.values.grad, A.block_shape)],
+                )
+
+            if x_adj_aliases_y_adj:
+                _scale_adjoint(y_adj, beta)
+
+            if x_adj is not None and alpha != 0.0:
+                bsr_mv(A, y_adj_in, x_adj, alpha=alpha, beta=1.0, transpose=not transpose)
+
+            if not x_adj_aliases_y_adj:
+                _scale_adjoint(y_adj, beta)
+
+    tape.record_func(backward, arrays=[a for a in (A.values, x, y) if a.grad is not None])
+
+
 def _vec_array_view(array: wp.array, dtype: type, expected_scalar_count: int) -> wp.array:
     # cast a 1d or 2d array to a 1d array with the target dtype, adjusting shape as required
 
@@ -5114,6 +5413,11 @@ def bsr_mv(
           raise a :class:`ValueError`. Ignored when ``transpose`` is ``True``. If negative, disable
           tile-based computation. Defaults to ``0``, which determines whether to use tiles using a heuristic
           based on the matrix shape and number of non-zeros.
+
+    When recorded on a :class:`warp.Tape`, the product is differentiable with respect to ``x``, the input ``y``
+    and the values of ``A``, restricted to its non-zero topology. If ``x`` and ``y`` alias, the backward pass
+    reads the input values of ``y`` from ``work_buffer``, which must then be left unmodified until the backward
+    pass completes.
     """
 
     A, A_scale = _extract_matrix_and_scale(A)
@@ -5130,7 +5434,9 @@ def bsr_mv(
         # If no output array is provided, allocate one for convenience
         y_vec_len = block_shape[0]
         y_dtype = A.scalar_type if y_vec_len == 1 else wp.types.vector(length=y_vec_len, dtype=A.scalar_type)
-        y = wp.empty(shape=(nrow,), device=A.values.device, dtype=y_dtype, requires_grad=x.requires_grad)
+        y = wp.empty(
+            shape=(nrow,), device=A.values.device, dtype=y_dtype, requires_grad=x.requires_grad or A.requires_grad
+        )
         beta = 0.0
 
     alpha = A.scalar_type(alpha)
@@ -5145,6 +5451,37 @@ def bsr_mv(
     # The transposed product never uses tiles.
     if not transpose:
         _validate_tile_size(device, tile_size)
+
+    tape = wp._src.context.runtime.tape
+    if tape is None:
+        _bsr_mv_launch(A, x, y, alpha, beta, transpose, work_buffer, tile_size, block_shape, nrow, ncol, device)
+    else:
+        # The product kernels are not differentiable; launch them off the tape and record a custom adjoint.
+        with _ScopedTapePause():
+            x_values = _bsr_mv_launch(
+                A, x, y, alpha, beta, transpose, work_buffer, tile_size, block_shape, nrow, ncol, device
+            )
+        if y.grad is not None:
+            _bsr_mv_record_adjoint(tape, A, x, x_values, y, alpha.value, beta.value, transpose)
+
+    return y
+
+
+def _bsr_mv_launch(
+    A: BsrMatrix,
+    x: wp.array,
+    y: wp.array,
+    alpha,
+    beta,
+    transpose: bool,
+    work_buffer: wp.array | None,
+    tile_size: int,
+    block_shape: tuple[int, int],
+    nrow: int,
+    ncol: int,
+    device,
+) -> wp.array:
+    """Launch the forward kernels of :func:`bsr_mv` and return the scalar view of the ``x`` values they read."""
 
     if x.ptr == y.ptr:
         # Aliasing case, need temporary storage
@@ -5212,7 +5549,7 @@ def bsr_mv(
             inputs=[alpha, A.offsets, A.row_counts, A.columns, A.scalar_values, x_view, beta, y_view],
         )
 
-    return y
+    return x_view
 
 
 # register API functions so they appear in the documentation

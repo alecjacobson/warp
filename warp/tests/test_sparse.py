@@ -2275,6 +2275,161 @@ def test_bsr_scaled_expression_add_sub(test, device):
     assert_np_equal(_bsr_to_dense(y), y_dense, 0.0001)
 
 
+def _bsr_with_values(bsr, values):
+    """Return a matrix with the topology of ``bsr`` and the given values, for densifying gradients."""
+    view = bsr_zeros(bsr.nrow, bsr.ncol, values.dtype, device=bsr.device)
+    view.nnz = bsr.nnz
+    view.offsets = bsr.offsets
+    view.row_counts = bsr.row_counts
+    view.columns = bsr.columns
+    view.values = values
+    return view
+
+
+def _bsr_dense_mask(bsr):
+    return _bsr_to_dense(_bsr_with_values(bsr, wp.full_like(bsr.values, 1.0))) != 0.0
+
+
+def _bsr_dense_grad(bsr):
+    return _bsr_to_dense(_bsr_with_values(bsr, bsr.values.grad))
+
+
+def _make_gradient_test_bsr(nrow, ncol, block_shape, scalar_type, topology, rng, device, nnz=6):
+    """Build a random matrix whose values require gradients, with compact or padded storage."""
+    block_type = wp.types.matrix(shape=block_shape, dtype=scalar_type) if block_shape != (1, 1) else scalar_type
+    rows = wp.array(rng.integers(0, high=nrow, size=nnz), dtype=int, device=device)
+    cols = wp.array(rng.integers(0, high=ncol, size=nnz), dtype=int, device=device)
+    vals = wp.array(rng.random(size=(nnz, *block_shape)), dtype=scalar_type, device=device)
+
+    if topology == "padded":
+        bsr = bsr_zeros(nrow, ncol, block_type, device=device, row_capacity=ncol)
+    else:
+        bsr = bsr_zeros(nrow, ncol, block_type, device=device)
+    bsr_set_from_triplets(bsr, rows, cols, vals, topology=topology)
+    bsr.values.requires_grad = True
+    return bsr
+
+
+def make_test_bsr_mv_gradient(block_shape, scalar_type):
+    def test_bsr_mv_gradient(test, device):
+        """Check bsr_mv gradients for the matrix, x, and the input y against dense NumPy results."""
+        rng = np.random.default_rng(123)
+        tol = 1.0e-4 if scalar_type == wp.float32 else 1.0e-10
+        alpha, beta = -1.5, 0.5
+
+        for topology in ("compact", "padded"):
+            for transpose in (False, True):
+                A = _make_gradient_test_bsr(4, 3, block_shape, scalar_type, topology, rng, device)
+                A_dense = _bsr_to_dense(A)
+                op_dense = A_dense.T if transpose else A_dense
+
+                x = wp.array(rng.random(op_dense.shape[1]), dtype=scalar_type, device=device, requires_grad=True)
+                y = wp.array(rng.random(op_dense.shape[0]), dtype=scalar_type, device=device, requires_grad=True)
+                y_adj = rng.random(op_dense.shape[0])
+                x_np = x.numpy()
+
+                with wp.Tape() as tape:
+                    bsr_mv(A, x, y, alpha=alpha, beta=beta, transpose=transpose)
+                tape.backward(grads={y: wp.array(y_adj, dtype=scalar_type, device=device)})
+
+                A_adj_expected = alpha * (np.outer(x_np, y_adj) if transpose else np.outer(y_adj, x_np))
+                assert_np_equal(_bsr_dense_grad(A), A_adj_expected * _bsr_dense_mask(A), tol=tol)
+                assert_np_equal(x.grad.numpy(), alpha * op_dense.T @ y_adj, tol=tol)
+                assert_np_equal(y.grad.numpy(), beta * y_adj, tol=tol)
+
+    return test_bsr_mv_gradient
+
+
+def test_bsr_mv_gradient_aliasing(test, device):
+    """Check bsr_mv gradients when x and y are the same array and when y is allocated by bsr_mv."""
+    rng = np.random.default_rng(123)
+    alpha, beta = 2.0, -0.5
+
+    A = _make_gradient_test_bsr(5, 5, (1, 1), wp.float64, "compact", rng, device, nnz=12)
+    A_dense = _bsr_to_dense(A)
+    x_in = rng.random(5)
+    x_adj = rng.random(5)
+
+    x = wp.array(x_in, dtype=wp.float64, device=device, requires_grad=True)
+    with wp.Tape() as tape:
+        bsr_mv(A, x, x, alpha=alpha, beta=beta)
+    assert_np_equal(x.numpy(), alpha * A_dense @ x_in + beta * x_in, tol=1.0e-10)
+    tape.backward(grads={x: wp.array(x_adj, dtype=wp.float64, device=device)})
+
+    assert_np_equal(_bsr_dense_grad(A), alpha * np.outer(x_adj, x_in) * _bsr_dense_mask(A), tol=1.0e-10)
+    assert_np_equal(x.grad.numpy(), alpha * A_dense.T @ x_adj + beta * x_adj, tol=1.0e-10)
+
+    # The allocated result requires gradients when only the matrix does
+    tape.zero()
+    x_const = wp.array(x_in, dtype=wp.float64, device=device)
+    with wp.Tape() as tape:
+        y = bsr_mv(A, x_const)
+    test.assertTrue(y.requires_grad)
+    tape.backward(grads={y: wp.array(x_adj, dtype=wp.float64, device=device)})
+    assert_np_equal(_bsr_dense_grad(A), np.outer(x_adj, x_in) * _bsr_dense_mask(A), tol=1.0e-10)
+
+
+def make_test_bsr_mm_gradient(block_shape, scalar_type):
+    def test_bsr_mm_gradient(test, device):
+        """Check bsr_mm gradients for x, y and the input z against dense NumPy results for each topology policy."""
+        rng = np.random.default_rng(123)
+        tol = 1.0e-4 if scalar_type == wp.float32 else 1.0e-10
+        alpha, beta = -2.0, 0.5
+        z_block_shape = (block_shape[0], block_shape[0])
+
+        for topology in ("compact", "masked", "padded"):
+            storage = "padded" if topology == "padded" else "compact"
+            x = _make_gradient_test_bsr(3, 2, block_shape, scalar_type, storage, rng, device)
+            y = _make_gradient_test_bsr(2, 3, block_shape[::-1], scalar_type, storage, rng, device)
+            z = _make_gradient_test_bsr(3, 3, z_block_shape, scalar_type, storage, rng, device, nnz=3)
+
+            # Keep the input topology and values of z, which the product may replace
+            z_in = _bsr_with_values(z, z.values)
+            z_in.offsets, z_in.columns = wp.clone(z.offsets), wp.clone(z.columns)
+            z_in.row_counts = None if z.row_counts is None else wp.clone(z.row_counts)
+            x_dense, y_dense = _bsr_to_dense(x), _bsr_to_dense(y)
+
+            with wp.Tape() as tape:
+                bsr_mm(x, y, z, alpha=alpha, beta=beta, topology=topology)
+
+            z_adj_dense = rng.random(z.shape) * _bsr_dense_mask(z)
+            z_adj = np.zeros((z.values.shape[0], *z_block_shape))
+            z_rows, z_cols = z.uncompress_rows().numpy(), z.columns.numpy()
+            for block in range(z.nnz):
+                if z_rows[block] >= 0:
+                    z_adj[block] = _get_block(z_adj_dense, z_rows[block], z_cols[block], z_block_shape)
+            tape.backward(grads={z.values: wp.array(z_adj, dtype=z.values.dtype, device=device)})
+
+            assert_np_equal(_bsr_dense_grad(x), alpha * z_adj_dense @ y_dense.T * _bsr_dense_mask(x), tol=tol)
+            assert_np_equal(_bsr_dense_grad(y), alpha * x_dense.T @ z_adj_dense * _bsr_dense_mask(y), tol=tol)
+            assert_np_equal(_bsr_dense_grad(z_in), beta * z_adj_dense * _bsr_dense_mask(z_in), tol=tol)
+
+    return test_bsr_mm_gradient
+
+
+def test_bsr_mm_gradient_aliasing(test, device):
+    """Check bsr_mm gradients when x and y are the same matrix, and reject an output aliasing an operand."""
+    rng = np.random.default_rng(123)
+
+    A = _make_gradient_test_bsr(4, 4, (1, 1), wp.float64, "compact", rng, device, nnz=8)
+    A_dense = _bsr_to_dense(A)
+
+    with wp.Tape() as tape:
+        C = bsr_mm(A, A)
+    test.assertTrue(C.requires_grad)
+
+    C.values.grad.fill_(1.0)
+    tape.backward()
+    C_adj_dense = np.ones_like(A_dense) * _bsr_dense_mask(C)
+    assert_np_equal(
+        _bsr_dense_grad(A), (C_adj_dense @ A_dense.T + A_dense.T @ C_adj_dense) * _bsr_dense_mask(A), tol=1.0e-10
+    )
+
+    with wp.Tape():
+        with test.assertRaises(NotImplementedError):
+            bsr_mm(A, A, A)
+
+
 devices = get_test_devices()
 cuda_test_devices = get_selected_cuda_test_devices()
 cuda_test_devices_with_mempool = get_selected_cuda_test_devices_with_mempool()
@@ -2446,6 +2601,17 @@ add_function_test(
 add_function_test(TestSparse, "test_csr_mv", make_test_bsr_mv((1, 1), wp.float32), devices=devices)
 add_function_test(TestSparse, "test_bsr_mv_1_3", make_test_bsr_mv((1, 3), wp.float32), devices=devices)
 add_function_test(TestSparse, "test_bsr_mv_3_3", make_test_bsr_mv((3, 3), wp.float64), devices=devices)
+
+add_function_test(TestSparse, "test_csr_mv_gradient", make_test_bsr_mv_gradient((1, 1), wp.float32), devices=devices)
+add_function_test(
+    TestSparse, "test_bsr_mv_gradient_2_3", make_test_bsr_mv_gradient((2, 3), wp.float64), devices=devices
+)
+add_function_test(TestSparse, "test_bsr_mv_gradient_aliasing", test_bsr_mv_gradient_aliasing, devices=devices)
+add_function_test(TestSparse, "test_csr_mm_gradient", make_test_bsr_mm_gradient((1, 1), wp.float32), devices=devices)
+add_function_test(
+    TestSparse, "test_bsr_mm_gradient_2_3", make_test_bsr_mm_gradient((2, 3), wp.float64), devices=devices
+)
+add_function_test(TestSparse, "test_bsr_mm_gradient_aliasing", test_bsr_mm_gradient_aliasing, devices=devices)
 
 add_function_test(TestSparse, "test_csr_mv_tile_size", make_test_bsr_mv_tile_size((1, 1)), devices=cuda_test_devices)
 add_function_test(
