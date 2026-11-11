@@ -30,6 +30,7 @@ METHODS = (
     "keops",
     "faiss_flat",
     "cuvs_brute_force",
+    "cuvs_unexpanded",
     "cuvs_minkowski",
     "pytorch3d",
     "cuvs_cagra",
@@ -89,7 +90,15 @@ class Provider:
             self.metadata["stream_binding"] = "public cuvsStreamSet C API"
             self.metadata["output_allocation"] = "Torch CUDA allocation on the query stream"
             if name != "cuvs_cagra":
-                self.metadata.update(metric="minkowski" if name == "cuvs_minkowski" else "sqeuclidean", metric_arg=2.0)
+                self.metric = "minkowski" if name == "cuvs_minkowski" else "sqeuclidean"
+                if name == "cuvs_unexpanded":
+                    # The public C API exposes L2Unexpanded=4, but cuVS 26.10
+                    # omits its name from the Python metric registry. Register
+                    # only that binding; the native implementation is unchanged.
+                    self.metric = "benchmark_l2_unexpanded"
+                    importlib.import_module("cuvs.distance").DISTANCE_TYPES[self.metric] = 4
+                    self.metadata["metric_binding"] = "C API L2Unexpanded=4 added to Python DISTANCE_TYPES"
+                self.metadata.update(metric=self.metric, metric_arg=2.0)
             if name == "cuvs_cagra":
                 self.index_params = self.library.IndexParams(
                     build_algo="nn_descent", intermediate_graph_degree=64, graph_degree=32
@@ -152,10 +161,10 @@ class Problem:
             index = self.provider.library.GpuIndexFlatL2(self.provider.resources, 3, config)
             index.add(self.p)
             return index
-        if self.name in ("cuvs_brute_force", "cuvs_minkowski"):
+        if self.name in ("cuvs_brute_force", "cuvs_unexpanded", "cuvs_minkowski"):
             return self.provider.library.build(
                 self.cp_points,
-                metric="minkowski" if self.name == "cuvs_minkowski" else "sqeuclidean",
+                metric=self.provider.metric,
                 metric_arg=2.0,
                 resources=self.provider.resources,
             )
@@ -230,7 +239,7 @@ class Problem:
         )
         ds = torch.empty((self.nq, self.k), device=self.q.device, dtype=torch.float32)
         outputs = {"neighbors": self.cp.from_dlpack(ids), "distances": self.cp.from_dlpack(ds)}
-        if self.name in ("cuvs_brute_force", "cuvs_minkowski"):
+        if self.name in ("cuvs_brute_force", "cuvs_unexpanded", "cuvs_minkowski"):
             self.provider.library.search(index, self.cp_queries, self.k, resources=self.provider.resources, **outputs)
         else:
             self.provider.library.search(
