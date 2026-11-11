@@ -315,6 +315,7 @@ def main():
             "keops",
             "faiss_flat",
             "cuvs_brute_force",
+            "cuvs_unexpanded",
             "cuvs_minkowski",
             "pytorch3d",
             "cuvs_cagra",
