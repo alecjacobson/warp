@@ -440,6 +440,30 @@ For more control about memory allocations, you may use the underlying lower-leve
         alpha,             # Scale factor
     )
 
+Differentiating Matrix Operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Matrix-vector and matrix-matrix products recorded on a :class:`warp.Tape` propagate gradients in the backward
+pass. Gradients with respect to a matrix are accumulated into the ``grad`` array of its ``values``, at the
+stored blocks only, since the sparsity pattern itself is not differentiable:
+
+.. code-block:: python
+
+    A.values.requires_grad = True
+    x = wp.array(x_np, dtype=float, requires_grad=True)
+
+    with wp.Tape() as tape:
+        y = bsr_mv(A, x)              # y = A @ x
+        C = bsr_mm(A, B)              # C = A @ B
+        ...                           # compute a scalar loss from y and C
+
+    tape.backward(loss)
+    # x.grad, A.values.grad and B.values.grad (if B.values.requires_grad) now hold the gradients
+
+Gradients also flow to the input ``y`` of :func:`bsr_mv` and the input ``z`` of :func:`bsr_mm` when ``beta``
+is nonzero. Differentiating a :func:`bsr_mm` product whose output aliases one of its operands, such as
+``A @= B``, raises a :class:`NotImplementedError`.
+
 
 Kernel-level utilities
 ~~~~~~~~~~~~~~~~~~~~~~

@@ -2430,6 +2430,37 @@ def test_bsr_mm_gradient_aliasing(test, device):
             bsr_mm(A, A, A)
 
 
+def test_bsr_gradient_capturability(test, device):
+    """Capture the backward pass of bsr_mv and bsr_mm in a graph and check it matches an eager backward pass."""
+    rng = np.random.default_rng(123)
+
+    A = _make_gradient_test_bsr(4, 4, (2, 2), wp.float32, "compact", rng, device, nnz=8)
+    B = _make_gradient_test_bsr(4, 4, (2, 2), wp.float32, "compact", rng, device, nnz=8)
+    C = _make_gradient_test_bsr(4, 4, (2, 2), wp.float32, "compact", rng, device, nnz=10)
+    x = wp.array(rng.random((4, 2)), dtype=wp.vec2, device=device, requires_grad=True)
+
+    with wp.Tape() as tape:
+        y = bsr_mv(A, x)
+        bsr_mm(A, B, C, beta=0.5, topology="masked")
+
+    def backward():
+        y.grad.fill_(1.0)
+        C.values.grad.fill_(1.0)
+        tape.backward()
+
+    backward()
+    expected = [a.grad.numpy() for a in (x, A.values, B.values)]
+    tape.zero()
+
+    with wp.ScopedDevice(device):
+        with wp.ScopedCapture(force_module_load=False) as capture:
+            backward()
+    wp.capture_launch(capture.graph)
+
+    for a, a_grad in zip((x, A.values, B.values), expected, strict=True):
+        assert_np_equal(a.grad.numpy(), a_grad, tol=1.0e-5)
+
+
 devices = get_test_devices()
 cuda_test_devices = get_selected_cuda_test_devices()
 cuda_test_devices_with_mempool = get_selected_cuda_test_devices_with_mempool()
@@ -2612,6 +2643,12 @@ add_function_test(
     TestSparse, "test_bsr_mm_gradient_2_3", make_test_bsr_mm_gradient((2, 3), wp.float64), devices=devices
 )
 add_function_test(TestSparse, "test_bsr_mm_gradient_aliasing", test_bsr_mm_gradient_aliasing, devices=devices)
+add_function_test(
+    TestSparse,
+    "test_bsr_gradient_capturability",
+    test_bsr_gradient_capturability,
+    devices=cuda_test_devices_with_mempool,
+)
 
 add_function_test(TestSparse, "test_csr_mv_tile_size", make_test_bsr_mv_tile_size((1, 1)), devices=cuda_test_devices)
 add_function_test(
