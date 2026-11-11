@@ -40,6 +40,8 @@ class Provider:
     def __init__(self, name, cache, cubql_library=None):
         self.name = name
         self.metadata = {"exact_algorithm": name != "cuvs_cagra", "name": name}
+        if name.startswith("warp_") or name == "cubql":
+            self.metadata["output_allocation"] = "Torch CUDA allocation, wrapped by Warp without copying"
         if name == "physicsnemo":
             self.library, digest = load_physicsnemo(Path(cache) / "physicsnemo")
             self.metadata["source_sha256"] = digest
@@ -53,6 +55,7 @@ class Provider:
             self.metadata["leafsize"] = 16
         elif name == "keops":
             self.library = importlib.import_module("pykeops.torch").LazyTensor
+            self.metadata["stream_behavior"] = "KeOps 2.3 NVRTC uses stream 0 and cuCtxSynchronize internally"
         elif name == "faiss_flat":
             self.library = importlib.import_module("faiss")
             importlib.import_module("faiss.contrib.torch_utils")
@@ -166,8 +169,9 @@ class Problem:
 
     def search(self, index):
         if self.name.startswith("warp_"):
-            ids = wp.empty((self.nq, self.k), dtype=wp.int64, device="cuda:0")
-            distances = wp.empty((self.nq, self.k), dtype=float, device="cuda:0")
+            torch_ids = torch.empty((self.nq, self.k), dtype=torch.int64, device=self.q.device)
+            torch_distances = torch.empty((self.nq, self.k), dtype=torch.float32, device=self.q.device)
+            ids, distances = wp.from_torch(torch_ids), wp.from_torch(torch_distances)
             counts = wp.empty(self.nq, dtype=int, device="cuda:0")
             extra = []
             if self.ordered:
@@ -192,13 +196,14 @@ class Problem:
                 ],
                 block_dim=32 if self.stride > 1 else 256,
             )
-            return wp.to_torch(ids), wp.to_torch(distances)
+            return torch_ids, torch_distances
         if self.name == "cubql":
-            ids = wp.empty((self.nq, self.k), dtype=int, device="cuda:0")
-            distances = wp.empty((self.nq, self.k), dtype=float, device="cuda:0")
+            torch_ids = torch.empty((self.nq, self.k), dtype=torch.int32, device=self.q.device)
+            torch_distances = torch.empty((self.nq, self.k), dtype=torch.float32, device=self.q.device)
+            ids, distances = wp.from_torch(torch_ids), wp.from_torch(torch_distances)
             counts = wp.empty(self.nq, dtype=int, device="cuda:0")
             index.query(self.wp_queries, self.k, np.inf, self.excludes, ids, distances, counts)
-            return wp.to_torch(ids).long(), wp.to_torch(distances).clamp_min(0).sqrt()
+            return torch_ids.long(), torch_distances.clamp_min(0).sqrt()
         if self.name == "physicsnemo":
             return self.provider.library.knn_impl(self.p, self.q, self.k)
         if self.name == "pytorch3d":

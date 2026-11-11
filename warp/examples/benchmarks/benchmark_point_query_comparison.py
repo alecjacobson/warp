@@ -197,7 +197,14 @@ def worker(args):
                 torch.cuda.synchronize()
                 graph = torch.cuda.CUDAGraph()
                 with torch.cuda.graph(graph, stream=stream):
-                    result = problem.search(index)
+                    uses_warp = args.worker.startswith("warp_") or args.worker in ("physicsnemo", "cubql")
+                    if uses_warp:
+                        wp.capture_begin(force_module_load=False, external=True)
+                    try:
+                        result = problem.search(index)
+                    finally:
+                        if uses_warp:
+                            wp.capture_end()
                 qt.add_(0.003)
                 for _ in range(3):
                     graph.replay()
