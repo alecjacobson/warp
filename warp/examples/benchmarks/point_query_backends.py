@@ -18,7 +18,12 @@ import torch
 
 import warp as wp
 from warp.examples.benchmarks.benchmark_point_query import load_physicsnemo
-from warp.examples.benchmarks.point_query_common import make_api_query, make_ordered_query, query_codes
+from warp.examples.benchmarks.point_query_common import (
+    make_api_query,
+    make_ordered_query,
+    point_query_configuration,
+    query_codes,
+)
 from warp.examples.benchmarks.point_query_cubql import CubqlLibrary
 
 METHODS = (
@@ -128,14 +133,16 @@ class Problem:
         self.leaf = 4
         self.stride = 1
         self.ordered = False
+        self.block_dim = 256
         if self.name in ("warp_default", "warp_configured", "cubql"):
             self.wp_points = wp.from_torch(points, dtype=wp.vec3)
             self.wp_queries = wp.from_torch(queries, dtype=wp.vec3)
             self.excludes = wp.full(self.nq, -1, dtype=int, device="cuda:0")
             if self.name == "warp_configured":
-                self.leaf = 32 if self.nq <= 32 or len(points) >= 1_000_000 else 4
-                self.stride = 32 if self.nq <= 32 else 1
-                self.ordered = self.nq > 32 and len(points) >= 1_000_000
+                self.leaf, self.stride, self.ordered = point_query_configuration(
+                    len(points), self.nq, self.wp_points.device.sm_count
+                )
+            self.block_dim = 32 if self.stride > 1 else 256
             if self.name != "cubql":
                 self.kernel = make_ordered_query(k, True) if self.ordered else make_api_query(k, True, self.stride)
         if self.name.startswith("cuvs_") or self.name == "cupy_kdtree":
@@ -203,7 +210,7 @@ class Problem:
                     distances,
                     counts,
                 ],
-                block_dim=32 if self.stride > 1 else 256,
+                block_dim=self.block_dim,
             )
             return torch_ids, torch_distances
         if self.name == "cubql":

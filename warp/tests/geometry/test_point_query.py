@@ -386,16 +386,17 @@ def test_sparse_queries(test, device):
         ids = wp.empty((len(q), k), dtype=wp.int64, device=device)
         ds = wp.empty((len(q), k), dtype=float, device=device)
         counts = wp.empty(len(q), dtype=int, device=device)
-        wp.launch(
-            make_api_query(k, True, 32),
-            len(q) * 32,
-            inputs=[bvh.id, points, queries, 0.8, excludes, ids, ds, counts],
-            block_dim=32,
-            device=device,
-        )
-        np.testing.assert_array_equal(ids.numpy(), expected)
-        np.testing.assert_allclose(ds.numpy(), np.sqrt(distances), rtol=2.0e-6)
-        np.testing.assert_array_equal(counts.numpy(), (expected >= 0).sum(axis=1))
+        for stride in (4, 32):
+            wp.launch(
+                make_api_query(k, True, stride),
+                len(q) * stride,
+                inputs=[bvh.id, points, queries, 0.8, excludes, ids, ds, counts],
+                block_dim=32,
+                device=device,
+            )
+            np.testing.assert_array_equal(ids.numpy(), expected)
+            np.testing.assert_allclose(ds.numpy(), np.sqrt(distances), rtol=2.0e-6)
+            np.testing.assert_array_equal(counts.numpy(), (expected >= 0).sum(axis=1))
 
 
 def test_lbvh_capture_construction(test, device):
@@ -473,6 +474,24 @@ def test_query_tiles(test, device):
             np.testing.assert_allclose(od.numpy(), distances, rtol=2.0e-6)
 
 
+def test_point_leaf_boundaries(test, device):
+    """Exercise partial and oversized point leaves, ties, and changes in ordering."""
+    rng = np.random.default_rng(92715)
+    q = rng.normal(size=(9, 3)).astype(np.float32)
+    for n in (1, 7, 8, 9, 31, 33, 257):
+        p = rng.normal(size=(n, 3)).astype(np.float32)
+        p[:, 2] *= 0.00001
+        for leaf in (2, 8, 32, 1024):
+            with test.subTest(n=n, leaf=leaf):
+                bvh, points, _ = check(test, device, p, q, 32, constructor="lbvh", leaf_size=leaf)
+                # Retain tied original-index ordering through refit and rebuild.
+                moved = np.round(rng.normal(size=p.shape)).astype(np.float32)
+                for update in (bvh.refit, bvh.rebuild):
+                    points.assign(moved)
+                    update()
+                    check(test, device, moved, q, 32, bvh=bvh, points=points)
+
+
 class TestPointQuery(unittest.TestCase):
     pass
 
@@ -498,6 +517,14 @@ add_function_test(
     "test_lbvh_capture_construction",
     test_lbvh_capture_construction,
     devices=[device for device in get_test_devices() if device.is_cuda and wp.is_mempool_enabled(device)],
+)
+
+
+add_function_test(
+    TestPointQuery,
+    "test_point_leaf_boundaries",
+    test_point_leaf_boundaries,
+    devices=[device for device in get_test_devices() if device.is_cuda],
 )
 
 

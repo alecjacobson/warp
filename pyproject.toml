@@ -273,7 +273,8 @@ showcontent = true
 [tool.typos]
 # Skill eval fixtures stand in for third-party codebases under assessment, so
 # their prose and identifiers are deliberately not held to Warp's conventions.
-files.extend-exclude = ["/tools/packman", "/tools/repoman", "/PUBLICATIONS.md", "/licenses", "/warp/native/nanovdb", "/warp/native/cuBQL", "*.svg", "*.usda", "/skills/*/evals/files"]
+# Preserve serialized benchmark labels and truncated profiler symbols verbatim.
+files.extend-exclude = ["/tools/packman", "/tools/repoman", "/PUBLICATIONS.md", "/licenses", "/warp/native/nanovdb", "/warp/native/cuBQL", "*.svg", "*.usda", "/skills/*/evals/files", "/reports/knn/hybrid/results", "/reports/knn/hybrid/profiles"]
 
 [tool.typos.default]
 extend-ignore-re = [

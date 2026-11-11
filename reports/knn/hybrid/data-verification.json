@@ -1,0 +1,12 @@
+{
+  "pilot": {
+    "checked_cases": 40,
+    "unique_files": 24,
+    "file_and_array_hashes_match": true
+  },
+  "hybrid-holdout": {
+    "checked_cases": 56,
+    "unique_files": 40,
+    "file_and_array_hashes_match": true
+  }
+}

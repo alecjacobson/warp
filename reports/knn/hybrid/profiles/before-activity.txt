@@ -1,0 +1,96 @@
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+                                          physics_build         0.00%       0.000us         0.00%       0.000us       0.000us       5.684ms       152.46%       5.684ms       5.684ms             1
+                                           physics_plan         0.00%       0.000us         0.00%       0.000us       0.000us       1.199ms        32.17%       1.199ms       1.199ms             1
+                                             warp_build         0.00%       0.000us         0.00%       0.000us       0.000us       1.141ms        30.59%       1.141ms       1.141ms             1
+                                            warp_search         0.00%       0.000us         0.00%       0.000us       0.000us       1.065ms        28.56%       1.065ms     532.432us             2
+                                          physics_build        21.57%       2.487ms        70.64%       8.142ms       8.142ms       0.000us         0.00%     953.055us     953.055us             1
+make_ordered_query__locals__ordered_c2dd03fa_cuda_ke...         0.00%       0.000us         0.00%       0.000us       0.000us     891.263us        23.90%     891.263us     891.263us             1
+                                             aten::sort        12.95%       1.492ms        14.15%       1.630ms     815.205us     652.383us        17.50%     665.759us     332.879us             2
+void at_cuda_detail::cub::DeviceRadixSortOnesweepKer...         0.00%       0.000us         0.00%       0.000us       0.000us     595.391us        15.97%     595.391us      37.212us            16
+get_tree_knn_kernel__locals__tree_knn_c52c2971_cuda_...         0.00%       0.000us         0.00%       0.000us       0.000us     557.056us        14.94%     557.056us     557.056us             1
+                                         physics_search         0.00%       0.000us         0.00%       0.000us       0.000us     557.056us        14.94%     557.056us     557.056us             1
+wp::refit_active_leaves(int, int const*, int*, int c...         0.00%       0.000us         0.00%       0.000us       0.000us     410.112us        11.00%     410.112us     410.112us             1
+void wp::mark_packed_leaf_nodes<unsigned int>(int, i...         0.00%       0.000us         0.00%       0.000us       0.000us     194.912us         5.23%     194.912us     194.912us             1
+void cub::CUB_200802_SM_750::DeviceRadixSortOnesweep...         0.00%       0.000us         0.00%       0.000us       0.000us     164.448us         4.41%     164.448us      41.112us             4
+void wp::build_radix_topology<unsigned int>(int, uns...         0.00%       0.000us         0.00%       0.000us       0.000us     160.735us         4.31%     160.735us     160.735us             1
+                                            aten::index         0.18%      20.350us         0.24%      27.740us      27.740us     124.832us         3.35%     124.832us     124.832us             1
+void at::native::index_elementwise_kernel<128, 4, at...         0.00%       0.000us         0.00%       0.000us       0.000us     124.832us         3.35%     124.832us     124.832us             1
+                                           physics_plan         8.80%       1.015ms        10.33%       1.191ms       1.191ms       0.000us         0.00%     113.216us     113.216us             1
+                                             warp_build         1.47%     169.330us        10.09%       1.164ms       1.164ms       0.000us         0.00%      97.408us      97.408us             1
+                                            warp_search         1.91%     219.640us         2.50%     288.320us     288.320us       0.000us         0.00%      90.496us      90.496us             1
+                                          aten::argsort         0.01%       1.250us         0.77%      89.030us      89.030us       0.000us         0.00%      89.504us      89.504us             1
+                                        cudaMemsetAsync         0.77%      89.210us         0.77%      89.210us       2.549us      88.512us         2.37%      88.512us       2.529us            35
+wp::build_leaves(wp::vec_t<3u, float> const*, wp::ve...         0.00%       0.000us         0.00%       0.000us       0.000us      84.832us         2.28%      84.832us      84.832us             1
+                                              aten::cat         0.35%      40.180us         0.52%      59.540us       9.923us      66.624us         1.79%      66.624us      11.104us             6
+void cub::CUB_200802_SM_750::DeviceRadixSortOnesweep...         0.00%       0.000us         0.00%       0.000us       0.000us      64.512us         1.73%      64.512us      16.128us             4
+void at::native::(anonymous namespace)::CatArrayBatc...         0.00%       0.000us         0.00%       0.000us       0.000us      64.160us         1.72%      64.160us      16.040us             4
+                                        Memset (Device)         0.00%       0.000us         0.00%       0.000us       0.000us      55.104us         1.48%      55.104us       1.574us            35
+                                             aten::amin         0.68%      78.840us         1.10%     126.330us       7.018us      49.600us         1.33%      49.600us       2.756us            18
+void at::native::reduce_kernel<512, 1, at::native::R...         0.00%       0.000us         0.00%       0.000us       0.000us      49.600us         1.33%      49.600us       2.756us            18
+                                             aten::amax         0.60%      68.670us         1.03%     118.840us       6.602us      45.760us         1.23%      45.760us       2.542us            18
+void at::native::reduce_kernel<512, 1, at::native::R...         0.00%       0.000us         0.00%       0.000us       0.000us      45.760us         1.23%      45.760us       2.542us            18
+                                  cudaStreamIsCapturing         0.04%       4.560us         0.04%       4.560us       0.163us      44.640us         1.20%      44.640us       1.594us            28
+wp::compute_total_bounds(wp::vec_t<3u, float> const*...         0.00%       0.000us         0.00%       0.000us       0.000us      43.648us         1.17%      43.648us      43.648us             1
+                                        cudaMallocAsync         0.18%      20.230us         0.18%      20.230us       1.124us      27.072us         0.73%      27.072us       1.504us            18
+                                            aten::where        10.48%       1.208ms        11.16%       1.287ms     160.845us      12.032us         0.32%      25.184us       3.148us             8
+                                              aten::max         0.10%      11.010us         0.15%      17.240us      17.240us      22.176us         0.59%      22.176us      22.176us             1
+                                              aten::min        12.60%       1.452ms        12.75%       1.469ms       1.469ms      22.176us         0.59%      22.176us      22.176us             1
+void at::native::reduce_kernel<512, 1, at::native::R...         0.00%       0.000us         0.00%       0.000us       0.000us      21.856us         0.59%      21.856us      21.856us             1
+void at::native::reduce_kernel<512, 1, at::native::R...         0.00%       0.000us         0.00%       0.000us       0.000us      21.248us         0.57%      21.248us      21.248us             1
+                         Memcpy DtoD (Device -> Device)         0.00%       0.000us         0.00%       0.000us       0.000us      20.928us         0.56%      20.928us       6.976us             3
+            _morton_kernel_81814b6a_cuda_kernel_forward         0.00%       0.000us         0.00%       0.000us       0.000us      20.065us         0.54%      20.065us      10.033us             2
+void at_cuda_detail::cub::DeviceRadixSortHistogramKe...         0.00%       0.000us         0.00%       0.000us       0.000us      17.216us         0.46%      17.216us       8.608us             2
+at::native::(anonymous namespace)::fill_reverse_indi...         0.00%       0.000us         0.00%       0.000us       0.000us      16.960us         0.45%      16.960us       8.480us             2
+                                            aten::copy_         0.12%      13.690us         0.36%      41.930us      10.483us      16.480us         0.44%      16.480us       4.120us             4
+                                     aten::searchsorted         0.09%      10.880us         0.18%      20.520us      20.520us      16.032us         0.43%      16.032us      16.032us             1
+void at::native::(anonymous namespace)::searchsorted...         0.00%       0.000us         0.00%       0.000us       0.000us      16.032us         0.43%      16.032us      16.032us             1
+                                          cudaFreeAsync         0.14%      15.920us         0.14%      15.920us       0.884us      15.808us         0.42%      15.808us       0.878us            18
+void wp::compute_morton_codes<unsigned int>(wp::vec_...         0.00%       0.000us         0.00%       0.000us       0.000us      11.776us         0.32%      11.776us      11.776us             1
+void at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       9.920us         0.27%       9.920us       3.307us             3
+                                           aten::arange         0.05%       5.950us         0.19%      21.950us      10.975us       4.608us         0.12%       9.216us       4.608us             2
+                                       cudaLaunchKernel         3.18%     367.020us         3.18%     367.020us       3.110us       9.120us         0.24%       9.120us       0.077us           118
+void cub::CUB_200802_SM_750::DeviceRadixSortHistogra...         0.00%       0.000us         0.00%       0.000us       0.000us       6.688us         0.18%       6.688us       6.688us             1
+                                            aten::fill_         0.13%      15.010us         0.28%      32.740us       5.457us       6.432us         0.17%       6.432us       1.072us             6
+                                              aten::mul         0.12%      13.960us         0.19%      22.330us       7.443us       6.240us         0.17%       6.240us       2.080us             3
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       6.240us         0.17%       6.240us       2.080us             3
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       5.952us         0.16%       5.952us       1.984us             3
+                                              aten::sub         0.18%      20.190us         0.26%      29.680us       9.893us       5.056us         0.14%       5.056us       1.685us             3
+void (anonymous namespace)::elementwise_kernel_with_...         0.00%       0.000us         0.00%       0.000us       0.000us       4.608us         0.12%       4.608us       4.608us             1
+                                            aten::clamp         0.08%       9.780us         0.14%      15.790us       7.895us       4.128us         0.11%       4.128us       2.064us             2
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       4.128us         0.11%       4.128us       2.064us             2
+                                              aten::add         0.12%      13.540us         0.16%      18.750us       9.375us       4.064us         0.11%       4.064us       2.032us             2
+                                    aten::scalar_tensor         0.03%       3.020us         0.20%      23.510us       7.837us       0.000us         0.00%       3.232us       1.077us             3
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       3.232us         0.09%       3.232us       1.077us             3
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       3.200us         0.09%       3.200us       1.067us             3
+                                               aten::to         0.02%       1.820us         0.21%      23.840us       2.649us       0.000us         0.00%       3.104us       0.345us             9
+                                         aten::_to_copy         0.04%       5.000us         0.19%      22.020us      11.010us       0.000us         0.00%       3.104us       1.552us             2
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       3.104us         0.08%       3.104us       1.552us             2
+                                              aten::neg         0.06%       7.480us         0.09%      10.640us      10.640us       2.912us         0.08%       2.912us       2.912us             1
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       2.912us         0.08%       2.912us       2.912us             1
+void cub::CUB_200802_SM_750::DeviceRadixSortHistogra...         0.00%       0.000us         0.00%       0.000us       0.000us       2.720us         0.07%       2.720us       2.720us             1
+                                            aten::stack         7.42%     855.410us         7.62%     878.530us     439.265us       0.000us         0.00%       2.464us       1.232us             2
+void at::native::(anonymous namespace)::CatArrayBatc...         0.00%       0.000us         0.00%       0.000us       0.000us       2.464us         0.07%       2.464us       1.232us             2
+                                               aten::ge         0.09%       9.860us         0.11%      13.180us      13.180us       2.432us         0.07%       2.432us       2.432us             1
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       2.432us         0.07%       2.432us       2.432us             1
+void at_cuda_detail::cub::DeviceRadixSortExclusiveSu...         0.00%       0.000us         0.00%       0.000us       0.000us       2.304us         0.06%       2.304us       1.152us             2
+                                               aten::ne         0.14%      16.160us         0.20%      22.950us      11.475us       2.304us         0.06%       2.304us       1.152us             2
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       2.304us         0.06%       2.304us       1.152us             2
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       2.112us         0.06%       2.112us       1.056us             2
+               query_codes_a2e74958_cuda_kernel_forward         0.00%       0.000us         0.00%       0.000us       0.000us       2.016us         0.05%       2.016us       2.016us             1
+                                             aten::rsub         0.06%       7.000us         0.12%      13.830us      13.830us       0.000us         0.00%       1.920us       1.920us             1
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.920us         0.05%       1.920us       1.920us             1
+                                        aten::ones_like         0.03%       3.020us         0.22%      25.550us      12.775us       0.000us         0.00%       1.792us       0.896us             2
+            wp::memset_kernel(int*, int, unsigned long)         0.00%       0.000us         0.00%       0.000us       0.000us       1.728us         0.05%       1.728us       0.864us             2
+                                        cudaStreamGetId         0.01%       0.720us         0.01%       0.720us       0.360us       1.664us         0.04%       1.664us       0.832us             2
+                                         aten::new_full         0.03%       3.810us         0.11%      12.290us      12.290us       0.000us         0.00%       1.408us       1.408us             1
+       wp::initialize_bvh_descriptor(wp::BVH*, wp::BVH)         0.00%       0.000us         0.00%       0.000us       0.000us       1.408us         0.04%       1.408us       1.408us             1
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.248us         0.03%       1.248us       1.248us             1
+void cub::CUB_200802_SM_750::DeviceRadixSortExclusiv...         0.00%       0.000us         0.00%       0.000us       0.000us       1.152us         0.03%       1.152us       1.152us             1
+void cub::CUB_200802_SM_750::DeviceRadixSortExclusiv...         0.00%       0.000us         0.00%       0.000us       0.000us       1.120us         0.03%       1.120us       1.120us             1
+                                         cuLaunchKernel         0.22%      25.170us         0.22%      25.170us       5.034us       1.088us         0.03%       1.088us       0.218us             5
+wp::compute_total_inv_edges(wp::vec_t<3u, float> con...         0.00%       0.000us         0.00%       0.000us       0.000us       1.024us         0.03%       1.024us       1.024us             1
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+Self CPU time total: 11.526ms
+Self CUDA time total: 3.728ms

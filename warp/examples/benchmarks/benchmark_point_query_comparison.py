@@ -141,8 +141,11 @@ def worker(args):
     torch.set_grad_enabled(False)
     torch.backends.cuda.matmul.allow_tf32 = False
     wp.set_mempool_release_threshold("cuda:0", args.pool_mib * 1024**2)
-    stream = torch.cuda.Stream()
-    wp_stream = wp.stream_from_torch(stream)
+    # Warp's ordinary resource retirement uses CUDA's default stream. Sharing
+    # a Warp-owned blocking stream preserves those dependencies for temporary
+    # arrays; a Torch-created nonblocking stream requires explicit lifetime guards.
+    wp_stream = wp.Stream("cuda:0")
+    stream = wp.stream_to_torch(wp_stream)
     report = {
         "method": args.worker,
         "environment": environment(),
@@ -151,6 +154,7 @@ def worker(args):
         "primary_timing": "device-synchronized wall time",
         "warp_pool_release_threshold_bytes": wp.get_mempool_release_threshold("cuda:0"),
         "torch_allocator": torch.cuda.memory.get_allocator_backend(),
+        "shared_stream": "Warp-owned CUDA blocking stream, borrowed by Torch and other providers",
         "cases": [],
     }
     if args.pytorch3d_path:

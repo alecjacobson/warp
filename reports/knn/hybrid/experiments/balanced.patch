@@ -1,0 +1,158 @@
+--- a/warp/native/bvh.cu
++++ b/warp/native/bvh.cu
+@@ -560,0 +561,34 @@
++// Point boxes can use fixed Morton runs, as in a balanced Morton tree. Build
++// only O(N / leaf_size) nodes instead of building N leaves and then muting them.
++// Reverse heap indices put every leaf first, as required by the refit kernel.
++__global__ void build_point_runs(
++    int num_nodes,
++    int num_leaves,
++    int num_items,
++    int leaf_size,
++    int* root,
++    int* parents,
++    BVHPackedNodeHalf* lowers,
++    BVHPackedNodeHalf* uppers
++)
++{
++    const int node = blockIdx.x * blockDim.x + threadIdx.x;
++    if (node >= num_nodes)
++        return;
++    parents[node] = node == num_nodes - 1 ? -1 : num_leaves + node / 2;
++    if (node < num_leaves) {
++        // Padding leaves have an empty range and inverted bounds.
++        const int start = int(min(int64_t(num_leaves - 1 - node) * leaf_size, int64_t(num_items)));
++        const int end = start + min(leaf_size, num_items - start);
++        bounds3 bounds;
++        lowers[node] = make_node(bounds.lower, start, true);
++        uppers[node] = make_node(bounds.upper, end, false);
++    } else {
++        const int left = 2 * (node - num_leaves) + 1;
++        lowers[node] = make_node(vec3(0.0f), left, false);
++        uppers[node] = make_node(vec3(0.0f), left - 1, false);
++    }
++    if (node == num_nodes - 1)
++        *root = node;
++}
++
+@@ -624 +658 @@
+-__global__ void compute_total_inv_edges(const vec3* total_lower, const vec3* total_upper, vec3* total_inv_edges)
++__global__ void compute_total_inv_edges(const vec3* total_lower, const vec3* total_upper, vec3* total_inv_edges, bool isotropic)
+@@ -626,0 +661,2 @@
++    if (isotropic)
++        edges = vec3(max(max(edges[0], edges[1]), edges[2]));
+@@ -661,0 +698,4 @@
++    // Host-built trees may be rebuilt in their original full-size allocation.
++    // Preserve that layout; only compact point-tree allocations use this path.
++    const bool point_runs = item_lowers == item_uppers && !item_groups && bvh.leaf_size > 1
++        && bvh.constructor_type == BVH_CONSTRUCTOR_LBVH && bvh.max_nodes == 2 * bvh.num_leaf_nodes - 1;
+@@ -712 +752 @@
+-        wp_launch_device(WP_CURRENT_CONTEXT, compute_total_inv_edges, 1, (total_lower, total_upper, total_inv_edges));
++        wp_launch_device(WP_CURRENT_CONTEXT, compute_total_inv_edges, 1, (total_lower, total_upper, total_inv_edges, item_lowers == item_uppers && !item_groups));
+@@ -739,0 +780,3 @@
++    // Counters are reset before either topology begins propagating bounds.
++    wp_memset_device(WP_CURRENT_CONTEXT, num_children, 0, sizeof(int) * bvh.max_nodes);
++
+@@ -741,13 +784 @@
+-    wp_launch_device(
+-        WP_CURRENT_CONTEXT, build_leaves, num_items,
+-        (item_lowers, item_uppers, num_items, item_groups != nullptr, indices, range_lefts, range_rights,
+-         bvh.node_lowers, bvh.node_uppers)
+-    );
+-
+-    // reset children count, this is our atomic counter so we know when an internal node is complete, only used during
+-    // building
+-    wp_memset_device(WP_CURRENT_CONTEXT, num_children, 0, sizeof(int) * bvh.max_nodes);
+-
+-    if (num_items == 1) {
+-        wp_launch_device(WP_CURRENT_CONTEXT, set_single_leaf_root, 1, (bvh.root, bvh.node_parents));
+-    } else if (!item_groups) {
++    if (point_runs) {
+@@ -755,3 +786,3 @@
+-            WP_CURRENT_CONTEXT, build_radix_topology, num_items - 1,
+-            (num_items, point_keys, bvh.root, bvh.node_parents, range_lefts, range_rights, bvh.node_lowers,
+-             bvh.node_uppers)
++            WP_CURRENT_CONTEXT, build_point_runs, bvh.max_nodes,
++            (bvh.max_nodes, bvh.num_leaf_nodes, num_items, bvh.leaf_size, bvh.root, bvh.node_parents,
++             bvh.node_lowers, bvh.node_uppers)
+@@ -759,2 +789,0 @@
+-    } else {
+-        // Preserve the group-aware topology and the single-leaf root handling.
+@@ -762,10 +791,3 @@
+-            WP_CURRENT_CONTEXT, build_hierarchy, num_items,
+-            (num_items, bvh.root, deltas, keys, num_children, bvh.primitive_indices, range_lefts, range_rights,
+-             bvh.node_parents, bvh.node_lowers, bvh.node_uppers)
+-        );
+-    }
+-    if (item_groups) {
+-        wp_launch_device(
+-            WP_CURRENT_CONTEXT, mark_packed_leaf_nodes, bvh.max_nodes - num_items,
+-            (bvh.max_nodes, num_items, false, range_lefts, range_rights, bvh.node_parents, keys, bvh.node_lowers,
+-             bvh.node_uppers, bvh.leaf_size)
++            WP_CURRENT_CONTEXT, refit_active_leaves, bvh.num_leaf_nodes,
++            (bvh.num_leaf_nodes, bvh.node_parents, num_children, bvh.primitive_indices, bvh.node_lowers,
++             bvh.node_uppers, item_lowers, item_uppers)
+@@ -775,3 +797,3 @@
+-            WP_CURRENT_CONTEXT, mark_packed_leaf_nodes, bvh.max_nodes - num_items,
+-            (bvh.max_nodes, num_items, true, range_lefts, range_rights, bvh.node_parents, point_keys, bvh.node_lowers,
+-             bvh.node_uppers, bvh.leaf_size)
++            WP_CURRENT_CONTEXT, build_leaves, num_items,
++            (item_lowers, item_uppers, num_items, item_groups != nullptr, indices, range_lefts, range_rights,
++             bvh.node_lowers, bvh.node_uppers)
+@@ -779,8 +801,39 @@
+-    }
+-
+-    if (!item_groups) {
+-        wp_launch_device(
+-            WP_CURRENT_CONTEXT, refit_active_leaves, bvh.max_nodes,
+-            (bvh.max_nodes, bvh.node_parents, num_children, bvh.primitive_indices, bvh.node_lowers, bvh.node_uppers,
+-             item_lowers, item_uppers)
+-        );
++
++        if (num_items == 1) {
++            wp_launch_device(WP_CURRENT_CONTEXT, set_single_leaf_root, 1, (bvh.root, bvh.node_parents));
++        } else if (!item_groups) {
++            wp_launch_device(
++                WP_CURRENT_CONTEXT, build_radix_topology, num_items - 1,
++                (num_items, point_keys, bvh.root, bvh.node_parents, range_lefts, range_rights, bvh.node_lowers,
++                 bvh.node_uppers)
++            );
++        } else {
++            // Preserve the group-aware topology and the single-leaf root handling.
++            wp_launch_device(
++                WP_CURRENT_CONTEXT, build_hierarchy, num_items,
++                (num_items, bvh.root, deltas, keys, num_children, bvh.primitive_indices, range_lefts, range_rights,
++                 bvh.node_parents, bvh.node_lowers, bvh.node_uppers)
++            );
++        }
++        if (item_groups) {
++            wp_launch_device(
++                WP_CURRENT_CONTEXT, mark_packed_leaf_nodes, bvh.max_nodes - num_items,
++                (bvh.max_nodes, num_items, false, range_lefts, range_rights, bvh.node_parents, keys, bvh.node_lowers,
++                 bvh.node_uppers, bvh.leaf_size)
++            );
++        } else {
++            wp_launch_device(
++                WP_CURRENT_CONTEXT, mark_packed_leaf_nodes, bvh.max_nodes - num_items,
++                (bvh.max_nodes, num_items, true, range_lefts, range_rights, bvh.node_parents, point_keys, bvh.node_lowers,
++                 bvh.node_uppers, bvh.leaf_size)
++            );
++        }
++
++        if (!item_groups) {
++            wp_launch_device(
++                WP_CURRENT_CONTEXT, refit_active_leaves, bvh.max_nodes,
++                (bvh.max_nodes, bvh.node_parents, num_children, bvh.primitive_indices, bvh.node_lowers, bvh.node_uppers,
++                 item_lowers, item_uppers)
++            );
++        }
++
+@@ -912 +965,7 @@
+-        bvh_device_on_host.max_nodes = 2 * num_items - 1;
++        if (lowers == uppers && !groups && leaf_size > 1) {
++            const int required = (num_items - 1) / leaf_size + 1;
++            bvh_device_on_host.num_leaf_nodes = 1;
++            while (bvh_device_on_host.num_leaf_nodes < required)
++                bvh_device_on_host.num_leaf_nodes *= 2;
++        }
++        bvh_device_on_host.max_nodes = 2 * bvh_device_on_host.num_leaf_nodes - 1;
