@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import contextlib
+import io
 import sys
 import unittest
 from unittest import mock
@@ -2350,10 +2352,13 @@ def test_bsr_mv_gradient_aliasing(test, device):
     x_in = rng.random(5)
     x_adj = rng.random(5)
 
+    # Reusing the caller's work buffer after the product must not affect the backward pass
     x = wp.array(x_in, dtype=wp.float64, device=device, requires_grad=True)
+    work_buffer = wp.empty_like(x)
     with wp.Tape() as tape:
-        bsr_mv(A, x, x, alpha=alpha, beta=beta)
+        bsr_mv(A, x, x, alpha=alpha, beta=beta, work_buffer=work_buffer)
     assert_np_equal(x.numpy(), alpha * A_dense @ x_in + beta * x_in, tol=1.0e-10)
+    work_buffer.fill_(1.0e3)
     tape.backward(grads={x: wp.array(x_adj, dtype=wp.float64, device=device)})
 
     assert_np_equal(_bsr_dense_grad(A), alpha * np.outer(x_adj, x_in) * _bsr_dense_mask(A), tol=1.0e-10)
@@ -2367,6 +2372,58 @@ def test_bsr_mv_gradient_aliasing(test, device):
     test.assertTrue(y.requires_grad)
     tape.backward(grads={y: wp.array(x_adj, dtype=wp.float64, device=device)})
     assert_np_equal(_bsr_dense_grad(A), np.outer(x_adj, x_in) * _bsr_dense_mask(A), tol=1.0e-10)
+
+
+@wp.kernel
+def _overwrite_values_kernel(values: wp.array[wp.float64]):
+    values[wp.tid()] = wp.float64(0.0)
+
+
+def test_bsr_product_gradient_retain_grad(test, device):
+    """Check that bsr_mv and bsr_mm keep the output gradient when it has retain_grad set, like kernel writes."""
+    rng = np.random.default_rng(123)
+    A = _make_gradient_test_bsr(4, 4, (1, 1), wp.float64, "compact", rng, device, nnz=8)
+    y_adj = rng.random(4)
+
+    x = wp.array(rng.random(4), dtype=wp.float64, device=device, requires_grad=True)
+    y = wp.array(rng.random(4), dtype=wp.float64, device=device, requires_grad=True, retain_grad=True)
+    with wp.Tape() as tape:
+        bsr_mv(A, x, y, beta=0.5)
+    tape.backward(grads={y: wp.array(y_adj, dtype=wp.float64, device=device)})
+    assert_np_equal(y.grad.numpy(), 1.5 * y_adj, tol=1.0e-10)
+
+    # The masked topology keeps the values array of C, and thus its retain_grad flag
+    C = _make_gradient_test_bsr(4, 4, (1, 1), wp.float64, "compact", rng, device, nnz=4)
+    C.values.retain_grad = True
+    with wp.Tape() as tape:
+        bsr_mm(A, A, C, topology="masked")
+    C.values.grad.fill_(1.0)
+    tape.backward()
+    assert_np_equal(C.values.grad.numpy()[: C.nnz_sync()], np.ones(C.nnz), tol=0.0)
+
+    with wp.Tape():
+        with test.assertRaises(NotImplementedError):
+            bsr_mm(A, A, C, beta=1.0)
+
+
+def test_bsr_product_gradient_array_access(test, device):
+    """Check that verify_autograd_array_access reports overwriting an operand read by a recorded sparse product."""
+    rng = np.random.default_rng(123)
+    A = _make_gradient_test_bsr(4, 4, (1, 1), wp.float64, "compact", rng, device, nnz=8)
+    x = wp.array(rng.random(4), dtype=wp.float64, device=device, requires_grad=True)
+
+    saved_verify = wp.config.verify_autograd_array_access
+    try:
+        wp.config.verify_autograd_array_access = True
+        for product in (lambda: bsr_mv(A, x), lambda: bsr_mm(A, A)):
+            A.values.mark_init()
+            with contextlib.redirect_stderr(io.StringIO()) as f:
+                with wp.Tape():
+                    product()
+                    wp.launch(_overwrite_values_kernel, dim=A.nnz, inputs=[A.values], device=device)
+            test.assertIn("has already been read from", f.getvalue())
+    finally:
+        wp.config.verify_autograd_array_access = saved_verify
 
 
 def make_test_bsr_mm_gradient(block_shape, scalar_type):
@@ -2643,6 +2700,12 @@ add_function_test(
     TestSparse, "test_bsr_mm_gradient_2_3", make_test_bsr_mm_gradient((2, 3), wp.float64), devices=devices
 )
 add_function_test(TestSparse, "test_bsr_mm_gradient_aliasing", test_bsr_mm_gradient_aliasing, devices=devices)
+add_function_test(
+    TestSparse, "test_bsr_product_gradient_retain_grad", test_bsr_product_gradient_retain_grad, devices=devices
+)
+add_function_test(
+    TestSparse, "test_bsr_product_gradient_array_access", test_bsr_product_gradient_array_access, devices=devices
+)
 add_function_test(
     TestSparse,
     "test_bsr_gradient_capturability",
