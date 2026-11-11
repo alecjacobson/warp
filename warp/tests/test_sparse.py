@@ -2436,6 +2436,20 @@ def test_bsr_product_gradient_retain_grad(test, device):
             bsr_mm(A, A, C, beta=1.0)
 
 
+def test_bsr_mv_gradient_zero_alpha(test, device):
+    """Check that bsr_mv with zero alpha leaves gradients finite when x holds non-finite values."""
+    rng = np.random.default_rng(123)
+    A = _make_gradient_test_bsr(4, 4, (1, 1), wp.float64, "compact", rng, device, nnz=8)
+    x = wp.full(4, np.nan, dtype=wp.float64, device=device, requires_grad=True)
+    y = wp.array(rng.random(4), dtype=wp.float64, device=device, requires_grad=True)
+    with wp.Tape() as tape:
+        bsr_mv(A, x, y, alpha=0.0, beta=0.5)
+    tape.backward(grads={y: wp.ones(4, dtype=wp.float64, device=device)})
+    assert_np_equal(A.values.grad.numpy()[: A.nnz_sync()], np.zeros(A.nnz), tol=0.0)
+    assert_np_equal(x.grad.numpy(), np.zeros(4), tol=0.0)
+    assert_np_equal(y.grad.numpy(), np.full(4, 0.5), tol=0.0)
+
+
 def test_bsr_product_gradient_array_access(test, device):
     """Check that verify_autograd_array_access reports overwriting an operand read by a recorded sparse product."""
     rng = np.random.default_rng(123)
@@ -2452,6 +2466,7 @@ def test_bsr_product_gradient_array_access(test, device):
                     product()
                     wp.launch(_overwrite_values_kernel, dim=A.nnz, inputs=[A.values], device=device)
             test.assertIn("has already been read from", f.getvalue())
+        wp.synchronize_device(device)
     finally:
         wp.config.verify_autograd_array_access = saved_verify
 
@@ -2736,6 +2751,7 @@ add_function_test(
 add_function_test(
     TestSparse, "test_bsr_product_gradient_retain_grad", test_bsr_product_gradient_retain_grad, devices=devices
 )
+add_function_test(TestSparse, "test_bsr_mv_gradient_zero_alpha", test_bsr_mv_gradient_zero_alpha, devices=devices)
 add_function_test(
     TestSparse, "test_bsr_product_gradient_array_access", test_bsr_product_gradient_array_access, devices=devices
 )

@@ -5343,7 +5343,8 @@ def _bsr_mv_record_adjoint(
             x_adj_aliases_y_adj = x_adj is not None and x_adj.ptr == y_adj.ptr
             y_adj_in = wp.clone(y_adj) if x_adj_aliases_y_adj else y_adj
 
-            if A.values.grad is not None and A.nnz > 0:
+            # x may be uninitialized when alpha is zero, so do not read it
+            if A.values.grad is not None and A.nnz > 0 and alpha != 0.0:
                 wp.launch(
                     kernel=make_bsr_mv_values_adjoint_kernel(transpose),
                     device=A.device,
@@ -5511,7 +5512,7 @@ def _bsr_mv_launch(
     block_shape: tuple[int, int],
     nrow: int,
     ncol: int,
-    device,
+    device: wp.DeviceLike,
 ) -> wp.array:
     """Launch the forward kernels of :func:`bsr_mv` and return the scalar view of the ``x`` values they read."""
 
