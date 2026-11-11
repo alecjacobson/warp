@@ -1,0 +1,32 @@
+-- The CXX compiler identification is GNU 11.4.0
+-- The CUDA compiler identification is NVIDIA 12.9.86 with host compiler GNU 11.4.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting CUDA compiler ABI info
+-- Detecting CUDA compiler ABI info - done
+-- Check for working CUDA compiler: /tmp/warp-intersection-cuda-12.9/bin/nvcc - skipped
+-- Detecting CUDA compile features
+-- Detecting CUDA compile features - done
+-- Found OpenMP_CXX: -fopenmp (found version "4.5")
+-- Found OpenMP_CUDA: -fopenmp (found version "4.5")
+-- Found OpenMP: TRUE (found version "4.5")
+-- Looking for sgemm_
+-- Looking for sgemm_ - not found
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Looking for sgemm_
+-- Looking for sgemm_ - found
+-- Found BLAS: /usr/lib/x86_64-linux-gnu/libopenblas.so
+-- Looking for cheev_
+-- Looking for cheev_ - found
+-- Found LAPACK: /usr/lib/x86_64-linux-gnu/libopenblas.so;-lm;-ldl
+-- Found CUDAToolkit: /tmp/warp-intersection-cuda-12.9/include (found version "12.9.86")
+-- Found SWIG: /home/horde/Repos/warp.knn/warp/.venv-knn-compare/bin/swig (found version "4.5.1") found components: python
+-- Found Python: /home/horde/.local/share/uv/python/cpython-3.12-linux-x86_64-gnu/include/python3.12 (found version "3.12.15") found components: Development.Module NumPy Interpreter
+-- Configuring done (2.8s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/horde/Repos/warp.knn/third_party/faiss/build-knn

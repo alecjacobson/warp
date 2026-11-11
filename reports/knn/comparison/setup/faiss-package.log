@@ -1,0 +1,31 @@
+Copying _swigfaiss.so
+running build
+running build_py
+creating build/lib/faiss
+copying faiss/loader.py -> build/lib/faiss
+copying faiss/__init__.py -> build/lib/faiss
+copying faiss/extra_wrappers.py -> build/lib/faiss
+copying faiss/swigfaiss.py -> build/lib/faiss
+copying faiss/gpu_wrappers.py -> build/lib/faiss
+copying faiss/array_conversions.py -> build/lib/faiss
+copying faiss/class_wrappers.py -> build/lib/faiss
+creating build/lib/faiss/contrib
+copying faiss/contrib/vecs_io.py -> build/lib/faiss/contrib
+copying faiss/contrib/torch_utils.py -> build/lib/faiss/contrib
+copying faiss/contrib/__init__.py -> build/lib/faiss/contrib
+copying faiss/contrib/clustering.py -> build/lib/faiss/contrib
+copying faiss/contrib/client_server.py -> build/lib/faiss/contrib
+copying faiss/contrib/ivf_tools.py -> build/lib/faiss/contrib
+copying faiss/contrib/datasets.py -> build/lib/faiss/contrib
+copying faiss/contrib/big_batch_search.py -> build/lib/faiss/contrib
+copying faiss/contrib/ondisk.py -> build/lib/faiss/contrib
+copying faiss/contrib/inspect_tools.py -> build/lib/faiss/contrib
+copying faiss/contrib/rpc.py -> build/lib/faiss/contrib
+copying faiss/contrib/factory_tools.py -> build/lib/faiss/contrib
+copying faiss/contrib/exhaustive_search.py -> build/lib/faiss/contrib
+copying faiss/contrib/evaluation.py -> build/lib/faiss/contrib
+creating build/lib/faiss/contrib/torch
+copying faiss/contrib/torch/__init__.py -> build/lib/faiss/contrib/torch
+copying faiss/contrib/torch/clustering.py -> build/lib/faiss/contrib/torch
+copying faiss/contrib/torch/quantization.py -> build/lib/faiss/contrib/torch
+copying faiss/_swigfaiss.so -> build/lib/faiss

@@ -1,5 +1,7 @@
 # Exact point-cloud nearest neighbors in Warp
 
+**Broader comparison:** [Twelve configurations across seven competing GPU libraries and 40 scan/surface/volume cases](comparison/README.md) finds configured Warp fastest one-shot in 16/40 cases. Direct-L2 cuVS wins the medium k=32 cases; the earlier PhysicsNeMo-only results below remain historical measurements.
+
 **Follow-up:** [Profile-guided optimization of the 12 losses](optimization/README.md) improves all 12 and reaches 41/42 wins with explicit workload configurations (31/42 with the original configuration). [The case-25 allocator investigation](optimization/case25/README.md) reaches 42/42 with explicit memory retention. The report below preserves the original baseline measurements.
 
 Temporary report bundle. [Download the HTML version](report.html) to view it locally.
