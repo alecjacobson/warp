@@ -14,4 +14,3 @@ Traceback (most recent call last):
   File "/home/horde/Repos/warp.knn/warp/warp/_src/context.py", line 13604, in capture_begin
     raise RuntimeError(runtime.get_error_string())
 RuntimeError: Warp error: unknown stream
-

@@ -7,25 +7,24 @@ Warp 1.20.0.dev0 initialized:
      /home/horde/.cache/warp/1.20.0.dev0
 get 1 expected 449415376 python_id 133960195139888 actual 133960195139888
 [248149][01:01:43:887745][warning] The new dataset dimension (3) does not match the index dimension (0)
--------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
-                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  
--------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
-                                      search_single_cta         0.00%       0.000us         0.00%       0.000us       0.000us     539.579ms       100.00%     539.579ms     263.466us          2048  
-                         Memcpy DtoD (Device -> Device)         0.00%       0.000us         0.00%       0.000us       0.000us       3.616us         0.00%       3.616us       1.808us             2  
-                                            aten::copy_         0.01%      52.420us         0.02%      93.850us      46.925us       3.296us         0.00%       3.296us       1.648us             2  
-void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       3.296us         0.00%       3.296us       1.648us             2  
-                                             aten::sqrt         0.00%      18.020us         0.00%      26.700us      13.350us       2.496us         0.00%       2.496us       1.248us             2  
-void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       2.496us         0.00%       2.496us       1.248us             2  
-                                        aten::clamp_min         0.01%      34.540us         0.01%      43.480us      21.740us       2.144us         0.00%       2.144us       1.072us             2  
-void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       2.144us         0.00%       2.144us       1.072us             2  
-                                        Memset (Device)         0.00%       0.000us         0.00%       0.000us       0.000us       1.792us         0.00%       1.792us       0.896us             2  
-                                            aten::empty         0.01%      40.230us         0.01%      40.230us      10.058us       0.000us         0.00%       0.000us       0.000us             4  
-                                Activity Buffer Request         0.18%     981.669us         0.18%     981.669us     981.669us       0.000us         0.00%       0.000us       0.000us             1  
-                                        cudaEventRecord         0.00%      13.010us         0.00%      13.010us       3.252us       0.000us         0.00%       0.000us       0.000us             4  
-                                    cudaStreamWaitEvent         0.00%       7.450us         0.00%       7.450us       1.863us       0.000us         0.00%       0.000us       0.000us             4  
-                                       aten::as_strided         0.00%      25.600us         0.00%      25.600us       6.400us       0.000us         0.00%       0.000us       0.000us             4  
-                                 cudaDeviceGetAttribute         0.00%       2.880us         0.00%       2.880us       1.440us       0.000us         0.00%       0.000us       0.000us             2  
--------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+                                      search_single_cta         0.00%       0.000us         0.00%       0.000us       0.000us     539.579ms       100.00%     539.579ms     263.466us          2048
+                         Memcpy DtoD (Device -> Device)         0.00%       0.000us         0.00%       0.000us       0.000us       3.616us         0.00%       3.616us       1.808us             2
+                                            aten::copy_         0.01%      52.420us         0.02%      93.850us      46.925us       3.296us         0.00%       3.296us       1.648us             2
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       3.296us         0.00%       3.296us       1.648us             2
+                                             aten::sqrt         0.00%      18.020us         0.00%      26.700us      13.350us       2.496us         0.00%       2.496us       1.248us             2
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       2.496us         0.00%       2.496us       1.248us             2
+                                        aten::clamp_min         0.01%      34.540us         0.01%      43.480us      21.740us       2.144us         0.00%       2.144us       1.072us             2
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       2.144us         0.00%       2.144us       1.072us             2
+                                        Memset (Device)         0.00%       0.000us         0.00%       0.000us       0.000us       1.792us         0.00%       1.792us       0.896us             2
+                                            aten::empty         0.01%      40.230us         0.01%      40.230us      10.058us       0.000us         0.00%       0.000us       0.000us             4
+                                Activity Buffer Request         0.18%     981.669us         0.18%     981.669us     981.669us       0.000us         0.00%       0.000us       0.000us             1
+                                        cudaEventRecord         0.00%      13.010us         0.00%      13.010us       3.252us       0.000us         0.00%       0.000us       0.000us             4
+                                    cudaStreamWaitEvent         0.00%       7.450us         0.00%       7.450us       1.863us       0.000us         0.00%       0.000us       0.000us             4
+                                       aten::as_strided         0.00%      25.600us         0.00%      25.600us       6.400us       0.000us         0.00%       0.000us       0.000us             4
+                                 cudaDeviceGetAttribute         0.00%       2.880us         0.00%       2.880us       1.440us       0.000us         0.00%       0.000us       0.000us             2
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
 Self CPU time total: 541.291ms
 Self CUDA time total: 539.593ms
-

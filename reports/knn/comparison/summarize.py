@@ -60,7 +60,7 @@ def main():
                 row[field] = c.get("validation", {}).get(field)
             rows.append(row)
     with (ROOT / "cases.csv").open("w") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
     summary = {}
