@@ -197,7 +197,7 @@ def worker(args):
                 torch.cuda.synchronize()
                 graph = torch.cuda.CUDAGraph()
                 with torch.cuda.graph(graph, stream=stream):
-                    uses_warp = args.worker.startswith("warp_") or args.worker in ("physicsnemo", "cubql")
+                    uses_warp = args.worker.startswith("warp_") or args.worker == "cubql"
                     if uses_warp:
                         wp.capture_begin(force_module_load=False, external=True)
                     try:
