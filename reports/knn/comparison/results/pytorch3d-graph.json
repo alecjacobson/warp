@@ -1,0 +1,52 @@
+{
+  "method": "pytorch3d",
+  "environment": {
+    "python": "3.12.15",
+    "packages": {
+      "torch": "2.7.1+cu128",
+      "numpy": "2.5.4",
+      "cupy-cuda12x": "14.2.0",
+      "cuvs-cu12": "26.10.0",
+      "libcuvs-cu12": "26.10.0",
+      "rmm-cu12": "26.10.0",
+      "faiss-gpu-cu12": "1.14.1.post1",
+      "pykeops": "2.3",
+      "pytorch3d": null
+    },
+    "git_revision": "d97f7d9ab07146767096476d32e9049cf336206f",
+    "benchmark_source_sha256": {
+      "benchmark_point_query_comparison.py": "19a9355dba0029a23bdd4cbc3624f306cc12918b10b2803cdb3f131f67f093f3",
+      "point_query_backends.py": "4613dde097f6ab45fa695e8138e928e039bf3e5a6dbaf6ffb731608084ffb777"
+    },
+    "native_bvh_sha256": "ba1dcf3b5524826c5270fff0c30b42a7732fa9453f64b0be133561f6eb9c2aef"
+  },
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+  "repeats": 5,
+  "primary_timing": "device-synchronized wall time",
+  "warp_pool_release_threshold_bytes": 536870912,
+  "torch_allocator": "native",
+  "cases": [],
+  "pytorch3d_revision": "e4ad6e5687a360ccdc6ebd91348e8dbbac97bf31",
+  "faiss_revision": "5622e93733b64b2e033362dbdfda019b2ab33ef0",
+  "provider": {
+    "exact_algorithm": true,
+    "name": "pytorch3d",
+    "sorting": "return_sorted=False, followed by torch.sort and gather on GPU"
+  },
+  "capture": {
+    "supported": true,
+    "changed_query_validation": {
+      "valid_shape": true,
+      "valid_indices_and_finite_distances": true,
+      "checked_rows": 32,
+      "duplicate_rows": 0,
+      "unsorted_rows": 0,
+      "tie_aware_recall_at_k": 1.0,
+      "distance_rank_mismatch_rows": 0,
+      "reported_distance_mismatch_rows": 0,
+      "max_reported_distance_relative_error": 9.085812458893583e-08,
+      "rank_rtol": 1e-05,
+      "rank_atol_squared": 1e-12
+    }
+  }
+}

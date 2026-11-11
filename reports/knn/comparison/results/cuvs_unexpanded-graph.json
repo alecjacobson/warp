@@ -1,0 +1,60 @@
+{
+  "method": "cuvs_unexpanded",
+  "environment": {
+    "python": "3.12.15",
+    "packages": {
+      "torch": "2.7.1+cu128",
+      "numpy": "2.5.4",
+      "cupy-cuda12x": "14.2.0",
+      "cuvs-cu12": "26.10.0",
+      "libcuvs-cu12": "26.10.0",
+      "rmm-cu12": "26.10.0",
+      "faiss-gpu-cu12": "1.14.1.post1",
+      "pykeops": "2.3",
+      "pytorch3d": null
+    },
+    "git_revision": "12e793430f1733c7a60eff711e63aa7a51156c20",
+    "benchmark_source_sha256": {
+      "benchmark_point_query_comparison.py": "9f1defc0f6bc080b629edeef0b28cf0a52059ad06c6642ab8f7fe0f0cff451ef",
+      "point_query_backends.py": "0b2c52782cbed11d139372f690a1908dc2338feb491a0821f284cea2807ab0cc"
+    },
+    "native_bvh_sha256": "ba1dcf3b5524826c5270fff0c30b42a7732fa9453f64b0be133561f6eb9c2aef"
+  },
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+  "repeats": 5,
+  "primary_timing": "device-synchronized wall time",
+  "warp_pool_release_threshold_bytes": 536870912,
+  "torch_allocator": "native",
+  "cases": [],
+  "cupy_allocator": "default caching pool",
+  "rmm_allocator": {
+    "name": "CudaAsyncMemoryResource",
+    "initial_pool_bytes": 0,
+    "release_threshold_bytes": 536870912
+  },
+  "provider": {
+    "exact_algorithm": true,
+    "name": "cuvs_unexpanded",
+    "stream_binding": "public cuvsStreamSet C API",
+    "output_allocation": "Torch CUDA allocation on the query stream",
+    "metric_binding": "C API L2Unexpanded=4 added to Python DISTANCE_TYPES",
+    "metric": "benchmark_l2_unexpanded",
+    "metric_arg": 2.0
+  },
+  "capture": {
+    "supported": true,
+    "changed_query_validation": {
+      "valid_shape": true,
+      "valid_indices_and_finite_distances": true,
+      "checked_rows": 32,
+      "duplicate_rows": 0,
+      "unsorted_rows": 0,
+      "tie_aware_recall_at_k": 1.0,
+      "distance_rank_mismatch_rows": 0,
+      "reported_distance_mismatch_rows": 0,
+      "max_reported_distance_relative_error": 8.216853775005754e-08,
+      "rank_rtol": 1e-05,
+      "rank_atol_squared": 1e-12
+    }
+  }
+}

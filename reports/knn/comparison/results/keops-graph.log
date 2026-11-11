@@ -1,0 +1,63 @@
+
+[KeOps] error: cuCtxSynchronize() failed with error CUDA_ERROR_STREAM_CAPTURE_UNSUPPORTED
+
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+Traceback (most recent call last):
+  File "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_comparison.py", line 204, in worker
+    result = problem.search(index)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/point_query_backends.py", line 216, in search
+    ds, ids = d2.Kmin_argKmin(self.k, dim=1)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/common/lazy_tensor.py", line 2480, in Kmin_argKmin
+    return self.reduction("KMin_ArgKMin", opt_arg=K, axis=axis, dim=dim, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/common/lazy_tensor.py", line 775, in reduction
+    return res()
+           ^^^^^
+  File "/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/common/lazy_tensor.py", line 957, in __call__
+    return self.callfun(*args, *self.variables, **self.kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/torch/generic/generic_red.py", line 693, in __call__
+    out = GenredAutograd_fun(params, *args)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/torch/generic/generic_red.py", line 383, in GenredAutograd_fun
+    return GenredAutograd.apply(*inputs)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/.venv/lib/python3.12/site-packages/torch/autograd/function.py", line 575, in apply
+    return super().apply(*args, **kwargs)  # type: ignore[misc]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/torch/generic/generic_red.py", line 291, in forward
+    return GenredAutograd_base._forward(*inputs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/torch/generic/generic_red.py", line 121, in _forward
+    result = myconv.genred_pytorch(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/common/keops_io/LoadKeOps.py", line 236, in genred
+    self.call_keops(nx, ny)
+  File "/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/common/keops_io/LoadKeOps_nvrtc.py", line 48, in call_keops
+    self.launch_keops(
+RuntimeError: [KeOps] Cuda error.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_comparison.py", line 199, in worker
+    with torch.cuda.graph(graph, stream=stream):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/.venv/lib/python3.12/site-packages/torch/cuda/graphs.py", line 186, in __exit__
+    self.cuda_graph.capture_end()
+  File "/home/horde/Repos/warp.knn/warp/.venv/lib/python3.12/site-packages/torch/cuda/graphs.py", line 84, in capture_end
+    super().capture_end()
+RuntimeError: CUDA error: operation failed due to a previous error during capture
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+

@@ -1,0 +1,43 @@
+{
+  "method": "cupy_kdtree",
+  "environment": {
+    "python": "3.12.15",
+    "packages": {
+      "torch": "2.7.1+cu128",
+      "numpy": "2.5.4",
+      "cupy-cuda12x": "14.2.0",
+      "cuvs-cu12": "26.10.0",
+      "libcuvs-cu12": "26.10.0",
+      "rmm-cu12": "26.10.0",
+      "faiss-gpu-cu12": "1.14.1.post1",
+      "pykeops": "2.3",
+      "pytorch3d": null
+    },
+    "git_revision": "d97f7d9ab07146767096476d32e9049cf336206f",
+    "benchmark_source_sha256": {
+      "benchmark_point_query_comparison.py": "19a9355dba0029a23bdd4cbc3624f306cc12918b10b2803cdb3f131f67f093f3",
+      "point_query_backends.py": "4613dde097f6ab45fa695e8138e928e039bf3e5a6dbaf6ffb731608084ffb777"
+    },
+    "native_bvh_sha256": "ba1dcf3b5524826c5270fff0c30b42a7732fa9453f64b0be133561f6eb9c2aef"
+  },
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+  "repeats": 5,
+  "primary_timing": "device-synchronized wall time",
+  "warp_pool_release_threshold_bytes": 536870912,
+  "torch_allocator": "native",
+  "cases": [],
+  "pytorch3d_revision": "e4ad6e5687a360ccdc6ebd91348e8dbbac97bf31",
+  "faiss_revision": "5622e93733b64b2e033362dbdfda019b2ab33ef0",
+  "cupy_allocator": "default caching pool",
+  "provider": {
+    "exact_algorithm": true,
+    "name": "cupy_kdtree",
+    "leafsize": 16
+  },
+  "error": "RuntimeError('the current stream is capturing, so D2H transfers are disallowed')",
+  "traceback": "Traceback (most recent call last):\n  File \"/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_comparison.py\", line 204, in worker\n    result = problem.search(index)\n             ^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/point_query_backends.py\", line 222, in search\n    ds, ids = index.query(self.cp_queries, k=self.k, eps=0.0)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/cupyx/scipy/spatial/_kdtree.py\", line 284, in query\n    return compute_knn(\n           ^^^^^^^^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/cupyx/scipy/spatial/_kdtree_utils.py\", line 848, in compute_knn\n    if not cupy.isinf(p):\n           ^^^^^^^^^^^^^\n  File \"cupy/_core/core.pyx\", line 1537, in cupy._core.core._ndarray_base.__nonzero__\n  File \"cupy/_core/core.pyx\", line 2203, in cupy._core.core._ndarray_base.get\n  File \"cupy/cuda/memory.pyx\", line 717, in cupy.cuda.memory.MemoryPointer.copy_to_host_async\nRuntimeError: the current stream is capturing, so D2H transfers are disallowed\n",
+  "capture": {
+    "supported": false,
+    "error": "RuntimeError('the current stream is capturing, so D2H transfers are disallowed')"
+  }
+}

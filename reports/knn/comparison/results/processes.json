@@ -1,0 +1,98 @@
+[
+  {
+    "name": "warp_default-graph",
+    "returncode": 0
+  },
+  {
+    "name": "warp_default",
+    "returncode": 0
+  },
+  {
+    "name": "warp_configured-graph",
+    "returncode": 0
+  },
+  {
+    "name": "warp_configured",
+    "returncode": 0
+  },
+  {
+    "name": "physicsnemo-graph",
+    "returncode": 0
+  },
+  {
+    "name": "physicsnemo",
+    "returncode": 0
+  },
+  {
+    "name": "cubql-graph",
+    "returncode": 0
+  },
+  {
+    "name": "cubql",
+    "returncode": 0
+  },
+  {
+    "name": "cupy_kdtree-graph",
+    "returncode": 0
+  },
+  {
+    "name": "cupy_kdtree",
+    "returncode": 0
+  },
+  {
+    "name": "keops-graph",
+    "returncode": 0
+  },
+  {
+    "name": "keops",
+    "returncode": 0
+  },
+  {
+    "name": "faiss_flat-graph",
+    "returncode": 0
+  },
+  {
+    "name": "faiss_flat",
+    "returncode": 0
+  },
+  {
+    "name": "cuvs_brute_force-graph",
+    "returncode": 0
+  },
+  {
+    "name": "cuvs_brute_force",
+    "returncode": 0
+  },
+  {
+    "name": "cuvs_minkowski-graph",
+    "returncode": 0
+  },
+  {
+    "name": "cuvs_minkowski",
+    "returncode": 0
+  },
+  {
+    "name": "pytorch3d-graph",
+    "returncode": 0
+  },
+  {
+    "name": "pytorch3d",
+    "returncode": 0
+  },
+  {
+    "name": "cuvs_cagra-graph",
+    "returncode": 0
+  },
+  {
+    "name": "cuvs_cagra",
+    "returncode": 0
+  },
+  {
+    "name": "cuvs_unexpanded-graph",
+    "returncode": 0
+  },
+  {
+    "name": "cuvs_unexpanded",
+    "returncode": 0
+  }
+]

@@ -1,0 +1,282 @@
+[
+  {
+    "id": "bunny_scan-n100000-q1024-sigma0-k1",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 0.5319700576364994,
+    "warp_ms": 0.25262986309826374,
+    "ratio": 2.1057291133850735
+  },
+  {
+    "id": "bunny_scan-n100000-q1024-sigma0-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 0.6541099864989519,
+    "warp_ms": 2.141050063073635,
+    "ratio": 0.30550896393329957
+  },
+  {
+    "id": "bunny_scan-n100000-q1024-sigma0.01-k1",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 0.5312298890203238,
+    "warp_ms": 0.2717701718211174,
+    "ratio": 1.954702701406047
+  },
+  {
+    "id": "bunny_scan-n100000-q1024-sigma0.01-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 0.6515998393297195,
+    "warp_ms": 2.7130800299346447,
+    "ratio": 0.24016978199696376
+  },
+  {
+    "id": "kitti-n100000-q1024-sigma0-k1",
+    "best_other": "physicsnemo",
+    "other_ms": 0.8218798320740461,
+    "warp_ms": 0.3301000688225031,
+    "ratio": 2.4897899446242655
+  },
+  {
+    "id": "kitti-n100000-q1024-sigma0-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.3792701065540314,
+    "warp_ms": 2.8797700069844723,
+    "ratio": 0.4789514798781875
+  },
+  {
+    "id": "kitti-n100000-q1024-sigma0.01-k1",
+    "best_other": "physicsnemo",
+    "other_ms": 0.9901300072669983,
+    "warp_ms": 0.36685983650386333,
+    "ratio": 2.6989326951209374
+  },
+  {
+    "id": "kitti-n100000-q1024-sigma0.01-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.381720183417201,
+    "warp_ms": 4.890579031780362,
+    "ratio": 0.2825269102980227
+  },
+  {
+    "id": "redwood-n100000-q1024-sigma0-k1",
+    "best_other": "physicsnemo",
+    "other_ms": 0.7550199516117573,
+    "warp_ms": 0.28460007160902023,
+    "ratio": 2.652915536328443
+  },
+  {
+    "id": "redwood-n100000-q1024-sigma0-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.3780000153928995,
+    "warp_ms": 2.1231200080364943,
+    "ratio": 0.6490448067828736
+  },
+  {
+    "id": "redwood-n100000-q1024-sigma0.01-k1",
+    "best_other": "physicsnemo",
+    "other_ms": 0.9018790442496538,
+    "warp_ms": 0.32848003320395947,
+    "ratio": 2.7456129843047723
+  },
+  {
+    "id": "redwood-n100000-q1024-sigma0.01-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.377590000629425,
+    "warp_ms": 3.135239938274026,
+    "ratio": 0.4393890189430922
+  },
+  {
+    "id": "bunny_surface-n100000-q1024-sigma0-k1",
+    "best_other": "physicsnemo",
+    "other_ms": 0.7621189579367638,
+    "warp_ms": 0.28432998806238174,
+    "ratio": 2.680403017389624
+  },
+  {
+    "id": "bunny_surface-n100000-q1024-sigma0-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.3772998936474323,
+    "warp_ms": 2.143430057913065,
+    "ratio": 0.6425681531164261
+  },
+  {
+    "id": "bunny_surface-n100000-q1024-sigma0.01-k1",
+    "best_other": "physicsnemo",
+    "other_ms": 0.8348899427801371,
+    "warp_ms": 0.309100141748786,
+    "ratio": 2.701033839896051
+  },
+  {
+    "id": "bunny_surface-n100000-q1024-sigma0.01-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.377409091219306,
+    "warp_ms": 2.757040085271001,
+    "ratio": 0.4995970492332957
+  },
+  {
+    "id": "sphere-n100000-q1024-sigma0-k1",
+    "best_other": "physicsnemo",
+    "other_ms": 0.7439400069415569,
+    "warp_ms": 0.2783599775284529,
+    "ratio": 2.6725825082577264
+  },
+  {
+    "id": "sphere-n100000-q1024-sigma0-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.3793897815048695,
+    "warp_ms": 2.1038390696048737,
+    "ratio": 0.6556536578455763
+  },
+  {
+    "id": "sphere-n100000-q1024-sigma0.01-k1",
+    "best_other": "physicsnemo",
+    "other_ms": 0.8227699436247349,
+    "warp_ms": 0.3105399664491415,
+    "ratio": 2.6494816529822853
+  },
+  {
+    "id": "sphere-n100000-q1024-sigma0.01-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.3773590326309204,
+    "warp_ms": 2.658250043168664,
+    "ratio": 0.5181450240809902
+  },
+  {
+    "id": "volume-n100000-q1024-sigma0-k1",
+    "best_other": "physicsnemo",
+    "other_ms": 0.8539299014955759,
+    "warp_ms": 0.30550011433660984,
+    "ratio": 2.7951868474742647
+  },
+  {
+    "id": "volume-n100000-q1024-sigma0-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.3805199414491653,
+    "warp_ms": 2.8556601610034704,
+    "ratio": 0.4834328539163619
+  },
+  {
+    "id": "volume-n100000-q1024-sigma0.01-k1",
+    "best_other": "physicsnemo",
+    "other_ms": 0.8315201848745346,
+    "warp_ms": 0.30522001907229424,
+    "ratio": 2.724330426955321
+  },
+  {
+    "id": "volume-n100000-q1024-sigma0.01-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.380539033561945,
+    "warp_ms": 2.8675890062004328,
+    "ratio": 0.4814284859430274
+  },
+  {
+    "id": "clusters-n100000-q1024-sigma0-k1",
+    "best_other": "physicsnemo",
+    "other_ms": 0.8887799922376871,
+    "warp_ms": 0.3334600478410721,
+    "ratio": 2.665326770004189
+  },
+  {
+    "id": "clusters-n100000-q1024-sigma0-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.377530163154006,
+    "warp_ms": 3.0848791357129812,
+    "ratio": 0.4465426691135598
+  },
+  {
+    "id": "clusters-n100000-q1024-sigma0.01-k1",
+    "best_other": "physicsnemo",
+    "other_ms": 0.8895900100469589,
+    "warp_ms": 0.3435499966144562,
+    "ratio": 2.589404799340714
+  },
+  {
+    "id": "clusters-n100000-q1024-sigma0.01-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.3801699969917536,
+    "warp_ms": 3.1600689981132746,
+    "ratio": 0.4367531208387497
+  },
+  {
+    "id": "thin_plane-n100000-q1024-sigma0-k1",
+    "best_other": "cubql",
+    "other_ms": 1.054620137438178,
+    "warp_ms": 0.6777399685233831,
+    "ratio": 1.5560837288907685
+  },
+  {
+    "id": "thin_plane-n100000-q1024-sigma0-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.3797399587929249,
+    "warp_ms": 7.907588966190815,
+    "ratio": 0.17448301431600116
+  },
+  {
+    "id": "thin_plane-n100000-q1024-sigma0.01-k1",
+    "best_other": "physicsnemo",
+    "other_ms": 1.05697987601161,
+    "warp_ms": 0.37444010376930237,
+    "ratio": 2.8228276441853293
+  },
+  {
+    "id": "thin_plane-n100000-q1024-sigma0.01-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 1.3773799873888493,
+    "warp_ms": 5.2088298834860325,
+    "ratio": 0.26443174728275665
+  },
+  {
+    "id": "sphere-n1000000-q8192-sigma0-k11",
+    "best_other": "physicsnemo",
+    "other_ms": 1.7674490809440613,
+    "warp_ms": 2.1368791349232197,
+    "ratio": 0.8271170100631675
+  },
+  {
+    "id": "sphere-n1000000-q8192-sigma0.01-k11",
+    "best_other": "physicsnemo",
+    "other_ms": 2.1555700805038214,
+    "warp_ms": 2.757349982857704,
+    "ratio": 0.7817542545940429
+  },
+  {
+    "id": "volume-n1000000-q8192-sigma0-k11",
+    "best_other": "physicsnemo",
+    "other_ms": 2.0822188816964626,
+    "warp_ms": 2.6711300015449524,
+    "ratio": 0.779527346288698
+  },
+  {
+    "id": "volume-n1000000-q8192-sigma0.01-k11",
+    "best_other": "physicsnemo",
+    "other_ms": 2.118699951097369,
+    "warp_ms": 2.5942500215023756,
+    "ratio": 0.8166907327885047
+  },
+  {
+    "id": "sphere-n1000-q32-sigma0-k32",
+    "best_other": "cuvs_unexpanded",
+    "other_ms": 0.09818002581596375,
+    "warp_ms": 0.18535996787250042,
+    "ratio": 0.5296722207218806
+  },
+  {
+    "id": "sphere-n1000-q32-sigma0.01-k32",
+    "best_other": "faiss_flat",
+    "other_ms": 0.09448989294469357,
+    "warp_ms": 0.18197018653154373,
+    "ratio": 0.5192602961272129
+  },
+  {
+    "id": "volume-n1000-q32-sigma0-k32",
+    "best_other": "faiss_flat",
+    "other_ms": 0.09638001210987568,
+    "warp_ms": 0.22079003974795341,
+    "ratio": 0.4365233695319766
+  },
+  {
+    "id": "volume-n1000-q32-sigma0.01-k32",
+    "best_other": "faiss_flat",
+    "other_ms": 0.09262003004550934,
+    "warp_ms": 0.21895021200180054,
+    "ratio": 0.42301868173001667
+  }
+]

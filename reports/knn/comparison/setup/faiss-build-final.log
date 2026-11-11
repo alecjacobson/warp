@@ -1,0 +1,2673 @@
+[1/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuIPDistance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[2/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuIPDistance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[3/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuIPDistance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[4/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuIPDistance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[5/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuIPDistance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[6/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuIPDistance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[7/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuL2Distance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[8/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuL2Distance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[9/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuIPDistance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[10/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuL2Distance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[11/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuL2Distance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[12/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuL2Distance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[13/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuL2Distance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[14/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuL2Distance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[15/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec01_faissgpuL2Distance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[16/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuIPDistance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[17/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuIPDistance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[18/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuIPDistance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[19/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuIPDistance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[20/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuIPDistance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[21/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuIPDistance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[22/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuIPDistance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[23/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuL2Distance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[24/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuIPDistance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[25/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuL2Distance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[26/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuL2Distance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[27/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuL2Distance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[28/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuL2Distance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[29/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuL2Distance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[30/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuL2Distance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[31/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec11_faissgpuL2Distance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[32/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuIPDistance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[33/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuIPDistance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[34/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuIPDistance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[35/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuIPDistance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[36/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuIPDistance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[37/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuIPDistance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[38/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuIPDistance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[39/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuIPDistance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[40/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuL2Distance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[41/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuL2Distance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[42/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuL2Distance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[43/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuL2Distance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[44/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuL2Distance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[45/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuL2Distance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[46/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuL2Distance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[47/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec21_faissgpuL2Distance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[48/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuIPDistance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[49/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuIPDistance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[50/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuIPDistance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[51/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuIPDistance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[52/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuIPDistance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[53/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuIPDistance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[54/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuIPDistance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[55/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuL2Distance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[56/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuIPDistance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[57/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuL2Distance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[58/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuL2Distance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[59/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuL2Distance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[60/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuL2Distance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[61/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuL2Distance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[62/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuL2Distance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[63/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec31_faissgpuL2Distance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[64/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuIPDistance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[65/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuIPDistance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[66/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuIPDistance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[67/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuIPDistance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[68/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuIPDistance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[69/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuIPDistance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[70/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuIPDistance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[71/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuIPDistance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[72/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuL2Distance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[73/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuL2Distance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[74/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuL2Distance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[75/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuL2Distance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[76/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuL2Distance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[77/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuL2Distance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[78/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuL2Distance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[79/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec41_faissgpuL2Distance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[80/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuIPDistance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[81/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuIPDistance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[82/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuIPDistance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[83/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuIPDistance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[84/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuIPDistance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[85/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuIPDistance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[86/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuIPDistance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[87/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuIPDistance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[88/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuL2Distance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[89/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuL2Distance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[90/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuL2Distance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[91/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuL2Distance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[92/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuL2Distance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[93/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuL2Distance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[94/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuL2Distance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[95/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec51_faissgpuL2Distance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[96/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuIPDistance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[97/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuIPDistance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[98/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuIPDistance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[99/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuIPDistance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[100/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuIPDistance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[101/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuIPDistance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[102/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuIPDistance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[103/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuL2Distance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[104/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuIPDistance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[105/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuL2Distance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[106/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuL2Distance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[107/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuL2Distance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[108/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuL2Distance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[109/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuL2Distance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[110/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuL2Distance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[111/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuIPDistance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[112/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodec61_faissgpuL2Distance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[113/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuIPDistance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[114/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuIPDistance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[115/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuIPDistance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[116/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuIPDistance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[117/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuIPDistance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[118/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuIPDistance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[119/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuIPDistance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[120/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuL2Distance_128_1_1.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[121/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuL2Distance_128_1024_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[122/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuL2Distance_128_128_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[123/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuL2Distance_128_256_4.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[124/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuL2Distance_128_32_2.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[125/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuL2Distance_128_64_3.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[126/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuL2Distance_128_512_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[127/133] Building CXX object faiss/python/CMakeFiles/faiss_python_callbacks.dir/python_callbacks.cpp.o
+[128/133] Linking CXX static library faiss/python/libfaiss_python_callbacks.a
+[129/133] Building CUDA object faiss/gpu/CMakeFiles/faiss_gpu_objs.dir/template_faissgpuCodecFloat_faissgpuL2Distance_64_2048_8.cu.o
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexIVF.h(173): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexIVF"
+  struct IndexIVF : Index, IndexIVFInterface {
+         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/home/horde/Repos/warp.knn/third_party/faiss/faiss/IndexScalarQuantizer.h(25): warning #611-D: overloaded virtual function "faiss::Index::train" is only partially overridden in class "faiss::IndexScalarQuantizer"
+  struct IndexScalarQuantizer : IndexFlatCodes {
+         ^
+
+[130/133] Linking CXX static library faiss/libfaiss.a
+[131/133] Swig compile swigfaiss.swig for python
+[132/133] Building CXX object faiss/python/CMakeFiles/swigfaiss.dir/CMakeFiles/swigfaiss.dir/swigfaissPYTHON_wrap.cxx.o
+[133/133] Linking CXX shared library faiss/python/_swigfaiss.so

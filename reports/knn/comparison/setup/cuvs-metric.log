@@ -1,0 +1,10 @@
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+sqeuclidean [[25.]]
+minkowski [[5.]]
+{'valid_shape': True, 'valid_indices_and_finite_distances': True, 'checked_rows': 32, 'duplicate_rows': 0, 'unsorted_rows': 0, 'tie_aware_recall_at_k': 1.0, 'distance_rank_mismatch_rows': 0, 'reported_distance_mismatch_rows': 32, 'max_reported_distance_relative_error': 16.649435331142428, 'rank_rtol': 1e-05, 'rank_atol_squared': 1e-12}

@@ -1,0 +1,50 @@
+{
+  "method": "physicsnemo",
+  "environment": {
+    "python": "3.12.15",
+    "packages": {
+      "torch": "2.7.1+cu128",
+      "numpy": "2.5.4",
+      "cupy-cuda12x": "14.2.0",
+      "cuvs-cu12": "26.10.0",
+      "libcuvs-cu12": "26.10.0",
+      "rmm-cu12": "26.10.0",
+      "faiss-gpu-cu12": "1.14.1.post1",
+      "pykeops": "2.3",
+      "pytorch3d": null
+    },
+    "git_revision": "12e793430f1733c7a60eff711e63aa7a51156c20",
+    "benchmark_source_sha256": {
+      "benchmark_point_query_comparison.py": "a9a487b1b94d1c409ec4b95fbd5752000bdc0414f6358c04163c07e022e9122e",
+      "point_query_backends.py": "0b2c52782cbed11d139372f690a1908dc2338feb491a0821f284cea2807ab0cc"
+    },
+    "native_bvh_sha256": "ba1dcf3b5524826c5270fff0c30b42a7732fa9453f64b0be133561f6eb9c2aef"
+  },
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+  "repeats": 5,
+  "primary_timing": "device-synchronized wall time",
+  "warp_pool_release_threshold_bytes": 536870912,
+  "torch_allocator": "native",
+  "cases": [],
+  "provider": {
+    "exact_algorithm": true,
+    "name": "physicsnemo",
+    "source_sha256": "01255c7377bcb65aa13d5c6d75acd5ef346a1799e014b410974bf6205506b85c"
+  },
+  "capture": {
+    "supported": true,
+    "changed_query_validation": {
+      "valid_shape": true,
+      "valid_indices_and_finite_distances": true,
+      "checked_rows": 32,
+      "duplicate_rows": 0,
+      "unsorted_rows": 0,
+      "tie_aware_recall_at_k": 1.0,
+      "distance_rank_mismatch_rows": 0,
+      "reported_distance_mismatch_rows": 0,
+      "max_reported_distance_relative_error": 9.085812458893583e-08,
+      "rank_rtol": 1e-05,
+      "rank_atol_squared": 1e-12
+    }
+  }
+}

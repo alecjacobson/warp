@@ -1,0 +1,17 @@
+Warp error: unknown stream
+/home/horde/Repos/warp.knn/warp/.venv/lib/python3.12/site-packages/torch/cuda/graphs.py:84: UserWarning: The CUDA Graph is empty. This usually means that the graph was attempted to be captured on wrong device or stream. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDAGraph.cpp:175.)
+  super().capture_end()
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+Traceback (most recent call last):
+  File "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_comparison.py", line 202, in worker
+    wp.capture_begin(force_module_load=False, external=True)
+  File "/home/horde/Repos/warp.knn/warp/warp/_src/context.py", line 13604, in capture_begin
+    raise RuntimeError(runtime.get_error_string())
+RuntimeError: Warp error: unknown stream
+
