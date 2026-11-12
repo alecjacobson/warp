@@ -1,0 +1,15 @@
+{
+  "cases": 40,
+  "warp_paths": 3,
+  "ordinary_phase_validations": 240,
+  "graph_phase_validations": 240,
+  "changed_input_graph_validations": 240,
+  "repetitions": 9,
+  "tests_passed": 42,
+  "source_hashes_match": true,
+  "native_binary_unchanged": true,
+  "comparison_packages_and_python_unchanged": true,
+  "competitor_files_byte_identical_to_previous_commit": true,
+  "local_report_links_checked": 27,
+  "raw_result_sha256": "0763fa07309e1d65316f280bbedbf82a07d343c4f0b38bc06f655986851d8f1c"
+}

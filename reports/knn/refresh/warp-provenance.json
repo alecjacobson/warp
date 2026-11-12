@@ -1,0 +1,26 @@
+{
+  "revision": "4e0a854e920377817e8c528fbb28ca49afaa0b03",
+  "source_sha256": {
+    "warp/_src/point_query.py": "5a330903fce131dbc542dbfa23247a6af97f0bcedc767a181f4ea99dd903506c",
+    "warp/native/bvh.cu": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb",
+    "warp/native/point_query.h": "ccf0e04a1f8424f890dc466cc1f0b8e7aec989e7679844861cef2b7c6c339625",
+    "warp/bin/warp.so": "86037f3c4ab717267d9bae208575eeb293797c2ebaffbd920f7502ad54dbc44c",
+    "warp/examples/benchmarks/benchmark_point_query_replay.py": "2965714ee37e9607f143262a0cea715bdf51051149b7ff84481c0efa34fd4d89",
+    "warp/examples/benchmarks/point_query_common.py": "ee2b0d97f374c98f2e45d2a8c6ec9618b07886cd5d12930c719413584d389c8f",
+    "warp/examples/benchmarks/point_query_backends.py": "00a36b4bc7d6b08c5a2f23d3ce88561949b23ed49e8bdc56a32054994e79820d",
+    "warp/examples/benchmarks/benchmark_point_query_comparison.py": "3cdc9240bb1380f9a2a824d39a60a434426c779f2fbb8a1c53089aa846b0c217"
+  },
+  "retained_competitors_sha256": {
+    "reports/knn/refresh/results/physicsnemo.json": "5da608dc113faa481d3c75395382cecbb57727434d664e466859059d4a32e148",
+    "reports/knn/refresh/results/cubql.json": "480b06b77d9d15a4daf15f0c4394fba3895255a203dbd9ed4dad3021cf9f9a7b",
+    "reports/knn/refresh/results/cupy_kdtree.json": "b022606097577b6c5930a7b05fb0392384f0e8ffec82ded86e359756d40c4d89",
+    "reports/knn/refresh/results/keops.json": "54c65d8033b2d86b0f0e16ff4118a2e6cc6f522870a26bba76af7ced5e671c1a",
+    "reports/knn/refresh/results/faiss_flat.json": "72f57736142a43dcd4171fe55e0c613a909b264163ed2e2d7dea039a51e06e7b",
+    "reports/knn/refresh/results/cuvs_brute_force.json": "a68ecab34526e7367265995c72e8d89d2ff6701e0b7eb1110496a2f3a2955c9c",
+    "reports/knn/refresh/results/cuvs_unexpanded.json": "1d7c7a191c3c6c441c8c89a883421b0f578774a2a281085fd75ace70070ccf25",
+    "reports/knn/refresh/results/cuvs_minkowski.json": "e97528352cb527d54fcd5921799e0e33879c18a0b1b867d44f60fe495f2499be",
+    "reports/knn/refresh/results/pytorch3d.json": "e424f303a3f55f1ff9660ad5ad3d532ca2a0dcbcd757b6c09975aa9ed57791ad"
+  },
+  "previous_report_commit": "4e0a854e920377817e8c528fbb28ca49afaa0b03",
+  "note": "Warp-only timing update. Competitor JSONs are byte-for-byte unchanged. Same native binary, device, timer, output contract, stream and comparison environment; Warp output allocation now uses Warp arrays."
+}

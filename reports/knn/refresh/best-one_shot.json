@@ -3,280 +3,280 @@
     "id": "bunny_scan-n100000-q1024-sigma0-k1",
     "best_other": "cuvs_unexpanded",
     "other_ms": 0.5213299300521612,
-    "warp_ms": 0.20387978293001652,
-    "ratio": 2.557045738228553
+    "warp_ms": 0.22160005755722523,
+    "ratio": 2.3525712754724117
   },
   {
     "id": "bunny_scan-n100000-q1024-sigma0-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 0.6425699684768915,
-    "warp_ms": 0.3817598335444927,
-    "ratio": 1.683178564153482
+    "warp_ms": 0.4150101449340582,
+    "ratio": 1.548323520088866
   },
   {
     "id": "bunny_scan-n100000-q1024-sigma0.01-k1",
     "best_other": "cuvs_unexpanded",
     "other_ms": 0.5158598069101572,
-    "warp_ms": 0.21512992680072784,
-    "ratio": 2.397898863173935
+    "warp_ms": 0.22508995607495308,
+    "ratio": 2.291793982750524
   },
   {
     "id": "bunny_scan-n100000-q1024-sigma0.01-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 0.6450701039284468,
-    "warp_ms": 0.4200800321996212,
-    "ratio": 1.535588589037983
+    "warp_ms": 0.4472099244594574,
+    "ratio": 1.4424324431264421
   },
   {
     "id": "kitti-n100000-q1024-sigma0-k1",
     "best_other": "physicsnemo",
     "other_ms": 0.8260100148618221,
-    "warp_ms": 0.25326991453766823,
-    "ratio": 3.2613822939438455
+    "warp_ms": 0.2696600276976824,
+    "ratio": 3.063153341317117
   },
   {
     "id": "kitti-n100000-q1024-sigma0-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.3722199946641922,
-    "warp_ms": 0.5105098243802786,
-    "ratio": 2.687940425691056
+    "warp_ms": 0.5261399783194065,
+    "ratio": 2.6080891990898123
   },
   {
     "id": "kitti-n100000-q1024-sigma0.01-k1",
     "best_other": "physicsnemo",
     "other_ms": 1.0007398668676615,
-    "warp_ms": 0.26643997989594936,
-    "ratio": 3.755967356169567
+    "warp_ms": 0.28260983526706696,
+    "ratio": 3.5410652496292636
   },
   {
     "id": "kitti-n100000-q1024-sigma0.01-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.3695298694074154,
-    "warp_ms": 0.5170898512005806,
-    "ratio": 2.6485336469622007
+    "warp_ms": 0.5408001597970724,
+    "ratio": 2.532413951063387
   },
   {
     "id": "redwood-n100000-q1024-sigma0-k1",
     "best_other": "physicsnemo",
     "other_ms": 0.7544900290668011,
-    "warp_ms": 0.24418998509645462,
-    "ratio": 3.08976647330061
+    "warp_ms": 0.26507000438869,
+    "ratio": 2.8463802639865716
   },
   {
     "id": "redwood-n100000-q1024-sigma0-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.3685401063412428,
-    "warp_ms": 0.4615799989551306,
-    "ratio": 2.9649033958125997
+    "warp_ms": 0.4881101194769144,
+    "ratio": 2.8037527839165586
   },
   {
     "id": "redwood-n100000-q1024-sigma0.01-k1",
     "best_other": "physicsnemo",
     "other_ms": 0.914399977773428,
-    "warp_ms": 0.25969906710088253,
-    "ratio": 3.520998315401036
+    "warp_ms": 0.273300101980567,
+    "ratio": 3.345772545077376
   },
   {
     "id": "redwood-n100000-q1024-sigma0.01-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.3715492095798254,
-    "warp_ms": 0.5369600839912891,
-    "ratio": 2.5542852261660394
+    "warp_ms": 0.563459936529398,
+    "ratio": 2.4341556882070643
   },
   {
     "id": "bunny_surface-n100000-q1024-sigma0-k1",
     "best_other": "physicsnemo",
     "other_ms": 0.7801000028848648,
-    "warp_ms": 0.2448300365358591,
-    "ratio": 3.186292065804627
+    "warp_ms": 0.2598101273179054,
+    "ratio": 3.002577347303822
   },
   {
     "id": "bunny_surface-n100000-q1024-sigma0-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.370810205116868,
-    "warp_ms": 0.46332995407283306,
-    "ratio": 2.9586047547044276
+    "warp_ms": 0.4834798164665699,
+    "ratio": 2.8352997548795345
   },
   {
     "id": "bunny_surface-n100000-q1024-sigma0.01-k1",
     "best_other": "physicsnemo",
     "other_ms": 0.835399841889739,
-    "warp_ms": 0.25094999000430107,
-    "ratio": 3.32894949258783
+    "warp_ms": 0.2673498820513487,
+    "ratio": 3.124743633622728
   },
   {
     "id": "bunny_surface-n100000-q1024-sigma0.01-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.3707189355045557,
-    "warp_ms": 0.5063498392701149,
-    "ratio": 2.7070590907669643
+    "warp_ms": 0.5300301127135754,
+    "ratio": 2.586115208600012
   },
   {
     "id": "sphere-n100000-q1024-sigma0-k1",
     "best_other": "physicsnemo",
     "other_ms": 0.7468198891729116,
-    "warp_ms": 0.24493993259966373,
-    "ratio": 3.0489919763043853
+    "warp_ms": 0.25898986496031284,
+    "ratio": 2.8835873144586297
   },
   {
     "id": "sphere-n100000-q1024-sigma0-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.3724199961870909,
-    "warp_ms": 0.450710067525506,
-    "ratio": 3.0450173960434657
+    "warp_ms": 0.4780599847435951,
+    "ratio": 2.8708112788883198
   },
   {
     "id": "sphere-n100000-q1024-sigma0.01-k1",
     "best_other": "physicsnemo",
     "other_ms": 0.8071188349276781,
-    "warp_ms": 0.2501402050256729,
-    "ratio": 3.2266657606874523
+    "warp_ms": 0.2663298510015011,
+    "ratio": 3.0305233600086723
   },
   {
     "id": "sphere-n100000-q1024-sigma0.01-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.3685498852282763,
-    "warp_ms": 0.4837301094084978,
-    "ratio": 2.8291600183865557
+    "warp_ms": 0.5059000104665756,
+    "ratio": 2.7051786062745995
   },
   {
     "id": "volume-n100000-q1024-sigma0-k1",
     "best_other": "physicsnemo",
     "other_ms": 0.8548100013285875,
-    "warp_ms": 0.2533998340368271,
-    "ratio": 3.3733644876987423
+    "warp_ms": 0.2680800389498472,
+    "ratio": 3.188637261756391
   },
   {
     "id": "volume-n100000-q1024-sigma0-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.3690299820154905,
-    "warp_ms": 0.49262004904448986,
-    "ratio": 2.779078895938013
+    "warp_ms": 0.52278907969594,
+    "ratio": 2.6187042445716995
   },
   {
     "id": "volume-n100000-q1024-sigma0.01-k1",
     "best_other": "physicsnemo",
     "other_ms": 0.8482299745082855,
-    "warp_ms": 0.2510498743504286,
-    "ratio": 3.3787309262871075
+    "warp_ms": 0.2645899076014757,
+    "ratio": 3.205828907827755
   },
   {
     "id": "volume-n100000-q1024-sigma0.01-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.3698399998247623,
-    "warp_ms": 0.48808008432388306,
-    "ratio": 2.8065885985131813
+    "warp_ms": 0.5146199837327003,
+    "ratio": 2.6618476606541446
   },
   {
     "id": "clusters-n100000-q1024-sigma0-k1",
     "best_other": "physicsnemo",
     "other_ms": 0.8909299504011869,
-    "warp_ms": 0.2695200964808464,
-    "ratio": 3.3056160265381225
+    "warp_ms": 0.2830799203366041,
+    "ratio": 3.147273566213392
   },
   {
     "id": "clusters-n100000-q1024-sigma0-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.3701401185244322,
-    "warp_ms": 0.5429601296782494,
-    "ratio": 2.5234635908466396
+    "warp_ms": 0.559729989618063,
+    "ratio": 2.447859046215051
   },
   {
     "id": "clusters-n100000-q1024-sigma0.01-k1",
     "best_other": "physicsnemo",
     "other_ms": 0.8802099619060755,
-    "warp_ms": 0.27455994859337807,
-    "ratio": 3.2058935267709496
+    "warp_ms": 0.28581987135112286,
+    "ratio": 3.079596802507684
   },
   {
     "id": "clusters-n100000-q1024-sigma0.01-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.3678199611604214,
-    "warp_ms": 0.5701801273971796,
-    "ratio": 2.398926050622625
+    "warp_ms": 0.5944601725786924,
+    "ratio": 2.300944662494365
   },
   {
     "id": "thin_plane-n100000-q1024-sigma0-k1",
     "best_other": "cubql",
     "other_ms": 1.0499800555408,
-    "warp_ms": 0.23266999050974846,
-    "ratio": 4.51274379321732
+    "warp_ms": 0.25083008222281933,
+    "ratio": 4.186021254851217
   },
   {
     "id": "thin_plane-n100000-q1024-sigma0-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.3702998403459787,
-    "warp_ms": 0.4327490460127592,
-    "ratio": 3.1664999679873973
+    "warp_ms": 0.4636200610548258,
+    "ratio": 2.955652603186066
   },
   {
     "id": "thin_plane-n100000-q1024-sigma0.01-k1",
     "best_other": "physicsnemo",
     "other_ms": 1.0189900640398264,
-    "warp_ms": 0.24845008738338947,
-    "ratio": 4.101387424619407
+    "warp_ms": 0.26153982616961,
+    "ratio": 3.896118151348031
   },
   {
     "id": "thin_plane-n100000-q1024-sigma0.01-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 1.3681091368198395,
-    "warp_ms": 0.4873399157077074,
-    "ratio": 2.807299572071975
+    "warp_ms": 0.5190498195588589,
+    "ratio": 2.635795419373418
   },
   {
     "id": "sphere-n1000000-q8192-sigma0-k11",
     "best_other": "physicsnemo",
     "other_ms": 1.7616699915379286,
-    "warp_ms": 1.5809200704097748,
-    "ratio": 1.1143321060382916
+    "warp_ms": 1.6090290155261755,
+    "ratio": 1.0948652724959327
   },
   {
     "id": "sphere-n1000000-q8192-sigma0.01-k11",
     "best_other": "physicsnemo",
     "other_ms": 2.166649093851447,
-    "warp_ms": 1.8341601826250553,
-    "ratio": 1.1812758309639744
+    "warp_ms": 1.878140028566122,
+    "ratio": 1.153614246487036
   },
   {
     "id": "volume-n1000000-q8192-sigma0-k11",
     "best_other": "physicsnemo",
     "other_ms": 2.087709028273821,
-    "warp_ms": 1.7771599814295769,
-    "ratio": 1.174744564411378
+    "warp_ms": 1.8023101147264242,
+    "ratio": 1.1583517238323426
   },
   {
     "id": "volume-n1000000-q8192-sigma0.01-k11",
     "best_other": "physicsnemo",
     "other_ms": 2.109479857608676,
-    "warp_ms": 1.7980998381972313,
-    "ratio": 1.1731717075975232
+    "warp_ms": 1.8360500689595938,
+    "ratio": 1.1489228389093018
   },
   {
     "id": "sphere-n1000-q32-sigma0-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 0.09076995775103569,
-    "warp_ms": 0.18312991596758366,
-    "ratio": 0.49565881833912456
+    "warp_ms": 0.1822600606828928,
+    "ratio": 0.4980244021149692
   },
   {
     "id": "sphere-n1000-q32-sigma0.01-k32",
     "best_other": "cuvs_unexpanded",
     "other_ms": 0.09024003520607948,
-    "warp_ms": 0.1796300057321787,
-    "ratio": 0.5023661544643262
+    "warp_ms": 0.17974013462662697,
+    "ratio": 0.5020583488130491
   },
   {
     "id": "volume-n1000-q32-sigma0-k32",
     "best_other": "faiss_flat",
     "other_ms": 0.09087007492780685,
-    "warp_ms": 0.2179499715566635,
-    "ratio": 0.4169308868396988
+    "warp_ms": 0.21770992316305637,
+    "ratio": 0.41739059757854335
   },
   {
     "id": "volume-n1000-q32-sigma0.01-k32",
     "best_other": "faiss_flat",
     "other_ms": 0.09228009730577469,
-    "warp_ms": 0.21848990581929684,
-    "ratio": 0.4223540531986654
+    "warp_ms": 0.21575996652245522,
+    "ratio": 0.427697958954636
   }
 ]

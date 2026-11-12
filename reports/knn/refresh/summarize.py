@@ -8,8 +8,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent
 METHODS = (
-    "warp_default",
-    "warp_configured",
+    "warp_scalar",
+    "warp_tuned",
+    "warp_batch",
     "physicsnemo",
     "cubql",
     "cupy_kdtree",
@@ -46,14 +47,53 @@ def regime(case):
     return f"medium_k{case['k']}"
 
 
-def main():
+LABELS = {
+    "warp_scalar": "Warp scalar (simple dense launch)",
+    "warp_tuned": "Warp scalar (tuned launch)",
+    "warp_batch": "Warp batch (automatic tuning)",
+    "physicsnemo": "Pinned PhysicsNeMo",
+    "cubql": "cuBQL",
+    "cupy_kdtree": "CuPy KDTree",
+    "keops": "KeOps",
+    "faiss_flat": "Faiss Flat",
+    "cuvs_brute_force": "cuVS expanded L2",
+    "cuvs_unexpanded": "cuVS direct L2",
+    "cuvs_minkowski": "cuVS Minkowski p=2",
+    "pytorch3d": "PyTorch3D",
+}
+
+
+def load_reports():
     reports = {
         m: json.loads((ROOT / "results" / f"{m}.json").read_text())
         for m in METHODS
         if (ROOT / "results" / f"{m}.json").exists()
     }
+    fresh = json.loads((ROOT / "results/warp-replay.json").read_text())
+    expected = {c["id"] for c in json.loads((ROOT / "manifest.json").read_text())["cases"]}
+    if {row["case"]["id"] for row in fresh["cases"]} != expected or len(fresh["cases"]) != len(expected):
+        raise ValueError("Incomplete or duplicate fresh Warp cases")
+    for method in ("warp_scalar", "warp_tuned", "warp_batch"):
+        rows = []
+        for row in fresh["cases"]:
+            c = dict(row["case"], **row["variants"][method], status="ok")
+            for phase in ("graph_one_shot", "graph_reused_index_search"):
+                graph = c[phase]
+                if len(graph["wall_samples_ms"]) != 9 or len(graph["event_samples_ms"]) != 9:
+                    raise ValueError("Incomplete graph samples")
+                if not passed(graph["validation"]) or not passed(graph["changed_input_validation"]):
+                    raise ValueError(f"Graph validation failed: {method} {c['id']}")
+            if not passed(c["validation"]) or not passed(c["reused_validation"]):
+                raise ValueError(f"Warp validation failed: {method} {c['id']}")
+            rows.append(c)
+        reports[method] = {**fresh, "cases": rows, "provider": {"exact_algorithm": True}}
+    return {m: reports[m] for m in METHODS}
+
+
+def main():
+    reports = load_reports()
     cases = {m: {c["id"]: c for c in r["cases"]} for m, r in reports.items()}
-    warp = cases["warp_configured"]
+    warp = cases["warp_batch"]
     expected = {c["id"] for c in json.loads((ROOT / "manifest.json").read_text())["cases"]}
     if set(reports) != set(METHODS):
         raise ValueError("Missing method reports")
@@ -66,12 +106,17 @@ def main():
     for method, report in reports.items():
         if report.get("manifest_sha256") != manifest_hash:
             raise ValueError(f"Manifest mismatch: {method}")
-        if report["environment"]["git_revision"] != provenance["revision"]:
+        expected_revision = (
+            json.loads((ROOT / "warp-provenance.json").read_text())["revision"]
+            if method.startswith("warp_")
+            else provenance["revision"]
+        )
+        if report["environment"]["git_revision"] != expected_revision:
             raise ValueError(f"Implementation revision mismatch: {method}")
         if report["environment"]["native_bvh_sha256"] != provenance["sha256"]["warp/native/bvh.cu"]:
             raise ValueError(f"Native source mismatch: {method}")
         for case in report["cases"]:
-            for phase in ("build", "reused_index_search", "one_shot"):
+            for phase in ("build", "reused_index_search", "one_shot", "graph_one_shot", "graph_reused_index_search"):
                 timing = case.get(phase)
                 if timing and len(timing["wall_samples_ms"]) != 9:
                     raise ValueError(f"Incomplete samples: {method} {case['id']} {phase}")
@@ -80,7 +125,7 @@ def main():
         for c in r["cases"]:
             row = {k: c.get(k) for k in ("id", "family", "N", "Q", "k", "sigma", "status")}
             row["method"] = m
-            for phase in ("build", "reused_index_search", "one_shot"):
+            for phase in ("build", "reused_index_search", "one_shot", "graph_one_shot", "graph_reused_index_search"):
                 timing = c.get(phase) or {}
                 row[phase + "_wall_ms"] = timing.get("wall_median_ms")
                 row[phase + "_event_ms"] = timing.get("event_median_ms")
@@ -108,7 +153,11 @@ def main():
         all_ratios = [c["one_shot"]["wall_median_ms"] / warp[c["id"]]["one_shot"]["wall_median_ms"] for c in completed]
         graph_file = ROOT / "results" / f"{m}-graph.json"
         graph = json.loads(graph_file.read_text()).get("capture", {}) if graph_file.exists() else {}
-        graph_ok = graph.get("supported", False) and passed(graph.get("changed_query_validation", {}))
+        if m.startswith("warp_"):
+            graph = {"supported": True}
+        graph_ok = m.startswith("warp_") or (
+            graph.get("supported", False) and passed(graph.get("changed_query_validation", {}))
+        )
         recalls = [c["validation"].get("tie_aware_recall_at_k", 0) for c in completed]
         summary[m] = {
             "completed": len(completed),
@@ -129,26 +178,27 @@ def main():
         exact = report.get("provider", {}).get("exact_algorithm", False)
         ratio_text = f"{s['geomean_ratio']:.2f}x" if ratios and exact else "—"
         wins = f"{s['warp_wins']}/{s['comparable']}" if exact else "ANN; separate"
-        if m != "warp_configured":
+        if m != "warp_batch":
             lines.append(
-                f"| {m} | {len(completed)} | {len(valid)} | {s['min_recall']:.5f} | {wins} | {ratio_text} | {'pass' if graph_ok else 'failed/unsupported'} |"
+                f"| {LABELS[m]} | {len(completed)} | {len(valid)} | {s['min_recall']:.5f} | {wins} | {ratio_text} | {'pass' if graph_ok else 'failed/unsupported'} |"
             )
-    (ROOT / "table.md").write_text("\n".join(lines) + "\n")
+    preamble = "Ordinary calls; denominator: **Warp batch (automatic tuning)**. Fresh Warp timings; unchanged competitor timings retained. CUDA graph replay is reported separately in [warp-timings.md](warp-timings.md).\n\n"
+    (ROOT / "table.md").write_text(preamble + "\n".join(lines) + "\n")
     print("\n".join(lines))
     raw_lines = [
         "| Method | Warp faster / timed cases | Geomean other / Warp | Cases passing sampled checks |",
         "| --- | ---: | ---: | ---: |",
     ]
     for m, s in summary.items():
-        if m == "warp_configured":
+        if m == "warp_batch":
             continue
         if not reports[m].get("provider", {}).get("exact_algorithm", False):
             continue
         ratio = s["all_timed_geomean_ratio"]
         raw_lines.append(
-            f"| {m} | {s['all_timed_warp_wins']}/{s['completed']} | {ratio:.2f}x | {s['passed']}/{s['completed']} |"
+            f"| {LABELS[m]} | {s['all_timed_warp_wins']}/{s['completed']} | {ratio:.2f}x | {s['passed']}/{s['completed']} |"
         )
-    (ROOT / "all-timed-table.md").write_text("\n".join(raw_lines) + "\n")
+    (ROOT / "all-timed-table.md").write_text(preamble + "\n".join(raw_lines) + "\n")
     query_lines = [
         "| Method | Warp query wins / comparable | Geomean other / Warp |",
         "| --- | ---: | ---: |",
@@ -172,9 +222,9 @@ def main():
             "within_5pct": sum(1 / 1.05 <= r <= 1.05 for r in ratios),
             "warp_over_5pct_slower": sum(r < 1 / 1.05 for r in ratios),
         }
-        if m != "warp_configured":
-            query_lines.append(f"| {m} | {sum(r > 1 for r in ratios)}/{len(ratios)} | {geometric} |")
-    (ROOT / "query-table.md").write_text("\n".join(query_lines) + "\n")
+        if m != "warp_batch":
+            query_lines.append(f"| {LABELS[m]} | {sum(r > 1 for r in ratios)}/{len(ratios)} | {geometric} |")
+    (ROOT / "query-table.md").write_text(preamble + "\n".join(query_lines) + "\n")
     (ROOT / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     analysis = {"regimes": {}}
     for phase in ("one_shot", "reused_index_search"):
@@ -269,6 +319,72 @@ def main():
                     {"id": row["case"]["id"], "ratio": ratio} for row, ratio in zip(control, ratios, strict=True)
                 ],
             }
+
+    # Graph replay is a separate execution mode, never silently substituted in
+    # the ordinary-call library comparison above.
+    warp_modes = {}
+    timing_lines = [
+        "# Fresh Warp timings: ordinary calls and CUDA graph replay",
+        "",
+        "All ratios below are geometric means across the same 40 cases. Greater than one means faster than the simple scalar ordinary call. No per-case fastest-path selection is used.",
+        "",
+        "| Warp path | Execution | Speedup vs simple scalar, build + query | Speedup vs simple scalar, reused index |",
+        "| --- | --- | ---: | ---: |",
+    ]
+    for method in ("warp_scalar", "warp_tuned", "warp_batch"):
+        warp_modes[method] = {}
+        for mode, prefix in (("ordinary call", ""), ("CUDA graph replay", "graph_")):
+            values = {}
+            for phase in ("one_shot", "reused_index_search"):
+                ratios = [
+                    cases["warp_scalar"][cid][phase]["wall_median_ms"] / c[prefix + phase]["wall_median_ms"]
+                    for cid, c in cases[method].items()
+                ]
+                values[phase] = {
+                    "geomean_speedup_vs_simple_ordinary": statistics.geometric_mean(ratios),
+                    "faster_cases": sum(x > 1 for x in ratios),
+                }
+            warp_modes[method][mode] = values
+            timing_lines.append(
+                f"| {LABELS[method]} | {mode} | {values['one_shot']['geomean_speedup_vs_simple_ordinary']:.2f}x | {values['reused_index_search']['geomean_speedup_vs_simple_ordinary']:.2f}x |"
+            )
+    timing_lines += [
+        "",
+        "Graph replay includes a fresh GPU BVH construction for build + query; reused-index replay queries a prebuilt BVH. Output buffers are preallocated for graphs. Capture, graph instantiation, compilation and input upload are excluded. Sorting and graph scratch operations, when selected, remain part of replay. Each sample is one replay plus synchronization, using the same timer as the ordinary-call comparison.",
+        "",
+        "| Case | Simple scalar build + query (ms) | Automatic batch build + query (ms) | Batch graph build + query (ms) | Simple scalar reused (ms) | Automatic batch reused (ms) | Batch graph reused (ms) |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for cid, c in cases["warp_scalar"].items():
+        b = cases["warp_batch"][cid]
+        values = [
+            c["one_shot"]["wall_median_ms"],
+            b["one_shot"]["wall_median_ms"],
+            b["graph_one_shot"]["wall_median_ms"],
+            c["reused_index_search"]["wall_median_ms"],
+            b["reused_index_search"]["wall_median_ms"],
+            b["graph_reused_index_search"]["wall_median_ms"],
+        ]
+        timing_lines.append("| " + cid + " | " + " | ".join(f"{v:.4f}" for v in values) + " |")
+    (ROOT / "warp-timings.md").write_text("\n".join(timing_lines) + "\n")
+    analysis["fresh_warp_modes"] = warp_modes
+    analysis["batch_graph_vs_retained_ordinary_competitors"] = {}
+    for phase in ("one_shot", "reused_index_search"):
+        best = json.loads((ROOT / f"best-{phase}.json").read_text())
+        rows = [
+            {
+                **v,
+                "warp_ms": cases["warp_batch"][v["id"]]["graph_" + phase]["wall_median_ms"],
+                "ratio": v["other_ms"] / cases["warp_batch"][v["id"]]["graph_" + phase]["wall_median_ms"],
+            }
+            for v in best
+        ]
+        analysis["batch_graph_vs_retained_ordinary_competitors"][phase] = {
+            "note": "Different execution modes: new Warp graph replay vs retained competitor ordinary calls; not a graph-to-graph comparison.",
+            "warp_wins": sum(v["ratio"] > 1 for v in rows),
+            "cases": rows,
+        }
+
     (ROOT / "analysis.json").write_text(json.dumps(analysis, indent=2) + "\n")
 
 
