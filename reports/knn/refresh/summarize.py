@@ -11,6 +11,8 @@ METHODS = (
     "warp_scalar",
     "warp_tuned",
     "warp_batch",
+    "warp_batch_lbvh",
+    "warp_batch_cubql",
     "physicsnemo",
     "cubql",
     "cubql_defaults",
@@ -52,7 +54,9 @@ def regime(case):
 LABELS = {
     "warp_scalar": "Warp scalar (simple dense launch)",
     "warp_tuned": "Warp scalar (tuned launch)",
-    "warp_batch": "Warp batch (automatic tuning)",
+    "warp_batch": "Warp batch (LBVH, automatic tuning; retained)",
+    "warp_batch_lbvh": "Warp kNN + LBVH (matched control)",
+    "warp_batch_cubql": "Warp kNN + cuBQL SAH",
     "physicsnemo": "Pinned PhysicsNeMo",
     "cubql": "cuBQL custom top-k (leaf 4, dense)",
     "cubql_defaults": "cuBQL findKNN (defaults)",
@@ -91,13 +95,32 @@ def load_reports():
                 raise ValueError(f"Warp validation failed: {method} {c['id']}")
             rows.append(c)
         reports[method] = {**fresh, "cases": rows, "provider": {"exact_algorithm": True}}
+    builders = json.loads((ROOT / "results/warp-builders.json").read_text())
+    if {row["case"]["id"] for row in builders["cases"]} != expected or len(builders["cases"]) != len(expected):
+        raise ValueError("Incomplete builder comparison")
+    for method in ("warp_batch_lbvh", "warp_batch_cubql"):
+        rows = []
+        for row in builders["cases"]:
+            c = dict(row["case"], **row["variants"][method], status="ok")
+            if not passed(c["validation"]) or not passed(c["reused_validation"]):
+                raise ValueError("Builder comparison failed correctness")
+            for phase in ("graph_one_shot", "graph_reused_index_search"):
+                graph = c.get(phase)
+                if graph is None and method == "warp_batch_cubql" and phase == "graph_one_shot":
+                    continue
+                if not graph or not passed(graph["validation"]) or not passed(graph["changed_input_validation"]):
+                    raise ValueError("Builder graph replay failed correctness")
+            rows.append(c)
+        reports[method] = {**builders, "cases": rows, "provider": {"exact_algorithm": True}}
     return {m: reports[m] for m in METHODS}
 
 
 def main():
+    from summarize_builders import main as summarize_builders  # noqa: PLC0415
     from summarize_cubql import main as summarize_cubql  # noqa: PLC0415
 
     summarize_cubql()
+    summarize_builders()
     reports = load_reports()
     cases = {m: {c["id"]: c for c in r["cases"]} for m, r in reports.items()}
     warp = cases["warp_batch"]
@@ -118,6 +141,8 @@ def main():
             if method.startswith("warp_")
             else provenance["revision"]
         )
+        if method in ("warp_batch_lbvh", "warp_batch_cubql"):
+            expected_revision = json.loads((ROOT / "builders-provenance.json").read_text())["revision"]
         if method in ("cubql_defaults", "cubql_tuned"):
             expected_revision = json.loads((ROOT / "cubql-provenance.json").read_text())["revision"]
         if report["environment"]["git_revision"] != expected_revision:
@@ -207,7 +232,7 @@ def main():
             lines.append(
                 f"| {LABELS[m]} | {len(completed)} | {len(valid)} | {s['min_recall']:.5f} | {wins} | {ratio_text} | {'pass' if graph_ok else 'failed/unsupported'} |"
             )
-    preamble = "Ordinary calls; denominator: **Warp batch (automatic tuning)**. Fresh Warp and upstream cuBQL timings; other competitor timings retained. CUDA graph replay is reported separately in [warp-timings.md](warp-timings.md).\n\n"
+    preamble = "Ordinary calls; denominator: **retained Warp batch (LBVH, automatic tuning)**. New matched Warp builder controls are included; earlier Warp and competitor samples are retained. CUDA graph replay is reported separately in [warp-timings.md](warp-timings.md).\n\n"
     (ROOT / "table.md").write_text(preamble + "\n".join(lines) + "\n")
     print("\n".join(lines))
     raw_lines = [

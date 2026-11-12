@@ -1,4 +1,31 @@
-# Reproducing the cuBQL comparison extension
+# Reproducing the Warp BVH-constructor comparison
+
+The two new matched columns use Warp kNN with `constructor="lbvh"` or `constructor="cubql"` (cuBQL SAH). They retain the same leaf/launch policy and output contract. No native rebuild is required. See [method and limitations](builders.md).
+
+Run only one GPU job at a time, from the repository root:
+
+```sh
+uv run --no-sync -m warp.examples.benchmarks.point_query_comparison_environment \
+  --python .venv-knn-compare/bin/python --cuda /tmp/warp-intersection-cuda-12.9 \
+  --module warp.examples.benchmarks.benchmark_point_query_builders -- \
+  --manifest ../data/knn-comparison/pilot/manifest.json \
+  --output ../artifacts/comparison/warp-builders/warp-builders.json
+```
+
+This measures all 40 cases, both constructors, nine samples per phase, ordinary build/query/build-plus-query and query graph replay. LBVH also measures full-build graph replay. Every query graph is checked after queries change; LBVH full-build graphs change both points and queries. The cuBQL construction path is excluded from the timing worker's captures because it synchronizes with the host.
+
+Its failure can be reproduced in a **separate process** using the same launcher/module, replacing the manifest argument with `--capture-probe cubql`. The observed probe exits with code 130 after cuBQL raises SIGINT for CUDA error 900. Retain stderr and the process exit status; it may terminate before writing the output JSON. The recorded [receipt](results/cubql-full-capture.json) and [log](results/cubql-full-capture.log) document that outcome. Do not reuse a failed-capture process for timing.
+
+Copy the completed JSON to `results/warp-builders.json`, record its source hashes and retained-file hashes in `builders-provenance.json`, then regenerate:
+
+```sh
+uv run --no-sync reports/knn/refresh/summarize.py
+uv run --no-sync reports/knn/refresh/plot.py
+```
+
+The earlier LBVH batch result remains the main plots' denominator. The two new columns are compared directly in `builders-timings.md`; no historical samples are overwritten.
+
+## Reproducing the previous cuBQL comparison extension
 
 The old custom top-k cuBQL column is retained. The new defaults and tuned columns call upstream `findKNN()` directly. See [method and search space](cubql.md); source and native-library hashes are in [cuBQL provenance](cubql-provenance.json).
 

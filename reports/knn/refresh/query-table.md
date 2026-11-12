@@ -1,9 +1,11 @@
-Ordinary calls; denominator: **Warp batch (automatic tuning)**. Fresh Warp and upstream cuBQL timings; other competitor timings retained. CUDA graph replay is reported separately in [warp-timings.md](warp-timings.md).
+Ordinary calls; denominator: **retained Warp batch (LBVH, automatic tuning)**. New matched Warp builder controls are included; earlier Warp and competitor samples are retained. CUDA graph replay is reported separately in [warp-timings.md](warp-timings.md).
 
 | Method | Warp query wins / comparable | Geomean other / Warp |
 | --- | ---: | ---: |
 | Warp scalar (simple dense launch) | 40/40 | 3.90x |
 | Warp scalar (tuned launch) | 4/40 | 0.97x |
+| Warp kNN + LBVH (matched control) | 18/40 | 1.00x |
+| Warp kNN + cuBQL SAH | 8/40 | 0.93x |
 | Pinned PhysicsNeMo | 40/40 | 10.43x |
 | cuBQL custom top-k (leaf 4, dense) | 40/40 | 4.44x |
 | cuBQL findKNN (defaults) | 40/40 | 4.33x |

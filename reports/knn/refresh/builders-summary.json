@@ -1,0 +1,25 @@
+{
+  "one_shot": {
+    "geomean_lbvh_over_cubql": 0.07159692277651811,
+    "cubql_lower_median": 0,
+    "cubql_over_5pct_faster": 0,
+    "within_5pct": 0
+  },
+  "reused_index_search": {
+    "geomean_lbvh_over_cubql": 1.0731766990649598,
+    "cubql_lower_median": 31,
+    "cubql_over_5pct_faster": 26,
+    "within_5pct": 8
+  },
+  "graph_reused_index_search": {
+    "geomean_lbvh_over_cubql": 1.0935756377211978,
+    "cubql_lower_median": 33,
+    "cubql_over_5pct_faster": 28,
+    "within_5pct": 6
+  },
+  "retained_lbvh_over_matched_lbvh": {
+    "one_shot": 1.0820736718854045,
+    "reused_index_search": 1.003148252800598,
+    "graph_reused_index_search": 1.001765103548358
+  }
+}
