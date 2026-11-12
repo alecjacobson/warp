@@ -8,8 +8,8 @@ All ratios below are geometric means across the same 40 cases. Greater than one 
 | Warp scalar (simple dense launch) | CUDA graph replay | 1.08x | 1.17x |
 | Warp scalar (tuned launch) | ordinary call | 2.85x | 4.04x |
 | Warp scalar (tuned launch) | CUDA graph replay | 3.31x | 5.44x |
-| Warp batch (automatic tuning) | ordinary call | 2.81x | 3.90x |
-| Warp batch (automatic tuning) | CUDA graph replay | 3.33x | 5.68x |
+| Warp batch (LBVH, automatic tuning; retained) | ordinary call | 2.81x | 3.90x |
+| Warp batch (LBVH, automatic tuning; retained) | CUDA graph replay | 3.33x | 5.68x |
 
 Graph replay includes a fresh GPU BVH construction for build + query; reused-index replay queries a prebuilt BVH. Output buffers are preallocated for graphs. Capture, graph instantiation, compilation and input upload are excluded. Sorting and graph scratch operations, when selected, remain part of replay. Each sample is one replay plus synchronization, using the same timer as the ordinary-call comparison.
 

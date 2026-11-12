@@ -1,0 +1,14 @@
+{
+  "cases": 40,
+  "builder_variants": 2,
+  "validation_records_passed": 400,
+  "timing_samples_per_phase": 9,
+  "existing_tests_passed": 42,
+  "source_hashes_match": true,
+  "native_binary_unchanged": true,
+  "comparison_packages_and_python_unchanged": true,
+  "earlier_result_jsons_byte_identical": true,
+  "cubql_full_capture_supported": false,
+  "cubql_capture_probe_exit": 130,
+  "capture_failure_observed": "CUDA 900 at cudaStreamSynchronize; upstream error handler raises SIGINT"
+}

@@ -1,0 +1,67 @@
+CUDA call (cudaStreamSynchronize(s)) failed with code 900 (line 441): operation not permitted when stream is capturing
+fatal cuda error
+CUDA call (cudaMallocAsync(ptr, size, s)) failed with code 901 (line 87): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaMallocAsync(ptr, size, s)) failed with code 901 (line 87): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaStreamSynchronize(s)) failed with code 900 (line 519): operation not permitted when stream is capturing
+fatal cuda error
+CUDA call (cudaFreeAsync(ptr, s)) failed with code 901 (line 91): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaMallocAsync(ptr, size, s)) failed with code 901 (line 87): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaMallocAsync(ptr, size, s)) failed with code 901 (line 87): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaStreamSynchronize(s)) failed with code 900 (line 537): operation not permitted when stream is capturing
+fatal cuda error
+CUDA call (cudaFreeAsync(ptr, s)) failed with code 901 (line 91): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaFreeAsync(ptr, s)) failed with code 901 (line 91): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaFreeAsync(ptr, s)) failed with code 901 (line 91): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaFreeAsync(ptr, s)) failed with code 901 (line 91): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaFreeAsync(ptr, s)) failed with code 901 (line 91): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaFreeAsync(ptr, s)) failed with code 901 (line 91): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaMallocAsync(ptr, size, s)) failed with code 901 (line 87): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaFreeAsync(ptr, s)) failed with code 901 (line 91): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaMallocAsync(ptr, size, s)) failed with code 901 (line 87): operation failed due to a previous error during capture
+fatal cuda error
+CUDA call (cudaFreeAsync(ptr, s)) failed with code 901 (line 91): operation failed due to a previous error during capture
+fatal cuda error
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_builders.py", line 146, in <module>
+    main()
+  File "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_builders.py", line 140, in main
+    capture_probe(args)
+  File "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_builders.py", line 43, in capture_probe
+    report["timing_and_validation"] = graph_measure(problem, p, q, None, 3)
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_replay.py", line 90, in graph_measure
+    result = problem.call(index, outputs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_builders.py", line 31, in call
+    bvh = self.build()
+          ^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_builders.py", line 27, in build
+    return wp.Bvh(self.points, self.points, constructor=self.constructor, leaf_size=self.config.leaf_size)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/warp/_src/types.py", line 6285, in __init__
+    self.id = self.runtime.core.wp_bvh_create_device(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+Module _query_kernel__locals__query_91a516d8 aec1b35 load on device 'cuda:0' took 347.65 ms  (compiled)

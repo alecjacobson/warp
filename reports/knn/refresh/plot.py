@@ -14,6 +14,8 @@ from summarize import load_reports, passed
 ROOT = Path(__file__).parent
 METHODS = (
     "warp_scalar",
+    "warp_batch_lbvh",
+    "warp_batch_cubql",
     "physicsnemo",
     "cubql",
     "cubql_defaults",
@@ -28,6 +30,8 @@ METHODS = (
 )
 LABELS = (
     "Warp scalar (simple)",
+    "Warp kNN + LBVH\n(matched control)",
+    "Warp kNN + cuBQL SAH",
     "PhysicsNeMo (pinned PR)",
     "cuBQL custom top-k\n(leaf 4, dense)",
     "cuBQL findKNN defaults",
@@ -70,7 +74,7 @@ def main(phase):
             else:
                 labels[i, j] = f"checks\n{len(ratios)}/{len(ids)}"
     with plt.rc_context({"font.size": 10, "svg.fonttype": "none", "svg.hashsalt": "point-query-comparison"}):
-        fig, ax = plt.subplots(figsize=(15.5, 11))
+        fig, ax = plt.subplots(figsize=(18, 11))
         cmap = plt.get_cmap("RdBu").copy()
         cmap.set_bad("#e8e8e8")
         im = ax.imshow(values, cmap=cmap, norm=TwoSlopeNorm(vmin=-3, vcenter=0, vmax=6), aspect="auto")
@@ -84,7 +88,7 @@ def main(phase):
         )
         ax.set_title(
             title
-            + ": alternative / Warp batch (automatic tuning, ordinary call)\nGeometric mean across each group's clean/noisy variants",
+            + ": alternative / retained Warp batch (LBVH, ordinary call)\nGeometric mean across each group's clean/noisy variants",
             pad=15,
         )
         bar = fig.colorbar(im, ax=ax, fraction=0.025, pad=0.02, ticks=[-3, -2, -1, 0, 1, 2, 3, 4, 5, 6])
@@ -92,7 +96,7 @@ def main(phase):
         fig.text(
             0.5,
             0.015,
-            "Values >1: Warp faster. Values <1: alternative faster. Gray: not all sampled accuracy checks passed.\nNine synchronized wall samples; fresh Warp/cuBQL, other timings retained. No graph replay in this plot.",
+            "Values >1: reference LBVH batch faster. Values <1: column method faster. Gray: not all sampled accuracy checks passed.\nNine synchronized wall samples; new matched Warp builder controls; earlier timings retained. No graph replay in this plot.",
             ha="center",
             fontsize=9,
         )

@@ -1,0 +1,8 @@
+{
+  "constructor": "cubql",
+  "supported": false,
+  "process_exit_code": 130,
+  "failure": "CUDA error 900: cudaStreamSynchronize is not permitted during capture; cuBQL error handler raises SIGINT",
+  "log_sha256": "aa5e7798cb38ab9aea841d82b8e4e1299815780800f221d1fb07547351d76cb6",
+  "note": "Isolated probe terminated before serializing its result. This receipt records the observed process exit and log; timing worker ran in a fresh process."
+}
