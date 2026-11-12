@@ -1,4 +1,33 @@
-# Reproducing the fresh full-library comparison
+# Reproducing the Warp timing update
+
+This update remeasures **Warp scalar (simple dense launch)**, **Warp scalar (tuned launch)**, and **Warp batch (automatic tuning)**, each as an ordinary call and CUDA graph replay. The nine non-Warp result JSONs are reused byte-for-byte from the previous full comparison. [Warp provenance](warp-provenance.json) records their hashes, the measured source hashes, and the unchanged native binary.
+
+Use the existing native build and comparison environment described below. Run this command from the repository root, with no concurrent GPU jobs:
+
+```sh
+uv run --no-sync -m warp.examples.benchmarks.point_query_comparison_environment \
+  --python .venv-knn-compare/bin/python --cuda /tmp/warp-intersection-cuda-12.9 \
+  --module warp.examples.benchmarks.benchmark_point_query_replay -- \
+  --manifest ../data/knn-comparison/pilot/manifest.json \
+  --output ../artifacts/comparison/warp-replay/warp-replay.json --repeats 9
+uv run --no-sync -m unittest warp.tests.geometry.test_point_query_batch \
+  warp.tests.geometry.test_point_query warp.examples.benchmarks.test_point_query_comparison -v
+```
+
+The new runner uses the same comparison timer (including Torch events and synchronization), environment, GPU stream, dataset checksums, and int64-index/float32-Euclidean-distance contract. Query implementations use Warp arrays; their output allocator differs from the previous Torch-backed adapter. The 512 MiB Warp pool retention policy is unchanged. No competitor worker runs.
+
+Simple scalar usage uses the actual `wp.Bvh(points, points)` default leaf size 1 with one thread per query and block size 256. The explicit scalar control and automatic batch API use the measured shared policy. Each case measures ordinary build, query and build-plus-query, then graph query and graph build-plus-query. Graph output buffers are preallocated; build-plus-query graphs still rebuild on every replay. Capture and instantiation are outside timing, followed by two warmups and nine single-replay samples. GPU-event timings supplement synchronized wall latency. Query graphs are checked with changed queries; construction graphs are checked with both reference points and queries changed. Inputs are restored before timing.
+
+Copy the output JSON to `results/warp-replay.json`, retain its run log, and record the measured commit and file hashes in `warp-provenance.json`. The generator checks all 40 cases, nine samples per mode, manifest identity, native-source identity, and graph correctness. Competitor provenance continues to use the original `provenance.json`; it must not be relabeled as newly measured.
+
+```sh
+uv run --no-sync reports/knn/refresh/summarize.py
+uv run --no-sync reports/knn/refresh/plot.py
+```
+
+These regenerate the ordinary-call comparison tables and plots, the separate Warp replay table, CSV, and numerical summaries. Graph results do not silently replace ordinary-call results. The raw files `warp_default.json` and `warp_configured.json` remain historical evidence; the former used explicit leaf size 4 and is not the new simple scalar baseline.
+
+## Previous full-library run (historical reproduction)
 
 This reruns the [earlier broad comparison](../comparison/README.md) after the [geometry and scheduling improvements](../hybrid/README.md), using the same 40 immutable cases and pinned dependencies. Run commands from the repository root. Downloaded sources, virtual environments, datasets and native baseline builds remain outside Git.
 

@@ -1,6 +1,5 @@
 """Plot saved exact-method comparisons; no GPU dependencies."""
 
-import json
 import statistics
 from pathlib import Path
 
@@ -10,11 +9,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import TwoSlopeNorm
-from summarize import passed
+from summarize import load_reports, passed
 
 ROOT = Path(__file__).parent
 METHODS = (
-    "warp_default",
+    "warp_scalar",
     "physicsnemo",
     "cubql",
     "cupy_kdtree",
@@ -26,7 +25,7 @@ METHODS = (
     "pytorch3d",
 )
 LABELS = (
-    "Warp default",
+    "Warp scalar (simple)",
     "PhysicsNeMo",
     "cuBQL",
     "CuPy KDTree",
@@ -40,8 +39,8 @@ LABELS = (
 
 
 def main(phase):
-    reports = {m: json.loads((ROOT / "results" / f"{m}.json").read_text()) for m in (*METHODS, "warp_configured")}
-    baseline = {c["id"]: c for c in reports["warp_configured"]["cases"]}
+    reports = load_reports()
+    baseline = {c["id"]: c for c in reports["warp_batch"]["cases"]}
     groups = {}
     for c in baseline.values():
         size = "1M" if c["N"] == 1_000_000 else "1K" if c["N"] == 1000 else f"{round(c['N'] / 1000)}K"
@@ -80,7 +79,8 @@ def main(phase):
             "Build + query" if phase == "one_shot" else "Reused-index query (full call for operators without an index)"
         )
         ax.set_title(
-            title + ": alternative / configured Warp\nGeometric mean across each group's clean/noisy variants",
+            title
+            + ": alternative / Warp batch (automatic tuning, ordinary call)\nGeometric mean across each group's clean/noisy variants",
             pad=15,
         )
         bar = fig.colorbar(im, ax=ax, fraction=0.025, pad=0.02, ticks=[-3, -2, -1, 0, 1, 2, 3, 4, 5, 6])
@@ -88,7 +88,7 @@ def main(phase):
         fig.text(
             0.5,
             0.015,
-            "Values >1: Warp faster. Values <1: alternative faster. Gray: not all sampled accuracy checks passed.\nNine synchronized wall-time samples per case; one GPU slice. Exact 3D search.",
+            "Values >1: Warp faster. Values <1: alternative faster. Gray: not all sampled accuracy checks passed.\nNine synchronized wall samples; fresh Warp, retained competitor timings. No graph replay in this plot.",
             ha="center",
             fontsize=9,
         )
