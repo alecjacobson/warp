@@ -1,5 +1,17 @@
 # Reproducing the Warp BVH-constructor comparison
 
+## Regenerating the graph-replay plots
+
+From the repository root, using only the committed measurements and no GPU work:
+
+```sh
+uv run --no-sync reports/knn/refresh/plot_graph.py
+```
+
+This writes `graph-one-shot.svg` and `graph-reused-query.svg`, with PNG previews in `/tmp/knn-refresh-graph-*.png`. It reads `warp-replay.json`, `warp-builders.json`, `cubql_defaults.json`, and `cubql_tuned.json` through the shared report loader. Every plotted timer must contain nine wall/event samples and pass normal-input and changed-input replay checks. Ratios use the corresponding retained automatic LBVH batch **graph** timer. Missing graph timings remain gray; the recorded full-build cuBQL capture failure gets its own label. No ordinary-call timing is substituted, and no raw result file is modified.
+
+## Rerunning the builder comparison
+
 The two new matched columns use Warp kNN with `constructor="lbvh"` or `constructor="cubql"` (cuBQL SAH). They retain the same leaf/launch policy and output contract. No native rebuild is required. See [method and limitations](builders.md).
 
 Run only one GPU job at a time, from the repository root:

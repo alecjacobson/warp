@@ -97,6 +97,20 @@ All 32 build-plus-query wins exceed 5%. Tuned cuBQL wins the million-point cases
 
 ![Ordinary-call reused-index comparison](reused-query.svg)
 
+## Colored comparison: CUDA graph replay
+
+These tables use **only the saved graph-replay measurements**; no benchmarks were rerun. Here **1x is retained Warp batch (LBVH, automatic tuning), graph replay**, for the same phase and case. Each cell is the geometric mean of method / reference latency across the clean/noisy pair. Blue values above 1 favor the reference Warp batch; red values below 1 favor the column method. For example, 0.50x means the column method takes half the reference latency. The tuned scalar control is also included because its replay timings are available.
+
+Both sides use nine synchronized single-replay wall samples, with capture and instantiation excluded. Build-plus-query replay rebuilds the BVH every time; reused-index replay queries an already-built tree. All displayed measurements pass the saved normal-input and changed-input replay checks. Settings are those used in the saved runs, without additional tuning for these plots.
+
+Gray **not measured** cells have no saved graph timing, even where a separate capture correctness probe exists. They do not imply capture support or failure, and ordinary-call timings are never substituted. **Capture unsupported** specifically marks the recorded [Warp + cuBQL full-build capture failure](results/cubql-full-capture.json). Standalone cuBQL full-build replay was not measured because its builders synchronize with the host. PhysicsNeMo and the other libraries have no saved replay performance samples.
+
+![CUDA graph-replay build-plus-query comparison](graph-one-shot.svg)
+
+![CUDA graph-replay reused-index comparison](graph-reused-query.svg)
+
+[Generate these plots from saved data](reproduce.md#regenerating-the-graph-replay-plots) · [Per-case graph latencies](cases.csv)
+
 ## Correctness, capture, and scope
 
 All three earlier LBVH-based Warp paths pass checks on all 40 cases for ordinary calls and graph replay, both build-plus-query and reused-index search. Every graph is also replayed after changing queries; build-plus-query graphs additionally change reference points. Checks cover all-row structure and float64 exhaustive reference distances for 32 evenly spaced query rows, not every large-batch query. Native scalar and batch tests, including gradients and ordered capture, remain separate evidence. [Validation log](results/warp-replay-tests.log)
