@@ -1,0 +1,26 @@
+{
+  "one_shot": {
+    "geomean_default_over_tuned": 4.560167359075362,
+    "tuned_faster_than_defaults": 40,
+    "geomean_warp_over_tuned": 0.6578590348025737,
+    "tuned_faster_than_warp": 4,
+    "tuned_over_5pct_faster_than_warp": 4,
+    "within_5pct_of_warp": 0
+  },
+  "reused_index_search": {
+    "geomean_default_over_tuned": 6.180209574600934,
+    "tuned_faster_than_defaults": 40,
+    "geomean_warp_over_tuned": 1.4263433768718212,
+    "tuned_faster_than_warp": 39,
+    "tuned_over_5pct_faster_than_warp": 37,
+    "within_5pct_of_warp": 2
+  },
+  "graph_reused_index_search": {
+    "geomean_default_over_tuned": 7.105461666222544,
+    "tuned_faster_than_defaults": 40,
+    "geomean_warp_over_tuned": 1.1922759417403692,
+    "tuned_faster_than_warp": 34,
+    "tuned_over_5pct_faster_than_warp": 29,
+    "within_5pct_of_warp": 6
+  }
+}

@@ -16,6 +16,8 @@ METHODS = (
     "warp_scalar",
     "physicsnemo",
     "cubql",
+    "cubql_defaults",
+    "cubql_tuned",
     "cupy_kdtree",
     "keops",
     "faiss_flat",
@@ -26,8 +28,10 @@ METHODS = (
 )
 LABELS = (
     "Warp scalar (simple)",
-    "PhysicsNeMo",
-    "cuBQL",
+    "PhysicsNeMo (pinned PR)",
+    "cuBQL custom top-k\n(leaf 4, dense)",
+    "cuBQL findKNN defaults",
+    "cuBQL findKNN\n(best tested settings)",
     "CuPy KDTree",
     "KeOps",
     "Faiss Flat",
@@ -66,7 +70,7 @@ def main(phase):
             else:
                 labels[i, j] = f"checks\n{len(ratios)}/{len(ids)}"
     with plt.rc_context({"font.size": 10, "svg.fonttype": "none", "svg.hashsalt": "point-query-comparison"}):
-        fig, ax = plt.subplots(figsize=(13, 11))
+        fig, ax = plt.subplots(figsize=(15.5, 11))
         cmap = plt.get_cmap("RdBu").copy()
         cmap.set_bad("#e8e8e8")
         im = ax.imshow(values, cmap=cmap, norm=TwoSlopeNorm(vmin=-3, vcenter=0, vmax=6), aspect="auto")
@@ -88,7 +92,7 @@ def main(phase):
         fig.text(
             0.5,
             0.015,
-            "Values >1: Warp faster. Values <1: alternative faster. Gray: not all sampled accuracy checks passed.\nNine synchronized wall samples; fresh Warp, retained competitor timings. No graph replay in this plot.",
+            "Values >1: Warp faster. Values <1: alternative faster. Gray: not all sampled accuracy checks passed.\nNine synchronized wall samples; fresh Warp/cuBQL, other timings retained. No graph replay in this plot.",
             ha="center",
             fontsize=9,
         )

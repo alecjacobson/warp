@@ -8,9 +8,7 @@
         "within_5pct": 0,
         "warp_over_5pct_slower": 0,
         "competitors": [
-          "cubql",
-          "cuvs_unexpanded",
-          "physicsnemo"
+          "cubql_tuned"
         ]
       },
       "medium_k32": {
@@ -20,17 +18,18 @@
         "within_5pct": 0,
         "warp_over_5pct_slower": 0,
         "competitors": [
+          "cubql_tuned",
           "cuvs_unexpanded"
         ]
       },
       "million": {
         "cases": 4,
-        "warp_wins": 4,
-        "warp_over_5pct_faster": 4,
+        "warp_wins": 0,
+        "warp_over_5pct_faster": 0,
         "within_5pct": 0,
-        "warp_over_5pct_slower": 0,
+        "warp_over_5pct_slower": 4,
         "competitors": [
-          "physicsnemo"
+          "cubql_tuned"
         ]
       },
       "tiny": {
@@ -48,32 +47,32 @@
     "reused_index_search": {
       "medium_k1": {
         "cases": 16,
-        "warp_wins": 16,
-        "warp_over_5pct_faster": 16,
+        "warp_wins": 0,
+        "warp_over_5pct_faster": 0,
         "within_5pct": 0,
-        "warp_over_5pct_slower": 0,
+        "warp_over_5pct_slower": 16,
         "competitors": [
-          "cubql"
+          "cubql_tuned"
         ]
       },
       "medium_k32": {
         "cases": 16,
-        "warp_wins": 16,
-        "warp_over_5pct_faster": 16,
-        "within_5pct": 0,
-        "warp_over_5pct_slower": 0,
+        "warp_wins": 1,
+        "warp_over_5pct_faster": 1,
+        "within_5pct": 2,
+        "warp_over_5pct_slower": 13,
         "competitors": [
-          "cuvs_unexpanded"
+          "cubql_tuned"
         ]
       },
       "million": {
         "cases": 4,
-        "warp_wins": 4,
-        "warp_over_5pct_faster": 4,
+        "warp_wins": 0,
+        "warp_over_5pct_faster": 0,
         "within_5pct": 0,
-        "warp_over_5pct_slower": 0,
+        "warp_over_5pct_slower": 4,
         "competitors": [
-          "cubql"
+          "cubql_tuned"
         ]
       },
       "tiny": {
@@ -514,14 +513,14 @@
   "batch_graph_vs_retained_ordinary_competitors": {
     "one_shot": {
       "note": "Different execution modes: new Warp graph replay vs retained competitor ordinary calls; not a graph-to-graph comparison.",
-      "warp_wins": 36,
+      "warp_wins": 32,
       "cases": [
         {
           "id": "bunny_scan-n100000-q1024-sigma0-k1",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 0.5213299300521612,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.4675700329244137,
           "warp_ms": 0.16882899217307568,
-          "ratio": 3.087917089013467
+          "ratio": 2.769488977610448
         },
         {
           "id": "bunny_scan-n100000-q1024-sigma0-k32",
@@ -532,10 +531,10 @@
         },
         {
           "id": "bunny_scan-n100000-q1024-sigma0.01-k1",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 0.5158598069101572,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.5094800144433975,
           "warp_ms": 0.17548981122672558,
-          "ratio": 2.9395427763249895
+          "ratio": 2.9031885719289448
         },
         {
           "id": "bunny_scan-n100000-q1024-sigma0.01-k32",
@@ -546,227 +545,227 @@
         },
         {
           "id": "kitti-n100000-q1024-sigma0-k1",
-          "best_other": "physicsnemo",
-          "other_ms": 0.8260100148618221,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.5464400164783001,
           "warp_ms": 0.21444004960358143,
-          "ratio": 3.851939114865914
+          "ratio": 2.5482181033275317
         },
         {
           "id": "kitti-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3722199946641922,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.7764098700135946,
           "warp_ms": 0.47742994502186775,
-          "ratio": 2.874180827935584
+          "ratio": 1.6262278437060178
         },
         {
           "id": "kitti-n100000-q1024-sigma0.01-k1",
-          "best_other": "physicsnemo",
-          "other_ms": 1.0007398668676615,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.5979498382657766,
           "warp_ms": 0.22600009106099606,
-          "ratio": 4.428050724092707
+          "ratio": 2.645794678482645
         },
         {
           "id": "kitti-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3695298694074154,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.8538700640201569,
           "warp_ms": 0.47504017129540443,
-          "ratio": 2.8829769610279365
+          "ratio": 1.797469173378974
         },
         {
           "id": "redwood-n100000-q1024-sigma0-k1",
-          "best_other": "physicsnemo",
-          "other_ms": 0.7544900290668011,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.5109298508614302,
           "warp_ms": 0.2113699447363615,
-          "ratio": 3.569523708812362
+          "ratio": 2.417230375390906
         },
         {
           "id": "redwood-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3685401063412428,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.70726010017097,
           "warp_ms": 0.426099868491292,
-          "ratio": 3.2117825128341035
+          "ratio": 1.6598458541543153
         },
         {
           "id": "redwood-n100000-q1024-sigma0.01-k1",
-          "best_other": "physicsnemo",
-          "other_ms": 0.914399977773428,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.5631998647004366,
           "warp_ms": 0.2176698762923479,
-          "ratio": 4.200856789872551
+          "ratio": 2.5874037983281366
         },
         {
           "id": "redwood-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3715492095798254,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.8432499598711729,
           "warp_ms": 0.49112015403807163,
-          "ratio": 2.7926958368593096
+          "ratio": 1.7169931898290702
         },
         {
           "id": "bunny_surface-n100000-q1024-sigma0-k1",
-          "best_other": "physicsnemo",
-          "other_ms": 0.7801000028848648,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.49225008115172386,
           "warp_ms": 0.20635989494621754,
-          "ratio": 3.780288815751617
+          "ratio": 2.3853960639009646
         },
         {
           "id": "bunny_surface-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.370810205116868,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.6779099348932505,
           "warp_ms": 0.4244700539857149,
-          "ratio": 3.2294626964732855
+          "ratio": 1.5970736416568618
         },
         {
           "id": "bunny_surface-n100000-q1024-sigma0.01-k1",
-          "best_other": "physicsnemo",
-          "other_ms": 0.835399841889739,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.49831997603178024,
           "warp_ms": 0.21286006085574627,
-          "ratio": 3.9246434419460376
+          "ratio": 2.341068465490518
         },
         {
           "id": "bunny_surface-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3707189355045557,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.7816702127456665,
           "warp_ms": 0.4698098637163639,
-          "ratio": 2.9176035697966816
+          "ratio": 1.6638011951523874
         },
         {
           "id": "sphere-n100000-q1024-sigma0-k1",
-          "best_other": "physicsnemo",
-          "other_ms": 0.7468198891729116,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.4605799913406372,
           "warp_ms": 0.20642997696995735,
-          "ratio": 3.617787978930984
+          "ratio": 2.2311681573634403
         },
         {
           "id": "sphere-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3724199961870909,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.6752100307494402,
           "warp_ms": 0.40933978743851185,
-          "ratio": 3.352764716020297
+          "ratio": 1.649509897326718
         },
         {
           "id": "sphere-n100000-q1024-sigma0.01-k1",
-          "best_other": "physicsnemo",
-          "other_ms": 0.8071188349276781,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.41245995089411736,
           "warp_ms": 0.21283002570271492,
-          "ratio": 3.7923165787475743
+          "ratio": 1.937978203649937
         },
         {
           "id": "sphere-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3685498852282763,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.7194599602371454,
           "warp_ms": 0.4437000025063753,
-          "ratio": 3.0844036004002775
+          "ratio": 1.621500915422708
         },
         {
           "id": "volume-n100000-q1024-sigma0-k1",
-          "best_other": "physicsnemo",
-          "other_ms": 0.8548100013285875,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.45367004349827766,
           "warp_ms": 0.21134992130100727,
-          "ratio": 4.044524814897642
+          "ratio": 2.1465351901037852
         },
         {
           "id": "volume-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3690299820154905,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.7042200304567814,
           "warp_ms": 0.4563599359244108,
-          "ratio": 2.9998908191674603
+          "ratio": 1.5431241329944987
         },
         {
           "id": "volume-n100000-q1024-sigma0.01-k1",
-          "best_other": "physicsnemo",
-          "other_ms": 0.8482299745082855,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.4729900974780321,
           "warp_ms": 0.21092011593282223,
-          "ratio": 4.02156982873291
+          "ratio": 2.2425082377096683
         },
         {
           "id": "volume-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3698399998247623,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.7047001272439957,
           "warp_ms": 0.44710002839565277,
-          "ratio": 3.063833399295936
+          "ratio": 1.5761576436769638
         },
         {
           "id": "clusters-n100000-q1024-sigma0-k1",
-          "best_other": "physicsnemo",
-          "other_ms": 0.8909299504011869,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.6350700277835131,
           "warp_ms": 0.22685015574097633,
-          "ratio": 3.92739404339874
+          "ratio": 2.799513298587519
         },
         {
           "id": "clusters-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3701401185244322,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.9497399441897869,
           "warp_ms": 0.5015800707042217,
-          "ratio": 2.731647843585066
+          "ratio": 1.8934961727174402
         },
         {
           "id": "clusters-n100000-q1024-sigma0.01-k1",
-          "best_other": "physicsnemo",
-          "other_ms": 0.8802099619060755,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.6578201428055763,
           "warp_ms": 0.2298499457538128,
-          "ratio": 3.8294982364226833
+          "ratio": 2.861954744640893
         },
         {
           "id": "clusters-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3678199611604214,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.9001998696476221,
           "warp_ms": 0.538308871909976,
-          "ratio": 2.5409574921313363
+          "ratio": 1.6722738870225546
         },
         {
           "id": "thin_plane-n100000-q1024-sigma0-k1",
-          "best_other": "cubql",
-          "other_ms": 1.0499800555408,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.4097600467503071,
           "warp_ms": 0.19689998589456081,
-          "ratio": 5.332555260329274
+          "ratio": 2.081056760307398
         },
         {
           "id": "thin_plane-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3702998403459787,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.5928000900894403,
           "warp_ms": 0.39592012763023376,
-          "ratio": 3.461051218961413
+          "ratio": 1.4972719210756593
         },
         {
           "id": "thin_plane-n100000-q1024-sigma0.01-k1",
-          "best_other": "physicsnemo",
-          "other_ms": 1.0189900640398264,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.5043400451540947,
           "warp_ms": 0.21031987853348255,
-          "ratio": 4.844953654143562
+          "ratio": 2.3979666053002435
         },
         {
           "id": "thin_plane-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3681091368198395,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.7276898249983788,
           "warp_ms": 0.447859987616539,
-          "ratio": 3.0547697375261498
+          "ratio": 1.624815444824761
         },
         {
           "id": "sphere-n1000000-q8192-sigma0-k11",
-          "best_other": "physicsnemo",
-          "other_ms": 1.7616699915379286,
+          "best_other": "cubql_tuned",
+          "other_ms": 1.299430150538683,
           "warp_ms": 1.5514199621975422,
-          "ratio": 1.1355210287758404
+          "ratio": 0.8375747265093052
         },
         {
           "id": "sphere-n1000000-q8192-sigma0.01-k11",
-          "best_other": "physicsnemo",
-          "other_ms": 2.166649093851447,
+          "best_other": "cubql_tuned",
+          "other_ms": 1.418589847162366,
           "warp_ms": 1.8185400404036045,
-          "ratio": 1.1914222649563349
+          "ratio": 0.7800707246718229
         },
         {
           "id": "volume-n1000000-q8192-sigma0-k11",
-          "best_other": "physicsnemo",
-          "other_ms": 2.087709028273821,
+          "best_other": "cubql_tuned",
+          "other_ms": 1.3288299087435007,
           "warp_ms": 1.7557800747454166,
-          "ratio": 1.1890492769013414
+          "ratio": 0.7568316373200541
         },
         {
           "id": "volume-n1000000-q8192-sigma0.01-k11",
-          "best_other": "physicsnemo",
-          "other_ms": 2.109479857608676,
+          "best_other": "cubql_tuned",
+          "other_ms": 1.3332900125533342,
           "warp_ms": 1.7735599540174007,
-          "ratio": 1.1894043124002447
+          "ratio": 0.7517592002081555
         },
         {
           "id": "sphere-n1000-q32-sigma0-k32",
@@ -800,259 +799,259 @@
     },
     "reused_index_search": {
       "note": "Different execution modes: new Warp graph replay vs retained competitor ordinary calls; not a graph-to-graph comparison.",
-      "warp_wins": 36,
+      "warp_wins": 24,
       "cases": [
         {
           "id": "bunny_scan-n100000-q1024-sigma0-k1",
-          "best_other": "cubql",
-          "other_ms": 0.12262002564966679,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.04036980681121349,
           "warp_ms": 0.031979987397789955,
-          "ratio": 3.8342737326450824
+          "ratio": 1.2623459261901815
         },
         {
           "id": "bunny_scan-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 0.6334299687296152,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.19158003851771355,
           "warp_ms": 0.2001998946070671,
-          "ratio": 3.1639875234342654
+          "ratio": 0.9569437531110006
         },
         {
           "id": "bunny_scan-n100000-q1024-sigma0.01-k1",
-          "best_other": "cubql",
-          "other_ms": 0.1806500367820263,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.04465016536414623,
           "warp_ms": 0.040239887312054634,
-          "ratio": 4.48932760127062
+          "ratio": 1.1095996620937458
         },
         {
           "id": "bunny_scan-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 0.6365100853145123,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.2544501330703497,
           "warp_ms": 0.2427601721137762,
-          "ratio": 2.6219708108305113
+          "ratio": 1.048154360967806
         },
         {
           "id": "kitti-n100000-q1024-sigma0-k1",
-          "best_other": "cubql",
-          "other_ms": 0.11621997691690922,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.044839922338724136,
           "warp_ms": 0.03369990736246109,
-          "ratio": 3.448673483487633
+          "ratio": 1.3305651513057897
         },
         {
           "id": "kitti-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.362029928714037,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.18681003712117672,
           "warp_ms": 0.2391200978308916,
-          "ratio": 5.696007742842593
+          "ratio": 0.7812393806115404
         },
         {
           "id": "kitti-n100000-q1024-sigma0.01-k1",
-          "best_other": "cubql",
-          "other_ms": 0.24063000455498695,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.0498499721288681,
           "warp_ms": 0.05092006176710129,
-          "ratio": 4.725642432556013
+          "ratio": 0.9789849108367626
         },
         {
           "id": "kitti-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3625901192426682,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.2840000670403242,
           "warp_ms": 0.25494000874459743,
-          "ratio": 5.344748068192508
+          "ratio": 1.113987829681294
         },
         {
           "id": "redwood-n100000-q1024-sigma0-k1",
-          "best_other": "cubql",
-          "other_ms": 0.12891017831861973,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.041530001908540726,
           "warp_ms": 0.035490142181515694,
-          "ratio": 3.6322812588155795
+          "ratio": 1.1701841513097901
         },
         {
           "id": "redwood-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3643500860780478,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.19500008784234524,
           "warp_ms": 0.19385013729333878,
-          "ratio": 7.038169305051767
+          "ratio": 1.0059321626750584
         },
         {
           "id": "redwood-n100000-q1024-sigma0.01-k1",
-          "best_other": "cubql",
-          "other_ms": 0.2102600410580635,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.045689987018704414,
           "warp_ms": 0.04460988566279411,
-          "ratio": 4.7133059844048475
+          "ratio": 1.0242121525276882
         },
         {
           "id": "redwood-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3646199367940426,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.2759099006652832,
           "warp_ms": 0.2719201147556305,
-          "ratio": 5.018458961818257
+          "ratio": 1.0146726398421766
         },
         {
           "id": "bunny_surface-n100000-q1024-sigma0-k1",
-          "best_other": "cubql",
-          "other_ms": 0.10686996392905712,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.0424699392169714,
           "warp_ms": 0.03242003731429577,
-          "ratio": 3.296417055076377
+          "ratio": 1.3099904483528795
         },
         {
           "id": "bunny_surface-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3655892107635736,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.18967012874782085,
           "warp_ms": 0.19808998331427574,
-          "ratio": 6.893782249438757
+          "ratio": 0.9574947989515626
         },
         {
           "id": "bunny_surface-n100000-q1024-sigma0.01-k1",
-          "best_other": "cubql",
-          "other_ms": 0.18586008809506893,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.046010129153728485,
           "warp_ms": 0.04050019197165966,
-          "ratio": 4.589116225057057
+          "ratio": 1.1360471867867799
         },
         {
           "id": "bunny_surface-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3638900127261877,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.2515099477022886,
           "warp_ms": 0.2515700180083513,
-          "ratio": 5.421512561488591
+          "ratio": 0.9997612183417632
         },
         {
           "id": "sphere-n100000-q1024-sigma0-k1",
-          "best_other": "cubql",
-          "other_ms": 0.10242010466754436,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.04230998456478119,
           "warp_ms": 0.03334018401801586,
-          "ratio": 3.0719717867243967
+          "ratio": 1.2690387234191138
         },
         {
           "id": "sphere-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3644099235534668,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.1832100097090006,
           "warp_ms": 0.18474995158612728,
-          "ratio": 7.385170669002325
+          "ratio": 0.991664723785279
         },
         {
           "id": "sphere-n100000-q1024-sigma0.01-k1",
-          "best_other": "cubql",
-          "other_ms": 0.19486993551254272,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.044560059905052185,
           "warp_ms": 0.039079925045371056,
-          "ratio": 4.986445989502345
+          "ratio": 1.140228898937723
         },
         {
           "id": "sphere-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3639000244438648,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.25077001191675663,
           "warp_ms": 0.22244988940656185,
-          "ratio": 6.131268611022436
+          "ratio": 1.127310121779541
         },
         {
           "id": "volume-n100000-q1024-sigma0-k1",
-          "best_other": "cubql",
-          "other_ms": 0.18650991842150688,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.05063996650278568,
           "warp_ms": 0.04061008803546429,
-          "ratio": 4.592699189881836
+          "ratio": 1.2469799735120601
         },
         {
           "id": "volume-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3629088643938303,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.28668995946645737,
           "warp_ms": 0.2497399691492319,
-          "ratio": 5.457311735228994
+          "ratio": 1.1479538515324554
         },
         {
           "id": "volume-n100000-q1024-sigma0.01-k1",
-          "best_other": "cubql",
-          "other_ms": 0.18987013027071953,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.04975008778274059,
           "warp_ms": 0.04061008803546429,
-          "ratio": 4.67544246899707
+          "ratio": 1.2250672231809607
         },
         {
           "id": "volume-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.364590134471655,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.3025599289685488,
           "warp_ms": 0.23712008260190487,
-          "ratio": 5.754848427421612
+          "ratio": 1.2759776635052429
         },
         {
           "id": "clusters-n100000-q1024-sigma0-k1",
-          "best_other": "cubql",
-          "other_ms": 0.24126004427671432,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.04776008427143097,
           "warp_ms": 0.0463300384581089,
-          "ratio": 5.207421627652197
+          "ratio": 1.030866493120119
         },
         {
           "id": "clusters-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.361809903755784,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.2936599776148796,
           "warp_ms": 0.27163000777363777,
-          "ratio": 5.0134737134442275
+          "ratio": 1.081102857603275
         },
         {
           "id": "clusters-n100000-q1024-sigma0.01-k1",
-          "best_other": "cubql",
-          "other_ms": 0.26328000240027905,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.05195988342165947,
           "warp_ms": 0.052900053560733795,
-          "ratio": 4.9769326244256265
+          "ratio": 0.9822274255734934
         },
         {
           "id": "clusters-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3598999939858913,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.29381015338003635,
           "warp_ms": 0.30857999809086323,
-          "ratio": 4.406960925527845
+          "ratio": 0.9521360917680808
         },
         {
           "id": "thin_plane-n100000-q1024-sigma0-k1",
-          "best_other": "cubql",
-          "other_ms": 0.09578000754117966,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.04452001303434372,
           "warp_ms": 0.030169961974024773,
-          "ratio": 3.174681082582826
+          "ratio": 1.4756403429568064
         },
         {
           "id": "thin_plane-n100000-q1024-sigma0-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3608487788587809,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.1870398409664631,
           "warp_ms": 0.1774500124156475,
-          "ratio": 7.668913404588646
+          "ratio": 1.0540424225406815
         },
         {
           "id": "thin_plane-n100000-q1024-sigma0.01-k1",
-          "best_other": "cubql",
-          "other_ms": 0.17528003081679344,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.04797987639904022,
           "warp_ms": 0.03932998515665531,
-          "ratio": 4.4566513340555645
+          "ratio": 1.2199312104474873
         },
         {
           "id": "thin_plane-n100000-q1024-sigma0.01-k32",
-          "best_other": "cuvs_unexpanded",
-          "other_ms": 1.3660199474543333,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.27051009237766266,
           "warp_ms": 0.2354700118303299,
-          "ratio": 5.801248052081603
+          "ratio": 1.1488091000419247
         },
         {
           "id": "sphere-n1000000-q8192-sigma0-k11",
-          "best_other": "cubql",
-          "other_ms": 0.6568790413439274,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.22030994296073914,
           "warp_ms": 0.39925985038280487,
-          "ratio": 1.6452419162961684
+          "ratio": 0.5517958861866751
         },
         {
           "id": "sphere-n1000000-q8192-sigma0.01-k11",
-          "best_other": "cubql",
-          "other_ms": 1.1795698665082455,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.3638800699263811,
           "warp_ms": 0.6748100277036428,
-          "ratio": 1.7480028720413128
+          "ratio": 0.5392333471460901
         },
         {
           "id": "volume-n1000000-q8192-sigma0-k11",
-          "best_other": "cubql",
-          "other_ms": 1.2091591488569975,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.3618400078266859,
           "warp_ms": 0.6281000096350908,
-          "ratio": 1.925106082325148
+          "ratio": 0.5760866140360437
         },
         {
           "id": "volume-n1000000-q8192-sigma0.01-k11",
-          "best_other": "cubql",
-          "other_ms": 1.18043995462358,
+          "best_other": "cubql_tuned",
+          "other_ms": 0.36855018697679043,
           "warp_ms": 0.6260999944061041,
-          "ratio": 1.8853856655010879
+          "ratio": 0.5886442904801235
         },
         {
           "id": "sphere-n1000-q32-sigma0-k32",

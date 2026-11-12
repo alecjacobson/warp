@@ -1,0 +1,272 @@
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+screen tiny spatial_median 0
+screen tiny spatial_median 1
+screen tiny spatial_median 2
+screen tiny spatial_median 4
+screen tiny spatial_median 8
+screen tiny spatial_median 16
+screen tiny spatial_median 32
+screen tiny spatial_median 64
+screen tiny radix 0
+screen tiny radix 1
+screen tiny radix 2
+screen tiny radix 4
+screen tiny radix 8
+screen tiny radix 16
+screen tiny radix 32
+screen tiny radix 64
+screen tiny rebin_radix 0
+screen tiny rebin_radix 1
+screen tiny rebin_radix 2
+screen tiny rebin_radix 4
+screen tiny rebin_radix 8
+screen tiny rebin_radix 16
+screen tiny rebin_radix 32
+screen tiny rebin_radix 64
+screen tiny sah 0
+screen tiny sah 1
+screen tiny sah 2
+screen tiny sah 4
+screen tiny sah 8
+screen tiny sah 16
+screen tiny sah 32
+screen tiny sah 64
+screen tiny elh 0
+screen tiny elh 1
+screen tiny elh 2
+screen tiny elh 4
+screen tiny elh 8
+screen tiny elh 16
+screen tiny elh 32
+screen tiny elh 64
+Module warp._src.point_query 79da99c load on device 'cuda:0' took 0.71 ms  (cached)
+launch tiny {'builder': 1, 'leaf': 32, 'stride': 32, 'block': 32, 'ordered': False}
+launch tiny {'builder': 2, 'leaf': 32, 'stride': 32, 'block': 32, 'ordered': False}
+launch tiny {'builder': 4, 'leaf': 8, 'stride': 32, 'block': 32, 'ordered': False}
+launch tiny {'builder': 4, 'leaf': 4, 'stride': 32, 'block': 32, 'ordered': False}
+launch tiny {'builder': 0, 'leaf': 0, 'stride': 32, 'block': 32, 'ordered': False}
+SELECTED tiny {'one_shot': {'builder': 1, 'leaf': 32, 'stride': 32, 'block': 256, 'ordered': False}, 'reused_index_search': {'builder': 4, 'leaf': 8, 'stride': 32, 'block': 128, 'ordered': False}}
+screen medium_k1 spatial_median 0
+screen medium_k1 spatial_median 1
+screen medium_k1 spatial_median 2
+screen medium_k1 spatial_median 4
+screen medium_k1 spatial_median 8
+screen medium_k1 spatial_median 16
+screen medium_k1 spatial_median 32
+screen medium_k1 spatial_median 64
+screen medium_k1 radix 0
+screen medium_k1 radix 1
+screen medium_k1 radix 2
+screen medium_k1 radix 4
+screen medium_k1 radix 8
+screen medium_k1 radix 16
+screen medium_k1 radix 32
+screen medium_k1 radix 64
+screen medium_k1 rebin_radix 0
+screen medium_k1 rebin_radix 1
+screen medium_k1 rebin_radix 2
+screen medium_k1 rebin_radix 4
+screen medium_k1 rebin_radix 8
+screen medium_k1 rebin_radix 16
+screen medium_k1 rebin_radix 32
+screen medium_k1 rebin_radix 64
+screen medium_k1 sah 0
+screen medium_k1 sah 1
+screen medium_k1 sah 2
+screen medium_k1 sah 4
+screen medium_k1 sah 8
+screen medium_k1 sah 16
+screen medium_k1 sah 32
+screen medium_k1 sah 64
+screen medium_k1 elh 0
+screen medium_k1 elh 1
+screen medium_k1 elh 2
+screen medium_k1 elh 4
+screen medium_k1 elh 8
+screen medium_k1 elh 16
+screen medium_k1 elh 32
+screen medium_k1 elh 64
+launch medium_k1 {'builder': 2, 'leaf': 64, 'stride': 32, 'block': 32, 'ordered': False}
+launch medium_k1 {'builder': 1, 'leaf': 64, 'stride': 32, 'block': 32, 'ordered': False}
+launch medium_k1 {'builder': 4, 'leaf': 2, 'stride': 32, 'block': 32, 'ordered': False}
+launch medium_k1 {'builder': 4, 'leaf': 0, 'stride': 32, 'block': 32, 'ordered': False}
+launch medium_k1 {'builder': 0, 'leaf': 0, 'stride': 32, 'block': 32, 'ordered': False}
+SELECTED medium_k1 {'one_shot': {'builder': 2, 'leaf': 64, 'stride': 32, 'block': 32, 'ordered': False}, 'reused_index_search': {'builder': 4, 'leaf': 0, 'stride': 32, 'block': 64, 'ordered': False}}
+screen medium_k32 spatial_median 0
+screen medium_k32 spatial_median 1
+screen medium_k32 spatial_median 2
+screen medium_k32 spatial_median 4
+screen medium_k32 spatial_median 8
+screen medium_k32 spatial_median 16
+screen medium_k32 spatial_median 32
+screen medium_k32 spatial_median 64
+screen medium_k32 radix 0
+screen medium_k32 radix 1
+screen medium_k32 radix 2
+screen medium_k32 radix 4
+screen medium_k32 radix 8
+screen medium_k32 radix 16
+screen medium_k32 radix 32
+screen medium_k32 radix 64
+screen medium_k32 rebin_radix 0
+screen medium_k32 rebin_radix 1
+screen medium_k32 rebin_radix 2
+screen medium_k32 rebin_radix 4
+screen medium_k32 rebin_radix 8
+screen medium_k32 rebin_radix 16
+screen medium_k32 rebin_radix 32
+screen medium_k32 rebin_radix 64
+screen medium_k32 sah 0
+screen medium_k32 sah 1
+screen medium_k32 sah 2
+screen medium_k32 sah 4
+screen medium_k32 sah 8
+screen medium_k32 sah 16
+screen medium_k32 sah 32
+screen medium_k32 sah 64
+screen medium_k32 elh 0
+screen medium_k32 elh 1
+screen medium_k32 elh 2
+screen medium_k32 elh 4
+screen medium_k32 elh 8
+screen medium_k32 elh 16
+screen medium_k32 elh 32
+screen medium_k32 elh 64
+launch medium_k32 {'builder': 1, 'leaf': 16, 'stride': 32, 'block': 32, 'ordered': False}
+launch medium_k32 {'builder': 2, 'leaf': 32, 'stride': 32, 'block': 32, 'ordered': False}
+launch medium_k32 {'builder': 4, 'leaf': 4, 'stride': 32, 'block': 32, 'ordered': False}
+launch medium_k32 {'builder': 4, 'leaf': 8, 'stride': 32, 'block': 32, 'ordered': False}
+launch medium_k32 {'builder': 0, 'leaf': 0, 'stride': 32, 'block': 32, 'ordered': False}
+SELECTED medium_k32 {'one_shot': {'builder': 1, 'leaf': 16, 'stride': 32, 'block': 256, 'ordered': False}, 'reused_index_search': {'builder': 4, 'leaf': 8, 'stride': 32, 'block': 32, 'ordered': False}}
+screen million spatial_median 0
+screen million spatial_median 1
+screen million spatial_median 2
+screen million spatial_median 4
+screen million spatial_median 8
+screen million spatial_median 16
+screen million spatial_median 32
+screen million spatial_median 64
+screen million radix 0
+screen million radix 1
+screen million radix 2
+screen million radix 4
+screen million radix 8
+screen million radix 16
+screen million radix 32
+screen million radix 64
+screen million rebin_radix 0
+screen million rebin_radix 1
+screen million rebin_radix 2
+screen million rebin_radix 4
+screen million rebin_radix 8
+screen million rebin_radix 16
+screen million rebin_radix 32
+screen million rebin_radix 64
+screen million sah 0
+screen million sah 1
+screen million sah 2
+screen million sah 4
+screen million sah 8
+screen million sah 16
+screen million sah 32
+screen million sah 64
+screen million elh 0
+screen million elh 1
+screen million elh 2
+screen million elh 4
+screen million elh 8
+screen million elh 16
+screen million elh 32
+screen million elh 64
+launch million {'builder': 2, 'leaf': 32, 'stride': 4, 'block': 32, 'ordered': False}
+launch million {'builder': 2, 'leaf': 16, 'stride': 4, 'block': 32, 'ordered': False}
+launch million {'builder': 4, 'leaf': 8, 'stride': 4, 'block': 32, 'ordered': False}
+launch million {'builder': 3, 'leaf': 8, 'stride': 4, 'block': 32, 'ordered': False}
+launch million {'builder': 0, 'leaf': 0, 'stride': 4, 'block': 32, 'ordered': False}
+SELECTED million {'one_shot': {'builder': 2, 'leaf': 32, 'stride': 8, 'block': 256, 'ordered': False}, 'reused_index_search': {'builder': 4, 'leaf': 8, 'stride': 8, 'block': 256, 'ordered': False}}
+MEASURE cubql_defaults bunny_scan-n100000-q1024-sigma0-k1 1.0858201421797276 0.09217998012900352 checks True True True True
+MEASURE cubql_tuned bunny_scan-n100000-q1024-sigma0-k1 0.4675700329244137 0.04036980681121349 checks True True True True
+MEASURE cubql_defaults bunny_scan-n100000-q1024-sigma0-k32 3.345790086314082 2.3781100753694773 checks True True True True
+MEASURE cubql_tuned bunny_scan-n100000-q1024-sigma0-k32 0.6746200378984213 0.19158003851771355 checks True True True True
+MEASURE cubql_defaults bunny_scan-n100000-q1024-sigma0.01-k1 1.2071400415152311 0.14267000369727612 checks True True True True
+MEASURE cubql_tuned bunny_scan-n100000-q1024-sigma0.01-k1 0.5094800144433975 0.04465016536414623 checks True True True True
+MEASURE cubql_defaults bunny_scan-n100000-q1024-sigma0.01-k32 4.201249917969108 3.106878837570548 checks True True True True
+MEASURE cubql_tuned bunny_scan-n100000-q1024-sigma0.01-k32 0.7223400752991438 0.2544501330703497 checks True True True True
+MEASURE cubql_defaults kitti-n100000-q1024-sigma0-k1 1.6163599211722612 0.09216996841132641 checks True True True True
+MEASURE cubql_tuned kitti-n100000-q1024-sigma0-k1 0.5464400164783001 0.044839922338724136 checks True True True True
+MEASURE cubql_defaults kitti-n100000-q1024-sigma0-k32 3.687279997393489 2.2024891804903746 checks True True True True
+MEASURE cubql_tuned kitti-n100000-q1024-sigma0-k32 0.7764098700135946 0.18681003712117672 checks True True True True
+MEASURE cubql_defaults kitti-n100000-q1024-sigma0.01-k1 1.6843299381434917 0.18573994748294353 checks True True True True
+MEASURE cubql_tuned kitti-n100000-q1024-sigma0.01-k1 0.5979498382657766 0.0498499721288681 checks True True True True
+MEASURE cubql_defaults kitti-n100000-q1024-sigma0.01-k32 5.115018924698234 3.59547883272171 checks True True True True
+MEASURE cubql_tuned kitti-n100000-q1024-sigma0.01-k32 0.8538700640201569 0.2840000670403242 checks True True True True
+MEASURE cubql_defaults redwood-n100000-q1024-sigma0-k1 1.4039301313459873 0.09891996160149574 checks True True True True
+MEASURE cubql_tuned redwood-n100000-q1024-sigma0-k1 0.5109298508614302 0.041530001908540726 checks True True True True
+MEASURE cubql_defaults redwood-n100000-q1024-sigma0-k32 3.758209990337491 2.4232498835772276 checks True True True True
+MEASURE cubql_tuned redwood-n100000-q1024-sigma0-k32 0.70726010017097 0.19500008784234524 checks True True True True
+MEASURE cubql_defaults redwood-n100000-q1024-sigma0.01-k1 1.4653101097792387 0.16879988834261894 checks True True True True
+MEASURE cubql_tuned redwood-n100000-q1024-sigma0.01-k1 0.5631998647004366 0.045689987018704414 checks True True True True
+MEASURE cubql_defaults redwood-n100000-q1024-sigma0.01-k32 4.702999955043197 3.4010489471256733 checks True True True True
+MEASURE cubql_tuned redwood-n100000-q1024-sigma0.01-k32 0.8432499598711729 0.2759099006652832 checks True True True True
+MEASURE cubql_defaults bunny_surface-n100000-q1024-sigma0-k1 1.3553600292652845 0.08165999315679073 checks True True True True
+MEASURE cubql_tuned bunny_surface-n100000-q1024-sigma0-k1 0.49225008115172386 0.0424699392169714 checks True True True True
+MEASURE cubql_defaults bunny_surface-n100000-q1024-sigma0-k32 3.6707990802824497 2.3934398777782917 checks True True True True
+MEASURE cubql_tuned bunny_surface-n100000-q1024-sigma0-k32 0.6779099348932505 0.18967012874782085 checks True True True True
+MEASURE cubql_defaults bunny_surface-n100000-q1024-sigma0.01-k1 1.4179889112710953 0.1510600559413433 checks True True True True
+MEASURE cubql_tuned bunny_surface-n100000-q1024-sigma0.01-k1 0.49831997603178024 0.046010129153728485 checks True True True True
+MEASURE cubql_defaults bunny_surface-n100000-q1024-sigma0.01-k32 4.665970103815198 3.355730092152953 checks True True True True
+MEASURE cubql_tuned bunny_surface-n100000-q1024-sigma0.01-k32 0.7816702127456665 0.2515099477022886 checks True True True True
+MEASURE cubql_defaults sphere-n100000-q1024-sigma0-k1 1.2975800782442093 0.08247001096606255 checks True True True True
+MEASURE cubql_tuned sphere-n100000-q1024-sigma0-k1 0.4605799913406372 0.04230998456478119 checks True True True True
+MEASURE cubql_defaults sphere-n100000-q1024-sigma0-k32 3.49580985493958 2.2890400141477585 checks True True True True
+MEASURE cubql_tuned sphere-n100000-q1024-sigma0-k32 0.6752100307494402 0.1832100097090006 checks True True True True
+MEASURE cubql_defaults sphere-n100000-q1024-sigma0.01-k1 1.4076689258217812 0.15208986587822437 checks True True True True
+MEASURE cubql_tuned sphere-n100000-q1024-sigma0.01-k1 0.41245995089411736 0.044560059905052185 checks True True True True
+MEASURE cubql_defaults sphere-n100000-q1024-sigma0.01-k32 4.43395902402699 3.179130144417286 checks True True True True
+MEASURE cubql_tuned sphere-n100000-q1024-sigma0.01-k32 0.7194599602371454 0.25077001191675663 checks True True True True
+MEASURE cubql_defaults volume-n100000-q1024-sigma0-k1 1.3316900003701448 0.1553799957036972 checks True True True True
+MEASURE cubql_tuned volume-n100000-q1024-sigma0-k1 0.45367004349827766 0.05063996650278568 checks True True True True
+MEASURE cubql_defaults volume-n100000-q1024-sigma0-k32 4.8680000472813845 3.6700700875371695 checks True True True True
+MEASURE cubql_tuned volume-n100000-q1024-sigma0-k32 0.7042200304567814 0.28668995946645737 checks True True True True
+MEASURE cubql_defaults volume-n100000-q1024-sigma0.01-k1 1.34864985011518 0.1550600863993168 checks True True True True
+MEASURE cubql_tuned volume-n100000-q1024-sigma0.01-k1 0.4729900974780321 0.04975008778274059 checks True True True True
+MEASURE cubql_defaults volume-n100000-q1024-sigma0.01-k32 4.762360127642751 3.6691799759864807 checks True True True True
+MEASURE cubql_tuned volume-n100000-q1024-sigma0.01-k32 0.7047001272439957 0.3025599289685488 checks True True True True
+MEASURE cubql_defaults clusters-n100000-q1024-sigma0-k1 1.802199985831976 0.19894004799425602 checks True True True True
+MEASURE cubql_tuned clusters-n100000-q1024-sigma0-k1 0.6350700277835131 0.04776008427143097 checks True True True True
+MEASURE cubql_defaults clusters-n100000-q1024-sigma0-k32 5.215278826653957 3.5829090047627687 checks True True True True
+MEASURE cubql_tuned clusters-n100000-q1024-sigma0-k32 0.9497399441897869 0.2936599776148796 checks True True True True
+MEASURE cubql_defaults clusters-n100000-q1024-sigma0.01-k1 1.836290117353201 0.21364004351198673 checks True True True True
+MEASURE cubql_tuned clusters-n100000-q1024-sigma0.01-k1 0.6578201428055763 0.05195988342165947 checks True True True True
+MEASURE cubql_defaults clusters-n100000-q1024-sigma0.01-k32 5.232989089563489 3.6396801006048918 checks True True True True
+MEASURE cubql_tuned clusters-n100000-q1024-sigma0.01-k32 0.9001998696476221 0.29381015338003635 checks True True True True
+MEASURE cubql_defaults thin_plane-n100000-q1024-sigma0-k1 1.2860898859798908 0.08051004260778427 checks True True True True
+MEASURE cubql_tuned thin_plane-n100000-q1024-sigma0-k1 0.4097600467503071 0.04452001303434372 checks True True True True
+MEASURE cubql_defaults thin_plane-n100000-q1024-sigma0-k32 3.5254890099167824 2.335639903321862 checks True True True True
+MEASURE cubql_tuned thin_plane-n100000-q1024-sigma0-k32 0.5928000900894403 0.1870398409664631 checks True True True True
+MEASURE cubql_defaults thin_plane-n100000-q1024-sigma0.01-k1 1.3236301019787788 0.1431000418961048 checks True True True True
+MEASURE cubql_tuned thin_plane-n100000-q1024-sigma0.01-k1 0.5043400451540947 0.04797987639904022 checks True True True True
+MEASURE cubql_defaults thin_plane-n100000-q1024-sigma0.01-k32 4.601209191605449 3.418210195377469 checks True True True True
+MEASURE cubql_tuned thin_plane-n100000-q1024-sigma0.01-k32 0.7276898249983788 0.27051009237766266 checks True True True True
+MEASURE cubql_defaults sphere-n1000000-q8192-sigma0-k11 10.850779013708234 0.8697600569576025 checks True True True True
+MEASURE cubql_tuned sphere-n1000000-q8192-sigma0-k11 1.299430150538683 0.22030994296073914 checks True True True True
+MEASURE cubql_defaults sphere-n1000000-q8192-sigma0.01-k11 11.672288877889514 1.4387799892574549 checks True True True True
+MEASURE cubql_tuned sphere-n1000000-q8192-sigma0.01-k11 1.418589847162366 0.3638800699263811 checks True True True True
+MEASURE cubql_defaults volume-n1000000-q8192-sigma0-k11 11.278189020231366 1.471080118790269 checks True True True True
+MEASURE cubql_tuned volume-n1000000-q8192-sigma0-k11 1.3288299087435007 0.3618400078266859 checks True True True True
+MEASURE cubql_defaults volume-n1000000-q8192-sigma0.01-k11 11.289309011772275 1.4731299597769976 checks True True True True
+MEASURE cubql_tuned volume-n1000000-q8192-sigma0.01-k11 1.3332900125533342 0.36855018697679043 checks True True True True
+MEASURE cubql_defaults sphere-n1000-q32-sigma0-k32 1.832989975810051 1.442059874534607 checks True True True True
+MEASURE cubql_tuned sphere-n1000-q32-sigma0-k32 0.2698199823498726 0.09859004057943821 checks True True True True
+MEASURE cubql_defaults sphere-n1000-q32-sigma0.01-k32 1.7605200409889221 1.386870164424181 checks True True True True
+MEASURE cubql_tuned sphere-n1000-q32-sigma0.01-k32 0.2490601036697626 0.11324998922646046 checks True True True True
+MEASURE cubql_defaults volume-n1000-q32-sigma0-k32 1.8843100406229496 1.5454201493412256 checks True True True True
+MEASURE cubql_tuned volume-n1000-q32-sigma0-k32 0.2598501741886139 0.12873997911810875 checks True True True True
+MEASURE cubql_defaults volume-n1000-q32-sigma0.01-k32 1.954499864950776 1.575790112838149 checks True True True True
+MEASURE cubql_tuned volume-n1000-q32-sigma0.01-k32 0.27871993370354176 0.12288009747862816 checks True True True True
