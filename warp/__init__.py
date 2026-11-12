@@ -584,6 +584,13 @@ from warp._src.utils import quat_between_vectors as quat_between_vectors
 from warp._src.constants import *
 
 
+# category: Geometry > Point Queries
+
+from warp._src.point_query import PointQueryConfig as PointQueryConfig
+from warp._src.point_query import point_query_config as point_query_config
+from warp._src.point_query import point_query_knn_batch as point_query_knn_batch
+
+
 # category: Submodules
 
 from . import build_experimental as build_experimental

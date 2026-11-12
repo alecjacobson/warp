@@ -620,6 +620,20 @@ Constants
    pi
    tau
 
+Geometry
+--------
+
+Point Queries
+^^^^^^^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: _generated
+
+   PointQueryConfig
+   point_query_config
+   point_query_knn_batch
+
 Configuration Modes
 -------------------
 

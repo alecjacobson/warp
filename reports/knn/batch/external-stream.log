@@ -1,0 +1,11 @@
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+Module warp._src.point_query 79da99c load on device 'cuda:0' took 0.60 ms  (cached)
+Module _query_kernel__locals__query_a8707585 4f61d00 load on device 'cuda:0' took 0.54 ms  (cached)
+Module _query_kernel__locals__query_b0bb7753 e34daab load on device 'cuda:0' took 0.49 ms  (cached)
+{"external_nonblocking_burst": true}

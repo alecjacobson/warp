@@ -1,0 +1,10 @@
+{
+  "warp/_src/point_query.py": "5a330903fce131dbc542dbfa23247a6af97f0bcedc767a181f4ea99dd903506c",
+  "warp/native/point_query.h": "ccf0e04a1f8424f890dc466cc1f0b8e7aec989e7679844861cef2b7c6c339625",
+  "warp/native/bvh.cu": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb",
+  "warp/examples/benchmarks/point_query_common.py": "ee2b0d97f374c98f2e45d2a8c6ec9618b07886cd5d12930c719413584d389c8f",
+  "warp/examples/benchmarks/point_query_backends.py": "00a36b4bc7d6b08c5a2f23d3ce88561949b23ed49e8bdc56a32054994e79820d",
+  "warp/examples/benchmarks/benchmark_point_query_batch.py": "c7f5de75626f51b5c5086a2f0eeb17af596272db762acc79bd2d7ea725ed6bd9",
+  "warp/examples/geometry/example_point_query_batch.py": "de671f2bea0dfbe5e3cb0875e651e9be2f604afcbb6a5417b3354cafba7fee9f",
+  "warp/tests/geometry/test_point_query_batch.py": "104e4837298466c4a1fd2b769042e4d54fe55caa3b8b0dae1bb61a8e88beb55d"
+}

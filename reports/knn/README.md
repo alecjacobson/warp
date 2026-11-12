@@ -1,5 +1,7 @@
 # Exact point-cloud nearest neighbors in Warp
 
+**Warp-only batch API:** [Automatic tuning and fused scalar use](batch/README.md) exposes the measured launch policy through `wp.point_query_knn_batch()` and `wp.point_query_config()`, with no Torch dependency.
+
 **Fresh full-library rerun:** [November 12 comparison](refresh/README.md) measures the improved implementation against all 11 exact configurations, including reused-index search.
 
 **Geometry and scheduling investigation:** [Comparing and improving Warp and PhysicsNeMo](hybrid/README.md) retains the adaptive BVH and heap, fixes anisotropic Morton scaling, and generalizes sparse query launches. Configured Warp beats pinned PhysicsNeMo in 40/40 pilot and 56/56 holdout cases; equally tuned PhysicsNeMo nearly ties the million-point Q=8,192 regime. Warp now beats direct-L2 cuVS in all 16 medium k=32 cases; tiny cases still favor cuVS. Earlier measurements below remain historical.

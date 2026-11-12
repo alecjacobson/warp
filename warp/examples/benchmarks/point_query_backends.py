@@ -140,7 +140,7 @@ class Problem:
             self.excludes = wp.full(self.nq, -1, dtype=int, device="cuda:0")
             if self.name == "warp_configured":
                 self.leaf, self.stride, self.ordered = point_query_configuration(
-                    len(points), self.nq, self.wp_points.device.sm_count
+                    len(points), self.nq, self.wp_points.device
                 )
             self.block_dim = 32 if self.stride > 1 else 256
             if self.name != "cubql":

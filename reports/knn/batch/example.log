@@ -1,0 +1,11 @@
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+Module _query_kernel__locals__query_b0bb7753 e34daab load on device 'cuda:0' took 2.28 ms  (cached)
+First query neighbors: [65774 73232 63685 37894 13066 49297  1644 43837]
+Module fused_kernel__locals__neighbor_sum_2d5301eb db253f8 load on device 'cuda:0' took 3.22 ms  (cached)
+Fused neighbor sums match batch output; configuration: PointQueryConfig(leaf_size=4, query_stride=32, block_dim=32, ordered=False)

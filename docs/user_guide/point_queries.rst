@@ -25,6 +25,106 @@ infinity means an unbounded search. Pass ``exclude_index=t`` for self-query
 rows only when query row ``t`` corresponds to point row ``t``. Exclusion
 removes that index; coincident points with other indices remain eligible.
 
+Automatic batch queries
+-----------------------
+
+The Warp-only host wrapper chooses point-tree leaf size, query spacing, and
+query ordering automatically. It returns an ordinary tuple containing the
+existing BVH and output arrays; it introduces no point-cloud owner or result
+record. Inputs are contiguous ``wp.vec3`` arrays on the same device.
+
+.. code-block:: python
+
+    bvh, indices, distances_sq, counts = wp.point_query_knn_batch(points, queries, 8)
+
+    # Reuse the tree for another query batch.
+    _, indices2, distances_sq2, counts2 = wp.point_query_knn_batch(
+        points, next_queries, 8, bvh=bvh
+    )
+
+    # Optional output reuse; shapes must match the query count and k.
+    wp.point_query_knn_batch(
+        points, queries, 8, bvh=bvh,
+        indices=indices, distances=distances_sq, counts=counts,
+    )
+
+Output shapes are ``(Q, k)``, ``(Q, k)``, and ``(Q,)``. Indices default to
+int32; caller-supplied int64 outputs are also supported. Distances default to
+squared float32 values; pass ``squared=False`` for Euclidean distances.
+The distance cutoff ``max_dist`` always uses coordinate units. Pass an int32
+``exclude_indices`` array of shape ``(Q,)`` for per-query exclusions. Missing
+neighbors have index -1 and infinite distance, with the valid count in
+``counts``. Outputs must not overlap inputs or one another.
+
+Keep the BVH, inputs, and outputs alive during asynchronous execution and
+graph replay. For in-place point changes, refit the reused BVH before querying;
+a changed point allocation or count requires a new BVH. The wrapper does not
+silently refit an existing index. Warm up compilation before capture. Complete
+CUDA LBVH construction plus query, and refit plus query, support capture with
+memory pools enabled. The wrapper does not modify the global memory-pool
+retention threshold. For gradients, it uses a separate differentiable gather
+from the selected indices when either input requires gradients; ordinary
+forward-only calls use a single selection/output kernel. Caller-provided distance
+outputs need ``requires_grad=True`` to participate in backward. Keep points,
+queries and selected indices unchanged between forward and backward.
+
+The default GPU policy targets 16 scheduled warps per SM, with up to 32
+threads per query. It uses leaf size 32 for tiny query batches or million-point
+clouds, otherwise 4. Large dense batches additionally sort queries by Morton
+keys computed entirely in Warp. Returned rows always retain the original
+query order. This is a measured heuristic, not an architecture-independent
+optimum. Override ``leaf_size`` when building, ``query_stride``, or ``ordered``
+when appropriate; an existing BVH retains its layout.
+
+Fast scalar calls and fused work
+--------------------------------
+
+``wp.point_query_knn()`` remains the same optimized scalar primitive used by
+the batch wrapper. It introduces no batch allocation or hidden dispatch.
+Use it inside a caller kernel to consume neighbors directly without storing
+an entire ``(Q, k)`` result. :func:`warp.point_query_config` exposes the same
+leaf-size and launch choices:
+
+.. code-block:: python
+
+    config = wp.point_query_config(len(points), len(queries), points.device)
+    bvh = wp.Bvh(points, points, leaf_size=config.leaf_size)
+    STRIDE = config.query_stride
+
+    @wp.kernel
+    def fused(bvh_id: wp.uint64, points: wp.array[wp.vec3],
+              queries: wp.array[wp.vec3], sums: wp.array[float]):
+        t = wp.tid()
+        if t % wp.static(STRIDE) != 0:
+            return
+        q = t // wp.static(STRIDE)
+        search = wp.point_query_knn(bvh_id, points, queries[q], wp.inf, 8)
+        index = int(-1)
+        total = float(0.0)
+        while wp.point_query_next(search, index):
+            total += wp.length_sq(queries[q] - points[index])
+        sums[q] = total
+
+    wp.launch(fused, len(queries) * STRIDE,
+              inputs=[bvh.id, points, queries, sums],
+              block_dim=config.block_dim, device=points.device)
+
+This fused example uses natural query order. ``config.ordered`` indicates
+when the batch wrapper would additionally sort queries; callers with custom
+fusion can choose their own ordering. Sparse launches require the explicit
+thread-index mapping above. A scalar call cannot rearrange the other threads
+in its caller's kernel, and changing the block size alone does not reproduce
+the sparse-query benefit. The ordinary one-query-per-thread pattern remains
+valid and uses the same traversal, selection, and tie-breaking logic.
+
+``wp.Bvh`` itself still defaults to leaf size **1**, for general intersection
+queries. The historical benchmark label ``warp_default`` means its explicit
+leaf-size-4, dense-launch baseline; it is not a different implementation or
+literally every default argument of ``wp.Bvh``.
+
+See ``warp/examples/geometry/example_point_query_batch.py`` for a runnable
+batch-and-fusion example. These APIs require no PyTorch or external kNN library.
+
 Eager k-nearest selection
 -------------------------
 
