@@ -13,6 +13,8 @@ METHODS = (
     "warp_batch",
     "physicsnemo",
     "cubql",
+    "cubql_defaults",
+    "cubql_tuned",
     "cupy_kdtree",
     "keops",
     "faiss_flat",
@@ -52,7 +54,9 @@ LABELS = {
     "warp_tuned": "Warp scalar (tuned launch)",
     "warp_batch": "Warp batch (automatic tuning)",
     "physicsnemo": "Pinned PhysicsNeMo",
-    "cubql": "cuBQL",
+    "cubql": "cuBQL custom top-k (leaf 4, dense)",
+    "cubql_defaults": "cuBQL findKNN (defaults)",
+    "cubql_tuned": "cuBQL findKNN (best tested settings)",
     "cupy_kdtree": "CuPy KDTree",
     "keops": "KeOps",
     "faiss_flat": "Faiss Flat",
@@ -91,6 +95,9 @@ def load_reports():
 
 
 def main():
+    from summarize_cubql import main as summarize_cubql  # noqa: PLC0415
+
+    summarize_cubql()
     reports = load_reports()
     cases = {m: {c["id"]: c for c in r["cases"]} for m, r in reports.items()}
     warp = cases["warp_batch"]
@@ -111,6 +118,8 @@ def main():
             if method.startswith("warp_")
             else provenance["revision"]
         )
+        if method in ("cubql_defaults", "cubql_tuned"):
+            expected_revision = json.loads((ROOT / "cubql-provenance.json").read_text())["revision"]
         if report["environment"]["git_revision"] != expected_revision:
             raise ValueError(f"Implementation revision mismatch: {method}")
         if report["environment"]["native_bvh_sha256"] != provenance["sha256"]["warp/native/bvh.cu"]:
@@ -155,6 +164,22 @@ def main():
         graph = json.loads(graph_file.read_text()).get("capture", {}) if graph_file.exists() else {}
         if m.startswith("warp_"):
             graph = {"supported": True}
+        if m in ("cubql_defaults", "cubql_tuned"):
+            replay = [c.get("graph_reused_index_search", {}) for c in report["cases"]]
+            graph = {
+                "supported": all(bool(g) for g in replay),
+                "changed_query_validation": {
+                    "valid_shape": True,
+                    "valid_indices_and_finite_distances": True,
+                    "duplicate_rows": 0,
+                    "unsorted_rows": 0,
+                    "reported_distance_mismatch_rows": 0,
+                    "distance_rank_mismatch_rows": sum(
+                        not (passed(g.get("validation", {})) and passed(g.get("changed_input_validation", {})))
+                        for g in replay
+                    ),
+                },
+            }
         graph_ok = m.startswith("warp_") or (
             graph.get("supported", False) and passed(graph.get("changed_query_validation", {}))
         )
@@ -182,7 +207,7 @@ def main():
             lines.append(
                 f"| {LABELS[m]} | {len(completed)} | {len(valid)} | {s['min_recall']:.5f} | {wins} | {ratio_text} | {'pass' if graph_ok else 'failed/unsupported'} |"
             )
-    preamble = "Ordinary calls; denominator: **Warp batch (automatic tuning)**. Fresh Warp timings; unchanged competitor timings retained. CUDA graph replay is reported separately in [warp-timings.md](warp-timings.md).\n\n"
+    preamble = "Ordinary calls; denominator: **Warp batch (automatic tuning)**. Fresh Warp and upstream cuBQL timings; other competitor timings retained. CUDA graph replay is reported separately in [warp-timings.md](warp-timings.md).\n\n"
     (ROOT / "table.md").write_text(preamble + "\n".join(lines) + "\n")
     print("\n".join(lines))
     raw_lines = [

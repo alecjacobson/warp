@@ -1,0 +1,16 @@
+{
+  "evaluation_method_cases": 80,
+  "all_four_validations_per_case_pass": true,
+  "evaluation_samples_per_phase": 9,
+  "training_seed": 20261112,
+  "training_case_count": 16,
+  "screened_tree_configs": 160,
+  "screened_launch_configs": 960,
+  "finalist_configs": 28,
+  "existing_tests_passed": 42,
+  "builder_k_stride_smoke_cases_and_replays": 45,
+  "source_and_library_hashes_verified": true,
+  "retained_results_byte_identical": true,
+  "warp_native_binary_unchanged": true,
+  "comparison_packages_and_python_unchanged": true
+}

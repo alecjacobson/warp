@@ -1,4 +1,40 @@
-# Reproducing the Warp timing update
+# Reproducing the cuBQL comparison extension
+
+The old custom top-k cuBQL column is retained. The new defaults and tuned columns call upstream `findKNN()` directly. See [method and search space](cubql.md); source and native-library hashes are in [cuBQL provenance](cubql-provenance.json).
+
+Build the standalone benchmark library (this does not rebuild or modify Warp):
+
+```sh
+/tmp/warp-intersection-cuda-12.9/bin/nvcc -std=c++17 -O3 -DNDEBUG \
+  --extended-lambda -arch=sm_120 -Xcompiler=-fPIC -shared -Iwarp/native \
+  warp/examples/benchmarks/point_query_cubql_upstream.cu \
+  -o ../artifacts/point_query_cubql_upstream.so
+```
+
+Run the training search and then the 40-case evaluation sequentially, with no competing GPU jobs:
+
+```sh
+uv run --no-sync -m warp.examples.benchmarks.point_query_comparison_environment \
+  --python .venv-knn-compare/bin/python --cuda /tmp/warp-intersection-cuda-12.9 \
+  --module warp.examples.benchmarks.benchmark_point_query_cubql -- \
+  --manifest ../data/knn-comparison/pilot/manifest.json \
+  --library ../artifacts/point_query_cubql_upstream.so \
+  --output ../artifacts/comparison/cubql-upstream \
+  --tuning ../artifacts/comparison/cubql-upstream/tuning.json
+```
+
+To reproduce the frozen evaluation without repeating the search, decompress `results/cubql-tuning.json.gz` into the tuning path and append `--reuse-tuning`. The seed, training input hashes, candidate timings, screening checks and final selections are retained in that file. The defaults and tuned JSONs record its hash. A fresh search can select different near-tied settings because clocks and host load are not fixed.
+
+Copy `cubql_defaults.json` and `cubql_tuned.json` into `results/`, preserve the tuning JSON compressed, and record provenance before regenerating:
+
+```sh
+uv run --no-sync reports/knn/refresh/summarize.py
+uv run --no-sync reports/knn/refresh/plot.py
+```
+
+Keep the earlier Warp and competitor raw files unchanged. Query graph correctness and timing are included in the new results; construction capture is not attempted because upstream builders synchronize with the host. The complete 40-case evaluation, changed-query graph replay, and separate small wrapper smoke checks validate this extension.
+
+## Reproducing the previous Warp timing update
 
 This update remeasures **Warp scalar (simple dense launch)**, **Warp scalar (tuned launch)**, and **Warp batch (automatic tuning)**, each as an ordinary call and CUDA graph replay. The nine non-Warp result JSONs are reused byte-for-byte from the previous full comparison. [Warp provenance](warp-provenance.json) records their hashes, the measured source hashes, and the unchanged native binary.
 

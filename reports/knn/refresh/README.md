@@ -1,8 +1,10 @@
-# GPU kNN comparison — fresh Warp timings, November 12, 2026
+# GPU kNN comparison — Warp and cuBQL, November 12, 2026
 
-**The highest-performing Warp path on this 40-case matrix is the automatically tuned batch API replayed as a CUDA graph.** It is **3.33x faster for build + query and 5.68x faster for reused-index queries** than the simple scalar ordinary-call path, geometrically averaged. The tuned scalar graph is close: the batch graph leads it by only 0.8% / 4.3% in aggregate, and does not win every case. These small differences are not a statistical significance claim.
+**The comparison now includes three distinct cuBQL columns: the original custom top-k adapter, upstream `findKNN()` with defaults, and upstream `findKNN()` with the best tested settings.** The tuned cuBQL result changes the ranking: Warp is fastest among passing alternatives in **32/40 build-plus-query cases and 1/40 reused-index queries**. Tuned cuBQL beats Warp in all four million-point build-plus-query cases and 39/40 reused queries (1.43x faster geometrically averaged). All 80 new cuBQL method/case pairs pass the recorded numerical and replay checks.
 
-Only Warp was remeasured for this update. The nine competing configurations retain their previous samples byte-for-byte; their implementations and dependencies did not change. The ordinary-call library comparison still gives the automatic Warp batch API **36/40 wins** in both timing modes. The four losses are the tiny N=1,000, Q=32 cases. Using Warp graph replay against those retained ordinary-call competitor measurements also gives 36/40; it is not a graph-to-graph library comparison.
+The highest-performing **Warp** path on this matrix remains the automatic batch API replayed as a CUDA graph: **3.33x / 5.68x faster** than simple scalar ordinary calls for build-plus-query / reused query. With **both libraries using query graph replay**, tuned cuBQL beats Warp in 34/40 cases, by 1.19x geometrically averaged. Upstream cuBQL construction synchronizes with the host, so no full-build cuBQL graph comparison is claimed.
+
+Only the two new cuBQL variants were measured for this extension. All earlier Warp and competitor samples, including the old cuBQL adapter, are retained byte-for-byte. The comparisons below clearly separate ordinary calls from graph replay. [cuBQL method and tuning search](cubql.md) · [Selected settings](cubql-settings.md) · [Ordinary/graph comparison](cubql-timings.md) · [Provenance](cubql-provenance.json)
 
 ## What the Warp labels mean
 
@@ -35,23 +37,35 @@ Build-plus-query graphs rebuild the BVH on every replay. Reused-index graphs que
 
 [Every case's latency](warp-timings.md) · [All samples and replay checks](results/warp-replay.json) · [CSV, including graph columns](cases.csv) · [Warp provenance and unchanged competitor hashes](warp-provenance.json)
 
+## The three cuBQL columns
+
+| Label | What is measured |
+| --- | --- |
+| **cuBQL custom top-k (leaf 4, dense)** | Retained baseline: cuBQL builder/traversal with our callback matching Warp's arithmetic, exclusions and ties; explicit leaf size 4 and dense launch. |
+| **cuBQL findKNN (defaults)** | Unmodified upstream device query and default `gpuBuilder` configuration: spatial median, leaf threshold 1. The host wrapper uses a conventional dense 256-thread launch because cuBQL does not prescribe a host batch launch. |
+| **cuBQL findKNN (best tested settings)** | The same upstream query, with builder/leaf/launch settings selected on independent clean/noisy surface and volume training inputs, then frozen before this 40-case evaluation. |
+
+Tuning makes cuBQL **4.56x faster including construction and 6.18x faster with reuse** than its own defaults, geometrically averaged, with lower medians in all 40 cases. Build-plus-query and reused-index objectives select separate configurations per workload regime. This is a documented hierarchical search, not a per-case fastest-result envelope or proof of global optimality. Both new variants use the same native output conversion; the old custom adapter retains its original separate Torch conversions and arithmetic. [Details and limits](cubql.md)
+
 ## Comparison with other libraries: ordinary calls
 
-The denominator here is **Warp batch (automatic tuning), ordinary call**, so execution modes match the retained competitor timings. Ratios are **competitor latency / Warp latency**; greater than one favors Warp. Numerical failures are excluded per case when choosing a competitor.
+The denominator here is **Warp batch (automatic tuning), ordinary call**, so execution modes match both the new cuBQL timings and the retained competitor timings. Ratios are **competitor latency / Warp latency**; greater than one favors Warp. Numerical failures are excluded per case when choosing a competitor.
 
 | Regime | Cases | Warp wins, build + query | Warp wins, reused index | Best competitor / Warp, build + query | Best competitor / Warp, reused index |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| N=39K/100K, Q=1,024, k=1 | 16 | 16 | 16 | 2.29–4.19x | 1.42–2.91x |
-| N=39K/100K, Q=1,024, k=32 | 16 | 16 | 16 | 1.44–2.96x | 2.25–6.22x |
-| N=1M, Q=8,192, k=11 | 4 | 4 | 4 | 1.09–1.16x | 1.46–1.83x |
+| N=39K/100K, Q=1,024, k=1 | 16 | 16 | 0 | 1.55–2.30x | 0.56–0.66x |
+| N=39K/100K, Q=1,024, k=32 | 16 | 16 | 1 | 1.28–1.70x | 0.67–1.07x |
+| N=1M, Q=8,192, k=11 | 4 | 0 | 0 | 0.73–0.81x | 0.49–0.56x |
 | N=1K, Q=32, k=32 | 4 | 0 | 0 | 0.42–0.50x | 0.32–0.61x |
 
-All 36 ordinary-call wins exceed 5%. Tiny cases still favor direct-L2 cuVS or Faiss. The following geometric means include only cases where both methods pass the numerical checks; different denominators must not be treated as comparable coverage.
+All 32 build-plus-query wins exceed 5%. Tuned cuBQL wins the million-point cases; tiny cases still favor direct-L2 cuVS or Faiss. For reused queries, tuned cuBQL is the fastest competitor in all medium and million-point cases. The following geometric means include only cases where both methods pass the numerical checks; different denominators must not be treated as comparable coverage.
 
 | Alternative | Warp wins, build + query | Alternative / Warp GM | Warp wins, reused index | Alternative / Warp GM |
 | --- | ---: | ---: | ---: | ---: |
 | Pinned PhysicsNeMo | 40/40 | 4.37x | 40/40 | 10.43x* |
-| Direct cuBQL | 40/40 | 5.93x | 40/40 | 4.44x |
+| cuBQL custom top-k (leaf 4, dense) | 40/40 | 5.93x | 40/40 | 4.44x |
+| cuBQL findKNN (defaults) | 40/40 | 6.93x | 40/40 | 4.33x |
+| cuBQL findKNN (best tested settings) | 36/40 | 1.52x | 1/40 | 0.70x |
 | CuPy KDTree | 40/40 | 46.27x | 40/40 | 50.95x |
 | KeOps | 40/40 | 18.43x | 40/40 | 43.92x* |
 | Faiss Flat | 2/5 | 1.77x | 2/5 | 2.19x |
@@ -72,12 +86,14 @@ All 36 ordinary-call wins exceed 5%. Tiny cases still favor direct-L2 cuVS or Fa
 
 All three fresh Warp paths pass checks on all 40 cases for ordinary calls and graph replay, both build-plus-query and reused-index search. Every graph is also replayed after changing queries; build-plus-query graphs additionally change reference points. Checks cover all-row structure and float64 exhaustive reference distances for 32 evenly spaced query rows, not every large-batch query. Native scalar and batch tests, including gradients and ordered capture, remain separate evidence. [Validation log](results/warp-replay-tests.log)
 
-The unchanged competitor findings remain: Faiss Flat passes 5/40 cases and expanded-L2 cuVS passes 3/40 under the stricter numerical contract. All other tested exact competitors pass 40/40. Failures remain visible in raw results. CuPy KDTree and KeOps fail the earlier query-capture probe. Those probes are capture checks, not graph performance measurements. CAGRA remains excluded at the user's request and was not run.
+The other competitor findings remain: Faiss Flat passes 5/40 cases and expanded-L2 cuVS passes 3/40 under the stricter numerical contract. All other tested exact competitors pass 40/40. Failures remain visible in raw results. CuPy KDTree and KeOps fail the earlier query-capture probe. Those probes are capture checks, not graph performance measurements. CAGRA remains excluded at the user's request and was not run.
 
 The original equally tuned PhysicsNeMo control is retained unchanged: 36 clear Warp wins and four million-point near ties within 5%, with its own contemporaneous Warp denominator. It does not use the new batch/graph times. See [control data](results/tuned-control.json) and [environment](results/tuned-control.environment.json). The advantage over the pinned PhysicsNeMo PR should not be presented as a robust million-point advantage over that equally tuned variant.
 
-The current Warp source revision is `4e0a854e920377817e8c528fbb28ca49afaa0b03`; the new benchmark script's exact hash is recorded separately because measurements preceded its commit. The native binary is unchanged from the original refresh. The same comparison environment, CUDA toolkit, shared blocking stream, nine-sample timer and int64/float32 Euclidean output contract are retained. Warp now allocates outputs as Warp arrays instead of wrapping Torch allocations; the API itself has no Torch dependency, although the shared benchmark timer uses Torch. Warp pool retention remains 512 MiB. This is an API/execution-mode comparison, not a pure kernel ablation.
+The retained Warp source revision is `4e0a854e920377817e8c528fbb28ca49afaa0b03`; the new benchmark script's exact hash is recorded separately because measurements preceded its commit. The native binary is unchanged from the original refresh. The same comparison environment, CUDA toolkit, shared blocking stream, nine-sample timer and int64/float32 Euclidean output contract are retained. Warp now allocates outputs as Warp arrays instead of wrapping Torch allocations; the API itself has no Torch dependency, although the shared benchmark timer uses Torch. Warp pool retention remains 512 MiB. This is an API/execution-mode comparison, not a pure kernel ablation.
 
-The GPU is one 46-SM RTX PRO 6000 Blackwell MIG slice in a shared VM, with unlocked clocks. Retained competitor samples were collected earlier on this same setup, not simultaneously with these Warp timings. Small run-to-run differences should not be overinterpreted. A 5% band is descriptive, not a confidence interval. Results do not establish rankings on other GPUs, high-dimensional embeddings or arbitrary k/N/Q.
+The GPU is one 46-SM RTX PRO 6000 Blackwell MIG slice in a shared VM, with unlocked clocks. The retained Warp and other competitor samples were collected earlier on this same setup, not simultaneously with the new cuBQL timings. Small run-to-run differences should not be overinterpreted. A 5% band is descriptive, not a confidence interval. Results do not establish rankings on other GPUs, high-dimensional embeddings or arbitrary k/N/Q.
+
+The new cuBQL wrappers additionally pass 45 small builder/k/stride correctness and query-capture cases. All 42 existing scalar/batch/harness tests still pass. [Extension validation](cubql-verification.json) · [Test log](results/cubql-tests.log) · [Wrapper smoke log](results/cubql-upstream-smoke.log)
 
 The frozen cases include scan vertices, LiDAR, RGB-D, surfaces, volumes, clusters/outliers and thin planes, with and without Gaussian noise. [Manifest](manifest.json) · [Dataset sources](../comparison/README.md#dataset-coverage) · [Reproduce](reproduce.md). The [previous full refresh report](https://github.com/alecjacobson/warp/blob/4e0a854e920377817e8c528fbb28ca49afaa0b03/reports/knn/refresh/README.md) and its original raw Warp samples remain available for historical comparison.
