@@ -1,0 +1,446 @@
+{
+  "regimes": {
+    "one_shot": {
+      "medium_k1": {
+        "cases": 16,
+        "warp_wins": 16,
+        "warp_over_5pct_faster": 16,
+        "within_5pct": 0,
+        "warp_over_5pct_slower": 0,
+        "competitors": [
+          "cubql",
+          "cuvs_unexpanded",
+          "physicsnemo"
+        ]
+      },
+      "medium_k32": {
+        "cases": 16,
+        "warp_wins": 16,
+        "warp_over_5pct_faster": 16,
+        "within_5pct": 0,
+        "warp_over_5pct_slower": 0,
+        "competitors": [
+          "cuvs_unexpanded"
+        ]
+      },
+      "million": {
+        "cases": 4,
+        "warp_wins": 4,
+        "warp_over_5pct_faster": 4,
+        "within_5pct": 0,
+        "warp_over_5pct_slower": 0,
+        "competitors": [
+          "physicsnemo"
+        ]
+      },
+      "tiny": {
+        "cases": 4,
+        "warp_wins": 0,
+        "warp_over_5pct_faster": 0,
+        "within_5pct": 0,
+        "warp_over_5pct_slower": 4,
+        "competitors": [
+          "cuvs_unexpanded",
+          "faiss_flat"
+        ]
+      }
+    },
+    "reused_index_search": {
+      "medium_k1": {
+        "cases": 16,
+        "warp_wins": 16,
+        "warp_over_5pct_faster": 16,
+        "within_5pct": 0,
+        "warp_over_5pct_slower": 0,
+        "competitors": [
+          "cubql"
+        ]
+      },
+      "medium_k32": {
+        "cases": 16,
+        "warp_wins": 16,
+        "warp_over_5pct_faster": 16,
+        "within_5pct": 0,
+        "warp_over_5pct_slower": 0,
+        "competitors": [
+          "cuvs_unexpanded"
+        ]
+      },
+      "million": {
+        "cases": 4,
+        "warp_wins": 4,
+        "warp_over_5pct_faster": 4,
+        "within_5pct": 0,
+        "warp_over_5pct_slower": 0,
+        "competitors": [
+          "cubql"
+        ]
+      },
+      "tiny": {
+        "cases": 4,
+        "warp_wins": 0,
+        "warp_over_5pct_faster": 0,
+        "within_5pct": 0,
+        "warp_over_5pct_slower": 4,
+        "competitors": [
+          "cuvs_unexpanded",
+          "faiss_flat"
+        ]
+      }
+    }
+  },
+  "previous_warp": {
+    "original_broad": {
+      "current_wins": 40,
+      "geomean_previous_over_current": 2.4305928114850257,
+      "min_previous_over_current": 1.002106761778205,
+      "max_previous_over_current": 18.272920620043763
+    },
+    "hybrid": {
+      "current_wins": 5,
+      "geomean_previous_over_current": 0.9732093199394475,
+      "min_previous_over_current": 0.9427057044160879,
+      "max_previous_over_current": 1.0348755277465949
+    }
+  },
+  "tuned_control": {
+    "physicsnemo": {
+      "warp_wins": 40,
+      "geomean_ratio": 4.672117691873827,
+      "warp_over_5pct_faster": 40,
+      "within_5pct": 0,
+      "warp_over_5pct_slower": 0,
+      "cases": [
+        {
+          "id": "bunny_scan-n100000-q1024-sigma0-k1",
+          "ratio": 3.7571436437330674
+        },
+        {
+          "id": "bunny_scan-n100000-q1024-sigma0-k32",
+          "ratio": 6.939639992296877
+        },
+        {
+          "id": "bunny_scan-n100000-q1024-sigma0.01-k1",
+          "ratio": 3.8777098021430834
+        },
+        {
+          "id": "bunny_scan-n100000-q1024-sigma0.01-k32",
+          "ratio": 7.969699080446191
+        },
+        {
+          "id": "kitti-n100000-q1024-sigma0-k1",
+          "ratio": 3.3250823951122053
+        },
+        {
+          "id": "kitti-n100000-q1024-sigma0-k32",
+          "ratio": 8.170923583153822
+        },
+        {
+          "id": "kitti-n100000-q1024-sigma0.01-k1",
+          "ratio": 3.865955781303863
+        },
+        {
+          "id": "kitti-n100000-q1024-sigma0.01-k32",
+          "ratio": 15.22714688119443
+        },
+        {
+          "id": "redwood-n100000-q1024-sigma0-k1",
+          "ratio": 3.151152223368385
+        },
+        {
+          "id": "redwood-n100000-q1024-sigma0-k32",
+          "ratio": 6.303092795316411
+        },
+        {
+          "id": "redwood-n100000-q1024-sigma0.01-k1",
+          "ratio": 3.735574583930468
+        },
+        {
+          "id": "redwood-n100000-q1024-sigma0.01-k32",
+          "ratio": 8.634689966753836
+        },
+        {
+          "id": "bunny_surface-n100000-q1024-sigma0-k1",
+          "ratio": 3.271199909982137
+        },
+        {
+          "id": "bunny_surface-n100000-q1024-sigma0-k32",
+          "ratio": 6.046738356545661
+        },
+        {
+          "id": "bunny_surface-n100000-q1024-sigma0.01-k1",
+          "ratio": 3.415668949166534
+        },
+        {
+          "id": "bunny_surface-n100000-q1024-sigma0.01-k32",
+          "ratio": 6.9857020914363686
+        },
+        {
+          "id": "sphere-n100000-q1024-sigma0-k1",
+          "ratio": 3.1303108476825527
+        },
+        {
+          "id": "sphere-n100000-q1024-sigma0-k32",
+          "ratio": 5.88866233566278
+        },
+        {
+          "id": "sphere-n100000-q1024-sigma0.01-k1",
+          "ratio": 3.348714751255535
+        },
+        {
+          "id": "sphere-n100000-q1024-sigma0.01-k32",
+          "ratio": 6.525880362176654
+        },
+        {
+          "id": "volume-n100000-q1024-sigma0-k1",
+          "ratio": 3.42347384217614
+        },
+        {
+          "id": "volume-n100000-q1024-sigma0-k32",
+          "ratio": 8.579589372976912
+        },
+        {
+          "id": "volume-n100000-q1024-sigma0.01-k1",
+          "ratio": 3.4683753500583148
+        },
+        {
+          "id": "volume-n100000-q1024-sigma0.01-k32",
+          "ratio": 8.57102159929142
+        },
+        {
+          "id": "clusters-n100000-q1024-sigma0-k1",
+          "ratio": 3.4563588770726548
+        },
+        {
+          "id": "clusters-n100000-q1024-sigma0-k32",
+          "ratio": 7.807129358137461
+        },
+        {
+          "id": "clusters-n100000-q1024-sigma0.01-k1",
+          "ratio": 3.3117842398695685
+        },
+        {
+          "id": "clusters-n100000-q1024-sigma0.01-k32",
+          "ratio": 7.108611973207101
+        },
+        {
+          "id": "thin_plane-n100000-q1024-sigma0-k1",
+          "ratio": 6.009614222491269
+        },
+        {
+          "id": "thin_plane-n100000-q1024-sigma0-k32",
+          "ratio": 19.015060341831823
+        },
+        {
+          "id": "thin_plane-n100000-q1024-sigma0.01-k1",
+          "ratio": 4.324451330278758
+        },
+        {
+          "id": "thin_plane-n100000-q1024-sigma0.01-k32",
+          "ratio": 14.772943532588698
+        },
+        {
+          "id": "sphere-n1000000-q8192-sigma0-k11",
+          "ratio": 1.129658539737341
+        },
+        {
+          "id": "sphere-n1000000-q8192-sigma0.01-k11",
+          "ratio": 1.1977118510155573
+        },
+        {
+          "id": "volume-n1000000-q8192-sigma0-k11",
+          "ratio": 1.1859300874039465
+        },
+        {
+          "id": "volume-n1000000-q8192-sigma0.01-k11",
+          "ratio": 1.1992445643201215
+        },
+        {
+          "id": "sphere-n1000-q32-sigma0-k32",
+          "ratio": 5.036249578296405
+        },
+        {
+          "id": "sphere-n1000-q32-sigma0.01-k32",
+          "ratio": 5.144426655866961
+        },
+        {
+          "id": "volume-n1000-q32-sigma0-k32",
+          "ratio": 4.333434925512406
+        },
+        {
+          "id": "volume-n1000-q32-sigma0.01-k32",
+          "ratio": 4.393319774966324
+        }
+      ]
+    },
+    "physicsnemo_tuned": {
+      "warp_wins": 37,
+      "geomean_ratio": 2.518488579854193,
+      "warp_over_5pct_faster": 36,
+      "within_5pct": 4,
+      "warp_over_5pct_slower": 0,
+      "cases": [
+        {
+          "id": "bunny_scan-n100000-q1024-sigma0-k1",
+          "ratio": 3.332191653828391
+        },
+        {
+          "id": "bunny_scan-n100000-q1024-sigma0-k32",
+          "ratio": 3.2975186379066637
+        },
+        {
+          "id": "bunny_scan-n100000-q1024-sigma0.01-k1",
+          "ratio": 3.40959112038706
+        },
+        {
+          "id": "bunny_scan-n100000-q1024-sigma0.01-k32",
+          "ratio": 2.974175928887542
+        },
+        {
+          "id": "kitti-n100000-q1024-sigma0-k1",
+          "ratio": 2.8537572460864133
+        },
+        {
+          "id": "kitti-n100000-q1024-sigma0-k32",
+          "ratio": 2.0276551533304343
+        },
+        {
+          "id": "kitti-n100000-q1024-sigma0.01-k1",
+          "ratio": 3.0078592942346383
+        },
+        {
+          "id": "kitti-n100000-q1024-sigma0.01-k32",
+          "ratio": 2.609988987677791
+        },
+        {
+          "id": "redwood-n100000-q1024-sigma0-k1",
+          "ratio": 3.0259351729572512
+        },
+        {
+          "id": "redwood-n100000-q1024-sigma0-k32",
+          "ratio": 2.383278209929295
+        },
+        {
+          "id": "redwood-n100000-q1024-sigma0.01-k1",
+          "ratio": 3.1050874924510192
+        },
+        {
+          "id": "redwood-n100000-q1024-sigma0.01-k32",
+          "ratio": 2.762765192135235
+        },
+        {
+          "id": "bunny_surface-n100000-q1024-sigma0-k1",
+          "ratio": 3.0036690316448955
+        },
+        {
+          "id": "bunny_surface-n100000-q1024-sigma0-k32",
+          "ratio": 2.2675514876956977
+        },
+        {
+          "id": "bunny_surface-n100000-q1024-sigma0.01-k1",
+          "ratio": 3.0731355210251787
+        },
+        {
+          "id": "bunny_surface-n100000-q1024-sigma0.01-k32",
+          "ratio": 2.282334728691441
+        },
+        {
+          "id": "sphere-n100000-q1024-sigma0-k1",
+          "ratio": 2.888478273590791
+        },
+        {
+          "id": "sphere-n100000-q1024-sigma0-k32",
+          "ratio": 2.319273965220813
+        },
+        {
+          "id": "sphere-n100000-q1024-sigma0.01-k1",
+          "ratio": 2.938447374702252
+        },
+        {
+          "id": "sphere-n100000-q1024-sigma0.01-k32",
+          "ratio": 2.298043231475079
+        },
+        {
+          "id": "volume-n100000-q1024-sigma0-k1",
+          "ratio": 2.9965674143080876
+        },
+        {
+          "id": "volume-n100000-q1024-sigma0-k32",
+          "ratio": 2.463902853951459
+        },
+        {
+          "id": "volume-n100000-q1024-sigma0.01-k1",
+          "ratio": 3.009985963622144
+        },
+        {
+          "id": "volume-n100000-q1024-sigma0.01-k32",
+          "ratio": 2.55092577540402
+        },
+        {
+          "id": "clusters-n100000-q1024-sigma0-k1",
+          "ratio": 2.9034767698509696
+        },
+        {
+          "id": "clusters-n100000-q1024-sigma0-k32",
+          "ratio": 2.379795654381982
+        },
+        {
+          "id": "clusters-n100000-q1024-sigma0.01-k1",
+          "ratio": 2.8631014041455556
+        },
+        {
+          "id": "clusters-n100000-q1024-sigma0.01-k32",
+          "ratio": 2.2944372341870696
+        },
+        {
+          "id": "thin_plane-n100000-q1024-sigma0-k1",
+          "ratio": 3.0656768683782674
+        },
+        {
+          "id": "thin_plane-n100000-q1024-sigma0-k32",
+          "ratio": 2.3098956431896327
+        },
+        {
+          "id": "thin_plane-n100000-q1024-sigma0.01-k1",
+          "ratio": 3.0130483492077893
+        },
+        {
+          "id": "thin_plane-n100000-q1024-sigma0.01-k32",
+          "ratio": 2.749248304557447
+        },
+        {
+          "id": "sphere-n1000000-q8192-sigma0-k11",
+          "ratio": 0.9758124656915458
+        },
+        {
+          "id": "sphere-n1000000-q8192-sigma0.01-k11",
+          "ratio": 0.9702601143540567
+        },
+        {
+          "id": "volume-n1000000-q8192-sigma0-k11",
+          "ratio": 0.999796434138655
+        },
+        {
+          "id": "volume-n1000000-q8192-sigma0.01-k11",
+          "ratio": 1.005971530496738
+        },
+        {
+          "id": "sphere-n1000-q32-sigma0-k32",
+          "ratio": 3.4797187221346415
+        },
+        {
+          "id": "sphere-n1000-q32-sigma0.01-k32",
+          "ratio": 3.4631744806333016
+        },
+        {
+          "id": "volume-n1000-q32-sigma0-k32",
+          "ratio": 3.0387702892976467
+        },
+        {
+          "id": "volume-n1000-q32-sigma0.01-k32",
+          "ratio": 3.1181595837405247
+        }
+      ]
+    }
+  }
+}

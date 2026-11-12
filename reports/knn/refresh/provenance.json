@@ -1,0 +1,14 @@
+{
+  "revision": "197ffeeea97ed94352a01ee67c3c852accb92731",
+  "sha256": {
+    "warp/native/bvh.cu": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb",
+    "warp/native/point_query.h": "ccf0e04a1f8424f890dc466cc1f0b8e7aec989e7679844861cef2b7c6c339625",
+    "warp/bin/warp.so": "86037f3c4ab717267d9bae208575eeb293797c2ebaffbd920f7502ad54dbc44c",
+    "warp/examples/benchmarks/benchmark_point_query_comparison.py": "3cdc9240bb1380f9a2a824d39a60a434426c779f2fbb8a1c53089aa846b0c217",
+    "warp/examples/benchmarks/point_query_backends.py": "721fc0528516df551f50ca55e3978b5b0650d151ff13daefc084b39ca504fab1",
+    "warp/examples/benchmarks/point_query_common.py": "26c9f54679617297076a4109ba2816ddb3b4061185c5ea47339b303f62819b95",
+    "warp/examples/benchmarks/point_query_comparison_environment.py": "c9f3221fefc7d0ecf2947c60747da3233cbc8997b1feab52156aea722f4abb4c"
+  },
+  "cuda_toolkit": "/tmp/warp-intersection-cuda-12.9",
+  "native_build": "Retained quick build (compute_75 PTX), driver JIT on sm_120; query kernels JIT for sm_120. No native changes since 197ffee."
+}

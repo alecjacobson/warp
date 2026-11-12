@@ -1,0 +1,7 @@
+{
+  "reason": "User excluded CAGRA because its build-plus-query cost is orders of magnitude higher and approximate search is outside scope.",
+  "coordinator_pid": 358901,
+  "action": "Terminated coordinator before CAGRA launch; allowed active Minkowski worker PID359545 to finish. Remaining PyTorch3D workers will run separately.",
+  "cagra_started": false,
+  "observed_outcome": "Exec-session cleanup also stopped active Minkowski worker. Its first35 completed cases are preserved. Resume only the five remaining cases with identical settings, then PyTorch3D. No CAGRA process started."
+}

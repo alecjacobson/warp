@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "suite": "pilot",
+  "sources": {
+    "bunny": {
+      "filename": "bunny.tar.gz",
+      "url": "https://graphics.stanford.edu/pub/3Dscanrep/bunny.tar.gz",
+      "sha256": "a5720bd96d158df403d153381b8411a727a1d73cff2f33dc9b212d6f75455b84",
+      "reference": "https://graphics.stanford.edu/data/3Dscanrep/",
+      "terms": "Stanford repository usage/acknowledgment notes; retain source attribution"
+    },
+    "kitti": {
+      "filename": "kitti-drive0002.zip",
+      "url": "https://s3.eu-central-1.amazonaws.com/avg-kitti/raw_data/2011_09_26_drive_0002/2011_09_26_drive_0002_sync.zip",
+      "sha256": "ebba5c778893e0d564c261699bcbf10093722df5a3c7e69ab7b7ddaa7637893d",
+      "reference": "https://www.cvlibs.net/datasets/kitti/raw_data.php",
+      "terms": "KITTI dataset terms: CC BY-NC-SA 3.0; research benchmark, source archive not redistributed"
+    },
+    "redwood": {
+      "filename": "DemoICPPointClouds.zip",
+      "url": "https://github.com/isl-org/open3d_downloads/releases/download/20220301-data/DemoICPPointClouds.zip",
+      "sha256": "b94e0146c1d48c5edfc11af71b4af39ffca604485668c55a127c3b43203a6bd5",
+      "reference": "https://www.open3d.org/docs/release/python_api/open3d.data.DemoICPPointClouds.html",
+      "terms": "Open3D/Redwood source attribution; preprocessed RGB-D fragment, not raw sensor depth frames"
+    }
+  },
+  "cases": [
+    {
+      "family": "volume",
+      "requested_N": 1000000,
+      "Q": 8192,
+      "sigma": 0.01,
+      "seed": 1706,
+      "query_generation": "independent samples of the same distribution",
+      "N": 1000000,
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 2.0,
+      "noise_units": "fraction of original longest bounding-box edge",
+      "points_sha256": "1b59281f9e3ca01db06b9c843e08006f976c4dc207cd6cc0b30395e75435c943",
+      "queries_sha256": "7baa89d569714f151725a4c14d97da2e3f5b71734ebbc3335b062bd49dbefe3d",
+      "id": "volume-n1000000-q8192-sigma0.01-k11",
+      "k": 11,
+      "file": "volume-n1000000-q8192-sigma0.01.npz",
+      "file_sha256": "c987de6c438455f22f4d059fad5a41d7d34505c3b63841cb11d22900a472d8fa"
+    },
+    {
+      "family": "sphere",
+      "requested_N": 1000,
+      "Q": 32,
+      "sigma": 0.0,
+      "seed": 1605,
+      "query_generation": "independent samples of the same distribution",
+      "N": 1000,
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 2.0,
+      "noise_units": "fraction of original longest bounding-box edge",
+      "points_sha256": "ebaea0724ac182f7e286d72198f247812e5b2813b8de3e90a2d69268996a6afa",
+      "queries_sha256": "d64adfa3c3e67ac548917b9d595cafc1ae29917e4aab57a56bab97d1e6679629",
+      "id": "sphere-n1000-q32-sigma0-k32",
+      "k": 32,
+      "file": "sphere-n1000-q32-sigma0.npz",
+      "file_sha256": "f0289e4be5441c726121f940ad81f42cf0d1dfd7675ad910593a9aa4f22e464d"
+    },
+    {
+      "family": "sphere",
+      "requested_N": 1000,
+      "Q": 32,
+      "sigma": 0.01,
+      "seed": 1605,
+      "query_generation": "independent samples of the same distribution",
+      "N": 1000,
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 2.0,
+      "noise_units": "fraction of original longest bounding-box edge",
+      "points_sha256": "0aa9a7a2f1a63ce23408b1709270b8102ad72c9dae38b27840ee4f0b156bbe62",
+      "queries_sha256": "154800f4d0093598688ccf695a3d15c6cd20f98d5300cdf0569818d66494693f",
+      "id": "sphere-n1000-q32-sigma0.01-k32",
+      "k": 32,
+      "file": "sphere-n1000-q32-sigma0.01.npz",
+      "file_sha256": "5e6e1d5858bf1b9530b94020199257a4e762cdf261aae4d1c8ae4ac6a51b713c"
+    },
+    {
+      "family": "volume",
+      "requested_N": 1000,
+      "Q": 32,
+      "sigma": 0.0,
+      "seed": 1706,
+      "query_generation": "independent samples of the same distribution",
+      "N": 1000,
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 2.0,
+      "noise_units": "fraction of original longest bounding-box edge",
+      "points_sha256": "d8656663e338e9be89b0085b3b0987df5e566309c81166283f5aaf0eed86394c",
+      "queries_sha256": "6046f387fee76ddd0205485b28bb9fc788d712c142519a74656f1c50e6671882",
+      "id": "volume-n1000-q32-sigma0-k32",
+      "k": 32,
+      "file": "volume-n1000-q32-sigma0.npz",
+      "file_sha256": "a8fa7dcce517d685deb693d665bbe0b74cdd49b3899c4261629cf653b23bfe0e"
+    },
+    {
+      "family": "volume",
+      "requested_N": 1000,
+      "Q": 32,
+      "sigma": 0.01,
+      "seed": 1706,
+      "query_generation": "independent samples of the same distribution",
+      "N": 1000,
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 2.0,
+      "noise_units": "fraction of original longest bounding-box edge",
+      "points_sha256": "f50f1254baf423ad901526bfb443720673a7b31b59099b6821b2bd92e2611bcf",
+      "queries_sha256": "a6899727496c3354850936aefce285dc97e011abaaee9b44213d3e83afb2f587",
+      "id": "volume-n1000-q32-sigma0.01-k32",
+      "k": 32,
+      "file": "volume-n1000-q32-sigma0.01.npz",
+      "file_sha256": "f118273884ad71447f0c18e599d78c3c3b9c15769a9fac9c73dab2319b95279d"
+    }
+  ],
+  "numpy_version": "2.5.3"
+}

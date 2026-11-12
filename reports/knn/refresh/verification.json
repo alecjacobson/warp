@@ -1,0 +1,12 @@
+{
+  "primary_methods": 11,
+  "cases_per_method": 40,
+  "completed_method_cases": 440,
+  "repetitions": 9,
+  "input_file_hashes_checked": 40,
+  "source_and_native_binary_hashes_match": true,
+  "full_capture_variants_passed": 4,
+  "full_capture_replays_per_variant": 3,
+  "minkowski_merge_matches_raw_segments": true,
+  "report_links_resolve": true
+}

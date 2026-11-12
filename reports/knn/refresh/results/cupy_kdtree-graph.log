@@ -1,0 +1,26 @@
+/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_comparison.py:342: DeprecationWarning: ExternalStream is deprecated. Use Stream.from_external() instead to interoperate with external streams that implement the CUDA stream protocol.
+  worker(args)
+Warp 1.20.0.dev0 initialized:
+   CUDA Toolkit 12.9, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb" (24 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/horde/.cache/warp/1.20.0.dev0
+Traceback (most recent call last):
+  File "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_comparison.py", line 208, in worker
+    result = problem.search(index)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/point_query_backends.py", line 238, in search
+    ds, ids = index.query(self.cp_queries, k=self.k, eps=0.0)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/cupyx/scipy/spatial/_kdtree.py", line 284, in query
+    return compute_knn(
+           ^^^^^^^^^^^^
+  File "/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/cupyx/scipy/spatial/_kdtree_utils.py", line 848, in compute_knn
+    if not cupy.isinf(p):
+           ^^^^^^^^^^^^^
+  File "cupy/_core/core.pyx", line 1537, in cupy._core.core._ndarray_base.__nonzero__
+  File "cupy/_core/core.pyx", line 2203, in cupy._core.core._ndarray_base.get
+  File "cupy/cuda/memory.pyx", line 717, in cupy.cuda.memory.MemoryPointer.copy_to_host_async
+RuntimeError: the current stream is capturing, so D2H transfers are disallowed

@@ -1,0 +1,38 @@
+{
+  "python": "3.12.15",
+  "packages": {
+    "torch": "2.7.1+cu128",
+    "numpy": "2.5.4",
+    "cupy-cuda12x": "14.2.0",
+    "cuvs-cu12": "26.10.0",
+    "libcuvs-cu12": "26.10.0",
+    "rmm-cu12": "26.10.0",
+    "faiss-gpu-cu12": "1.14.1.post1",
+    "pykeops": "2.3",
+    "pytorch3d": null
+  },
+  "git_revision": "197ffeeea97ed94352a01ee67c3c852accb92731",
+  "benchmark_source_sha256": {
+    "benchmark_point_query_comparison.py": "3cdc9240bb1380f9a2a824d39a60a434426c779f2fbb8a1c53089aa846b0c217",
+    "point_query_backends.py": "721fc0528516df551f50ca55e3978b5b0650d151ff13daefc084b39ca504fab1"
+  },
+  "native_bvh_sha256": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb",
+  "shared_stream": "Warp-owned blocking stream",
+  "settings": {
+    "manifest": "../data/knn-comparison/pilot/manifest.json",
+    "output": "../artifacts/comparison/refresh-2026-11-12/tuned-control.json",
+    "filter": "",
+    "repeats": "9",
+    "sweep": "False",
+    "isotropic": "False",
+    "baseline_only": "True",
+    "morton_seed": "False",
+    "carry": "False",
+    "runs": "False",
+    "cached": "False",
+    "physics_isotropic": "False",
+    "blocks": "False",
+    "physics_tuned": "True"
+  },
+  "physics_tuned_sha256": "4e020c8d8b889be61aa2f53140d726539ec5be3721669d3bcf82ec8ac4626c90"
+}

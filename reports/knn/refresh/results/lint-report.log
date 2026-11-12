@@ -1,0 +1,8 @@
+warp: regenerate generated files...............................................Passed
+warp: check version consistency and regenerate version.h.......................Passed
+warp: check project skills.................................(no files to check)Skipped
+ruff (legacy alias)............................................................Passed
+ruff format....................................................................Passed
+uv-lock....................................................(no files to check)Skipped
+typos..........................................................................Passed
+clang-format...............................................(no files to check)Skipped
