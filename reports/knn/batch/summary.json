@@ -1,0 +1,78 @@
+{
+  "pilot": {
+    "configured_scalar": {
+      "one_shot": {
+        "geomean_reference_over_batch": 0.9883144786531005,
+        "min_ratio": 0.9299472659440843,
+        "max_ratio": 1.01649983454234,
+        "batch_lower_medians": 7,
+        "within_5pct": 38,
+        "batch_over_5pct_slower": 2
+      },
+      "reused_index_search": {
+        "geomean_reference_over_batch": 0.9707836503665306,
+        "min_ratio": 0.9326351954275112,
+        "max_ratio": 1.0158556635611065,
+        "batch_lower_medians": 4,
+        "within_5pct": 33,
+        "batch_over_5pct_slower": 7
+      }
+    },
+    "dense_scalar": {
+      "one_shot": {
+        "geomean_reference_over_batch": 2.6219991356090806,
+        "min_ratio": 1.1293048323237231,
+        "max_ratio": 6.4192757917962,
+        "batch_lower_medians": 40,
+        "within_5pct": 0,
+        "batch_over_5pct_slower": 0
+      },
+      "reused_index_search": {
+        "geomean_reference_over_batch": 3.8547320053754315,
+        "min_ratio": 1.4288359257992618,
+        "max_ratio": 10.113119422222844,
+        "batch_lower_medians": 40,
+        "within_5pct": 0,
+        "batch_over_5pct_slower": 0
+      }
+    }
+  },
+  "dense": {
+    "configured_scalar": {
+      "one_shot": {
+        "geomean_reference_over_batch": 0.9746910060331847,
+        "min_ratio": 0.9563852116857176,
+        "max_ratio": 0.9875396447523895,
+        "batch_lower_medians": 0,
+        "within_5pct": 8,
+        "batch_over_5pct_slower": 0
+      },
+      "reused_index_search": {
+        "geomean_reference_over_batch": 0.9655925015810326,
+        "min_ratio": 0.9262212796032802,
+        "max_ratio": 0.9781375568863191,
+        "batch_lower_medians": 0,
+        "within_5pct": 7,
+        "batch_over_5pct_slower": 1
+      }
+    },
+    "dense_scalar": {
+      "one_shot": {
+        "geomean_reference_over_batch": 1.406237754782077,
+        "min_ratio": 1.3127373154610749,
+        "max_ratio": 1.499257268686943,
+        "batch_lower_medians": 8,
+        "within_5pct": 0,
+        "batch_over_5pct_slower": 0
+      },
+      "reused_index_search": {
+        "geomean_reference_over_batch": 1.4817352591894992,
+        "min_ratio": 1.3489991976317839,
+        "max_ratio": 1.6155503563394285,
+        "batch_lower_medians": 8,
+        "within_5pct": 0,
+        "batch_over_5pct_slower": 0
+      }
+    }
+  }
+}

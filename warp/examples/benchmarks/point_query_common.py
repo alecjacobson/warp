@@ -8,19 +8,10 @@ import functools
 import warp as wp
 
 
-def point_query_configuration(n, nq, sm_count):
-    """Return an explicit GPU benchmark policy: leaf size, query stride, ordering.
-
-    Aim for 16 scheduled warps per SM, up to one active query per warp. This
-    trades inactive lanes for latency hiding and fewer divergent query paths.
-    Large batches retain dense launches and Morton ordering. This is an
-    experimental caller policy, not a dispatch rule in the scalar Warp API.
-    """
-    leaf = 32 if nq <= 32 or n >= 1_000_000 else 4
-    stride = 1
-    while stride < 32 and nq * stride < 512 * sm_count:
-        stride *= 2
-    return leaf, stride, stride == 1 and n >= 1_000_000
+def point_query_configuration(n, nq, device):
+    """Use the public point-query policy for the configured benchmark path."""
+    config = wp.point_query_config(n, nq, device)
+    return config.leaf_size, config.query_stride, config.ordered
 
 
 @functools.cache

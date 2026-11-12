@@ -1,0 +1,1 @@
+Add `wp.point_query_knn_batch()` for exact point-cloud kNN using Warp arrays, automatic GPU-aware launch configuration, optional BVH/output reuse, and CUDA graph capture. Add `wp.point_query_config()` so fused scalar kernels can share the launch policy. No PyTorch dependency or new native implementation is required.
