@@ -1,0 +1,5280 @@
+{
+  "method": "cupy_kdtree",
+  "environment": {
+    "python": "3.12.15",
+    "packages": {
+      "torch": "2.7.1+cu128",
+      "numpy": "2.5.4",
+      "cupy-cuda12x": "14.2.0",
+      "cuvs-cu12": "26.10.0",
+      "libcuvs-cu12": "26.10.0",
+      "rmm-cu12": "26.10.0",
+      "faiss-gpu-cu12": "1.14.1.post1",
+      "pykeops": "2.3",
+      "pytorch3d": null
+    },
+    "git_revision": "197ffeeea97ed94352a01ee67c3c852accb92731",
+    "benchmark_source_sha256": {
+      "benchmark_point_query_comparison.py": "3cdc9240bb1380f9a2a824d39a60a434426c779f2fbb8a1c53089aa846b0c217",
+      "point_query_backends.py": "721fc0528516df551f50ca55e3978b5b0650d151ff13daefc084b39ca504fab1"
+    },
+    "native_bvh_sha256": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb"
+  },
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+  "repeats": 9,
+  "primary_timing": "device-synchronized wall time",
+  "warp_pool_release_threshold_bytes": 536870912,
+  "torch_allocator": "native",
+  "shared_stream": "Warp-owned CUDA blocking stream, borrowed by Torch and other providers",
+  "cases": [
+    {
+      "id": "bunny_scan-n100000-q1024-sigma0-k1",
+      "N": 39232,
+      "Q": 1024,
+      "k": 1,
+      "family": "bunny_scan",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.6660199724137783,
+      "build": {
+        "wall_median_ms": 4.058310063555837,
+        "wall_min_ms": 4.0508590172976255,
+        "wall_max_ms": 4.109969129785895,
+        "wall_samples_ms": [
+          4.109969129785895,
+          4.0717797819525,
+          4.062969004735351,
+          4.059039987623692,
+          4.054129123687744,
+          4.054300021380186,
+          4.058310063555837,
+          4.0508590172976255,
+          4.055419936776161
+        ],
+        "event_median_ms": 4.04691219329834,
+        "event_samples_ms": [
+          4.076863765716553,
+          4.058879852294922,
+          4.051072120666504,
+          4.047520160675049,
+          4.042208194732666,
+          4.042848110198975,
+          4.04691219329834,
+          4.039552211761475,
+          4.043360233306885
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 1.731510041281581,
+        "wall_min_ms": 1.7258699517697096,
+        "wall_max_ms": 1.7890101298689842,
+        "wall_samples_ms": [
+          1.7890101298689842,
+          1.7505900468677282,
+          1.7404488753527403,
+          1.733690034598112,
+          1.731510041281581,
+          1.7306499648839235,
+          1.7306800000369549,
+          1.7279689200222492,
+          1.7258699517697096
+        ],
+        "event_median_ms": 1.7214399576187134,
+        "event_samples_ms": [
+          1.7696640491485596,
+          1.7404799461364746,
+          1.729856014251709,
+          1.7239359617233276,
+          1.7214399576187134,
+          1.720479965209961,
+          1.7208960056304932,
+          1.7183040380477905,
+          1.7158399820327759
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.2018072225910664e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 5.798419937491417,
+        "wall_min_ms": 5.792669020593166,
+        "wall_max_ms": 5.816899007186294,
+        "wall_samples_ms": [
+          5.813078954815865,
+          5.816899007186294,
+          5.798419937491417,
+          5.795758916065097,
+          5.800148937851191,
+          5.793060176074505,
+          5.804948974400759,
+          5.793659016489983,
+          5.792669020593166
+        ],
+        "event_median_ms": 5.785215854644775,
+        "event_samples_ms": [
+          5.793791770935059,
+          5.80291223526001,
+          5.785215854644775,
+          5.782527923583984,
+          5.786752223968506,
+          5.78000020980835,
+          5.791840076446533,
+          5.780032157897949,
+          5.778975963592529
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.2018072225910664e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 317915136,
+        "torch_reserved_bytes": 2097152,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "bunny_scan-n100000-q1024-sigma0-k32",
+      "N": 39232,
+      "Q": 1024,
+      "k": 32,
+      "family": "bunny_scan",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.20781997591257095,
+      "build": {
+        "wall_median_ms": 4.058120073750615,
+        "wall_min_ms": 4.050389863550663,
+        "wall_max_ms": 4.091879120096564,
+        "wall_samples_ms": [
+          4.091879120096564,
+          4.07990999519825,
+          4.0596891194581985,
+          4.058120073750615,
+          4.058459075167775,
+          4.050389863550663,
+          4.055449040606618,
+          4.050660179927945,
+          4.052889067679644
+        ],
+        "event_median_ms": 4.046847820281982,
+        "event_samples_ms": [
+          4.066688060760498,
+          4.067455768585205,
+          4.047904014587402,
+          4.046847820281982,
+          4.048031806945801,
+          4.039999961853027,
+          4.043935775756836,
+          4.039519786834717,
+          4.041312217712402
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 12.537769041955471,
+        "wall_min_ms": 12.485729064792395,
+        "wall_max_ms": 12.573148822411895,
+        "wall_samples_ms": [
+          12.557497946545482,
+          12.537769041955471,
+          12.563438154757023,
+          12.573148822411895,
+          12.553887907415628,
+          12.518189148977399,
+          12.527197832241654,
+          12.485729064792395,
+          12.528667924925685
+        ],
+        "event_median_ms": 12.527135848999023,
+        "event_samples_ms": [
+          12.542495727539062,
+          12.527135848999023,
+          12.549375534057617,
+          12.559040069580078,
+          12.542495727539062,
+          12.506976127624512,
+          12.516063690185547,
+          12.475775718688965,
+          12.518815994262695
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 7.271024510670471e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 16.56865794211626,
+        "wall_min_ms": 16.542407916858792,
+        "wall_max_ms": 16.60376787185669,
+        "wall_samples_ms": [
+          16.60376787185669,
+          16.550087835639715,
+          16.595247900113463,
+          16.56865794211626,
+          16.573857981711626,
+          16.542407916858792,
+          16.559707932174206,
+          16.549088060855865,
+          16.573727829381824
+        ],
+        "event_median_ms": 16.555391311645508,
+        "event_samples_ms": [
+          16.58505630493164,
+          16.535871505737305,
+          16.581472396850586,
+          16.555391311645508,
+          16.561824798583984,
+          16.53014373779297,
+          16.546655654907227,
+          16.535551071166992,
+          16.559904098510742
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 7.271024510670471e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 320012288,
+        "torch_reserved_bytes": 2097152,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "bunny_scan-n100000-q1024-sigma0.01-k1",
+      "N": 39232,
+      "Q": 1024,
+      "k": 1,
+      "family": "bunny_scan",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.2033498603850603,
+      "build": {
+        "wall_median_ms": 4.13905899040401,
+        "wall_min_ms": 4.133780021220446,
+        "wall_max_ms": 4.171330016106367,
+        "wall_samples_ms": [
+          4.171330016106367,
+          4.140319069847465,
+          4.142559831961989,
+          4.13905899040401,
+          4.133780021220446,
+          4.149368964135647,
+          4.134519957005978,
+          4.137658979743719,
+          4.134470131248236
+        ],
+        "event_median_ms": 4.127488136291504,
+        "event_samples_ms": [
+          4.146431922912598,
+          4.128672122955322,
+          4.131455898284912,
+          4.127488136291504,
+          4.1233601570129395,
+          4.138175964355469,
+          4.123104095458984,
+          4.126272201538086,
+          4.124095916748047
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 3.103039925917983,
+        "wall_min_ms": 3.093078965321183,
+        "wall_max_ms": 3.1106099486351013,
+        "wall_samples_ms": [
+          3.1106099486351013,
+          3.1087989918887615,
+          3.103039925917983,
+          3.0982999596744776,
+          3.0983889009803534,
+          3.095999825745821,
+          3.093078965321183,
+          3.1037800945341587,
+          3.1033800914883614
+        ],
+        "event_median_ms": 3.092895984649658,
+        "event_samples_ms": [
+          3.096031904220581,
+          3.0982720851898193,
+          3.092895984649658,
+          3.088320016860962,
+          3.088223934173584,
+          3.085887908935547,
+          3.083359956741333,
+          3.0938560962677,
+          3.0936639308929443
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.0426622446972865e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 7.244128966704011,
+        "wall_min_ms": 7.231459021568298,
+        "wall_max_ms": 7.263519102707505,
+        "wall_samples_ms": [
+          7.260128855705261,
+          7.2509299498051405,
+          7.244128966704011,
+          7.263519102707505,
+          7.238558959215879,
+          7.242129184305668,
+          7.235928904265165,
+          7.251210045069456,
+          7.231459021568298
+        ],
+        "event_median_ms": 7.230879783630371,
+        "event_samples_ms": [
+          7.2415361404418945,
+          7.23744010925293,
+          7.230879783630371,
+          7.250080108642578,
+          7.226367950439453,
+          7.228831768035889,
+          7.2230401039123535,
+          7.238368034362793,
+          7.218400001525879
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.0426622446972865e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 320012288,
+        "torch_reserved_bytes": 2097152,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "bunny_scan-n100000-q1024-sigma0.01-k32",
+      "N": 39232,
+      "Q": 1024,
+      "k": 32,
+      "family": "bunny_scan",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.21849991753697395,
+      "build": {
+        "wall_median_ms": 4.139639902859926,
+        "wall_min_ms": 4.134028917178512,
+        "wall_max_ms": 4.179549869149923,
+        "wall_samples_ms": [
+          4.179549869149923,
+          4.144588951021433,
+          4.137679934501648,
+          4.1409197729080915,
+          4.134028917178512,
+          4.136350005865097,
+          4.142738878726959,
+          4.139639902859926,
+          4.1353891137987375
+        ],
+        "event_median_ms": 4.127840042114258,
+        "event_samples_ms": [
+          4.155168056488037,
+          4.133279800415039,
+          4.125792026519775,
+          4.129183769226074,
+          4.122687816619873,
+          4.1244797706604,
+          4.13212776184082,
+          4.127840042114258,
+          4.123807907104492
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 13.362227939069271,
+        "wall_min_ms": 13.335627969354391,
+        "wall_max_ms": 13.42677790671587,
+        "wall_samples_ms": [
+          13.362227939069271,
+          13.369929045438766,
+          13.42677790671587,
+          13.35517899133265,
+          13.335627969354391,
+          13.346559135243297,
+          13.421247946098447,
+          13.386619044467807,
+          13.356477953493595
+        ],
+        "event_median_ms": 13.347007751464844,
+        "event_samples_ms": [
+          13.347007751464844,
+          13.356287956237793,
+          13.411935806274414,
+          13.343968391418457,
+          13.325119972229004,
+          13.33568000793457,
+          13.40617561340332,
+          13.373727798461914,
+          13.345600128173828
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 9.285056533505521e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 17.516587860882282,
+        "wall_min_ms": 17.48089795000851,
+        "wall_max_ms": 17.54287793301046,
+        "wall_samples_ms": [
+          17.529757926240563,
+          17.50496798194945,
+          17.54287793301046,
+          17.495298059657216,
+          17.53573794849217,
+          17.48089795000851,
+          17.525547882542014,
+          17.48184789903462,
+          17.516587860882282
+        ],
+        "event_median_ms": 17.504735946655273,
+        "event_samples_ms": [
+          17.5100154876709,
+          17.490943908691406,
+          17.52783966064453,
+          17.481504440307617,
+          17.52137565612793,
+          17.466720581054688,
+          17.511808395385742,
+          17.468608856201172,
+          17.504735946655273
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 9.285056533505521e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 320012288,
+        "torch_reserved_bytes": 2097152,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "kitti-n100000-q1024-sigma0-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "kitti",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.49056997522711754,
+      "build": {
+        "wall_median_ms": 6.559839006513357,
+        "wall_min_ms": 6.54771993868053,
+        "wall_max_ms": 6.607179995626211,
+        "wall_samples_ms": [
+          6.607179995626211,
+          6.568128941580653,
+          6.559839006513357,
+          6.570328958332539,
+          6.552709033712745,
+          6.54771993868053,
+          6.562329130247235,
+          6.555128842592239,
+          6.553518818691373
+        ],
+        "event_median_ms": 6.548128128051758,
+        "event_samples_ms": [
+          6.581567764282227,
+          6.5557122230529785,
+          6.548128128051758,
+          6.559264183044434,
+          6.541791915893555,
+          6.536320209503174,
+          6.551904201507568,
+          6.544672012329102,
+          6.541920185089111
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 4.238939844071865,
+        "wall_min_ms": 4.236198961734772,
+        "wall_max_ms": 4.257899941876531,
+        "wall_samples_ms": [
+          4.257899941876531,
+          4.239479079842567,
+          4.244110081344843,
+          4.236198961734772,
+          4.241560120135546,
+          4.2377791833132505,
+          4.238939844071865,
+          4.237149842083454,
+          4.236228996887803
+        ],
+        "event_median_ms": 4.228831768035889,
+        "event_samples_ms": [
+          4.243680000305176,
+          4.228831768035889,
+          4.233759880065918,
+          4.226240158081055,
+          4.232607841491699,
+          4.227583885192871,
+          4.2288641929626465,
+          4.227231979370117,
+          4.2259521484375
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.1765258358538515e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 10.809609200805426,
+        "wall_min_ms": 10.802207980304956,
+        "wall_max_ms": 10.831668972969055,
+        "wall_samples_ms": [
+          10.831668972969055,
+          10.802207980304956,
+          10.809319093823433,
+          10.804559104144573,
+          10.810707928612828,
+          10.805718833580613,
+          10.828658938407898,
+          10.809609200805426,
+          10.813857894390821
+        ],
+        "event_median_ms": 10.795616149902344,
+        "event_samples_ms": [
+          10.812576293945312,
+          10.78831958770752,
+          10.7957124710083,
+          10.791168212890625,
+          10.792608261108398,
+          10.791711807250977,
+          10.814016342163086,
+          10.795616149902344,
+          10.799615859985352
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.1765258358538515e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "kitti-n100000-q1024-sigma0-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "kitti",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.24223001673817635,
+      "build": {
+        "wall_median_ms": 6.557628978043795,
+        "wall_min_ms": 6.550989113748074,
+        "wall_max_ms": 6.59917900338769,
+        "wall_samples_ms": [
+          6.59917900338769,
+          6.570738973096013,
+          6.560558918863535,
+          6.5565400291234255,
+          6.551078986376524,
+          6.55744899995625,
+          6.550989113748074,
+          6.558149820193648,
+          6.557628978043795
+        ],
+        "event_median_ms": 6.547264099121094,
+        "event_samples_ms": [
+          6.573567867279053,
+          6.558784008026123,
+          6.548704147338867,
+          6.545119762420654,
+          6.540544033050537,
+          6.546656131744385,
+          6.539328098297119,
+          6.547679901123047,
+          6.547264099121094
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 53.73363406397402,
+        "wall_min_ms": 53.711713990196586,
+        "wall_max_ms": 53.75863402150571,
+        "wall_samples_ms": [
+          53.75863402150571,
+          53.73731395229697,
+          53.73363406397402,
+          53.722122916951776,
+          53.735903929919004,
+          53.74357383698225,
+          53.72895300388336,
+          53.711713990196586,
+          53.726714104413986
+        ],
+        "event_median_ms": 53.722110748291016,
+        "event_samples_ms": [
+          53.741600036621094,
+          53.72505569458008,
+          53.722110748291016,
+          53.710655212402344,
+          53.725791931152344,
+          53.731937408447266,
+          53.718528747558594,
+          53.701473236083984,
+          53.715518951416016
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 7.89185647589941e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 60.28539314866066,
+        "wall_min_ms": 60.23139297030866,
+        "wall_max_ms": 60.33100304193795,
+        "wall_samples_ms": [
+          60.32733293250203,
+          60.284422943368554,
+          60.259182937443256,
+          60.286532854661345,
+          60.33100304193795,
+          60.258313082158566,
+          60.28539314866066,
+          60.29201298952103,
+          60.23139297030866
+        ],
+        "event_median_ms": 60.27219009399414,
+        "event_samples_ms": [
+          60.30044937133789,
+          60.268192291259766,
+          60.245121002197266,
+          60.27251052856445,
+          60.31779098510742,
+          60.24390411376953,
+          60.27219009399414,
+          60.27830505371094,
+          60.21897506713867
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 7.89185647589941e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "kitti-n100000-q1024-sigma0.01-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "kitti",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.26818993501365185,
+      "build": {
+        "wall_median_ms": 7.451478857547045,
+        "wall_min_ms": 7.44221918284893,
+        "wall_max_ms": 7.490678923204541,
+        "wall_samples_ms": [
+          7.490678923204541,
+          7.459898944944143,
+          7.459278916940093,
+          7.456258870661259,
+          7.44990911334753,
+          7.447229931131005,
+          7.447168929502368,
+          7.44221918284893,
+          7.451478857547045
+        ],
+        "event_median_ms": 7.440192222595215,
+        "event_samples_ms": [
+          7.465727806091309,
+          7.447391986846924,
+          7.446976184844971,
+          7.444863796234131,
+          7.438623905181885,
+          7.435808181762695,
+          7.437119960784912,
+          7.432096004486084,
+          7.440192222595215
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 5.088909063488245,
+        "wall_min_ms": 5.079229129478335,
+        "wall_max_ms": 5.109288962557912,
+        "wall_samples_ms": [
+          5.109288962557912,
+          5.097579909488559,
+          5.091548897325993,
+          5.088909063488245,
+          5.101280054077506,
+          5.085909040644765,
+          5.080039845779538,
+          5.079229129478335,
+          5.082178860902786
+        ],
+        "event_median_ms": 5.078847885131836,
+        "event_samples_ms": [
+          5.09552001953125,
+          5.087296009063721,
+          5.081632137298584,
+          5.078847885131836,
+          5.0913920402526855,
+          5.075808048248291,
+          5.069983959197998,
+          5.070400238037109,
+          5.0722880363464355
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.44621300321472e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 12.539737857878208,
+        "wall_min_ms": 12.529809027910233,
+        "wall_max_ms": 12.59586913511157,
+        "wall_samples_ms": [
+          12.59586913511157,
+          12.560368049889803,
+          12.537139002233744,
+          12.5429080799222,
+          12.530429055914283,
+          12.539737857878208,
+          12.5367590226233,
+          12.543557910248637,
+          12.529809027910233
+        ],
+        "event_median_ms": 12.526816368103027,
+        "event_samples_ms": [
+          12.576959609985352,
+          12.546015739440918,
+          12.523712158203125,
+          12.530207633972168,
+          12.517663955688477,
+          12.526816368103027,
+          12.523903846740723,
+          12.530847549438477,
+          12.516768455505371
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.44621300321472e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "kitti-n100000-q1024-sigma0.01-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "kitti",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.2536699175834656,
+      "build": {
+        "wall_median_ms": 7.449768949300051,
+        "wall_min_ms": 7.443358888849616,
+        "wall_max_ms": 7.4981090147048235,
+        "wall_samples_ms": [
+          7.4981090147048235,
+          7.462650071829557,
+          7.449768949300051,
+          7.448689080774784,
+          7.448218995705247,
+          7.450219010934234,
+          7.443358888849616,
+          7.447849027812481,
+          7.451229961588979
+        ],
+        "event_median_ms": 7.4370880126953125,
+        "event_samples_ms": [
+          7.4692158699035645,
+          7.4509758949279785,
+          7.434336185455322,
+          7.437056064605713,
+          7.4370880126953125,
+          7.439199924468994,
+          7.431935787200928,
+          7.4364800453186035,
+          7.4403839111328125
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 57.97324306331575,
+        "wall_min_ms": 57.93168302625418,
+        "wall_max_ms": 58.0471430439502,
+        "wall_samples_ms": [
+          58.0471430439502,
+          57.99228302203119,
+          57.99145414493978,
+          58.00873297266662,
+          57.96247301623225,
+          57.95703292824328,
+          57.972494047135115,
+          57.97324306331575,
+          57.93168302625418
+        ],
+        "event_median_ms": 57.96303939819336,
+        "event_samples_ms": [
+          58.031585693359375,
+          57.981407165527344,
+          57.97993469238281,
+          57.99827194213867,
+          57.95199966430664,
+          57.94668960571289,
+          57.96217727661133,
+          57.96303939819336,
+          57.92115020751953
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 7.483277357923344e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 65.45779202133417,
+        "wall_min_ms": 65.40716299787164,
+        "wall_max_ms": 65.49858208745718,
+        "wall_samples_ms": [
+          65.40716299787164,
+          65.42306207120419,
+          65.46855205669999,
+          65.45489304699004,
+          65.45779202133417,
+          65.49858208745718,
+          65.48677291721106,
+          65.45502203516662,
+          65.46772317960858
+        ],
+        "event_median_ms": 65.44380950927734,
+        "event_samples_ms": [
+          65.38774108886719,
+          65.40860748291016,
+          65.45500946044922,
+          65.44124603271484,
+          65.44380950927734,
+          65.48470306396484,
+          65.47344207763672,
+          65.44134521484375,
+          65.45478057861328
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 7.483277357923344e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "redwood-n100000-q1024-sigma0-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "redwood",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.252509955316782,
+      "build": {
+        "wall_median_ms": 6.333069875836372,
+        "wall_min_ms": 6.324439076706767,
+        "wall_max_ms": 6.363630061969161,
+        "wall_samples_ms": [
+          6.363630061969161,
+          6.342228967696428,
+          6.3340989872813225,
+          6.327908951789141,
+          6.325139896944165,
+          6.324439076706767,
+          6.328019080683589,
+          6.33573904633522,
+          6.333069875836372
+        ],
+        "event_median_ms": 6.32144021987915,
+        "event_samples_ms": [
+          6.3384318351745605,
+          6.330207824707031,
+          6.322559833526611,
+          6.316544055938721,
+          6.3145599365234375,
+          6.314239978790283,
+          6.316160202026367,
+          6.323775768280029,
+          6.32144021987915
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 3.1049700919538736,
+        "wall_min_ms": 3.102069953456521,
+        "wall_max_ms": 3.128048963844776,
+        "wall_samples_ms": [
+          3.128048963844776,
+          3.1030699610710144,
+          3.110080026090145,
+          3.10576893389225,
+          3.1049700919538736,
+          3.1037800945341587,
+          3.102339105680585,
+          3.1154099851846695,
+          3.102069953456521
+        ],
+        "event_median_ms": 3.094815969467163,
+        "event_samples_ms": [
+          3.1130878925323486,
+          3.0934720039367676,
+          3.0999999046325684,
+          3.0949440002441406,
+          3.094815969467163,
+          3.0937280654907227,
+          3.0925440788269043,
+          3.1056320667266846,
+          3.092384099960327
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.9459914881988654e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 9.44660883396864,
+        "wall_min_ms": 9.429239202290773,
+        "wall_max_ms": 9.45762894116342,
+        "wall_samples_ms": [
+          9.45762894116342,
+          9.45251900702715,
+          9.456169093027711,
+          9.433739120140672,
+          9.448427939787507,
+          9.429239202290773,
+          9.441148955374956,
+          9.437788976356387,
+          9.44660883396864
+        ],
+        "event_median_ms": 9.433504104614258,
+        "event_samples_ms": [
+          9.439071655273438,
+          9.438431739807129,
+          9.443296432495117,
+          9.4203519821167,
+          9.435040473937988,
+          9.415807723999023,
+          9.427647590637207,
+          9.42563247680664,
+          9.433504104614258
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.9459914881988654e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "redwood-n100000-q1024-sigma0-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "redwood",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.2640499733388424,
+      "build": {
+        "wall_median_ms": 6.331630051136017,
+        "wall_min_ms": 6.322199013084173,
+        "wall_max_ms": 6.376579171046615,
+        "wall_samples_ms": [
+          6.376579171046615,
+          6.333499914035201,
+          6.3380589708685875,
+          6.322199013084173,
+          6.332748802378774,
+          6.331630051136017,
+          6.325708935037255,
+          6.3299990724772215,
+          6.3261790201067924
+        ],
+        "event_median_ms": 6.320896148681641,
+        "event_samples_ms": [
+          6.3494720458984375,
+          6.320896148681641,
+          6.326272010803223,
+          6.310495853424072,
+          6.3218560218811035,
+          6.322207927703857,
+          6.315104007720947,
+          6.318784236907959,
+          6.314688205718994
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 12.962807901203632,
+        "wall_min_ms": 12.951807817444205,
+        "wall_max_ms": 12.984598986804485,
+        "wall_samples_ms": [
+          12.983629014343023,
+          12.951807817444205,
+          12.981039006263018,
+          12.962807901203632,
+          12.977938866242766,
+          12.959467945620418,
+          12.961238855496049,
+          12.954517966136336,
+          12.984598986804485
+        ],
+        "event_median_ms": 12.952095985412598,
+        "event_samples_ms": [
+          12.969632148742676,
+          12.941311836242676,
+          12.970751762390137,
+          12.951616287231445,
+          12.966591835021973,
+          12.949695587158203,
+          12.952095985412598,
+          12.94540786743164,
+          12.971936225891113
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.7803788756139845e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 19.30352789349854,
+        "wall_min_ms": 19.272417994216084,
+        "wall_max_ms": 19.334646873176098,
+        "wall_samples_ms": [
+          19.324107794091105,
+          19.334646873176098,
+          19.30352789349854,
+          19.286847906187177,
+          19.320587161928415,
+          19.30618821643293,
+          19.300417974591255,
+          19.272417994216084,
+          19.28811799734831
+        ],
+        "event_median_ms": 19.29007911682129,
+        "event_samples_ms": [
+          19.30508804321289,
+          19.322080612182617,
+          19.29007911682129,
+          19.273439407348633,
+          19.307167053222656,
+          19.29395294189453,
+          19.28704071044922,
+          19.259328842163086,
+          19.27552032470703
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.7803788756139845e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "redwood-n100000-q1024-sigma0.01-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "redwood",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.24025002494454384,
+      "build": {
+        "wall_median_ms": 6.983558880165219,
+        "wall_min_ms": 6.973590003326535,
+        "wall_max_ms": 7.014040136709809,
+        "wall_samples_ms": [
+          7.014040136709809,
+          6.994609022513032,
+          6.995809031650424,
+          6.981679005548358,
+          6.987208966165781,
+          6.973590003326535,
+          6.981879007071257,
+          6.980399135500193,
+          6.983558880165219
+        ],
+        "event_median_ms": 6.972320079803467,
+        "event_samples_ms": [
+          6.989312171936035,
+          6.983071804046631,
+          6.984608173370361,
+          6.970304012298584,
+          6.975872039794922,
+          6.96127986907959,
+          6.970623970031738,
+          6.9692158699035645,
+          6.972320079803467
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 3.4580498468130827,
+        "wall_min_ms": 3.4529599361121655,
+        "wall_max_ms": 3.4898698795586824,
+        "wall_samples_ms": [
+          3.4898698795586824,
+          3.471218980848789,
+          3.4572200383991003,
+          3.4576701000332832,
+          3.4558989573270082,
+          3.465469926595688,
+          3.4711589105427265,
+          3.4529599361121655,
+          3.4580498468130827
+        ],
+        "event_median_ms": 3.4482240676879883,
+        "event_samples_ms": [
+          3.4753599166870117,
+          3.460576057434082,
+          3.4473280906677246,
+          3.4477760791778564,
+          3.446079969406128,
+          3.455552101135254,
+          3.4609920978546143,
+          3.4431040287017822,
+          3.4482240676879883
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.380549127171356e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 10.444868821650743,
+        "wall_min_ms": 10.43787901289761,
+        "wall_max_ms": 10.473208967596292,
+        "wall_samples_ms": [
+          10.473208967596292,
+          10.465628001838923,
+          10.448938934132457,
+          10.439949110150337,
+          10.43787901289761,
+          10.441357968375087,
+          10.45137899927795,
+          10.44338895007968,
+          10.444868821650743
+        ],
+        "event_median_ms": 10.431903839111328,
+        "event_samples_ms": [
+          10.453984260559082,
+          10.4518404006958,
+          10.435456275939941,
+          10.426655769348145,
+          10.424511909484863,
+          10.428288459777832,
+          10.438143730163574,
+          10.430496215820312,
+          10.431903839111328
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.380549127171356e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "redwood-n100000-q1024-sigma0.01-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "redwood",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.27155899442732334,
+      "build": {
+        "wall_median_ms": 6.985989864915609,
+        "wall_min_ms": 6.974139017984271,
+        "wall_max_ms": 7.0349988527596,
+        "wall_samples_ms": [
+          7.0349988527596,
+          6.990749156102538,
+          6.987008964642882,
+          6.985989864915609,
+          6.9871689192950726,
+          6.982018938288093,
+          6.974139017984271,
+          6.976238917559385,
+          6.982058985158801
+        ],
+        "event_median_ms": 6.974207878112793,
+        "event_samples_ms": [
+          7.007711887359619,
+          6.9791998863220215,
+          6.975808143615723,
+          6.974207878112793,
+          6.975456237792969,
+          6.970016002655029,
+          6.962687969207764,
+          6.965888023376465,
+          6.971807956695557
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 14.291508821770549,
+        "wall_min_ms": 14.270987827330828,
+        "wall_max_ms": 14.30993783287704,
+        "wall_samples_ms": [
+          14.297287911176682,
+          14.291508821770549,
+          14.273438137024641,
+          14.290818013250828,
+          14.279249124228954,
+          14.30993783287704,
+          14.270987827330828,
+          14.300829032436013,
+          14.309797901660204
+        ],
+        "event_median_ms": 14.280960083007812,
+        "event_samples_ms": [
+          14.282719612121582,
+          14.280960083007812,
+          14.254207611083984,
+          14.280768394470215,
+          14.269184112548828,
+          14.299776077270508,
+          14.260704040527344,
+          14.288864135742188,
+          14.299488067626953
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.97969903417106e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 21.273227175697684,
+        "wall_min_ms": 21.239268127828836,
+        "wall_max_ms": 21.298096980899572,
+        "wall_samples_ms": [
+          21.298096980899572,
+          21.26336796209216,
+          21.273227175697684,
+          21.239268127828836,
+          21.292037097737193,
+          21.280338056385517,
+          21.267646923661232,
+          21.267927950248122,
+          21.274917060509324
+        ],
+        "event_median_ms": 21.259775161743164,
+        "event_samples_ms": [
+          21.279232025146484,
+          21.248960494995117,
+          21.259775161743164,
+          21.226112365722656,
+          21.27836799621582,
+          21.262527465820312,
+          21.254592895507812,
+          21.255008697509766,
+          21.262367248535156
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.97969903417106e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "bunny_surface-n100000-q1024-sigma0-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "bunny_surface",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.2453499473631382,
+      "build": {
+        "wall_median_ms": 6.725048879161477,
+        "wall_min_ms": 6.7177999299019575,
+        "wall_max_ms": 6.7599990870803595,
+        "wall_samples_ms": [
+          6.7599990870803595,
+          6.736319046467543,
+          6.733739981427789,
+          6.728238891810179,
+          6.720919162034988,
+          6.725048879161477,
+          6.7177999299019575,
+          6.723219063133001,
+          6.7190490663051605
+        ],
+        "event_median_ms": 6.714816093444824,
+        "event_samples_ms": [
+          6.734496116638184,
+          6.725183963775635,
+          6.722847938537598,
+          6.71676778793335,
+          6.710432052612305,
+          6.714816093444824,
+          6.706495761871338,
+          6.7129597663879395,
+          6.70908784866333
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 1.871180022135377,
+        "wall_min_ms": 1.8593301065266132,
+        "wall_max_ms": 1.889650011435151,
+        "wall_samples_ms": [
+          1.8889699131250381,
+          1.889650011435151,
+          1.8822001293301582,
+          1.8660998903214931,
+          1.861628843471408,
+          1.8714300822466612,
+          1.8622900824993849,
+          1.8593301065266132,
+          1.871180022135377
+        ],
+        "event_median_ms": 1.8616000413894653,
+        "event_samples_ms": [
+          1.8747199773788452,
+          1.8791359663009644,
+          1.8722879886627197,
+          1.856384038925171,
+          1.851647973060608,
+          1.8617600202560425,
+          1.853279948234558,
+          1.8496960401535034,
+          1.8616000413894653
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.937386688793109e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 8.5992191452533,
+        "wall_min_ms": 8.577189175412059,
+        "wall_max_ms": 8.610469056293368,
+        "wall_samples_ms": [
+          8.606228977441788,
+          8.598078973591328,
+          8.610469056293368,
+          8.590159006416798,
+          8.609479060396552,
+          8.60736914910376,
+          8.592649130150676,
+          8.5992191452533,
+          8.577189175412059
+        ],
+        "event_median_ms": 8.586079597473145,
+        "event_samples_ms": [
+          8.58790397644043,
+          8.584511756896973,
+          8.596960067749023,
+          8.57744026184082,
+          8.596639633178711,
+          8.594688415527344,
+          8.580127716064453,
+          8.586079597473145,
+          8.564512252807617
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.937386688793109e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "bunny_surface-n100000-q1024-sigma0-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "bunny_surface",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.24199998006224632,
+      "build": {
+        "wall_median_ms": 6.724099162966013,
+        "wall_min_ms": 6.714729126542807,
+        "wall_max_ms": 6.7587189842015505,
+        "wall_samples_ms": [
+          6.7587189842015505,
+          6.734189111739397,
+          6.731259869411588,
+          6.724099162966013,
+          6.725258892402053,
+          6.714729126542807,
+          6.715988973155618,
+          6.722120102494955,
+          6.716008996590972
+        ],
+        "event_median_ms": 6.712768077850342,
+        "event_samples_ms": [
+          6.73360013961792,
+          6.721695899963379,
+          6.719488143920898,
+          6.712768077850342,
+          6.71395206451416,
+          6.703680038452148,
+          6.704991817474365,
+          6.710815906524658,
+          6.704927921295166
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 8.650979027152061,
+        "wall_min_ms": 8.62725917249918,
+        "wall_max_ms": 8.658869192004204,
+        "wall_samples_ms": [
+          8.651688927784562,
+          8.650979027152061,
+          8.645449066534638,
+          8.64110910333693,
+          8.62725917249918,
+          8.651259122416377,
+          8.656779071316123,
+          8.658869192004204,
+          8.645459078252316
+        ],
+        "event_median_ms": 8.637984275817871,
+        "event_samples_ms": [
+          8.637984275817871,
+          8.640576362609863,
+          8.63548755645752,
+          8.630880355834961,
+          8.618016242980957,
+          8.641216278076172,
+          8.646880149841309,
+          8.649087905883789,
+          8.635359764099121
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 6.37292299673197e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 15.380808152258396,
+        "wall_min_ms": 15.361767960712314,
+        "wall_max_ms": 15.391307882964611,
+        "wall_samples_ms": [
+          15.38713788613677,
+          15.380808152258396,
+          15.381227945908904,
+          15.37345815449953,
+          15.38738887757063,
+          15.391307882964611,
+          15.361767960712314,
+          15.370007837191224,
+          15.362499048933387
+        ],
+        "event_median_ms": 15.367199897766113,
+        "event_samples_ms": [
+          15.368895530700684,
+          15.367199897766113,
+          15.367903709411621,
+          15.36019229888916,
+          15.374336242675781,
+          15.37775993347168,
+          15.34988784790039,
+          15.357215881347656,
+          15.349472045898438
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 6.37292299673197e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "bunny_surface-n100000-q1024-sigma0.01-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "bunny_surface",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.23141992278397083,
+      "build": {
+        "wall_median_ms": 6.966728949919343,
+        "wall_min_ms": 6.954078795388341,
+        "wall_max_ms": 7.0047390181571245,
+        "wall_samples_ms": [
+          7.0047390181571245,
+          6.975529016926885,
+          6.974678952246904,
+          6.966728949919343,
+          6.96895900182426,
+          6.9647799246013165,
+          6.964348955079913,
+          6.954078795388341,
+          6.963819032534957
+        ],
+        "event_median_ms": 6.955552101135254,
+        "event_samples_ms": [
+          6.9798078536987305,
+          6.963551998138428,
+          6.963232040405273,
+          6.955552101135254,
+          6.957759857177734,
+          6.953855991363525,
+          6.953152179718018,
+          6.94271993637085,
+          6.952479839324951
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 3.5495900083333254,
+        "wall_min_ms": 3.5373789723962545,
+        "wall_max_ms": 3.6238599568605423,
+        "wall_samples_ms": [
+          3.6238599568605423,
+          3.5824289079755545,
+          3.575060050934553,
+          3.561649937182665,
+          3.547798842191696,
+          3.5481699742376804,
+          3.5373789723962545,
+          3.5478000063449144,
+          3.5495900083333254
+        ],
+        "event_median_ms": 3.540832042694092,
+        "event_samples_ms": [
+          3.6041600704193115,
+          3.571135997772217,
+          3.5647358894348145,
+          3.5517759323120117,
+          3.5379838943481445,
+          3.5384318828582764,
+          3.527679920196533,
+          3.5379838943481445,
+          3.540832042694092
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.900442368075554e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 10.525999125093222,
+        "wall_min_ms": 10.50869794562459,
+        "wall_max_ms": 10.532098822295666,
+        "wall_samples_ms": [
+          10.531788226217031,
+          10.517869144678116,
+          10.530689032748342,
+          10.517278918996453,
+          10.531239211559296,
+          10.50869794562459,
+          10.518619092181325,
+          10.532098822295666,
+          10.525999125093222
+        ],
+        "event_median_ms": 10.51260757446289,
+        "event_samples_ms": [
+          10.513216018676758,
+          10.504511833190918,
+          10.51756763458252,
+          10.504351615905762,
+          10.518207550048828,
+          10.495967864990234,
+          10.505599975585938,
+          10.519392013549805,
+          10.51260757446289
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.900442368075554e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "bunny_surface-n100000-q1024-sigma0.01-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "bunny_surface",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.24225981906056404,
+      "build": {
+        "wall_median_ms": 6.971410010010004,
+        "wall_min_ms": 6.966078886762261,
+        "wall_max_ms": 6.998018827289343,
+        "wall_samples_ms": [
+          6.998018827289343,
+          6.973078940063715,
+          6.973029114305973,
+          6.971410010010004,
+          6.971749011427164,
+          6.9666290655732155,
+          6.966078886762261,
+          6.967388791963458,
+          6.969680078327656
+        ],
+        "event_median_ms": 6.959871768951416,
+        "event_samples_ms": [
+          6.973152160644531,
+          6.96073579788208,
+          6.961184024810791,
+          6.959871768951416,
+          6.960256099700928,
+          6.955135822296143,
+          6.954815864562988,
+          6.957087993621826,
+          6.959712028503418
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 11.958978837355971,
+        "wall_min_ms": 11.931878048926592,
+        "wall_max_ms": 11.979819042608142,
+        "wall_samples_ms": [
+          11.979568051174283,
+          11.97476894594729,
+          11.979819042608142,
+          11.962858028709888,
+          11.958978837355971,
+          11.95596787147224,
+          11.95592898875475,
+          11.942579178139567,
+          11.931878048926592
+        ],
+        "event_median_ms": 11.948639869689941,
+        "event_samples_ms": [
+          11.963935852050781,
+          11.963199615478516,
+          11.968928337097168,
+          11.953696250915527,
+          11.948639869689941,
+          11.946240425109863,
+          11.94604778289795,
+          11.93273639678955,
+          11.922080039978027
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 6.642139820908668e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 18.93689692951739,
+        "wall_min_ms": 18.91550701111555,
+        "wall_max_ms": 18.962368136271834,
+        "wall_samples_ms": [
+          18.962368136271834,
+          18.93968810327351,
+          18.944877898320556,
+          18.91550701111555,
+          18.93886784091592,
+          18.921578070148826,
+          18.93163798376918,
+          18.926298012956977,
+          18.93689692951739
+        ],
+        "event_median_ms": 18.918752670288086,
+        "event_samples_ms": [
+          18.943647384643555,
+          18.9136962890625,
+          18.93168067932129,
+          18.902368545532227,
+          18.925695419311523,
+          18.908447265625,
+          18.918752670288086,
+          18.913440704345703,
+          18.924095153808594
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 6.642139820908668e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "sphere-n100000-q1024-sigma0-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "sphere",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.24402979761362076,
+      "build": {
+        "wall_median_ms": 6.684208987280726,
+        "wall_min_ms": 6.6750990226864815,
+        "wall_max_ms": 6.710530025884509,
+        "wall_samples_ms": [
+          6.710530025884509,
+          6.684109102934599,
+          6.709869019687176,
+          6.687109125778079,
+          6.686939857900143,
+          6.684208987280726,
+          6.6750990226864815,
+          6.682099075987935,
+          6.678998935967684
+        ],
+        "event_median_ms": 6.6735358238220215,
+        "event_samples_ms": [
+          6.685952186584473,
+          6.67139196395874,
+          6.69814395904541,
+          6.675424098968506,
+          6.676608085632324,
+          6.6735358238220215,
+          6.663839817047119,
+          6.670783996582031,
+          6.667967796325684
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 1.608939841389656,
+        "wall_min_ms": 1.6032501589506865,
+        "wall_max_ms": 1.6290699131786823,
+        "wall_samples_ms": [
+          1.6290699131786823,
+          1.6141899395734072,
+          1.6241490375250578,
+          1.608939841389656,
+          1.6115200705826283,
+          1.6046199016273022,
+          1.6057100147008896,
+          1.6037989407777786,
+          1.6032501589506865
+        ],
+        "event_median_ms": 1.5999679565429688,
+        "event_samples_ms": [
+          1.6157439947128296,
+          1.6038719415664673,
+          1.6134079694747925,
+          1.5999679565429688,
+          1.6015360355377197,
+          1.5949440002441406,
+          1.5947200059890747,
+          1.5938880443572998,
+          1.593440055847168
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.162058051457841e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 8.29837890341878,
+        "wall_min_ms": 8.272428996860981,
+        "wall_max_ms": 8.304948918521404,
+        "wall_samples_ms": [
+          8.304948918521404,
+          8.3017791621387,
+          8.301758905872703,
+          8.289329009130597,
+          8.294438943266869,
+          8.272428996860981,
+          8.282829076051712,
+          8.303978946059942,
+          8.29837890341878
+        ],
+        "event_median_ms": 8.285856246948242,
+        "event_samples_ms": [
+          8.286687850952148,
+          8.288191795349121,
+          8.288543701171875,
+          8.276063919067383,
+          8.28166389465332,
+          8.260640144348145,
+          8.270079612731934,
+          8.291007995605469,
+          8.285856246948242
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.162058051457841e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "sphere-n100000-q1024-sigma0-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "sphere",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.2370099537074566,
+      "build": {
+        "wall_median_ms": 6.689678877592087,
+        "wall_min_ms": 6.673590047284961,
+        "wall_max_ms": 6.72423979267478,
+        "wall_samples_ms": [
+          6.72423979267478,
+          6.701529026031494,
+          6.689678877592087,
+          6.689299130812287,
+          6.673590047284961,
+          6.689689122140408,
+          6.684289081022143,
+          6.690989015623927,
+          6.681439001113176
+        ],
+        "event_median_ms": 6.678112030029297,
+        "event_samples_ms": [
+          6.699999809265137,
+          6.688928127288818,
+          6.678112030029297,
+          6.677696228027344,
+          6.661983966827393,
+          6.678207874298096,
+          6.672832012176514,
+          6.679711818695068,
+          6.67091178894043
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 7.605779217556119,
+        "wall_min_ms": 7.584379054605961,
+        "wall_max_ms": 7.640038849785924,
+        "wall_samples_ms": [
+          7.6217190362513065,
+          7.614549016579986,
+          7.609249092638493,
+          7.588888984173536,
+          7.605779217556119,
+          7.640038849785924,
+          7.584379054605961,
+          7.605358958244324,
+          7.602799916639924
+        ],
+        "event_median_ms": 7.595808029174805,
+        "event_samples_ms": [
+          7.607168197631836,
+          7.60422420501709,
+          7.598944187164307,
+          7.578527927398682,
+          7.595808029174805,
+          7.630015850067139,
+          7.574240207672119,
+          7.595200061798096,
+          7.592639923095703
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 7.170899080867703e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 14.289428014308214,
+        "wall_min_ms": 14.27972805686295,
+        "wall_max_ms": 14.32255795225501,
+        "wall_samples_ms": [
+          14.289858052507043,
+          14.27972805686295,
+          14.283969067037106,
+          14.289428014308214,
+          14.28423821926117,
+          14.288718812167645,
+          14.290888095274568,
+          14.32255795225501,
+          14.297249028459191
+        ],
+        "event_median_ms": 14.275327682495117,
+        "event_samples_ms": [
+          14.271488189697266,
+          14.266336441040039,
+          14.271519660949707,
+          14.276127815246582,
+          14.271424293518066,
+          14.275327682495117,
+          14.277824401855469,
+          14.308704376220703,
+          14.283679962158203
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 7.170899080867703e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "sphere-n100000-q1024-sigma0.01-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "sphere",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.2541299909353256,
+      "build": {
+        "wall_median_ms": 6.90238899551332,
+        "wall_min_ms": 6.895769853144884,
+        "wall_max_ms": 6.9391499273478985,
+        "wall_samples_ms": [
+          6.9391499273478985,
+          6.909218849614263,
+          6.90483907237649,
+          6.900798995047808,
+          6.91414880566299,
+          6.895769853144884,
+          6.90238899551332,
+          6.8969090934842825,
+          6.896189181134105
+        ],
+        "event_median_ms": 6.892032146453857,
+        "event_samples_ms": [
+          6.913951873779297,
+          6.8968000411987305,
+          6.893216133117676,
+          6.888991832733154,
+          6.902688026428223,
+          6.884448051452637,
+          6.892032146453857,
+          6.8862080574035645,
+          6.884928226470947
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 2.4114400148391724,
+        "wall_min_ms": 2.401920035481453,
+        "wall_max_ms": 2.4431098718196154,
+        "wall_samples_ms": [
+          2.4291900917887688,
+          2.4152598343789577,
+          2.4087000638246536,
+          2.4053389206528664,
+          2.402910031378269,
+          2.4114400148391724,
+          2.401920035481453,
+          2.4155189748853445,
+          2.4431098718196154
+        ],
+        "event_median_ms": 2.401952028274536,
+        "event_samples_ms": [
+          2.4157121181488037,
+          2.4052159786224365,
+          2.3990399837493896,
+          2.3957760334014893,
+          2.3932480812072754,
+          2.401952028274536,
+          2.3923521041870117,
+          2.4056639671325684,
+          2.429408073425293
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.3850373029149354e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 9.324559010565281,
+        "wall_min_ms": 9.311839006841183,
+        "wall_max_ms": 9.33544896543026,
+        "wall_samples_ms": [
+          9.33544896543026,
+          9.325138991698623,
+          9.311839006841183,
+          9.312378941103816,
+          9.318718919530511,
+          9.324318962171674,
+          9.324559010565281,
+          9.327238891273737,
+          9.327528066933155
+        ],
+        "event_median_ms": 9.311360359191895,
+        "event_samples_ms": [
+          9.316800117492676,
+          9.311039924621582,
+          9.298208236694336,
+          9.29916763305664,
+          9.305343627929688,
+          9.311360359191895,
+          9.311552047729492,
+          9.314111709594727,
+          9.31436824798584
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.3850373029149354e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "sphere-n100000-q1024-sigma0.01-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "sphere",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.24486985057592392,
+      "build": {
+        "wall_median_ms": 6.908039096742868,
+        "wall_min_ms": 6.898119114339352,
+        "wall_max_ms": 6.937249097973108,
+        "wall_samples_ms": [
+          6.937249097973108,
+          6.919879000633955,
+          6.9017799105495214,
+          6.908738985657692,
+          6.908039096742868,
+          6.898119114339352,
+          6.8988800048828125,
+          6.9010891020298,
+          6.9235689006745815
+        ],
+        "event_median_ms": 6.896639823913574,
+        "event_samples_ms": [
+          6.9121599197387695,
+          6.907839775085449,
+          6.889984130859375,
+          6.897183895111084,
+          6.896639823913574,
+          6.886688232421875,
+          6.887360095977783,
+          6.888512134552002,
+          6.911007881164551
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 10.040309047326446,
+        "wall_min_ms": 10.016439016908407,
+        "wall_max_ms": 10.066738119348884,
+        "wall_samples_ms": [
+          10.066738119348884,
+          10.036538820713758,
+          10.052288882434368,
+          10.029219090938568,
+          10.041879024356604,
+          10.016439016908407,
+          10.043678106740117,
+          10.017779190093279,
+          10.040309047326446
+        ],
+        "event_median_ms": 10.030240058898926,
+        "event_samples_ms": [
+          10.051936149597168,
+          10.026176452636719,
+          10.041600227355957,
+          10.018688201904297,
+          10.032064437866211,
+          10.006591796875,
+          10.033439636230469,
+          10.008031845092773,
+          10.030240058898926
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 6.49085893526501e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 16.94611692801118,
+        "wall_min_ms": 16.913807950913906,
+        "wall_max_ms": 16.97765802964568,
+        "wall_samples_ms": [
+          16.949029173702,
+          16.94611692801118,
+          16.968688927590847,
+          16.913807950913906,
+          16.97765802964568,
+          16.952088102698326,
+          16.934558050706983,
+          16.9181979727,
+          16.945437993854284
+        ],
+        "event_median_ms": 16.93212890625,
+        "event_samples_ms": [
+          16.9303035736084,
+          16.932512283325195,
+          16.955360412597656,
+          16.90060806274414,
+          16.96294403076172,
+          16.939359664916992,
+          16.92144012451172,
+          16.90483283996582,
+          16.93212890625
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 6.49085893526501e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "volume-n100000-q1024-sigma0-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "volume",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.2626699861139059,
+      "build": {
+        "wall_median_ms": 7.602570112794638,
+        "wall_min_ms": 7.595479022711515,
+        "wall_max_ms": 7.639298914000392,
+        "wall_samples_ms": [
+          7.639298914000392,
+          7.617919007316232,
+          7.61273899115622,
+          7.612239103764296,
+          7.599368924275041,
+          7.598738884553313,
+          7.60057894513011,
+          7.602570112794638,
+          7.595479022711515
+        ],
+        "event_median_ms": 7.591231822967529,
+        "event_samples_ms": [
+          7.613376140594482,
+          7.606815814971924,
+          7.600927829742432,
+          7.600575923919678,
+          7.587776184082031,
+          7.588479995727539,
+          7.589983940124512,
+          7.591231822967529,
+          7.584447860717773
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 2.4141299072653055,
+        "wall_min_ms": 2.407229971140623,
+        "wall_max_ms": 2.4323889520019293,
+        "wall_samples_ms": [
+          2.4246498942375183,
+          2.4323889520019293,
+          2.418890129774809,
+          2.408600179478526,
+          2.4141299072653055,
+          2.409938955679536,
+          2.4149101227521896,
+          2.407229971140623,
+          2.413130132481456
+        ],
+        "event_median_ms": 2.4040639400482178,
+        "event_samples_ms": [
+          2.410912036895752,
+          2.4141759872436523,
+          2.4086720943450928,
+          2.3986239433288574,
+          2.4040639400482178,
+          2.4007680416107178,
+          2.4060800075531006,
+          2.397536039352417,
+          2.4034879207611084
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.203111439764936e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 10.023318929597735,
+        "wall_min_ms": 10.016988031566143,
+        "wall_max_ms": 10.047319112345576,
+        "wall_samples_ms": [
+          10.047319112345576,
+          10.033837985247374,
+          10.018768953159451,
+          10.023318929597735,
+          10.02333895303309,
+          10.028448887169361,
+          10.021309135481715,
+          10.016988031566143,
+          10.022698901593685
+        ],
+        "event_median_ms": 10.010080337524414,
+        "event_samples_ms": [
+          10.02883243560791,
+          10.020352363586426,
+          10.005696296691895,
+          10.010080337524414,
+          10.01030445098877,
+          10.015359878540039,
+          10.008383750915527,
+          10.004608154296875,
+          10.010080337524414
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.203111439764936e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "volume-n100000-q1024-sigma0-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "volume",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.24569989182054996,
+      "build": {
+        "wall_median_ms": 7.609488908201456,
+        "wall_min_ms": 7.598188938573003,
+        "wall_max_ms": 7.643039105460048,
+        "wall_samples_ms": [
+          7.643039105460048,
+          7.6146291103214025,
+          7.611979963257909,
+          7.604469079524279,
+          7.609488908201456,
+          7.598698837682605,
+          7.605988997966051,
+          7.609769003465772,
+          7.598188938573003
+        ],
+        "event_median_ms": 7.598112106323242,
+        "event_samples_ms": [
+          7.618048191070557,
+          7.602496147155762,
+          7.600575923919678,
+          7.593023777008057,
+          7.599008083343506,
+          7.588352203369141,
+          7.5944318771362305,
+          7.598112106323242,
+          7.586719989776611
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 11.774108977988362,
+        "wall_min_ms": 11.74515881575644,
+        "wall_max_ms": 11.799678904935718,
+        "wall_samples_ms": [
+          11.799678904935718,
+          11.779359076172113,
+          11.795428115874529,
+          11.774108977988362,
+          11.76198897883296,
+          11.782858055084944,
+          11.74515881575644,
+          11.768447933718562,
+          11.755638988688588
+        ],
+        "event_median_ms": 11.763872146606445,
+        "event_samples_ms": [
+          11.784671783447266,
+          11.768383979797363,
+          11.785759925842285,
+          11.763872146606445,
+          11.751999855041504,
+          11.772928237915039,
+          11.734368324279785,
+          11.759391784667969,
+          11.74563217163086
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 7.393855488764885e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 19.384077982977033,
+        "wall_min_ms": 19.36837797984481,
+        "wall_max_ms": 19.40060779452324,
+        "wall_samples_ms": [
+          19.393788184970617,
+          19.40060779452324,
+          19.377697026357055,
+          19.36837797984481,
+          19.383508013561368,
+          19.395916955545545,
+          19.384077982977033,
+          19.376478157937527,
+          19.3861979059875
+        ],
+        "event_median_ms": 19.371423721313477,
+        "event_samples_ms": [
+          19.375328063964844,
+          19.387136459350586,
+          19.364479064941406,
+          19.345888137817383,
+          19.370399475097656,
+          19.382848739624023,
+          19.371423721313477,
+          19.363487243652344,
+          19.37321662902832
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 7.393855488764885e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "volume-n100000-q1024-sigma0.01-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "volume",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.24855020456016064,
+      "build": {
+        "wall_median_ms": 7.602768950164318,
+        "wall_min_ms": 7.593989139422774,
+        "wall_max_ms": 7.635978981852531,
+        "wall_samples_ms": [
+          7.635978981852531,
+          7.60634895414114,
+          7.610128959640861,
+          7.602768950164318,
+          7.602588972076774,
+          7.6055689714848995,
+          7.598188938573003,
+          7.593989139422774,
+          7.594449911266565
+        ],
+        "event_median_ms": 7.591519832611084,
+        "event_samples_ms": [
+          7.6111040115356445,
+          7.594207763671875,
+          7.598656177520752,
+          7.591519832611084,
+          7.590752124786377,
+          7.594240188598633,
+          7.586751937866211,
+          7.58355188369751,
+          7.584256172180176
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 2.2885198704898357,
+        "wall_min_ms": 2.280490007251501,
+        "wall_max_ms": 2.3234100081026554,
+        "wall_samples_ms": [
+          2.3234100081026554,
+          2.310768933966756,
+          2.293630037456751,
+          2.2885198704898357,
+          2.2839501034468412,
+          2.2816690616309643,
+          2.2814800031483173,
+          2.29045981541276,
+          2.280490007251501
+        ],
+        "event_median_ms": 2.2783679962158203,
+        "event_samples_ms": [
+          2.3081281185150146,
+          2.2999680042266846,
+          2.2843520641326904,
+          2.2783679962158203,
+          2.2743680477142334,
+          2.2717440128326416,
+          2.2727038860321045,
+          2.280927896499634,
+          2.2706239223480225
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.8638219364514655e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 9.893319103866816,
+        "wall_min_ms": 9.889838052913547,
+        "wall_max_ms": 9.905518963932991,
+        "wall_samples_ms": [
+          9.905518963932991,
+          9.893319103866816,
+          9.889838052913547,
+          9.891319088637829,
+          9.894088841974735,
+          9.893679060041904,
+          9.891998954117298,
+          9.890059009194374,
+          9.895317954942584
+        ],
+        "event_median_ms": 9.880672454833984,
+        "event_samples_ms": [
+          9.887200355529785,
+          9.880672454833984,
+          9.877120018005371,
+          9.878496170043945,
+          9.881695747375488,
+          9.880895614624023,
+          9.879136085510254,
+          9.876959800720215,
+          9.88268756866455
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.8638219364514655e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "volume-n100000-q1024-sigma0.01-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "volume",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.23949984461069107,
+      "build": {
+        "wall_median_ms": 7.609678898006678,
+        "wall_min_ms": 7.597849937155843,
+        "wall_max_ms": 7.6368090230971575,
+        "wall_samples_ms": [
+          7.6368090230971575,
+          7.618578849360347,
+          7.609678898006678,
+          7.6075890101492405,
+          7.597849937155843,
+          7.616658927872777,
+          7.608548970893025,
+          7.604158949106932,
+          7.621288998052478
+        ],
+        "event_median_ms": 7.598015785217285,
+        "event_samples_ms": [
+          7.612544059753418,
+          7.60643196105957,
+          7.598015785217285,
+          7.5966081619262695,
+          7.585567951202393,
+          7.60422420501709,
+          7.597055912017822,
+          7.59276819229126,
+          7.6096320152282715
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 12.396989157423377,
+        "wall_min_ms": 12.378547806292772,
+        "wall_max_ms": 12.41828897036612,
+        "wall_samples_ms": [
+          12.41828897036612,
+          12.401808053255081,
+          12.391339056193829,
+          12.409827904775739,
+          12.399469036608934,
+          12.378547806292772,
+          12.395228957757354,
+          12.396989157423377,
+          12.387378141283989
+        ],
+        "event_median_ms": 12.387040138244629,
+        "event_samples_ms": [
+          12.403360366821289,
+          12.391200065612793,
+          12.38099193572998,
+          12.399359703063965,
+          12.38918399810791,
+          12.368608474731445,
+          12.384384155273438,
+          12.387040138244629,
+          12.37769603729248
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 8.712829004049664e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 20.000338088721037,
+        "wall_min_ms": 19.977656891569495,
+        "wall_max_ms": 20.021598087623715,
+        "wall_samples_ms": [
+          20.018438110128045,
+          19.977656891569495,
+          20.001478027552366,
+          20.021598087623715,
+          20.006896927952766,
+          19.99021810479462,
+          19.978176802396774,
+          19.993798108771443,
+          20.000338088721037
+        ],
+        "event_median_ms": 19.987712860107422,
+        "event_samples_ms": [
+          20.00009536743164,
+          19.964384078979492,
+          19.988000869750977,
+          20.008127212524414,
+          19.99388885498047,
+          19.9769287109375,
+          19.965087890625,
+          19.980735778808594,
+          19.987712860107422
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 8.712829004049664e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "clusters-n100000-q1024-sigma0-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "clusters",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.23688003420829773,
+      "build": {
+        "wall_median_ms": 6.765789119526744,
+        "wall_min_ms": 6.757680093869567,
+        "wall_max_ms": 6.798468995839357,
+        "wall_samples_ms": [
+          6.798468995839357,
+          6.769689032807946,
+          6.764759076759219,
+          6.762199802324176,
+          6.768549093976617,
+          6.768038962036371,
+          6.765789119526744,
+          6.76546897739172,
+          6.757680093869567
+        ],
+        "event_median_ms": 6.754432201385498,
+        "event_samples_ms": [
+          6.774655818939209,
+          6.757760047912598,
+          6.752895832061768,
+          6.750304222106934,
+          6.757215976715088,
+          6.756832122802734,
+          6.754432201385498,
+          6.754079818725586,
+          6.746463775634766
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 20.14454803429544,
+        "wall_min_ms": 20.136467879638076,
+        "wall_max_ms": 20.158977946266532,
+        "wall_samples_ms": [
+          20.158977946266532,
+          20.14742698520422,
+          20.136467879638076,
+          20.14454803429544,
+          20.14247700572014,
+          20.146908005699515,
+          20.148426992818713,
+          20.140717970207334,
+          20.140407839789987
+        ],
+        "event_median_ms": 20.134111404418945,
+        "event_samples_ms": [
+          20.143936157226562,
+          20.136064529418945,
+          20.12611198425293,
+          20.134111404418945,
+          20.13222312927246,
+          20.136640548706055,
+          20.138111114501953,
+          20.13091278076172,
+          20.13055992126465
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.931982244206095e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 26.9216769374907,
+        "wall_min_ms": 26.89420711249113,
+        "wall_max_ms": 26.956557063385844,
+        "wall_samples_ms": [
+          26.940856827422976,
+          26.9216769374907,
+          26.89420711249113,
+          26.920685777440667,
+          26.94698702543974,
+          26.956557063385844,
+          26.943457080051303,
+          26.90697694197297,
+          26.91388688981533
+        ],
+        "event_median_ms": 26.907615661621094,
+        "event_samples_ms": [
+          26.922016143798828,
+          26.894912719726562,
+          26.882272720336914,
+          26.907615661621094,
+          26.93235206604004,
+          26.942079544067383,
+          26.929855346679688,
+          26.89276885986328,
+          26.900447845458984
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.931982244206095e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "clusters-n100000-q1024-sigma0-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "clusters",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.242569949477911,
+      "build": {
+        "wall_median_ms": 6.76807900890708,
+        "wall_min_ms": 6.761268945410848,
+        "wall_max_ms": 6.805569166317582,
+        "wall_samples_ms": [
+          6.805569166317582,
+          6.771498825401068,
+          6.762040080502629,
+          6.770198931917548,
+          6.761618889868259,
+          6.76807900890708,
+          6.7637290339916945,
+          6.773300003260374,
+          6.761268945410848
+        ],
+        "event_median_ms": 6.756415843963623,
+        "event_samples_ms": [
+          6.780320167541504,
+          6.760159969329834,
+          6.750368118286133,
+          6.759583950042725,
+          6.7512640953063965,
+          6.756415843963623,
+          6.7526397705078125,
+          6.761824131011963,
+          6.750016212463379
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 217.86623517982662,
+        "wall_min_ms": 217.74791507050395,
+        "wall_max_ms": 217.92968502268195,
+        "wall_samples_ms": [
+          217.82559505663812,
+          217.86114410497248,
+          217.74791507050395,
+          217.83859399147332,
+          217.86623517982662,
+          217.86688501015306,
+          217.9120839573443,
+          217.92968502268195,
+          217.91077381931245
+        ],
+        "event_median_ms": 217.85414123535156,
+        "event_samples_ms": [
+          217.8092803955078,
+          217.8480987548828,
+          217.7364501953125,
+          217.8269805908203,
+          217.85414123535156,
+          217.85446166992188,
+          217.8997802734375,
+          217.91683959960938,
+          217.89891052246094
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 7.391217696489322e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 224.65099394321442,
+        "wall_min_ms": 224.55193381756544,
+        "wall_max_ms": 224.70633406192064,
+        "wall_samples_ms": [
+          224.6870039962232,
+          224.64752406813204,
+          224.65099394321442,
+          224.69345293939114,
+          224.70633406192064,
+          224.59916397929192,
+          224.67478387989104,
+          224.55193381756544,
+          224.55322300083935
+        ],
+        "event_median_ms": 224.63658142089844,
+        "event_samples_ms": [
+          224.66534423828125,
+          224.6326141357422,
+          224.63658142089844,
+          224.67884826660156,
+          224.6917724609375,
+          224.5846710205078,
+          224.66038513183594,
+          224.53811645507812,
+          224.53817749023438
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 7.391217696489322e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "clusters-n100000-q1024-sigma0.01-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "clusters",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.24548987857997417,
+      "build": {
+        "wall_median_ms": 6.789589067921042,
+        "wall_min_ms": 6.785518955439329,
+        "wall_max_ms": 6.812768988311291,
+        "wall_samples_ms": [
+          6.812768988311291,
+          6.805789889767766,
+          6.789589067921042,
+          6.793319014832377,
+          6.794488988816738,
+          6.787678925320506,
+          6.788769969716668,
+          6.787288933992386,
+          6.785518955439329
+        ],
+        "event_median_ms": 6.7790398597717285,
+        "event_samples_ms": [
+          6.787456035614014,
+          6.794144153594971,
+          6.7790398597717285,
+          6.781856060028076,
+          6.784128189086914,
+          6.776319980621338,
+          6.7782721519470215,
+          6.776864051818848,
+          6.774432182312012
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 13.300169026479125,
+        "wall_min_ms": 13.28729884698987,
+        "wall_max_ms": 13.327787863090634,
+        "wall_samples_ms": [
+          13.327787863090634,
+          13.30995885655284,
+          13.300778111442924,
+          13.302389066666365,
+          13.295198092237115,
+          13.300169026479125,
+          13.287727953866124,
+          13.28729884698987,
+          13.294827891513705
+        ],
+        "event_median_ms": 13.290240287780762,
+        "event_samples_ms": [
+          13.312640190124512,
+          13.291135787963867,
+          13.291808128356934,
+          13.29248046875,
+          13.285280227661133,
+          13.290240287780762,
+          13.27785587310791,
+          13.277376174926758,
+          13.284928321838379
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.396358151622631e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 20.10534703731537,
+        "wall_min_ms": 20.07286692969501,
+        "wall_max_ms": 20.121807930991054,
+        "wall_samples_ms": [
+          20.106986863538623,
+          20.110327983275056,
+          20.121807930991054,
+          20.10534703731537,
+          20.108347991481423,
+          20.10451816022396,
+          20.07286692969501,
+          20.100307883694768,
+          20.102128153666854
+        ],
+        "event_median_ms": 20.09212875366211,
+        "event_samples_ms": [
+          20.08915138244629,
+          20.097248077392578,
+          20.09993553161621,
+          20.093215942382812,
+          20.095199584960938,
+          20.09212875366211,
+          20.059776306152344,
+          20.087167739868164,
+          20.088640213012695
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 4.396358151622631e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "clusters-n100000-q1024-sigma0.01-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "clusters",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.23916992358863354,
+      "build": {
+        "wall_median_ms": 6.796709029003978,
+        "wall_min_ms": 6.788918981328607,
+        "wall_max_ms": 6.815938977524638,
+        "wall_samples_ms": [
+          6.815938977524638,
+          6.803299067541957,
+          6.791979074478149,
+          6.7899189889431,
+          6.797489942982793,
+          6.7983889020979404,
+          6.788918981328607,
+          6.796709029003978,
+          6.791000021621585
+        ],
+        "event_median_ms": 6.784639835357666,
+        "event_samples_ms": [
+          6.791840076446533,
+          6.791103839874268,
+          6.781407833099365,
+          6.77942419052124,
+          6.785408020019531,
+          6.78656005859375,
+          6.777120113372803,
+          6.784639835357666,
+          6.780064105987549
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 162.34041121788323,
+        "wall_min_ms": 162.26153098978102,
+        "wall_max_ms": 162.43271087296307,
+        "wall_samples_ms": [
+          162.39800094626844,
+          162.33098111115396,
+          162.26153098978102,
+          162.29543113149703,
+          162.30672085657716,
+          162.4129507690668,
+          162.43271087296307,
+          162.34945110045373,
+          162.34041121788323
+        ],
+        "event_median_ms": 162.32730102539062,
+        "event_samples_ms": [
+          162.38006591796875,
+          162.31805419921875,
+          162.2492218017578,
+          162.28323364257812,
+          162.2948760986328,
+          162.39804077148438,
+          162.41786193847656,
+          162.33590698242188,
+          162.32730102539062
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 6.834348314314469e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 169.09547988325357,
+        "wall_min_ms": 169.03089103288949,
+        "wall_max_ms": 169.2380600143224,
+        "wall_samples_ms": [
+          169.2380600143224,
+          169.17021106928587,
+          169.1077200230211,
+          169.09547988325357,
+          169.07896008342505,
+          169.04962109401822,
+          169.1163401119411,
+          169.03236997313797,
+          169.03089103288949
+        ],
+        "event_median_ms": 169.08128356933594,
+        "event_samples_ms": [
+          169.21014404296875,
+          169.15298461914062,
+          169.09129333496094,
+          169.08128356933594,
+          169.064453125,
+          169.03421020507812,
+          169.1018524169922,
+          169.01785278320312,
+          169.01715087890625
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 6.834348314314469e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "thin_plane-n100000-q1024-sigma0-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "thin_plane",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.2460298128426075,
+      "build": {
+        "wall_median_ms": 7.606528932228684,
+        "wall_min_ms": 7.599649019539356,
+        "wall_max_ms": 7.636429043486714,
+        "wall_samples_ms": [
+          7.636429043486714,
+          7.61763914488256,
+          7.611508946865797,
+          7.606528932228684,
+          7.601769175380468,
+          7.610130123794079,
+          7.601798977702856,
+          7.601119112223387,
+          7.599649019539356
+        ],
+        "event_median_ms": 7.596096038818359,
+        "event_samples_ms": [
+          7.612768173217773,
+          7.605216026306152,
+          7.600671768188477,
+          7.596096038818359,
+          7.590271949768066,
+          7.598176002502441,
+          7.589856147766113,
+          7.589375972747803,
+          7.588255882263184
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 8.321199100464582,
+        "wall_min_ms": 8.303618989884853,
+        "wall_max_ms": 8.33065900951624,
+        "wall_samples_ms": [
+          8.325838949531317,
+          8.330248994752765,
+          8.317479165270925,
+          8.3103789947927,
+          8.321678964421153,
+          8.321199100464582,
+          8.319599088281393,
+          8.303618989884853,
+          8.33065900951624
+        ],
+        "event_median_ms": 8.311136245727539,
+        "event_samples_ms": [
+          8.312095642089844,
+          8.31987190246582,
+          8.307392120361328,
+          8.300127983093262,
+          8.31174373626709,
+          8.311136245727539,
+          8.309568405151367,
+          8.29366397857666,
+          8.319199562072754
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.000930684654614e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 15.922938007861376,
+        "wall_min_ms": 15.910987975075841,
+        "wall_max_ms": 15.943349106237292,
+        "wall_samples_ms": [
+          15.9398780670017,
+          15.913268085569143,
+          15.939367935061455,
+          15.918927965685725,
+          15.943349106237292,
+          15.932967886328697,
+          15.91505785472691,
+          15.922938007861376,
+          15.910987975075841
+        ],
+        "event_median_ms": 15.909791946411133,
+        "event_samples_ms": [
+          15.920831680297852,
+          15.899456024169922,
+          15.925408363342285,
+          15.905535697937012,
+          15.9302396774292,
+          15.920031547546387,
+          15.90294361114502,
+          15.909791946411133,
+          15.89798355102539
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.000930684654614e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "thin_plane-n100000-q1024-sigma0-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "thin_plane",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.24675996974110603,
+      "build": {
+        "wall_median_ms": 7.606919156387448,
+        "wall_min_ms": 7.602309109643102,
+        "wall_max_ms": 7.631279062479734,
+        "wall_samples_ms": [
+          7.631279062479734,
+          7.606919156387448,
+          7.606998784467578,
+          7.605469087138772,
+          7.6035400852561,
+          7.602309109643102,
+          7.616638904437423,
+          7.615749025717378,
+          7.60641903616488
+        ],
+        "event_median_ms": 7.594880104064941,
+        "event_samples_ms": [
+          7.6077117919921875,
+          7.594655990600586,
+          7.595263957977295,
+          7.593791961669922,
+          7.592160224914551,
+          7.590208053588867,
+          7.604191780090332,
+          7.604063987731934,
+          7.594880104064941
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 22.385716903954744,
+        "wall_min_ms": 22.38215715624392,
+        "wall_max_ms": 22.40418689325452,
+        "wall_samples_ms": [
+          22.38215715624392,
+          22.40087790414691,
+          22.385716903954744,
+          22.384176962077618,
+          22.4022779148072,
+          22.40418689325452,
+          22.39037794061005,
+          22.38407707773149,
+          22.383057046681643
+        ],
+        "event_median_ms": 22.37398338317871,
+        "event_samples_ms": [
+          22.367807388305664,
+          22.390239715576172,
+          22.37398338317871,
+          22.37299156188965,
+          22.391904830932617,
+          22.39401626586914,
+          22.380287170410156,
+          22.37295913696289,
+          22.37295913696289
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.7193493634281183e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 29.99616600573063,
+        "wall_min_ms": 29.95539689436555,
+        "wall_max_ms": 30.031186062842607,
+        "wall_samples_ms": [
+          30.02895601093769,
+          29.977216850966215,
+          29.99616600573063,
+          29.95539689436555,
+          30.031186062842607,
+          29.96428683400154,
+          29.986785957589746,
+          30.012686969712377,
+          30.00330599024892
+        ],
+        "event_median_ms": 29.98201560974121,
+        "event_samples_ms": [
+          30.00966453552246,
+          29.963520050048828,
+          29.98201560974121,
+          29.941247940063477,
+          30.017663955688477,
+          29.95078468322754,
+          29.97292709350586,
+          29.998783111572266,
+          29.990175247192383
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.7193493634281183e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "thin_plane-n100000-q1024-sigma0.01-k1",
+      "N": 100000,
+      "Q": 1024,
+      "k": 1,
+      "family": "thin_plane",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.24984986521303654,
+      "build": {
+        "wall_median_ms": 7.608148967847228,
+        "wall_min_ms": 7.601758930832148,
+        "wall_max_ms": 7.639629067853093,
+        "wall_samples_ms": [
+          7.639629067853093,
+          7.6133988332003355,
+          7.610989967361093,
+          7.606708910316229,
+          7.606298895552754,
+          7.608148967847228,
+          7.609669119119644,
+          7.602738915011287,
+          7.601758930832148
+        ],
+        "event_median_ms": 7.596672058105469,
+        "event_samples_ms": [
+          7.613311767578125,
+          7.600736141204834,
+          7.599264144897461,
+          7.595647811889648,
+          7.595456123352051,
+          7.596672058105469,
+          7.598144054412842,
+          7.591072082519531,
+          7.590400218963623
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 4.884059075266123,
+        "wall_min_ms": 4.874289967119694,
+        "wall_max_ms": 4.898530198261142,
+        "wall_samples_ms": [
+          4.8923499416559935,
+          4.884059075266123,
+          4.88222879357636,
+          4.88565000705421,
+          4.887098912149668,
+          4.898530198261142,
+          4.874679027125239,
+          4.8768590204417706,
+          4.874289967119694
+        ],
+        "event_median_ms": 4.873600006103516,
+        "event_samples_ms": [
+          4.877920150756836,
+          4.873600006103516,
+          4.871903896331787,
+          4.875232219696045,
+          4.876800060272217,
+          4.882783889770508,
+          4.864768028259277,
+          4.867936134338379,
+          4.864352226257324
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 6.166744239094456e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 12.486077845096588,
+        "wall_min_ms": 12.477078009396791,
+        "wall_max_ms": 12.511417968198657,
+        "wall_samples_ms": [
+          12.511417968198657,
+          12.49698898755014,
+          12.488187989220023,
+          12.486499035730958,
+          12.479447992518544,
+          12.484089005738497,
+          12.477078009396791,
+          12.47791899368167,
+          12.486077845096588
+        ],
+        "event_median_ms": 12.472895622253418,
+        "event_samples_ms": [
+          12.492447853088379,
+          12.482784271240234,
+          12.475135803222656,
+          12.473407745361328,
+          12.467167854309082,
+          12.470720291137695,
+          12.463775634765625,
+          12.465503692626953,
+          12.472895622253418
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 6.166744239094456e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "thin_plane-n100000-q1024-sigma0.01-k32",
+      "N": 100000,
+      "Q": 1024,
+      "k": 32,
+      "family": "thin_plane",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.24505984038114548,
+      "build": {
+        "wall_median_ms": 7.604839978739619,
+        "wall_min_ms": 7.594909053295851,
+        "wall_max_ms": 7.6459289994090796,
+        "wall_samples_ms": [
+          7.6459289994090796,
+          7.616688963025808,
+          7.602449040859938,
+          7.605968974530697,
+          7.606699131429195,
+          7.599418982863426,
+          7.598469033837318,
+          7.604839978739619,
+          7.594909053295851
+        ],
+        "event_median_ms": 7.594304084777832,
+        "event_samples_ms": [
+          7.621344089508057,
+          7.604032039642334,
+          7.590367794036865,
+          7.594304084777832,
+          7.595071792602539,
+          7.58790397644043,
+          7.5878400802612305,
+          7.594304084777832,
+          7.5834879875183105
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 18.86591804213822,
+        "wall_min_ms": 18.83279695175588,
+        "wall_max_ms": 18.884467892348766,
+        "wall_samples_ms": [
+          18.86784820817411,
+          18.864267971366644,
+          18.884467892348766,
+          18.851506989449263,
+          18.85997806675732,
+          18.86591804213822,
+          18.87406804598868,
+          18.86880793608725,
+          18.83279695175588
+        ],
+        "event_median_ms": 18.854047775268555,
+        "event_samples_ms": [
+          18.852832794189453,
+          18.854047775268555,
+          18.874399185180664,
+          18.842016220092773,
+          18.850048065185547,
+          18.854496002197266,
+          18.862239837646484,
+          18.857471466064453,
+          18.822208404541016
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 9.957137868431689e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 26.45440585911274,
+        "wall_min_ms": 26.426016818732023,
+        "wall_max_ms": 26.49807697162032,
+        "wall_samples_ms": [
+          26.482367189601064,
+          26.470026932656765,
+          26.45440585911274,
+          26.453597005456686,
+          26.49807697162032,
+          26.443776907399297,
+          26.489256881177425,
+          26.4494470320642,
+          26.426016818732023
+        ],
+        "event_median_ms": 26.440256118774414,
+        "event_samples_ms": [
+          26.46428871154785,
+          26.457120895385742,
+          26.440256118774414,
+          26.440031051635742,
+          26.485279083251953,
+          26.43062400817871,
+          26.475839614868164,
+          26.436159133911133,
+          26.412639617919922
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 9.957137868431689e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 349372416,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "sphere-n1000000-q8192-sigma0-k11",
+      "N": 1000000,
+      "Q": 8192,
+      "k": 11,
+      "family": "sphere",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.6675999611616135,
+      "build": {
+        "wall_median_ms": 59.54233300872147,
+        "wall_min_ms": 59.41142304800451,
+        "wall_max_ms": 59.60072297602892,
+        "wall_samples_ms": [
+          59.60072297602892,
+          59.47743309661746,
+          59.54233300872147,
+          59.50420303270221,
+          59.56508289091289,
+          59.570423094555736,
+          59.49580296874046,
+          59.41142304800451,
+          59.58302295766771
+        ],
+        "event_median_ms": 59.52873611450195,
+        "event_samples_ms": [
+          59.57283020019531,
+          59.46255874633789,
+          59.52873611450195,
+          59.49068832397461,
+          59.55209732055664,
+          59.55712127685547,
+          59.48281478881836,
+          59.398494720458984,
+          59.52931213378906
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 8.774088928475976,
+        "wall_min_ms": 8.760069031268358,
+        "wall_max_ms": 8.820408955216408,
+        "wall_samples_ms": [
+          8.820408955216408,
+          8.790299063548446,
+          8.761768927797675,
+          8.774088928475976,
+          8.792748907580972,
+          8.765239035710692,
+          8.778988849371672,
+          8.760069031268358,
+          8.773869136348367
+        ],
+        "event_median_ms": 8.76416015625,
+        "event_samples_ms": [
+          8.799360275268555,
+          8.77990436553955,
+          8.752032279968262,
+          8.76416015625,
+          8.78268814086914,
+          8.755135536193848,
+          8.76905632019043,
+          8.750335693359375,
+          8.763968467712402
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.076290006098087e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 68.27509310096502,
+        "wall_min_ms": 68.16119304858148,
+        "wall_max_ms": 68.37767199613154,
+        "wall_samples_ms": [
+          68.25396185740829,
+          68.28483194112778,
+          68.28020187094808,
+          68.27509310096502,
+          68.24968103319407,
+          68.16119304858148,
+          68.37767199613154,
+          68.23841203004122,
+          68.29941202886403
+        ],
+        "event_median_ms": 68.26223754882812,
+        "event_samples_ms": [
+          68.22710418701172,
+          68.26982116699219,
+          68.26521301269531,
+          68.26223754882812,
+          68.23583984375,
+          68.14717102050781,
+          68.36399841308594,
+          68.22428894042969,
+          68.28463745117188
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.076290006098087e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 437452800,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "sphere-n1000000-q8192-sigma0.01-k11",
+      "N": 1000000,
+      "Q": 8192,
+      "k": 11,
+      "family": "sphere",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.6099101155996323,
+      "build": {
+        "wall_median_ms": 62.62005283497274,
+        "wall_min_ms": 62.554253032431006,
+        "wall_max_ms": 62.72497307509184,
+        "wall_samples_ms": [
+          62.62005283497274,
+          62.60594306513667,
+          62.704622047021985,
+          62.72497307509184,
+          62.61731288395822,
+          62.63273279182613,
+          62.683261930942535,
+          62.554253032431006,
+          62.591052846983075
+        ],
+        "event_median_ms": 62.60246276855469,
+        "event_samples_ms": [
+          62.59164810180664,
+          62.59145736694336,
+          62.689918518066406,
+          62.70969772338867,
+          62.60246276855469,
+          62.61663818359375,
+          62.6671028137207,
+          62.53916931152344,
+          62.57721710205078
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 13.298738980665803,
+        "wall_min_ms": 13.288037851452827,
+        "wall_max_ms": 13.327619060873985,
+        "wall_samples_ms": [
+          13.327619060873985,
+          13.306718086823821,
+          13.295958982780576,
+          13.288037851452827,
+          13.310639187693596,
+          13.297877972945571,
+          13.305719010531902,
+          13.289028080180287,
+          13.298738980665803
+        ],
+        "event_median_ms": 13.289823532104492,
+        "event_samples_ms": [
+          13.312255859375,
+          13.296031951904297,
+          13.28649616241455,
+          13.278464317321777,
+          13.300191879272461,
+          13.288864135742188,
+          13.295488357543945,
+          13.27836799621582,
+          13.289823532104492
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.382993375718686e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 75.95566101372242,
+        "wall_min_ms": 75.88887098245323,
+        "wall_max_ms": 76.06944208964705,
+        "wall_samples_ms": [
+          76.06865116395056,
+          76.06944208964705,
+          75.93296095728874,
+          75.95566101372242,
+          75.89427102357149,
+          75.88887098245323,
+          75.93832118436694,
+          75.98151103593409,
+          75.95646101981401
+        ],
+        "event_median_ms": 75.94172668457031,
+        "event_samples_ms": [
+          76.03942108154297,
+          76.05289459228516,
+          75.91769409179688,
+          75.94172668457031,
+          75.87942504882812,
+          75.87372589111328,
+          75.9234848022461,
+          75.96736145019531,
+          75.9435806274414
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.382993375718686e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 437452800,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "volume-n1000000-q8192-sigma0-k11",
+      "N": 1000000,
+      "Q": 8192,
+      "k": 11,
+      "family": "volume",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.6627400871366262,
+      "build": {
+        "wall_median_ms": 66.57391181215644,
+        "wall_min_ms": 66.49529188871384,
+        "wall_max_ms": 66.889792913571,
+        "wall_samples_ms": [
+          66.57391181215644,
+          66.56738300807774,
+          66.49529188871384,
+          66.59953203052282,
+          66.62411196157336,
+          66.889792913571,
+          66.58811215311289,
+          66.54806202277541,
+          66.56303186900914
+        ],
+        "event_median_ms": 66.55209350585938,
+        "event_samples_ms": [
+          66.54364776611328,
+          66.55209350585938,
+          66.48057556152344,
+          66.5854721069336,
+          66.57059478759766,
+          66.84690856933594,
+          66.57379150390625,
+          66.53494262695312,
+          66.5475845336914
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 8.7206088937819,
+        "wall_min_ms": 8.70698899962008,
+        "wall_max_ms": 8.748238906264305,
+        "wall_samples_ms": [
+          8.748238906264305,
+          8.7206088937819,
+          8.70698899962008,
+          8.713318966329098,
+          8.711718954145908,
+          8.726489031687379,
+          8.726438973098993,
+          8.710088906809688,
+          8.732339134439826
+        ],
+        "event_median_ms": 8.710111618041992,
+        "event_samples_ms": [
+          8.731583595275879,
+          8.710111618041992,
+          8.69696044921875,
+          8.703424453735352,
+          8.701184272766113,
+          8.715423583984375,
+          8.716544151306152,
+          8.700160026550293,
+          8.722304344177246
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.945912688253206e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 75.31188102439046,
+        "wall_min_ms": 75.12237085029483,
+        "wall_max_ms": 75.37459186278284,
+        "wall_samples_ms": [
+          75.37459186278284,
+          75.36465092562139,
+          75.3105110488832,
+          75.31188102439046,
+          75.29817195609212,
+          75.36310097202659,
+          75.33991103991866,
+          75.28655091300607,
+          75.12237085029483
+        ],
+        "event_median_ms": 75.29718780517578,
+        "event_samples_ms": [
+          75.34611511230469,
+          75.34848022460938,
+          75.29481506347656,
+          75.29718780517578,
+          75.28390502929688,
+          75.34780883789062,
+          75.32540893554688,
+          75.27283477783203,
+          75.10902404785156
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.945912688253206e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 437452800,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "volume-n1000000-q8192-sigma0.01-k11",
+      "N": 1000000,
+      "Q": 8192,
+      "k": 11,
+      "family": "volume",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.6795099470764399,
+      "build": {
+        "wall_median_ms": 66.54750206507742,
+        "wall_min_ms": 66.46944303065538,
+        "wall_max_ms": 66.62387191317976,
+        "wall_samples_ms": [
+          66.62387191317976,
+          66.49931287392974,
+          66.54221192002296,
+          66.58489187248051,
+          66.54750206507742,
+          66.577582154423,
+          66.46944303065538,
+          66.52408186346292,
+          66.56877184286714
+        ],
+        "event_median_ms": 66.5304946899414,
+        "event_samples_ms": [
+          66.59430694580078,
+          66.4850845336914,
+          66.5289306640625,
+          66.56947326660156,
+          66.5304946899414,
+          66.5626220703125,
+          66.4559326171875,
+          66.51052856445312,
+          66.55497741699219
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 8.879009168595076,
+        "wall_min_ms": 8.865759009495378,
+        "wall_max_ms": 8.899408858269453,
+        "wall_samples_ms": [
+          8.899408858269453,
+          8.882988942787051,
+          8.879009168595076,
+          8.891738951206207,
+          8.893609046936035,
+          8.874299004673958,
+          8.870808873325586,
+          8.86841886676848,
+          8.865759009495378
+        ],
+        "event_median_ms": 8.868831634521484,
+        "event_samples_ms": [
+          8.885248184204102,
+          8.872608184814453,
+          8.868831634521484,
+          8.881535530090332,
+          8.882719993591309,
+          8.864128112792969,
+          8.861760139465332,
+          8.858495712280273,
+          8.857088088989258
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.972903353076485e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 75.44695097021759,
+        "wall_min_ms": 75.29999106191099,
+        "wall_max_ms": 75.54123201407492,
+        "wall_samples_ms": [
+          75.43127099052072,
+          75.4328821785748,
+          75.47869090922177,
+          75.45793079771101,
+          75.40492108091712,
+          75.44695097021759,
+          75.54123201407492,
+          75.29999106191099,
+          75.46386099420488
+        ],
+        "event_median_ms": 75.43267059326172,
+        "event_samples_ms": [
+          75.40422058105469,
+          75.4136962890625,
+          75.46166229248047,
+          75.43376159667969,
+          75.39119720458984,
+          75.43267059326172,
+          75.52521514892578,
+          75.2850570678711,
+          75.44953918457031
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 5.972903353076485e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 437452800,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "sphere-n1000-q32-sigma0-k32",
+      "N": 1000,
+      "Q": 32,
+      "k": 32,
+      "family": "sphere",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.1790500245988369,
+      "build": {
+        "wall_median_ms": 0.5782600492238998,
+        "wall_min_ms": 0.5579700227826834,
+        "wall_max_ms": 0.6182000506669283,
+        "wall_samples_ms": [
+          0.616610050201416,
+          0.5795899778604507,
+          0.5856500938534737,
+          0.5624000914394855,
+          0.6182000506669283,
+          0.5629989318549633,
+          0.5782600492238998,
+          0.5767699331045151,
+          0.5579700227826834
+        ],
+        "event_median_ms": 0.5668799877166748,
+        "event_samples_ms": [
+          0.5894079804420471,
+          0.567520022392273,
+          0.5746560096740723,
+          0.5519359707832336,
+          0.6064000129699707,
+          0.552511990070343,
+          0.5668799877166748,
+          0.5659199953079224,
+          0.5477120280265808
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 4.424999002367258,
+        "wall_min_ms": 4.420730052515864,
+        "wall_max_ms": 4.452959867194295,
+        "wall_samples_ms": [
+          4.452959867194295,
+          4.434238886460662,
+          4.435949958860874,
+          4.421729128807783,
+          4.42285998724401,
+          4.424999002367258,
+          4.420730052515864,
+          4.421869060024619,
+          4.432619083672762
+        ],
+        "event_median_ms": 4.414944171905518,
+        "event_samples_ms": [
+          4.438079833984375,
+          4.423647880554199,
+          4.425792217254639,
+          4.411871910095215,
+          4.412896156311035,
+          4.414944171905518,
+          4.410655975341797,
+          4.411968231201172,
+          4.4219841957092285
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 8.954385850866631e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 5.045279860496521,
+        "wall_min_ms": 5.03173004835844,
+        "wall_max_ms": 5.101299146190286,
+        "wall_samples_ms": [
+          5.101299146190286,
+          5.045279860496521,
+          5.047658924013376,
+          5.03173004835844,
+          5.043708952143788,
+          5.032439017668366,
+          5.0526398699730635,
+          5.03444904461503,
+          5.064059980213642
+        ],
+        "event_median_ms": 5.031263828277588,
+        "event_samples_ms": [
+          5.069215774536133,
+          5.031263828277588,
+          5.034016132354736,
+          5.018335819244385,
+          5.03059196472168,
+          5.0194878578186035,
+          5.039584159851074,
+          5.021599769592285,
+          5.051648139953613
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 8.954385850866631e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 437452800,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "sphere-n1000-q32-sigma0.01-k32",
+      "N": 1000,
+      "Q": 32,
+      "k": 32,
+      "family": "sphere",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.17493986524641514,
+      "build": {
+        "wall_median_ms": 0.5780598148703575,
+        "wall_min_ms": 0.5602501332759857,
+        "wall_max_ms": 0.6279100198298693,
+        "wall_samples_ms": [
+          0.6279100198298693,
+          0.5736700259149075,
+          0.5854400806128979,
+          0.5627600476145744,
+          0.5780598148703575,
+          0.587069895118475,
+          0.5602501332759857,
+          0.5850500892847776,
+          0.5605497863143682
+        ],
+        "event_median_ms": 0.5674880146980286,
+        "event_samples_ms": [
+          0.6020159721374512,
+          0.5618559718132019,
+          0.5734400153160095,
+          0.5521280169487,
+          0.5674880146980286,
+          0.5764480233192444,
+          0.5499200224876404,
+          0.5744959712028503,
+          0.5494080185890198
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 4.288639174774289,
+        "wall_min_ms": 4.278478911146522,
+        "wall_max_ms": 4.303060006350279,
+        "wall_samples_ms": [
+          4.303060006350279,
+          4.300010157749057,
+          4.290258977562189,
+          4.2908701580017805,
+          4.288639174774289,
+          4.284610040485859,
+          4.284469177946448,
+          4.284610040485859,
+          4.278478911146522
+        ],
+        "event_median_ms": 4.278687953948975,
+        "event_samples_ms": [
+          4.289087772369385,
+          4.289535999298096,
+          4.2802557945251465,
+          4.280416011810303,
+          4.278687953948975,
+          4.27455997467041,
+          4.274752140045166,
+          4.274367809295654,
+          4.2696638107299805
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 1.0124374164812858e-07,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 4.9252992030233145,
+        "wall_min_ms": 4.898558836430311,
+        "wall_max_ms": 4.961818922311068,
+        "wall_samples_ms": [
+          4.961818922311068,
+          4.941378952935338,
+          4.929439863190055,
+          4.9252992030233145,
+          4.898829851299524,
+          4.918508930131793,
+          4.92233014665544,
+          4.898558836430311,
+          4.931379109621048
+        ],
+        "event_median_ms": 4.912799835205078,
+        "event_samples_ms": [
+          4.943552017211914,
+          4.928095817565918,
+          4.9148478507995605,
+          4.912799835205078,
+          4.886591911315918,
+          4.906015872955322,
+          4.908927917480469,
+          4.885791778564453,
+          4.918367862701416
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 1.0124374164812858e-07,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 437452800,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "volume-n1000-q32-sigma0-k32",
+      "N": 1000,
+      "Q": 32,
+      "k": 32,
+      "family": "volume",
+      "sigma": 0.0,
+      "input_transfer_wall_ms": 0.16001006588339806,
+      "build": {
+        "wall_median_ms": 0.5753799341619015,
+        "wall_min_ms": 0.5590799264609814,
+        "wall_max_ms": 0.6045999471098185,
+        "wall_samples_ms": [
+          0.6045999471098185,
+          0.601059990003705,
+          0.5934701766818762,
+          0.5634790286421776,
+          0.5761601496487856,
+          0.5610501393675804,
+          0.5753799341619015,
+          0.5590799264609814,
+          0.5734299775213003
+        ],
+        "event_median_ms": 0.5647040009498596,
+        "event_samples_ms": [
+          0.5800639986991882,
+          0.5880320072174072,
+          0.5813760161399841,
+          0.553056001663208,
+          0.5655360221862793,
+          0.5507199764251709,
+          0.5647040009498596,
+          0.5479360222816467,
+          0.5629119873046875
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 6.595518905669451,
+        "wall_min_ms": 6.585489958524704,
+        "wall_max_ms": 6.615979131311178,
+        "wall_samples_ms": [
+          6.615979131311178,
+          6.607838906347752,
+          6.60172919742763,
+          6.590499076992273,
+          6.598200183361769,
+          6.595149170607328,
+          6.593778962269425,
+          6.595518905669451,
+          6.585489958524704
+        ],
+        "event_median_ms": 6.585504055023193,
+        "event_samples_ms": [
+          6.600831985473633,
+          6.597856044769287,
+          6.5924482345581055,
+          6.580287933349609,
+          6.588191986083984,
+          6.585279941558838,
+          6.584000110626221,
+          6.585504055023193,
+          6.575712203979492
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 9.513097573004828e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 7.2253099642694,
+        "wall_min_ms": 7.200259016826749,
+        "wall_max_ms": 7.248008856549859,
+        "wall_samples_ms": [
+          7.246928988024592,
+          7.21887918189168,
+          7.248008856549859,
+          7.217698963358998,
+          7.2253099642694,
+          7.200259016826749,
+          7.233368931338191,
+          7.239659084007144,
+          7.221298990771174
+        ],
+        "event_median_ms": 7.212287902832031,
+        "event_samples_ms": [
+          7.2288641929626465,
+          7.205408096313477,
+          7.234655857086182,
+          7.204512119293213,
+          7.212287902832031,
+          7.187551975250244,
+          7.219808101654053,
+          7.226528167724609,
+          7.208703994750977
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 9.513097573004828e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 437452800,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    },
+    {
+      "id": "volume-n1000-q32-sigma0.01-k32",
+      "N": 1000,
+      "Q": 32,
+      "k": 32,
+      "family": "volume",
+      "sigma": 0.01,
+      "input_transfer_wall_ms": 0.1563900150358677,
+      "build": {
+        "wall_median_ms": 0.5748500116169453,
+        "wall_min_ms": 0.5597900599241257,
+        "wall_max_ms": 0.6353701464831829,
+        "wall_samples_ms": [
+          0.6353701464831829,
+          0.606070039793849,
+          0.5748500116169453,
+          0.5795001052320004,
+          0.5626599304378033,
+          0.5702499765902758,
+          0.5748700350522995,
+          0.5597900599241257,
+          0.5733200814574957
+        ],
+        "event_median_ms": 0.5639359951019287,
+        "event_samples_ms": [
+          0.6097599864006042,
+          0.5931519865989685,
+          0.5639039874076843,
+          0.5686720013618469,
+          0.5535359978675842,
+          0.5597119927406311,
+          0.5645120143890381,
+          0.5495359897613525,
+          0.5639359951019287
+        ]
+      },
+      "reused_index_search": {
+        "wall_median_ms": 6.439449032768607,
+        "wall_min_ms": 6.435798946768045,
+        "wall_max_ms": 6.456668954342604,
+        "wall_samples_ms": [
+          6.456668954342604,
+          6.452569970861077,
+          6.44513894803822,
+          6.4523289911448956,
+          6.439449032768607,
+          6.43840990960598,
+          6.437998963519931,
+          6.437249016016722,
+          6.435798946768045
+        ],
+        "event_median_ms": 6.429247856140137,
+        "event_samples_ms": [
+          6.441664218902588,
+          6.442880153656006,
+          6.4350080490112305,
+          6.441984176635742,
+          6.429247856140137,
+          6.428127765655518,
+          6.42793607711792,
+          6.42739200592041,
+          6.425951957702637
+        ]
+      },
+      "reused_validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 9.256674777096699e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "one_shot": {
+        "wall_median_ms": 7.0593589916825294,
+        "wall_min_ms": 7.045490201562643,
+        "wall_max_ms": 7.104578893631697,
+        "wall_samples_ms": [
+          7.104578893631697,
+          7.09472899325192,
+          7.089209044352174,
+          7.056158967316151,
+          7.059468887746334,
+          7.045490201562643,
+          7.046828977763653,
+          7.0593589916825294,
+          7.050449028611183
+        ],
+        "event_median_ms": 7.0463361740112305,
+        "event_samples_ms": [
+          7.086431980133057,
+          7.081056118011475,
+          7.075647830963135,
+          7.042431831359863,
+          7.0463361740112305,
+          7.032671928405762,
+          7.033664226531982,
+          7.047455787658691,
+          7.0378241539001465
+        ]
+      },
+      "validation": {
+        "valid_shape": true,
+        "valid_indices_and_finite_distances": true,
+        "checked_rows": 32,
+        "duplicate_rows": 0,
+        "unsorted_rows": 0,
+        "tie_aware_recall_at_k": 1.0,
+        "distance_rank_mismatch_rows": 0,
+        "reported_distance_mismatch_rows": 0,
+        "max_reported_distance_relative_error": 9.256674777096699e-08,
+        "rank_rtol": 1e-05,
+        "rank_atol_squared": 1e-12
+      },
+      "output_contract": {
+        "index_dtype": "torch.int64",
+        "distance_dtype": "torch.float32",
+        "device": "cuda:0",
+        "distance": "Euclidean"
+      },
+      "memory_snapshot": {
+        "device_used_bytes": 437452800,
+        "torch_reserved_bytes": 23068672,
+        "note": "post-warmup snapshot including caches/context, not transient peak"
+      },
+      "status": "ok"
+    }
+  ],
+  "pytorch3d_revision": "e4ad6e5687a360ccdc6ebd91348e8dbbac97bf31",
+  "faiss_revision": "5622e93733b64b2e033362dbdfda019b2ab33ef0",
+  "cupy_allocator": "default caching pool",
+  "provider": {
+    "exact_algorithm": true,
+    "name": "cupy_kdtree",
+    "leafsize": 16
+  },
+  "manifest_sha256": "a41b88da3ea959695429f88c69ae0baed6da916e62f546e1d3eb2b2cce0b41a0"
+}

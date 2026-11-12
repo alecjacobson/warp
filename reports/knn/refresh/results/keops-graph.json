@@ -1,0 +1,43 @@
+{
+  "method": "keops",
+  "environment": {
+    "python": "3.12.15",
+    "packages": {
+      "torch": "2.7.1+cu128",
+      "numpy": "2.5.4",
+      "cupy-cuda12x": "14.2.0",
+      "cuvs-cu12": "26.10.0",
+      "libcuvs-cu12": "26.10.0",
+      "rmm-cu12": "26.10.0",
+      "faiss-gpu-cu12": "1.14.1.post1",
+      "pykeops": "2.3",
+      "pytorch3d": null
+    },
+    "git_revision": "197ffeeea97ed94352a01ee67c3c852accb92731",
+    "benchmark_source_sha256": {
+      "benchmark_point_query_comparison.py": "3cdc9240bb1380f9a2a824d39a60a434426c779f2fbb8a1c53089aa846b0c217",
+      "point_query_backends.py": "721fc0528516df551f50ca55e3978b5b0650d151ff13daefc084b39ca504fab1"
+    },
+    "native_bvh_sha256": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb"
+  },
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+  "repeats": 9,
+  "primary_timing": "device-synchronized wall time",
+  "warp_pool_release_threshold_bytes": 536870912,
+  "torch_allocator": "native",
+  "shared_stream": "Warp-owned CUDA blocking stream, borrowed by Torch and other providers",
+  "cases": [],
+  "pytorch3d_revision": "e4ad6e5687a360ccdc6ebd91348e8dbbac97bf31",
+  "faiss_revision": "5622e93733b64b2e033362dbdfda019b2ab33ef0",
+  "provider": {
+    "exact_algorithm": true,
+    "name": "keops",
+    "stream_behavior": "KeOps 2.3 NVRTC uses stream 0 and cuCtxSynchronize internally"
+  },
+  "error": "RuntimeError('CUDA error: operation failed due to a previous error during capture\\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\\n')",
+  "traceback": "Traceback (most recent call last):\n  File \"/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_comparison.py\", line 208, in worker\n    result = problem.search(index)\n             ^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/point_query_backends.py\", line 232, in search\n    ds, ids = d2.Kmin_argKmin(self.k, dim=1)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/common/lazy_tensor.py\", line 2480, in Kmin_argKmin\n    return self.reduction(\"KMin_ArgKMin\", opt_arg=K, axis=axis, dim=dim, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/common/lazy_tensor.py\", line 775, in reduction\n    return res()\n           ^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/common/lazy_tensor.py\", line 957, in __call__\n    return self.callfun(*args, *self.variables, **self.kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/torch/generic/generic_red.py\", line 693, in __call__\n    out = GenredAutograd_fun(params, *args)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/torch/generic/generic_red.py\", line 383, in GenredAutograd_fun\n    return GenredAutograd.apply(*inputs)[0]\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/.venv/lib/python3.12/site-packages/torch/autograd/function.py\", line 575, in apply\n    return super().apply(*args, **kwargs)  # type: ignore[misc]\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/torch/generic/generic_red.py\", line 291, in forward\n    return GenredAutograd_base._forward(*inputs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/torch/generic/generic_red.py\", line 121, in _forward\n    result = myconv.genred_pytorch(\n             ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/common/keops_io/LoadKeOps.py\", line 236, in genred\n    self.call_keops(nx, ny)\n  File \"/home/horde/Repos/warp.knn/warp/.venv-knn-compare/lib/python3.12/site-packages/pykeops/common/keops_io/LoadKeOps_nvrtc.py\", line 48, in call_keops\n    self.launch_keops(\nRuntimeError: [KeOps] Cuda error.\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_comparison.py\", line 203, in worker\n    with torch.cuda.graph(graph, stream=stream):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/horde/Repos/warp.knn/warp/.venv/lib/python3.12/site-packages/torch/cuda/graphs.py\", line 186, in __exit__\n    self.cuda_graph.capture_end()\n  File \"/home/horde/Repos/warp.knn/warp/.venv/lib/python3.12/site-packages/torch/cuda/graphs.py\", line 84, in capture_end\n    super().capture_end()\nRuntimeError: CUDA error: operation failed due to a previous error during capture\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n\n",
+  "capture": {
+    "supported": false,
+    "error": "RuntimeError('CUDA error: operation failed due to a previous error during capture\\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\\n')"
+  }
+}

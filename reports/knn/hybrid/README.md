@@ -1,5 +1,7 @@
 # Comparing Warp and PhysicsNeMo, and improving both
 
+**Fresh full-library rerun:** [November 12 comparison](../refresh/README.md) measures the improved implementation against all 11 exact configurations, including reused-index search.
+
 The selected approach keeps Warp's adaptive BVH and bounded heap. Two changes matter most: **preserve Euclidean proportions when computing Morton codes**, and **spread small query batches across warps**. The latter is an explicit caller configuration, not automatic dispatch inside `wp.point_query_knn`.
 
 On the original 40 cases, configured Warp is **2.48× faster than our previous configured implementation** geometrically averaged over one-shot latency. It has lower medians than the pinned PhysicsNeMo PR in **40/40 cases**, including the four million-point losses. The clean thin-plane k=32 case drops from **7.942 to 0.425 ms (18.7×)**.
