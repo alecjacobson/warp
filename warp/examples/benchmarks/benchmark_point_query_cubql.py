@@ -259,6 +259,10 @@ def tune(library, args):
 def benchmark(library, args, tuning):
     metadata = {
         "environment": environment(),
+        "device": wp.get_device("cuda:0").name,
+        "sm_count": wp.get_device("cuda:0").sm_count,
+        "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "pool_release_threshold_bytes": wp.get_mempool_release_threshold("cuda:0"),
         "repeats": 9,
         "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest(),
         "provider": {
@@ -271,7 +275,7 @@ def benchmark(library, args, tuning):
         "tuning_sha256": hashlib.sha256(args.tuning.read_bytes()).hexdigest(),
     }
     reports = {method: dict(metadata, method=method, cases=[]) for method in ("cubql_defaults", "cubql_tuned")}
-    for case in json.loads(args.manifest.read_text())["cases"]:
+    for case in json.loads(args.manifest.read_text())["cases"][: args.limit]:
         path = args.manifest.parent / case["file"]
         if hashlib.sha256(path.read_bytes()).hexdigest() != case["file_sha256"]:
             raise ValueError("Dataset checksum mismatch")
@@ -346,6 +350,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--tuning", type=Path, required=True)
     parser.add_argument("--reuse-tuning", action="store_true")
+    parser.add_argument("--limit", type=int)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     args.tuning.parent.mkdir(parents=True, exist_ok=True)
@@ -355,6 +360,12 @@ def main():
     stream = wp.Stream("cuda:0")
     library = Library(args.library)
     with wp.ScopedStream(stream), torch.cuda.stream(wp.stream_to_torch(stream)):
+        # Upstream initializes the default pool's retention policy on first use.
+        # Initialize before restoring the same policy used by the public routes.
+        initial = Problem(library, np.zeros((8, 3), dtype=np.float32), np.zeros((1, 3), dtype=np.float32), 1)
+        initial_tree = initial.build(DEFAULT)
+        del initial_tree, initial
+        wp.set_mempool_release_threshold("cuda:0", 512 * 1024**2)
         tuning = json.loads(args.tuning.read_text()) if args.reuse_tuning else tune(library, args)
         benchmark(library, args, tuning)
 

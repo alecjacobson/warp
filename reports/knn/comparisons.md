@@ -1,16 +1,73 @@
-# Current kNN comparisons and recommended settings
+# Current kNN comparisons: colored tables and public settings
 
-**2026-11-13 · `alecjacobson/knn` · completed public API.** Start with `backend=wp.PointQueryBackend.WARP` when targets change often. For repeated CUDA queries against fixed targets, start with `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE`. For symmetric Chamfer, measure that fixed-target choice with `backend=wp.PointQueryBackend.WARP` in the reverse direction.
+**2026-11-13 · `alecjacobson/knn` · 94-SM Blackwell MIG.** The four colored tables below are freshly measured comparisons of **16 configurations across 40 workloads**: five public Warp choices plus standalone cuBQL, PhysicsNeMo, CuPy, KeOps, Faiss, cuVS, and PyTorch3D. Every timing in these tables comes from this run. The separate pulmonary/batched experiment appears below them.
 
-All three configurations below use **Warp's public `wp.build_point_index()` and `wp.knn()` APIs**. The settings select implementations and tuning policies; callers do not need a separate cuBQL Python library. See the [public API guide](public-api.md) for complete examples and contracts.
+Start with `backend=wp.PointQueryBackend.WARP` when targets change often. For repeated CUDA queries against fixed targets, start with `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE`. Both use **Warp's public `wp.build_point_index()` and `wp.knn()` APIs**; callers do not need a separate cuBQL Python library. See the [public API guide](public-api.md) for complete examples and contracts.
+
+## Colored cross-library comparisons
+
+Each cell is **column time / `wp.knn(backend=wp.PointQueryBackend.WARP)` time**. **Blue above 1 means the reference is faster; red below 1 means the column is faster.** A row combines a clean/noisy pair by geometric mean only when both pass. Gray cells have failed checks, failed/unsupported capture, or no measurement. `1/2 pass` means one case passed: that individual case can enter the linked case-level aggregates, but the pair gets no colored ratio. Failed or missing measurements never enter rankings. Open an image for its full-size table. [All medians and statuses](current/libraries/cases.csv), [aggregate tables](current/libraries/tables.md), [raw results and provenance](current/libraries/provenance.json), and [reproduction instructions](current/libraries/reproduce.md) are available.
+
+### Build + query, ordinary calls
+
+[![Current construction-plus-query comparison](current/libraries/one-shot.svg)](current/libraries/one-shot.svg)
+
+`backend=wp.PointQueryBackend.WARP` has the lowest construction-plus-query median among the five public choices in **38/40** cases, and among all passing configurations in **34/40**. `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.BUILD_AND_QUERY` wins the other two public comparisons. External brute-force methods win four of the overall comparisons on the tiny workloads.
+
+### Reused-index query, ordinary calls
+
+[![Current reused-index query comparison](current/libraries/reused-query.svg)](current/libraries/reused-query.svg)
+
+`backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE` beats `backend=wp.PointQueryBackend.WARP` in **40/40**, averaging **1.38×** faster. Standalone cuBQL with frozen tuning is faster still in ordinary calls; its column omits Warp's public wrapper. PhysicsNeMo, KeOps, and PyTorch3D expose complete operators, so their columns still include the entire operation rather than pretending to reuse an index.
+
+### Build + query, CUDA graph replay
+
+[![Current construction-plus-query graph comparison](current/libraries/graph-one-shot.svg)](current/libraries/graph-one-shot.svg)
+
+`backend=wp.PointQueryBackend.WARP` has the lowest passing graph median in **36/40** cases; cuVS direct L2 wins the four tiny cases. PhysicsNeMo, cuVS direct L2/Minkowski, and PyTorch3D complete all 40 construction-inclusive capture checks; expanded L2 captures but retains its numerical failures.
+
+### Reused-index query, CUDA graph replay
+
+[![Current reused-index graph comparison](current/libraries/graph-reused-query.svg)](current/libraries/graph-reused-query.svg)
+
+For prebuilt target indexes, `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE` beats `backend=wp.PointQueryBackend.WARP` in **40/40**, averaging **1.24×** faster. Construction capture is supported by `backend=wp.PointQueryBackend.WARP`; the direct cuBQL routes require construction outside capture. Every colored graph cell passed checks using both original and changed inputs.
+
+The public `objective=wp.PointQueryObjective.REUSE` graph route and standalone frozen-tuned cuBQL are effectively tied in geometric mean in this run. The `backend=wp.PointQueryBackend.WARP`, `bvh=wp.Bvh(..., constructor="cubql")` control has the lowest passing query-graph median in **4/40** cases, but carries expensive construction. These workload-specific wins are a reason to preserve the explicit alternatives and measure the caller's workload.
+
+### What each column measures
+
+| Column | Actual public call or external configuration |
+| --- | --- |
+| Scalar kernel | `wp.Bvh(points, points)` with its default leaf size; `wp.point_query_knn()` in a dense launch. |
+| `wp.knn()`, `backend=WARP` | `backend=wp.PointQueryBackend.WARP`, automatic policy. This is the reference column. |
+| `wp.knn()`, `Bvh(constructor="cubql")` | `backend=wp.PointQueryBackend.WARP`, supplied `bvh=wp.Bvh(..., constructor="cubql", leaf_size=config.leaf_size)`; `config=wp.point_query_config(...)`. |
+| `wp.knn()`, `objective=REUSE` | `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE`. |
+| `wp.knn()`, `objective=BUILD_AND_QUERY` | `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.BUILD_AND_QUERY`. |
+| Standalone cuBQL, custom top-k | Earlier benchmark adapter with its own exact top-k traversal. |
+| Standalone cuBQL, defaults / frozen tuning | Unmodified `cuBQL::points::findKNN`, either defaults or the previously selected regime policy. Separate policies optimize construction-inclusive and reused-query timing. |
+| PhysicsNeMo | Pinned kNN implementation from the earlier PR, with import adaptation recorded by the benchmark. |
+| CuPy / KeOps / Faiss / PyTorch3D | `KDTree`, `Kmin_argKmin`, `GpuIndexFlatL2`, and `knn_points`, respectively. |
+| cuVS, three columns | Brute force with expanded squared L2, direct squared L2, or Minkowski p=2. The direct metric uses the existing benchmark's C-API enum binding. |
+
+The standalone and external columns are benchmark controls; they are not additional `wp.knn()` settings. Full version pins and build choices are in the [reproduction guide](current/libraries/reproduce.md). The frozen cuBQL policy was trained independently on the earlier 46-SM slice. Only its settings were reused; none of that slice's timing samples enter these tables.
+
+### Method and interpretation
+
+- **Inputs:** 40 single-cloud workloads from eight families: original Stanford bunny scan, KITTI, Redwood, sampled bunny surface, sphere, volume, clusters, and thin plane. The suite includes roughly 39k–100k targets with 1,024 queries and k=1/32, million-target cases with 8,192 queries and k=11, and tiny 1,000-target cases with 32 queries and k=32. Clean/noisy pairs form the 20 displayed rows. All coordinate hashes match the preserved historical matrix; the measurements are new.
+- **Output contract:** sorted GPU-resident int64 neighbor IDs and float32 Euclidean distances. Required conversion, allocation, and prior result retirement are included in ordinary calls. Uploads, compilation, capture, and warmup are excluded. Query graphs reuse output storage; construction graphs include the captured construction work.
+- **Timer:** median of nine samples after warmup, using the same Torch-event/synchronized-wall timer and a Warp-owned blocking stream borrowed by other providers. Graph samples contain one replay. The charts use wall time, including event recording, Python submission, and synchronization; raw GPU-event samples are retained. Each provider runs sequentially in its own process. Warp/RMM async pools retain 512 MiB; Torch/CuPy use their caching allocators. Small wins can reflect noise or allocation differences.
+- **Accuracy:** structural checks cover the full outputs; 32 query rows per workload are checked against exhaustive float64 distances. Neighbor-rank checks use squared-distance `rtol=1e-5`, `atol=1e-12`; returned Euclidean distances use `rtol=5e-4`, `atol=1e-6`. Equal-distance IDs are interchangeable. These are sampled, tolerance-based checks, not a proof for every output.
+- **Numerical failures:** ordinary Faiss Flat passes **5/40**, and cuVS expanded L2 passes **3/40**, under those checks. Failed rows remain visible but do not enter aggregates. These are exact-search algorithms with finite-precision distance/ranking failures in this experiment. The other 14 configurations pass all 40 ordinary cases. Do not compare an aggregate over three or five passing cases with a 40-case aggregate as though they used the same workload mix.
+- **Graph failures:** each external provider/phase has an isolated capture worker. A failed capture stops that worker; subsequent cases are labeled `not run`, not assigned ordinary-call timings. CuPy's adapter attempted a device-to-host transfer; KeOps attempted an incompatible synchronous transfer; Faiss exceeded its configured 256 MiB scratch pool and attempted `cudaMalloc`; standalone custom cuBQL construction synchronized a captured event. This reports the measured adapter and environment, not a universal claim that a library cannot support graphs. Standalone `findKNN` construction graphs were not measured.
+- **Builds and hardware:** 94-SM RTX PRO 6000 Blackwell MIG 2g.48gb, CUDA toolkit 12.9.1. The branch's existing quick-build Warp library is unchanged; its native cuBQL path uses `compute_75` PTX. Standalone cuBQL, Faiss, and PyTorch3D were built for `sm_120`. Use the separate [matched-build integration experiment](completion/README.md) to isolate wrapper overhead from that target difference. No other GPU job was launched by this agent during timing.
 
 ## Which settings should I use?
 
 | Workload or requirement | Public arguments | Current evidence or contract |
 | --- | --- | --- |
-| Construct an index and query it once | `backend=wp.PointQueryBackend.WARP` | Lowest construction-plus-query median in **23/24** workloads. |
-| Repeated queries against fixed CUDA targets | `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE` | Faster ordinary queries in **24/24**, with **1.37×** geometric-mean speedup; query graphs win **22/24**, averaging **1.20×**. Construction must be amortized. |
-| Evaluate cheaper cuBQL construction | `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.BUILD_AND_QUERY` | Lowest construction-plus-query median in **1/24** workloads, by 2.3% in that case. Usually slower reused queries than `objective=wp.PointQueryObjective.REUSE`. |
+| Construct an index and query it once | `backend=wp.PointQueryBackend.WARP` | Lowest construction-plus-query median among public choices in **38/40** cross-library cases and **23/24** pulmonary/batched cases. |
+| Repeated queries against fixed CUDA targets | `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE` | Faster ordinary/query-graph calls in **40/40** cross-library cases, averaging **1.38× / 1.24×**; pulmonary/batched results are **24/24 / 22/24**, averaging **1.37× / 1.20×**. Construction must be amortized. |
+| Evaluate cheaper cuBQL construction | `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.BUILD_AND_QUERY` | Lowest construction-plus-query median among public choices in **2/40** cross-library cases and **1/24** pulmonary/batched cases. Usually slower reused queries than `objective=wp.PointQueryObjective.REUSE`. |
 | CPU, finite cutoff, self-exclusion, original-index tie ordering, or k > 64 | `backend=wp.PointQueryBackend.WARP` | Supports these requirements. The direct cuBQL route rejects unsupported requests. |
 | Capture index construction or refit | `backend=wp.PointQueryBackend.WARP` | Construction/refit capture supported with CUDA memory pools enabled. Both backends support querying prebuilt indexes in graphs. |
 | Symmetric Chamfer with fixed targets | Fixed: `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE`; reverse: `backend=wp.PointQueryBackend.WARP` | Faster forward/backward steps in **19/21** k=1 cases, averaging **1.06×** over `backend=wp.PointQueryBackend.WARP` both ways. |
@@ -18,9 +75,9 @@ All three configurations below use **Warp's public `wp.build_point_index()` and 
 
 The backend choice is explicit. `objective` tunes cuBQL; it does not switch backends or change the default implementation's policy. Build the fixed target index once, then pass `bvh=indexes` on subsequent calls. Supplied indexes keep their original settings. Leave `leaf_size`, `query_stride`, and `ordered` automatic initially. The cuBQL route requires CUDA, memory-pool support, and a build with cuBQL enabled; it supports k=1–64.
 
-## Latest workload measurements
+## Separate pulmonary and batched measurements
 
-This fresh run uses the completed API and native binary at [93e506474](https://github.com/alecjacobson/warp/commit/93e506474cdc0e10e57b875a60e986f6f5fbf7f9). It supersedes the earlier construction/Chamfer report, which predates the API cleanup. Measurements cover **24 workloads**, each with all three configurations, on the **94-SM RTX PRO 6000 Blackwell MIG 2g.48gb** slice. [All timings](current/timings.md), [raw samples](current/batched.json), and [aggregates](current/summary.json) are retained.
+This separately measured experiment uses the same completed API and native binary, recorded at [93e506474](https://github.com/alecjacobson/warp/commit/93e506474cdc0e10e57b875a60e986f6f5fbf7f9). Every recorded source/binary hash still matches. It covers **24 workloads**, each with three public configurations, on the same **94-SM slice**. Its outputs are int32 IDs and **squared** distances, and its wall timer does not record Torch events. Keep its timings and geometric means separate from the cross-library tables. [All timings](current/timings.md), [raw samples](current/batched.json), and [aggregates](current/summary.json) are retained.
 
 ![Per-workload speedup for fixed targets](current/query-speedups.svg)
 
@@ -72,7 +129,7 @@ The raw native preallocated call averages 1.005× standalone time. The public wr
 
 This is a **separate 23-workload experiment** with 31 interleaved samples, int64 indices, Euclidean distances, and 32 replays per graph sample. The fresh 24-workload results above use int32 indices, squared distances, nine sequential samples, and one replay per graph sample. Do not pool their timings or geometric means. The integration experiment times queries only, including when `objective=wp.PointQueryObjective.BUILD_AND_QUERY` selects the tree policy.
 
-## Method, correctness, and remaining limits
+## Pulmonary methodology and remaining limits
 
 - Hardware: NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb, **94 SMs**, approximately 47.4 GiB available; CUDA 12.9.1 toolkit, driver supporting CUDA 13.2. The existing quick-build native binary was reused. No other test or benchmark job was launched by this agent during the run.
 - Inputs: nine supplied original pulmonary clouds with **82,734–379,385** float32 points, original centimeter scale. Each runs with N=1,024 and 8,192. Two cases repeat the largest cloud with B=2/4; one explicitly samples four different clouds to M=65,536 for a non-ragged B=4 batch. Three synthetic `(M,N,k)` cases are `(1000,32,32)`, `(100000,1024,32)`, and `(1000000,8192,11)`. Different-size original clouds are measured separately, with no implicit padding.
@@ -82,9 +139,11 @@ This is a **separate 23-workload experiment** with 31 interleaved samples, int64
 - Retained completion evidence: **89 focused CPU/CUDA tests passed**, including finite-difference gradients and explicit route checks. The recorded source hashes still match. Saved build, strict documentation, and conditional translation-unit checks are in the [completion report](completion/README.md); those compile checks do not establish full alternate-platform runtime support.
 - Current scope: fixed-size independent batches, reusable target indexes, both query graph routes, and scalar kernel queries. No ragged batches. Larger-batch fusion, wider hardware tuning, peak training memory, and application integration remain follow-ups.
 
-There is no refreshed claim here against cuVS, Faiss, PhysicsNeMo, or other external libraries. Those comparisons used earlier implementations and the **46-SM** slice; they are available in the [historical archive](archive/README.md). Their absolute timings must not be compared directly with this run.
+The [historical archive](archive/README.md) preserves earlier implementations and **46-SM** measurements. Those timings are not included in either current experiment.
 
 ## Reproduce and inspect
+
+For the 40-workload colored tables, follow the [cross-library reproduction guide](current/libraries/reproduce.md). It records dependencies, native builds, dataset restoration, worker commands, and presentation generation.
 
 From the repository root, with the supplied dataset and an already built native library matching the source:
 
