@@ -2,7 +2,7 @@
 
 **Start here: [Current comparisons and recommended settings](comparisons.md).**
 
-Updated **2026-11-13** for `alecjacobson/knn`. **Four colored tables compare 16 configurations across 40 workloads**, freshly measured on the 94-SM GPU: public Warp settings, standalone cuBQL, PhysicsNeMo, CuPy, KeOps, Faiss, cuVS, and PyTorch3D. Ordinary calls and graph replay have separate tables; failed checks and capture attempts stay visible. The separate 24-workload pulmonary/batched experiment covers Chamfer forward/backward and retained memory.
+Updated **2026-11-13** for `alecjacobson/knn`. **Six colored tables** cover single-cloud queries, native batched queries, and fixed-target Chamfer with backward on the 94-SM GPU. The four single-cloud tables compare 16 configurations across 40 workloads. Two new tables compare eight query configurations across 24 workloads and nine Chamfer configurations across 21 workloads, including unchanged PyTorch, PyTorch3D, and KeOps APIs with supported tuning. Failed checks and runtime errors stay visible. Retained public-only measurements also cover construction, query graphs, and live allocations.
 
 | Read | Purpose |
 | --- | --- |
@@ -10,6 +10,8 @@ Updated **2026-11-13** for `alecjacobson/knn`. **Four colored tables compare 16 
 | **[Public API guide](public-api.md)** | `wp.build_point_index()`, `wp.knn()`, batches, fixed targets, gradients, graphs, and scalar queries inside kernels. |
 | [Cross-library timing tables](current/libraries/tables.md) | Aggregates for all 16 configurations; [CSV](current/libraries/cases.csv) contains every median and status. |
 | [Cross-library reproduction](current/libraries/reproduce.md) | Dependency/build pins, worker commands, source/data provenance, and chart generation. |
+| **[Batched query and Chamfer comparisons](comparisons.md#batched-queries-and-chamfer-against-external-libraries)** | Two colored tables, native external batching, independent tuning, and full decoded-gradient checks. |
+| [Batched cross-library reproduction](current/training/reproduce.md) | Settings, timing contract, failure isolation, raw evidence, and [every median/status](current/training/cases.csv). |
 | [Pulmonary/batched timings](current/timings.md) | The separate 24-workload, three-configuration experiment. |
 | [Standalone integration and validation](completion/README.md) | Public-wrapper overhead versus standalone cuBQL, native review, and the completed test evidence. |
 | [Historical archive](archive/README.md) | Earlier implementations, tuning studies, and external-library comparisons, with their original evidence preserved. |

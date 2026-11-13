@@ -1,0 +1,38 @@
+{
+  "method": "torch_direct",
+  "phase": "query",
+  "environment": {
+    "python": "3.12.3",
+    "packages": {
+      "torch": "2.7.1+cu128",
+      "numpy": "2.5.3",
+      "cupy-cuda12x": "14.2.0",
+      "cuvs-cu12": "26.10.0",
+      "libcuvs-cu12": "26.10.0",
+      "rmm-cu12": "26.10.0",
+      "faiss-gpu-cu12": null,
+      "pykeops": "2.3",
+      "pytorch3d": null
+    },
+    "git_revision": "72918d0ecb2bc9ad6f008652b56a8d5c74e93123",
+    "benchmark_source_sha256": {
+      "benchmark_point_query_comparison.py": "3cdc9240bb1380f9a2a824d39a60a434426c779f2fbb8a1c53089aa846b0c217",
+      "point_query_backends.py": "00a36b4bc7d6b08c5a2f23d3ce88561949b23ed49e8bdc56a32054994e79820d"
+    },
+    "native_bvh_sha256": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb"
+  },
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb",
+  "sm_count": 94,
+  "repeats": 9,
+  "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba",
+  "manifest_sha256": "e02c1f16d84cbfcf9ed4f3f186836e50d66506a13d9a292e254bf510ab1201c8",
+  "tuning_sha256": "fb3749217ddf189276091b864a9686447c8f063be68e062e106be29af15af2df",
+  "cases": [
+    {
+      "name": "synthetic_volume_m1000000_k11",
+      "status": "launch_error",
+      "error": "CUDA error: invalid configuration argument\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n",
+      "passed": false
+    }
+  ]
+}

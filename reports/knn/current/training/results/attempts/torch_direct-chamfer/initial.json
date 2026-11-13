@@ -1,0 +1,242 @@
+{
+  "method": "torch_direct",
+  "phase": "chamfer",
+  "environment": {
+    "python": "3.12.3",
+    "packages": {
+      "torch": "2.7.1+cu128",
+      "numpy": "2.5.3",
+      "cupy-cuda12x": "14.2.0",
+      "cuvs-cu12": "26.10.0",
+      "libcuvs-cu12": "26.10.0",
+      "rmm-cu12": "26.10.0",
+      "faiss-gpu-cu12": null,
+      "pykeops": "2.3",
+      "pytorch3d": null
+    },
+    "git_revision": "72918d0ecb2bc9ad6f008652b56a8d5c74e93123",
+    "benchmark_source_sha256": {
+      "benchmark_point_query_comparison.py": "3cdc9240bb1380f9a2a824d39a60a434426c779f2fbb8a1c53089aa846b0c217",
+      "point_query_backends.py": "00a36b4bc7d6b08c5a2f23d3ce88561949b23ed49e8bdc56a32054994e79820d"
+    },
+    "native_bvh_sha256": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb"
+  },
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb",
+  "sm_count": 94,
+  "repeats": 9,
+  "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f",
+  "manifest_sha256": "e02c1f16d84cbfcf9ed4f3f186836e50d66506a13d9a292e254bf510ab1201c8",
+  "tuning_sha256": "fb3749217ddf189276091b864a9686447c8f063be68e062e106be29af15af2df",
+  "cases": [
+    {
+      "name": "0102_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.056819990277290344,
+      "timing": {
+        "median_ms": 444.95115079917014,
+        "samples_ms": [
+          444.80340206064284,
+          445.0332620181143,
+          444.8381420224905,
+          444.95115079917014,
+          445.31352212652564,
+          445.1367720030248,
+          445.1787720900029,
+          443.85760207660496,
+          443.40909318998456
+        ]
+      },
+      "validation": {
+        "loss": 0.0563625805079937,
+        "reference_loss": 0.05636257881516662,
+        "gradient_relative_l2_error": 5.496884189619768e-08,
+        "gradient_max_abs_error": 1.9619985627480907e-10,
+        "gradient_max_abs_tolerance": 1.3579568101227581e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0102_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.041389837861061096,
+      "timing": {
+        "median_ms": 3558.125576004386,
+        "samples_ms": [
+          3558.156716171652,
+          3558.125576004386,
+          3557.415087008849,
+          3560.8167140744627,
+          3561.1657151021063,
+          3557.227386161685,
+          3557.6137769967318,
+          3553.702258039266,
+          3558.7377960328013
+        ]
+      },
+      "validation": {
+        "loss": 0.007130270358175039,
+        "reference_loss": 0.007130269751104342,
+        "gradient_relative_l2_error": 5.435348956132764e-08,
+        "gradient_max_abs_error": 4.8823064934997405e-12,
+        "gradient_max_abs_tolerance": 5.3941238189302715e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0103_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.03574998117983341,
+      "timing": {
+        "median_ms": 364.27415581420064,
+        "samples_ms": [
+          364.29276689887047,
+          364.2801169771701,
+          364.26136712543666,
+          364.2772969324142,
+          364.2744771204889,
+          364.25390699878335,
+          364.264216972515,
+          364.26708684302866,
+          364.27415581420064
+        ]
+      },
+      "validation": {
+        "loss": 0.09252754598855972,
+        "reference_loss": 0.09252755120459094,
+        "gradient_relative_l2_error": 4.710813126083909e-08,
+        "gradient_max_abs_error": 1.8679552522826715e-10,
+        "gradient_max_abs_tolerance": 1.6982183052024558e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0103_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.03350991755723953,
+      "timing": {
+        "median_ms": 2917.3652241006494,
+        "samples_ms": [
+          2916.760623920709,
+          2918.0630028713495,
+          2917.7529129665345,
+          2917.8434531204402,
+          2917.4955228809267,
+          2917.3652241006494,
+          2916.793883079663,
+          2916.509923990816,
+          2917.141873855144
+        ]
+      },
+      "validation": {
+        "loss": 0.013101642951369286,
+        "reference_loss": 0.013101641954367582,
+        "gradient_relative_l2_error": 5.43180429054129e-08,
+        "gradient_max_abs_error": 8.73656393540409e-12,
+        "gradient_max_abs_tolerance": 6.429533147500463e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0104_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.03369012847542763,
+      "timing": {
+        "median_ms": 249.86326089128852,
+        "samples_ms": [
+          249.86326089128852,
+          249.83452097512782,
+          249.8393899295479,
+          249.8312508687377,
+          249.85526106320322,
+          249.89628978073597,
+          249.8651910573244,
+          249.8793408740312,
+          249.90424001589417
+        ]
+      },
+      "validation": {
+        "loss": 0.048925355076789856,
+        "reference_loss": 0.04892535116902396,
+        "gradient_relative_l2_error": 5.1801948543161995e-08,
+        "gradient_max_abs_error": 2.0634895138080256e-10,
+        "gradient_max_abs_tolerance": 1.2809609132420738e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0104_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.03495998680591583,
+      "timing": {
+        "median_ms": 1998.8452750258148,
+        "samples_ms": [
+          1998.9774951245636,
+          1997.5259259808809,
+          1998.6617560498416,
+          1998.9601648412645,
+          1998.7887260504067,
+          1998.7953549716622,
+          1998.8574360031635,
+          1998.8452750258148,
+          1999.044856056571
+        ]
+      },
+      "validation": {
+        "loss": 0.007074963301420212,
+        "reference_loss": 0.007074963838201172,
+        "gradient_relative_l2_error": 5.405022329197023e-08,
+        "gradient_max_abs_error": 6.009564224832183e-12,
+        "gradient_max_abs_tolerance": 4.659239329228735e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0105_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.03829994238913059,
+      "timing": {
+        "median_ms": 1173.7471749074757,
+        "samples_ms": [
+          1173.4616660978645,
+          1173.438835889101,
+          1176.4985041227192,
+          1173.7471749074757,
+          1173.4693758189678,
+          1176.6435541212559,
+          1176.6644339077175,
+          1173.8263650331646,
+          1173.4968861564994
+        ]
+      },
+      "validation": {
+        "loss": 0.09209071844816208,
+        "reference_loss": 0.09209072671316403,
+        "gradient_relative_l2_error": 5.912366121978541e-08,
+        "gradient_max_abs_error": 2.717045876482471e-10,
+        "gradient_max_abs_tolerance": 1.9888375551535653e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    }
+  ]
+}

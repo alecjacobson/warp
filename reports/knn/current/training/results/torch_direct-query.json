@@ -1,0 +1,768 @@
+{
+  "method": "torch_direct",
+  "phase": "query",
+  "environment": {
+    "python": "3.12.3",
+    "packages": {
+      "torch": "2.7.1+cu128",
+      "numpy": "2.5.3",
+      "cupy-cuda12x": "14.2.0",
+      "cuvs-cu12": "26.10.0",
+      "libcuvs-cu12": "26.10.0",
+      "rmm-cu12": "26.10.0",
+      "faiss-gpu-cu12": null,
+      "pykeops": "2.3",
+      "pytorch3d": null
+    },
+    "git_revision": "72918d0ecb2bc9ad6f008652b56a8d5c74e93123",
+    "benchmark_source_sha256": {
+      "benchmark_point_query_comparison.py": "3cdc9240bb1380f9a2a824d39a60a434426c779f2fbb8a1c53089aa846b0c217",
+      "point_query_backends.py": "00a36b4bc7d6b08c5a2f23d3ce88561949b23ed49e8bdc56a32054994e79820d"
+    },
+    "native_bvh_sha256": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb"
+  },
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb",
+  "sm_count": 94,
+  "repeats": 9,
+  "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f",
+  "manifest_sha256": "e02c1f16d84cbfcf9ed4f3f186836e50d66506a13d9a292e254bf510ab1201c8",
+  "tuning_sha256": "fb3749217ddf189276091b864a9686447c8f063be68e062e106be29af15af2df",
+  "cases": [
+    {
+      "name": "0102_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.05638995207846165,
+      "timing": {
+        "median_ms": 293.5650560539216,
+        "samples_ms": [
+          293.6036770697683,
+          293.5881158336997,
+          293.5650560539216,
+          293.48894697614014,
+          293.5169660486281,
+          293.53391588665545,
+          293.59567700885236,
+          293.60995604656637,
+          293.53783605620265
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 7.921496675805637e-08,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0102_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.04030996933579445,
+      "timing": {
+        "median_ms": 2239.752400899306,
+        "samples_ms": [
+          2347.9093411006033,
+          2347.7435908280313,
+          2273.534002015367,
+          2239.8217308800668,
+          2239.752400899306,
+          2227.7732980437577,
+          2221.1591019295156,
+          2221.1843610275537,
+          2221.193182049319
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 7.775078970685952e-08,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0103_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.03769993782043457,
+      "timing": {
+        "median_ms": 228.4322129562497,
+        "samples_ms": [
+          228.49041316658258,
+          228.4369918052107,
+          228.4322129562497,
+          228.4322129562497,
+          228.4413818269968,
+          228.42451301403344,
+          228.41302305459976,
+          228.42145198956132,
+          228.42199308797717
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 5.9352087041096377e-08,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0103_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.035659875720739365,
+      "timing": {
+        "median_ms": 1826.568591175601,
+        "samples_ms": [
+          1826.5591519884765,
+          1826.568591175601,
+          1826.5791619196534,
+          1826.5833421610296,
+          1826.6145009547472,
+          1826.589232077822,
+          1826.528521021828,
+          1826.5544520691037,
+          1826.5229109674692
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 7.928388526436357e-08,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0104_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.03491993993520737,
+      "timing": {
+        "median_ms": 156.63166320882738,
+        "samples_ms": [
+          156.63895197212696,
+          156.63166320882738,
+          156.63991286419332,
+          156.65882197208703,
+          156.6506631206721,
+          156.62191295996308,
+          156.61555202677846,
+          156.61754296161234,
+          156.6196628846228
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 5.908591264349012e-08,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0104_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.03518001176416874,
+      "timing": {
+        "median_ms": 1252.4628210812807,
+        "samples_ms": [
+          1252.4664718657732,
+          1252.405242063105,
+          1252.4245611857623,
+          1252.4701619986445,
+          1252.4549011141062,
+          1252.4524219334126,
+          1252.474311972037,
+          1252.4628210812807,
+          1252.4949919898063
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 1.0457140043267274e-07,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0105_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.0352498609572649,
+      "timing": {
+        "median_ms": 717.9199990350753,
+        "samples_ms": [
+          717.9464099463075,
+          717.9117200430483,
+          717.9199990350753,
+          717.9145000409335,
+          717.8948901128024,
+          717.9068392142653,
+          717.9379698354751,
+          717.9391600657254,
+          717.9209589958191
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 8.002337144105966e-08,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0105_H_PULM_H_full_q8192",
+      "status": "launch_error",
+      "error": "CUDA error: invalid configuration argument\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n",
+      "passed": false,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0108_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.05718995817005634,
+      "timing": {
+        "median_ms": 709.1563930734992,
+        "samples_ms": [
+          709.4506840221584,
+          709.4535531941801,
+          709.3202332034707,
+          709.2931640800089,
+          709.1563930734992,
+          709.1113741043955,
+          709.1373531147838,
+          709.0121540240943,
+          709.08272289671
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 4.934100762452483e-08,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0108_H_PULM_H_full_q8192",
+      "status": "launch_error",
+      "error": "CUDA error: invalid configuration argument\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n",
+      "passed": false,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0114_H_PULM_ALGS_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.05604000762104988,
+      "timing": {
+        "median_ms": 266.2104810588062,
+        "samples_ms": [
+          266.2104810588062,
+          266.2349308375269,
+          266.18856098502874,
+          266.2205609958619,
+          266.14042185246944,
+          266.17273106239736,
+          266.2183509673923,
+          266.2150710821152,
+          266.1542510613799
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 6.87916652933036e-08,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0114_H_PULM_ALGS_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.057060038670897484,
+      "timing": {
+        "median_ms": 2127.489171223715,
+        "samples_ms": [
+          2128.79896000959,
+          2128.3172501716763,
+          2128.1400800216943,
+          2127.892079995945,
+          2127.254439983517,
+          2127.489171223715,
+          2126.8983602058142,
+          2127.2797810379416,
+          2126.563941128552
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 1.057725010727175e-07,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0115_H_PULM_ALGS_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.05902908742427826,
+      "timing": {
+        "median_ms": 228.92022202722728,
+        "samples_ms": [
+          228.95036218687892,
+          228.83039200678468,
+          228.87833206914365,
+          228.98589191026986,
+          228.9553319569677,
+          228.95462182350457,
+          228.89397200196981,
+          228.8756319321692,
+          228.92022202722728
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 6.781038111866087e-08,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0115_H_PULM_ALGS_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.0559899490326643,
+      "timing": {
+        "median_ms": 1747.457702877,
+        "samples_ms": [
+          1830.3833859972656,
+          1830.1833670120686,
+          1799.9393630307168,
+          1752.1510110236704,
+          1747.4509421736002,
+          1747.457702877,
+          1747.3871228285134,
+          1747.3317629192024,
+          1747.3806429188699
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 1.1223621710327463e-07,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0116_H_PULM_ALGS_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.057819997891783714,
+      "timing": {
+        "median_ms": 231.35556001216173,
+        "samples_ms": [
+          242.24420497193933,
+          242.3572838306427,
+          242.35000484623015,
+          242.187064839527,
+          231.35556001216173,
+          231.34880093857646,
+          231.3528200611472,
+          231.34835087694228,
+          231.34909104555845
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 7.330558683257459e-08,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0116_H_PULM_ALGS_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.057110097259283066,
+      "timing": {
+        "median_ms": 1834.800363983959,
+        "samples_ms": [
+          1850.1677250023931,
+          1850.1654958818108,
+          1845.0845191255212,
+          1834.7867841366678,
+          1834.8387840669602,
+          1834.7998538520187,
+          1834.7683839965612,
+          1834.768224041909,
+          1834.800363983959
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 6.405310135164134e-08,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0117_H_PULM_ALGS_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.06008986383676529,
+      "timing": {
+        "median_ms": 258.5502949077636,
+        "samples_ms": [
+          260.86650416255,
+          260.79481514170766,
+          260.4412140790373,
+          258.55567515827715,
+          258.5435057990253,
+          258.5496350657195,
+          258.5476557724178,
+          258.5502949077636,
+          258.5361658129841
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 5.776199907013688e-08,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0117_H_PULM_ALGS_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.05489005707204342,
+      "timing": {
+        "median_ms": 2067.532934015617,
+        "samples_ms": [
+          2070.6834020093083,
+          2067.523543955758,
+          2067.532934015617,
+          2067.566243931651,
+          2067.518403986469,
+          2067.5960530061275,
+          2067.530324216932,
+          2067.5652839709073,
+          2067.48774391599
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 5.065699180631251e-08,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "largest_full_b2",
+      "status": "ok",
+      "setup_ms": 0.059560174122452736,
+      "timing": {
+        "median_ms": 3571.936232969165,
+        "samples_ms": [
+          3571.96078193374,
+          3571.936232969165,
+          3572.017502039671,
+          3571.914722910151,
+          3571.8934431206435,
+          3571.8618219252676,
+          3571.862052893266,
+          3571.9531630165875,
+          3571.944931987673
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 0.625,
+          "distance_rank_mismatch_rows": 12,
+          "reported_distance_mismatch_rows": 12,
+          "max_reported_distance_relative_error": 1.0,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        },
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 0.0,
+          "distance_rank_mismatch_rows": 32,
+          "reported_distance_mismatch_rows": 32,
+          "max_reported_distance_relative_error": 1.0,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": false,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "largest_full_b4",
+      "status": "launch_error",
+      "error": "CUDA error: invalid configuration argument\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n",
+      "passed": false,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "mixed_subset_b4_m65536",
+      "status": "launch_error",
+      "error": "CUDA error: invalid configuration argument\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n",
+      "passed": false,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "synthetic_volume_m1000_k32",
+      "status": "ok",
+      "setup_ms": 0.05611986853182316,
+      "timing": {
+        "median_ms": 0.0911499373614788,
+        "samples_ms": [
+          0.09933998808264732,
+          0.10470999404788017,
+          0.09341910481452942,
+          0.09206007234752178,
+          0.0911499373614788,
+          0.09036995470523834,
+          0.09081000462174416,
+          0.09097997099161148,
+          0.09109009988605976
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 1.1321026484524237e-07,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "synthetic_volume_m100000_k32",
+      "status": "ok",
+      "setup_ms": 0.05640997551381588,
+      "timing": {
+        "median_ms": 191.87934300862253,
+        "samples_ms": [
+          191.97067292407155,
+          191.89573312178254,
+          191.88169203698635,
+          191.85384293086827,
+          191.86631310731173,
+          191.87431293539703,
+          191.89246208406985,
+          191.87934300862253,
+          191.8726130388677
+        ]
+      },
+      "validation": [
+        {
+          "valid_shape": true,
+          "valid_indices_and_finite_distances": true,
+          "checked_rows": 32,
+          "duplicate_rows": 0,
+          "unsorted_rows": 0,
+          "tie_aware_recall_at_k": 1.0,
+          "distance_rank_mismatch_rows": 0,
+          "reported_distance_mismatch_rows": 0,
+          "max_reported_distance_relative_error": 1.1145163093833036e-07,
+          "rank_rtol": 1e-05,
+          "rank_atol_squared": 1e-12
+        }
+      ],
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "synthetic_volume_m1000000_k11",
+      "status": "launch_error",
+      "error": "CUDA error: invalid configuration argument\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n",
+      "passed": false,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    }
+  ],
+  "source_versions": [
+    "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f",
+    "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+  ]
+}
