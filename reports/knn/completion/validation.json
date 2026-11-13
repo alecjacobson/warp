@@ -1,0 +1,55 @@
+{
+  "date": "2026-11-13",
+  "base_commit": "31ed91f20",
+  "checks": [
+    {
+      "command": "uv run --no-sync -m unittest warp.tests.geometry.test_point_query_batched warp.tests.geometry.test_point_query_batch warp.tests.geometry.test_point_query warp.tests.geometry.test_bvh warp.examples.benchmarks.test_point_query_comparison -v",
+      "result": "89 passed; before the final explicit build-only capture-test refinement",
+      "log": "validation.log.gz"
+    },
+    {
+      "command": "uv run --no-sync -m unittest warp.tests.geometry.test_point_query_batched -k test_batched_capture -v",
+      "result": "1 passed after explicit build-only capture-test refinement",
+      "log": "capture.log.gz"
+    },
+    {
+      "command": "uv run --no-sync build_lib.py --quick --cuda-path /home/horde/cuda/12.9.1 --jobs 4",
+      "result": "native CUDA build passed",
+      "log": "build.log.gz"
+    },
+    {
+      "command": "uv run --no-sync build_docs.py --warnings-as-errors",
+      "result": "passed",
+      "log": "docs.log.gz"
+    },
+    {
+      "command": "uv run --no-sync -m warp.examples.geometry.example_point_query_chamfer --device cuda:0 --backend cubql",
+      "result": "loss 0.310435 to 0.157861, cuBQL fixed targets and Warp reverse",
+      "log": "example.log.gz"
+    },
+    {
+      "command": "Conditional translation-unit compilation and symbol inspection; see README for full commands",
+      "result": "CPU-only bvh.cpp, disabled-cuBQL CPU glue and disabled-cuBQL CUDA compile; native API symbols present in CPU-only and disabled-CUDA objects. Alternate full-runtime builds not tested.",
+      "log": "conditional-build.log.gz"
+    },
+    {
+      "command": "benchmark_point_query_integration; see README for full command",
+      "result": "23 workloads, 46 objective/workload pairs, 230 route/objective/workload combinations, 16640 sampled reference rows; all checks passed",
+      "log": "integration.log.gz"
+    },
+    {
+      "command": "uvx pre-commit run --files <all changed and new files>",
+      "result": "passed after formatting",
+      "log": "format.log.gz"
+    }
+  ],
+  "source_hashes": {
+    "warp/_src/point_query.py": "9b1927dcc252dca32325e3c9828a1b493a32546f8d54bc5545eace243615a09a",
+    "warp/native/bvh.cpp": "952d5791d82bf3722914025f181fef5edb87ab0bf06c8fefb064baad629cffe1",
+    "warp/native/bvh_cubql.cu": "e4d5fc0d515ba7b5583ed7a878a2565e837311e46d05e1e6add509c02f1dc0db",
+    "warp/tests/geometry/test_point_query_batched.py": "6ce53ae32dbc7e830f6e92f3e790a4af3adcfd3e0ecd0bdf8a0c155f7a98d843",
+    "warp/examples/geometry/example_point_query_chamfer.py": "cd1becd1ebd9c95e0da933ea44b52594566dbd9bebf074efee43c49cd17bd4c3",
+    "warp/examples/benchmarks/benchmark_point_query_integration.py": "7bec1999c3197b40654743ae14d2cb35b3387f257cfc29243291035d1a7dc600",
+    "warp/bin/warp.so": "29f46520dfa3c2f7fca0edcfedd5fb5ff740ce00f48401fcd136050efcdf1443"
+  }
+}

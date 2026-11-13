@@ -100,7 +100,7 @@ def main():
 
         row = {"case": case, "config": vars(config), "variants": {}}
         for name, fn in [
-            ("batch", lambda points=points, queries=queries, k=k: wp.point_query_knn_batch(points, queries, k)),
+            ("batch", lambda points=points, queries=queries, k=k: wp.knn(points, queries, k)),
             ("configured_scalar", scalar),
             ("dense_scalar", lambda scalar=scalar: scalar(dense=True)),
         ]:
@@ -109,11 +109,7 @@ def main():
             valid = accuracy(p, q, ids, np.sqrt(ds), k)
             index = result[0]
             search = (
-                (
-                    lambda points=points, queries=queries, k=k, index=index: wp.point_query_knn_batch(
-                        points, queries, k, bvh=index
-                    )
-                )
+                (lambda points=points, queries=queries, k=k, index=index: wp.knn(points, queries, k, bvh=index))
                 if name == "batch"
                 else (lambda scalar=scalar, index=index, name=name: scalar(index, name == "dense_scalar"))
             )

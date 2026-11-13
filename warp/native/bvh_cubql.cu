@@ -791,12 +791,16 @@ wp_point_query_cubql_create_device(void* context, const wp::vec3* points, int co
         wp::set_error_string("Invalid direct cuBQL construction arguments");
         return 0;
     }
-    auto* index = new CubqlPointIndex { context };
+    CubqlPointIndex* index = nullptr;
     cuBQL::box3f* boxes = nullptr;
     try {
+        index = new CubqlPointIndex { context };
         if (count) {
             index->memory.malloc(reinterpret_cast<void**>(&boxes), sizeof(cuBQL::box3f) * count, stream);
-            wp::cubql_make_boxes<<<(count + 255) / 256, 256, 0, stream>>>(points, points, boxes, count);
+            wp::cubql_make_boxes<<<(size_t(count) + 255) / 256, 256, 0, stream>>>(points, points, boxes, count);
+            const cudaError_t status = cudaGetLastError();
+            if (status != cudaSuccess)
+                throw std::runtime_error(cudaGetErrorString(status));
             cuBQL::BuildConfig config(leaf_size);
             if (builder == 0)
                 cuBQL::gpuBuilder(index->tree, boxes, count, config.enableELH(), stream, index->memory);
@@ -815,8 +819,10 @@ wp_point_query_cubql_create_device(void* context, const wp::vec3* points, int co
     }
     // Preserve the original diagnostic if cleanup encounters another CUDA error.
     cudaFreeAsync(boxes, stream);
-    cudaFreeAsync(index->tree.nodes, stream);
-    cudaFreeAsync(index->tree.primIDs, stream);
+    if (index) {
+        cudaFreeAsync(index->tree.nodes, stream);
+        cudaFreeAsync(index->tree.primIDs, stream);
+    }
     delete index;
 #else
     wp::set_error_string("Direct cuBQL point queries are disabled in this build");
@@ -867,6 +873,10 @@ bool wp_point_query_cubql_query_device(
     if (!count)
         return true;
     const auto& index = *reinterpret_cast<const CubqlPointIndex*>(id);
+    if (index.tree.numPrims && !points) {
+        wp::set_error_string("Direct cuBQL queries require target coordinates for a nonempty index");
+        return false;
+    }
     ContextGuard guard(index.context);
     const cudaStream_t stream = static_cast<cudaStream_t>(wp_cuda_context_get_stream(index.context));
 #define WP_CUBQL_LAUNCH(Capacity) \

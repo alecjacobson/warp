@@ -1,6 +1,6 @@
 # Direct cuBQL queries and independent point-cloud batches
 
-- **Status:** Initial implementation validated on CPU and one CUDA device; broader performance/portability work remains
+- **Status:** Initial scope implemented and validated on CPU and one CUDA device; wider tuning and application integration are follow-up work
 - **Issues:** [Direct cuBQL](https://github.com/alecjacobson/warp/issues/20), [fixed-size batches](https://github.com/alecjacobson/warp/issues/21)
 
 ## Motivation
@@ -9,7 +9,9 @@ Dense point-cloud encoders need differentiable nearest-neighbor distances withou
 
 ## Design
 
-Extend `point_query_knn_batch` to accept either the existing one-dimensional vec3 arrays or two-dimensional vec3 arrays with shape `(B, M)` for targets and `(B, N)` for queries. The latter represent ordinary coordinate tensors `(B, M, 3)` and `(B, N, 3)`. Return batch-local indices/distances `(B, N, k)`, counts `(B, N)`, and a tuple of B reusable indexes. Existing single-cloud defaults and return shapes remain unchanged.
+`wp.knn` accepts either one-dimensional vec3 arrays or two-dimensional vec3 arrays with shape `(B, M)` for targets and `(B, N)` for queries. The latter represent ordinary coordinate tensors `(B, M, 3)` and `(B, N, 3)`. Return batch-local indices/distances `(B, N, k)`, counts `(B, N)`, and a tuple of B reusable indexes. Existing single-cloud defaults and return shapes remain unchanged. `wp.point_query_knn_batch` remains a functional deprecated alias; the scalar kernel primitive `wp.point_query_knn` is unchanged.
+
+`wp.build_point_index(targets, num_queries=N, k=k, backend=...)` constructs one index or a tuple of indexes without query coordinates or neighbor outputs. Pass the result as `bvh=` to subsequent `wp.knn` calls. The query count and k are tuning hints; later queries may use different valid values. Target storage is retained by reference. Changing its coordinates requires refitting Warp BVHs or rebuilding cuBQL indexes; replacing the allocation requires new indexes.
 
 The first implementation submits one existing query operation per batch using zero-copy views, preserving parent gradient storage. It uses O(BM + BNk) storage for fixed k, with linear construction/order scratch, without a pairwise tensor. It does not yet fuse construction or query launches across batches. Returning ordinary tuples avoids introducing a second aggregate index owner.
 
@@ -23,6 +25,8 @@ For symmetric Chamfer loss, build target indexes once for decoded-to-target quer
 
 ## Validation and follow-up
 
-The 85-test point-query/BVH/harness suite passes. New coverage includes overlapping clouds with different local index ordering, singleton equivalence, empty and partial results, output/index reuse, native dispatch, unsupported configurations, ordered capture, refits/rebuilds, and squared/Euclidean gradients of both Chamfer directions against an exhaustive reference and finite differences.
+The 89-test point-query/BVH/harness suite passes. Coverage includes overlapping clouds with different local index ordering, singleton equivalence, empty and partial results, output/index reuse, native dispatch, unsupported configurations, ordered capture, refits/rebuilds, and squared/Euclidean gradients of both Chamfer directions against an exhaustive reference and finite differences. Build-only tests forbid query dispatch during construction, verify reuse without rebuilding, and exercise changed query counts and k. Legacy calls retain their signature and behavior with a deprecation warning.
 
-The [pulmonary benchmark report](../reports/knn/batched-cubql/README.md) records 24 workloads and raw timings on the current 94-SM slice, separately from the historical 46-SM report. The supplied archive is read without adding raw data to Git. Keep both issues open for standalone integration-overhead comparisons, wider shape/hardware coverage, peak-memory measurements, and review. Cross-batch launch fusion and denser-query cuBQL tuning remain possible follow-up optimizations; neither is required for the linear-memory batch contract.
+The [pulmonary benchmark report](../reports/knn/batched-cubql/README.md) records 24 workloads, construction/query timings, retained memory, and symmetric Chamfer forward/backward on the current 94-SM slice, separately from the historical 46-SM report. The [completion report](../reports/knn/completion/README.md) compares integrated and standalone cuBQL on matching inputs and settings, and records final API and conditional-build validation. The supplied archive is read without adding raw data to Git.
+
+Wider shape/hardware coverage, peak training memory, actual encoder integration, cross-batch launch fusion, and denser-query tuning remain follow-up work. They do not block the initial optional native route or linear-memory fixed-size batch contract. Ragged batches are outside this design.

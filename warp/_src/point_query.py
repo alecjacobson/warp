@@ -10,6 +10,7 @@ from enum import IntEnum
 import warp as wp
 from warp._src import context
 from warp._src.context import DeviceLike, get_device
+from warp._src.logger import log_warning
 from warp._src.types import type_size_in_bytes
 from warp._src.utils import ScopedDevice, radix_sort_pairs
 
@@ -30,6 +31,29 @@ class PointQueryObjective(IntEnum):
     """Optimize construction followed by one query batch."""
     REUSE = 1
     """Optimize repeated queries against an existing target cloud."""
+
+
+def _validate_backend(device, k, backend, objective, leaf_size):
+    if not isinstance(k, int) or isinstance(k, bool) or k < 1:
+        raise ValueError("k must be a positive Python integer")
+    if not isinstance(backend, PointQueryBackend):
+        raise TypeError("backend must be a PointQueryBackend")
+    if not isinstance(objective, PointQueryObjective):
+        raise TypeError("objective must be a PointQueryObjective")
+    if backend == PointQueryBackend.CUBQL:
+        if not device.is_cuda or not context.is_cubql_available():
+            raise ValueError("Direct cuBQL requires CUDA and a Warp build with cuBQL enabled")
+        if not device.is_mempool_supported:
+            raise ValueError("Direct cuBQL requires CUDA memory-pool support")
+        if k > 64:
+            raise ValueError("Direct cuBQL supports k from 1 through 64")
+        if leaf_size is not None:
+            raise ValueError("Direct cuBQL uses its tuning policy; leaf_size overrides are unsupported")
+
+
+def _validate_query_count(num_queries):
+    if not isinstance(num_queries, int) or isinstance(num_queries, bool) or num_queries < 0:
+        raise ValueError("num_queries must be a nonnegative integer")
 
 
 def _cubql_config(num_points, num_queries, k, objective):
@@ -75,18 +99,9 @@ class CubqlPointIndex:
         self.id = None
         if not isinstance(points, wp.array) or points.dtype != wp.vec3 or points.ndim != 1:
             raise TypeError("points must be a one-dimensional Warp vec3 array")
-        if not points.is_contiguous or not points.device.is_cuda:
-            raise ValueError("Direct cuBQL requires contiguous CUDA points")
-        if not isinstance(objective, PointQueryObjective):
-            raise TypeError("objective must be a PointQueryObjective")
-        if not isinstance(k, int) or isinstance(k, bool) or not 1 <= k <= 64:
-            raise ValueError("Direct cuBQL supports k from 1 through 64")
-        if not isinstance(num_queries, int) or isinstance(num_queries, bool) or num_queries < 0:
-            raise ValueError("num_queries must be a nonnegative integer")
-        if not context.is_cubql_available():
-            raise ValueError("Direct cuBQL is unavailable in this Warp build")
-        if not points.device.is_mempool_supported:
-            raise ValueError("Direct cuBQL requires CUDA memory-pool support")
+        _validate_array(points, "points", (wp.vec3,), points.shape, points.device)
+        _validate_backend(points.device, k, PointQueryBackend.CUBQL, objective, None)
+        _validate_query_count(num_queries)
         self.points = points
         self.device = points.device
         self.runtime = context.runtime
@@ -287,9 +302,68 @@ def _validate_array(array, name, dtype, shape, device):
         raise ValueError(f"{name} must be contiguous, have shape {shape}, a supported dtype, and live on {device}")
 
 
-def point_query_knn_batch(
-    points: wp.array,
-    queries: wp.array,
+def build_point_index(
+    points: wp.array[wp.vec3] | wp.array2d[wp.vec3],
+    *,
+    num_queries: int | None = None,
+    k: int = 1,
+    backend: PointQueryBackend = PointQueryBackend.WARP,
+    objective: PointQueryObjective = PointQueryObjective.REUSE,
+    leaf_size: int | None = None,
+) -> wp.Bvh | CubqlPointIndex | tuple:
+    """Build reusable target indexes without performing a nearest-neighbor query.
+
+    Pass the returned index to :func:`warp.knn` as ``bvh``. Construction requires
+    no query coordinates and allocates no neighbor outputs. Retain the index and
+    targets during asynchronous execution and graph replay. The index references
+    the supplied target storage; it does not copy the coordinates. Refit Warp
+    BVHs or rebuild cuBQL indexes after changing coordinates in place. A new
+    target allocation requires new indexes.
+
+    Args:
+        points: Contiguous ``vec3`` targets of shape ``(M,)`` or ``(B, M)``.
+        num_queries: Expected queries per cloud, used only for tuning. When
+            omitted, use M. Later queries may have different counts.
+        k: Expected positive neighbor count, used only for tuning. Direct cuBQL
+            supports counts up to 64. Later queries may use different valid k.
+        backend: Select Warp on CPU/CUDA or native cuBQL on CUDA.
+        objective: Choose construction-inclusive or reused-index cuBQL tuning.
+        leaf_size: Override the Warp BVH leaf size. Unsupported for cuBQL.
+
+    Returns:
+        One :class:`warp.Bvh` or :class:`warp.CubqlPointIndex` for a single cloud,
+        or a tuple of B indexes for batched inputs. Empty clouds and B=0 are
+        supported. Warp CUDA construction supports graph capture with memory
+        pools enabled; cuBQL construction must occur outside capture.
+    """
+    if not isinstance(points, wp.array):
+        raise TypeError("points must be a Warp array")
+    if points.ndim not in (1, 2):
+        raise ValueError("points must have a one- or two-dimensional vec3 layout")
+    device = points.device
+    _validate_array(points, "points", (wp.vec3,), points.shape, device)
+    _validate_backend(device, k, backend, objective, leaf_size)
+    num_queries = points.shape[-1] if num_queries is None else num_queries
+    _validate_query_count(num_queries)
+    leaf = point_query_config(points.shape[-1], num_queries, device).leaf_size if leaf_size is None else leaf_size
+    if backend == PointQueryBackend.WARP and (not isinstance(leaf, int) or isinstance(leaf, bool) or leaf < 1):
+        raise ValueError("leaf_size must be a positive Python integer")
+    with ScopedDevice(device):
+        if backend == PointQueryBackend.CUBQL and device.stream.is_capturing:
+            raise ValueError("Direct cuBQL construction cannot be captured; build the index before capture")
+        clouds = (_batch_view(points, batch) for batch in range(points.shape[0])) if points.ndim == 2 else (points,)
+        indexes = tuple(
+            CubqlPointIndex(cloud, num_queries, k, objective)
+            if backend == PointQueryBackend.CUBQL
+            else wp.Bvh(cloud, cloud, leaf_size=leaf)
+            for cloud in clouds
+        )
+    return indexes if points.ndim == 2 else indexes[0]
+
+
+def knn(
+    points: wp.array[wp.vec3] | wp.array2d[wp.vec3],
+    queries: wp.array[wp.vec3] | wp.array2d[wp.vec3],
     k: int,
     *,
     bvh: wp.Bvh | CubqlPointIndex | tuple | None = None,
@@ -320,7 +394,8 @@ def point_query_knn_batch(
         queries: Contiguous ``vec3`` queries of shape ``(N,)`` or ``(B, N)`` on
             the same device. Each batch searches only its corresponding targets.
         k: Positive Python integer, specialized when compiling the query kernel.
-        bvh: Optional reusable BVH or cuBQL point index, or a tuple of B indexes
+        bvh: Optional index from :func:`warp.build_point_index`: a reusable
+            BVH or cuBQL point index, or a tuple of B indexes
             for batched inputs. Refit Warp BVHs or rebuild cuBQL indexes after
             moving targets. When omitted, construct the indexes.
         max_dist: Strict distance cutoff in coordinate units, even for squared outputs.
@@ -375,12 +450,11 @@ def point_query_knn_batch(
         existing = () if bvh is None else (bvh,)
     if backend is not None and not isinstance(backend, PointQueryBackend):
         raise TypeError("backend must be a PointQueryBackend")
-    if not isinstance(objective, PointQueryObjective):
-        raise TypeError("objective must be a PointQueryObjective")
     if backend is None:
         backend = (
             PointQueryBackend.CUBQL if existing and isinstance(existing[0], CubqlPointIndex) else PointQueryBackend.WARP
         )
+    _validate_backend(device, k, backend, objective, leaf_size)
     for batch, index in enumerate(existing):
         expected_type = CubqlPointIndex if backend == PointQueryBackend.CUBQL else wp.Bvh
         if not isinstance(index, expected_type):
@@ -395,10 +469,6 @@ def point_query_knn_batch(
             if (references.ptr or 0) != ((points.ptr or 0) + offset):
                 raise ValueError("A cuBQL index must reference the original target allocation")
     if backend == PointQueryBackend.CUBQL:
-        if not device.is_cuda or not context.is_cubql_available():
-            raise ValueError("Direct cuBQL requires CUDA and a Warp build with cuBQL enabled")
-        if k > 64:
-            raise ValueError("Direct cuBQL supports k from 1 through 64")
         if max_dist != float("inf") or exclude_indices is not None:
             raise ValueError(
                 "Direct cuBQL requires an infinite cutoff and no exclusions; use the Warp backend for filtering"
@@ -448,7 +518,7 @@ def point_query_knn_batch(
         if points.ndim == 2:
             indexes = []
             for batch in range(points.shape[0]):
-                result = point_query_knn_batch(
+                result = knn(
                     _batch_view(points, batch),
                     _batch_view(queries, batch),
                     k,
@@ -468,10 +538,13 @@ def point_query_knn_batch(
                 indexes.append(result[0])
             return bvh if bvh is not None else tuple(indexes), indices, distances, counts
         if bvh is None:
-            bvh = (
-                CubqlPointIndex(points, nq, k, objective)
-                if backend == PointQueryBackend.CUBQL
-                else wp.Bvh(points, points, leaf_size=leaf)
+            bvh = build_point_index(
+                points,
+                num_queries=nq,
+                k=k,
+                backend=backend,
+                objective=objective,
+                leaf_size=leaf if backend == PointQueryBackend.WARP else None,
             )
         keys = order = bounds = None
         if nq:
@@ -526,3 +599,19 @@ def point_query_knn_batch(
         if device.is_cuda and not device.stream.is_blocking and not device.stream.is_capturing:
             device.null_stream.wait_stream(device.stream)
     return bvh, indices, distances, counts
+
+
+@functools.wraps(knn, assigned=("__module__", "__annotations__"))
+def point_query_knn_batch(*args, **kwargs):
+    """Find nearest neighbors using the deprecated alias for :func:`warp.knn`.
+
+    Use :func:`warp.knn` with the same arguments and return values. Both names
+    support single clouds and independent batches. This alias remains functional
+    during the deprecation period.
+    """
+    log_warning(
+        "wp.point_query_knn_batch() is deprecated; use wp.knn() with the same arguments instead.",
+        category=DeprecationWarning,
+        stacklevel=2,
+    )
+    return knn(*args, **kwargs)

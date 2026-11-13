@@ -25,8 +25,8 @@ infinity means an unbounded search. Pass ``exclude_index=t`` for self-query
 rows only when query row ``t`` corresponds to point row ``t``. Exclusion
 removes that index; coincident points with other indices remain eligible.
 
-Automatic batch queries
------------------------
+Array queries and fixed targets
+-------------------------------
 
 The host wrapper defaults to Warp traversal and chooses point-tree leaf size,
 query spacing, and query ordering automatically. It returns an ordinary tuple
@@ -35,18 +35,34 @@ on the same device.
 
 .. code-block:: python
 
-    bvh, indices, distances_sq, counts = wp.point_query_knn_batch(points, queries, 8)
+    # Build once, before query coordinates are available.
+    bvh = wp.build_point_index(points, num_queries=1024, k=8)
+
+    _, indices, distances_sq, counts = wp.knn(points, queries, 8, bvh=bvh)
 
     # Reuse the tree for another query batch.
-    _, indices2, distances_sq2, counts2 = wp.point_query_knn_batch(
+    _, indices2, distances_sq2, counts2 = wp.knn(
         points, next_queries, 8, bvh=bvh
     )
 
     # Optional output reuse; shapes must match the query count and k.
-    wp.point_query_knn_batch(
+    wp.knn(
         points, queries, 8, bvh=bvh,
         indices=indices, distances=distances_sq, counts=counts,
     )
+
+:func:`warp.build_point_index` performs only construction; it needs no query
+array and allocates no neighbor outputs. ``num_queries`` and ``k`` are optional
+tuning hints. An omitted query count uses the target count, and the default k
+hint is 1. Later calls may use different query counts and valid neighbor counts.
+Targets can be single clouds or independent batches with the same construction
+API. The index retains references to the supplied coordinates without copying
+them. Passing no ``bvh`` to :func:`warp.knn` builds an index and queries in one
+call, returning that index for possible reuse.
+
+``wp.point_query_knn_batch`` is a deprecated, working alias for ``wp.knn`` with
+the same arguments and return values. The scalar kernel primitive
+``wp.point_query_knn`` is unchanged.
 
 Output shapes are ``(Q, k)``, ``(Q, k)``, and ``(Q,)``. Indices default to
 int32; caller-supplied int64 outputs are also supported. Distances default to
@@ -87,11 +103,13 @@ M and N can differ. Ragged batches are not supported.
 .. code-block:: python
 
     targets = wp.array(target_numpy, dtype=wp.vec3)  # (B, M, 3) on input
+    indexes = wp.build_point_index(targets)
+
+    # Each iteration supplies the current decoded coordinates.
     decoded = wp.array(decoded_numpy, dtype=wp.vec3, requires_grad=True)
-    indexes, indices, distances_sq, counts = wp.point_query_knn_batch(targets, decoded, 1)
 
     # Keep indexes while fixed targets stay unchanged; decoded may change in place.
-    _, indices, distances_sq, counts = wp.point_query_knn_batch(
+    _, indices, distances_sq, counts = wp.knn(
         targets, decoded, 1, bvh=indexes
     )
 
@@ -133,13 +151,13 @@ heuristics; benchmark on the intended GPU and geometry.
 
 .. code-block:: python
 
-    indexes, indices, distances_sq, counts = wp.point_query_knn_batch(
-        targets, decoded, 1,
+    indexes = wp.build_point_index(
+        targets, num_queries=8192, k=1,
         backend=wp.PointQueryBackend.CUBQL,
         objective=wp.PointQueryObjective.REUSE,
     )
     # The supplied indexes determine the backend and retain the build objective.
-    result = wp.point_query_knn_batch(targets, decoded, 1, bvh=indexes)
+    result = wp.knn(targets, decoded, 1, bvh=indexes)
 
 The cuBQL route requires CUDA with memory-pool support and a Warp build with
 cuBQL enabled. It supports k from 1 through 64, infinite cutoffs, no exclusions,

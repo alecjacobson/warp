@@ -1,0 +1,90 @@
+{
+  "case_count": 23,
+  "objectives": {
+    "REUSE": {
+      "preallocated": {
+        "public_over_matched_geomean": 2.0402395380759386,
+        "ratio_min": 1.161455764535906,
+        "ratio_max": 2.827906200286741,
+        "b1_overhead_us_median": 40.350016206502914,
+        "b1_overhead_us_min": 33.460091799497604,
+        "b1_overhead_us_max": 43.339794501662254,
+        "warp_over_public_geomean": 1.3977726052537185,
+        "public_wins_over_warp": 23,
+        "matched_over_sm120_geomean": 1.0011672357176367,
+        "native_over_matched_geomean": 1.0054253439389467,
+        "public_over_native_geomean": 2.02923026595183
+      },
+      "allocated": {
+        "public_over_matched_geomean": 1.7236831205285805,
+        "ratio_min": 1.1832870534493674,
+        "ratio_max": 2.0470199877487123,
+        "b1_overhead_us_median": 42.00998228043318,
+        "b1_overhead_us_min": 40.71998409926891,
+        "b1_overhead_us_max": 43.798936530947685,
+        "warp_over_public_geomean": 1.3253282515954639,
+        "public_wins_over_warp": 23,
+        "matched_over_sm120_geomean": 1.0141199049778233
+      },
+      "graph": {
+        "public_over_matched_geomean": 1.0101652278243842,
+        "ratio_min": 0.9981219395058192,
+        "ratio_max": 1.0258534415144496,
+        "b1_overhead_us_median": 0.2943888830486685,
+        "b1_overhead_us_min": -0.034968252293765545,
+        "b1_overhead_us_max": 3.383756848052144,
+        "warp_over_public_geomean": 1.2561184345936323,
+        "public_wins_over_warp": 22,
+        "matched_over_sm120_geomean": 1.013911459827963,
+        "native_over_matched_geomean": 1.0086535908630645,
+        "public_over_native_geomean": 1.0014986681007363
+      }
+    },
+    "BUILD_AND_QUERY": {
+      "preallocated": {
+        "public_over_matched_geomean": 1.4768052550172164,
+        "ratio_min": 1.0632665707472229,
+        "ratio_max": 1.8593422990465855,
+        "b1_overhead_us_median": 41.319988667964935,
+        "b1_overhead_us_min": 38.83033059537411,
+        "b1_overhead_us_max": 44.68974657356739,
+        "warp_over_public_geomean": 0.8550740532233009,
+        "public_wins_over_warp": 3,
+        "matched_over_sm120_geomean": 0.9777958038505569,
+        "native_over_matched_geomean": 1.0137921280090318,
+        "public_over_native_geomean": 1.4567140681171866
+      },
+      "allocated": {
+        "public_over_matched_geomean": 1.4137983445925297,
+        "ratio_min": 1.139506952216351,
+        "ratio_max": 1.6685601797765655,
+        "b1_overhead_us_median": 42.99008287489414,
+        "b1_overhead_us_min": 41.261082515120506,
+        "b1_overhead_us_max": 50.78013055026531,
+        "warp_over_public_geomean": 0.875644718851444,
+        "public_wins_over_warp": 3,
+        "matched_over_sm120_geomean": 0.986301626111427
+      },
+      "graph": {
+        "public_over_matched_geomean": 1.0140323780898939,
+        "ratio_min": 0.9963287035841777,
+        "ratio_max": 1.0281297150518751,
+        "b1_overhead_us_median": 1.3903118087910116,
+        "b1_overhead_us_min": -0.16968260752037168,
+        "b1_overhead_us_max": 2.385619154665619,
+        "warp_over_public_geomean": 0.477426856141923,
+        "public_wins_over_warp": 2,
+        "matched_over_sm120_geomean": 0.9771228390527991,
+        "native_over_matched_geomean": 1.01424170649616,
+        "public_over_native_geomean": 0.9997936109263449
+      }
+    }
+  },
+  "validation": {
+    "route_objective_workload_combinations": 230,
+    "sampled_rows": 16640,
+    "min_tie_aware_recall_at_k": 1.0,
+    "rank_mismatches": 0,
+    "distance_mismatches": 0
+  }
+}

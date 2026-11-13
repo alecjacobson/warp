@@ -1,6 +1,6 @@
 # Batched point queries and direct cuBQL: pulmonary validation
 
-2026-11-13. Initial implementation for [direct cuBQL (#20)](https://github.com/alecjacobson/warp/issues/20) and [fixed-size batches (#21)](https://github.com/alecjacobson/warp/issues/21). Both issues remain open for review and the follow-up work below.
+2026-11-13. Initial implementation measurements for [direct cuBQL (#20)](https://github.com/alecjacobson/warp/issues/20) and [fixed-size batches (#21)](https://github.com/alecjacobson/warp/issues/21). See the [completion report](../completion/README.md) for the final public API, standalone integration comparison, and resolved initial scope. Measurements and source hashes below describe the initial implementation.
 
 ## Results
 
@@ -59,9 +59,9 @@ uv run --no-sync -m unittest warp.tests.geometry.test_point_query_batched \
   warp.tests.geometry.test_bvh warp.examples.benchmarks.test_point_query_comparison
 ```
 
-## Remaining work
+## Follow-up identified in the initial run
 
-- Compare native integration overhead directly against the standalone cuBQL harness on the same hardware. The frozen settings match the prior independently selected builder/leaf/launch policies; current data does not establish universal fastest settings.
+- The same-device standalone comparison is now recorded in the [completion report](../completion/README.md). The frozen settings match the prior independently selected builder/leaf/launch policies; current data does not establish universal fastest settings.
 - Broaden shape/device coverage and investigate dense-query tuning. Two graph cases remain slower with cuBQL:
 
 | Case | Warp graph (ms) | cuBQL reuse graph (ms) |
