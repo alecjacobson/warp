@@ -1,0 +1,13 @@
+{
+  "test_count": 85,
+  "tests": "CPU/CUDA point-query, BVH, and comparison-harness modules",
+  "docs": "build_docs.py --warnings-as-errors passed",
+  "precommit": "changed files passed",
+  "extra_source_hashes": {
+    "warp/tests/geometry/test_point_query_batched.py": "74c9711511b366871b9513c4c6646901f5347e520f3cd0d0132fb6653746240d",
+    "warp/examples/geometry/example_point_query_chamfer.py": "f7565d74e104e66c43254171031f58620ab788e9595245c4f0a8d909c7899579",
+    "warp/native/warp.h": "f8cabd4e71af68ffa85fc41a1c423615ae537d58babfe294bd18378fef36b964",
+    "warp/native/bvh.cpp": "5479fcbee94b6f4c18e3d127d5b67d88ef1719839c27934af5a88b06fe01c68c",
+    "warp/_src/context.py": "45c46361004533b597b6a2892af713e5d7d8bcf6d0ce71e5fe16f15c82b19de9"
+  }
+}

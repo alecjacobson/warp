@@ -28,10 +28,10 @@ removes that index; coincident points with other indices remain eligible.
 Automatic batch queries
 -----------------------
 
-The Warp-only host wrapper chooses point-tree leaf size, query spacing, and
-query ordering automatically. It returns an ordinary tuple containing the
-existing BVH and output arrays; it introduces no point-cloud owner or result
-record. Inputs are contiguous ``wp.vec3`` arrays on the same device.
+The host wrapper defaults to Warp traversal and chooses point-tree leaf size,
+query spacing, and query ordering automatically. It returns an ordinary tuple
+containing the BVH and output arrays. Inputs are contiguous ``wp.vec3`` arrays
+on the same device.
 
 .. code-block:: python
 
@@ -75,6 +75,93 @@ keys computed entirely in Warp. Returned rows always retain the original
 query order. This is a measured heuristic, not an architecture-independent
 optimum. Override ``leaf_size`` when building, ``query_stride``, or ``ordered``
 when appropriate; an existing BVH retains its layout.
+
+Independent point-cloud batches
+-------------------------------
+
+Use two-dimensional ``wp.vec3`` arrays to query B independent clouds. A NumPy
+float32 array with shape ``(B, M, 3)`` becomes a Warp ``vec3`` array with shape
+``(B, M)``. Targets have M points per batch and queries have N points per batch;
+M and N can differ. Ragged batches are not supported.
+
+.. code-block:: python
+
+    targets = wp.array(target_numpy, dtype=wp.vec3)  # (B, M, 3) on input
+    decoded = wp.array(decoded_numpy, dtype=wp.vec3, requires_grad=True)
+    indexes, indices, distances_sq, counts = wp.point_query_knn_batch(targets, decoded, 1)
+
+    # Keep indexes while fixed targets stay unchanged; decoded may change in place.
+    _, indices, distances_sq, counts = wp.point_query_knn_batch(
+        targets, decoded, 1, bvh=indexes
+    )
+
+The returned index tuple has B entries. Neighbors never cross batch boundaries,
+and output indices are local to the corresponding target cloud. Indices and
+distances have shape ``(B, N, k)``; counts and optional exclusions have shape
+``(B, N)``. Empty batches, empty query sets, and empty target sets are supported.
+An empty target set produces zero counts and padded outputs. A singleton batch
+retains its leading dimension. One-dimensional inputs retain their original
+return shapes and single index object.
+
+For symmetric squared Chamfer loss, average the decoded-to-target 1-NN distances
+over B and N, and add the target-to-decoded mean over B and M. The fixed target
+indexes can be reused across training steps. The reverse direction searches the
+changing decoded points and needs rebuilt indexes or refitted Warp BVHs each
+step. Both directions propagate distance gradients into the decoded coordinates;
+target gradients also work when requested. Empty clouds do not define a finite
+Chamfer mean, so reject them before computing that loss.
+
+``warp/examples/geometry/example_point_query_chamfer.py`` demonstrates a small
+optimization with both directions and a fixed target index. Run it with
+``--backend warp`` or ``--backend cubql --device cuda:0``. Both use Warp for the
+changing decoded index by default; select ``--reverse-backend cubql`` to measure
+cuBQL in both directions. Acceleration and output storage
+scale as ``O(B*M + B*N*k)``; the wrapper never materializes a ``B*N*M`` distance
+tensor. This implementation builds one index and issues one query launch per
+batch, so host launch overhead grows with B. CUDA graphs can reduce replay
+overhead for reused indexes.
+
+Optional native cuBQL queries
+-----------------------------
+
+Select :attr:`warp.PointQueryBackend.CUBQL` to call native cuBQL traversal with
+tuned builder, leaf-size, and launch settings. Choose
+:attr:`warp.PointQueryObjective.REUSE` for fixed targets, or
+:attr:`warp.PointQueryObjective.BUILD_AND_QUERY` for construction followed by
+one query batch. These policies come from measured configurations and are
+heuristics; benchmark on the intended GPU and geometry.
+
+.. code-block:: python
+
+    indexes, indices, distances_sq, counts = wp.point_query_knn_batch(
+        targets, decoded, 1,
+        backend=wp.PointQueryBackend.CUBQL,
+        objective=wp.PointQueryObjective.REUSE,
+    )
+    # The supplied indexes determine the backend and retain the build objective.
+    result = wp.point_query_knn_batch(targets, decoded, 1, bvh=indexes)
+
+The cuBQL route requires CUDA with memory-pool support and a Warp build with
+cuBQL enabled. It supports k from 1 through 64, infinite cutoffs, no exclusions,
+and no query ordering or leaf-size overrides. Unsupported requests raise an
+error. It returns the same shapes, padding, and differentiable gathered distances
+as the Warp route. Upstream cuBQL controls distance ranking and equal-distance
+ties; original-index tie ordering is not promised, and rounding can differ from
+Warp's scalar search. Coordinates and squared distances must be finite and
+representable in float32.
+
+Each native tree is owned by :class:`warp.CubqlPointIndex`. Construction and
+rebuilding synchronize with the host and cannot be captured. Query-only capture
+works after construction; keep owners and arrays alive throughout graph replay.
+Destruction also synchronizes. After an in-place target update, call
+``index.rebuild()`` for each affected index. Replacing the target allocation
+requires new indexes. The route preserves the application's memory-pool
+retention threshold.
+
+The default Warp route remains useful for CPU execution, strict filtering and
+tie semantics, construction-inclusive workloads, and capturing complete
+build/refit-plus-query operations. Both backends support the independent batch
+layout above.
 
 Fast scalar calls and fused work
 --------------------------------
