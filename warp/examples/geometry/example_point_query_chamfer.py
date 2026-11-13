@@ -44,15 +44,15 @@ def main():
         if not targets.shape[1] or not decoded.shape[1]:
             raise ValueError("Chamfer loss requires nonempty clouds in both directions")
         # The target coordinates stay fixed for the entire optimization.
-        fixed_indexes = wp.point_query_knn_batch(targets, decoded, 1, backend=backend)[0]
+        fixed_indexes = wp.build_point_index(targets, num_queries=decoded.shape[1], k=1, backend=backend)
         loss = wp.zeros(1, dtype=float, requires_grad=True)
         values = []
         for _ in range(args.steps):
             loss.zero_()
             with wp.Tape() as tape:
-                to_target = wp.point_query_knn_batch(targets, decoded, 1, bvh=fixed_indexes)
+                to_target = wp.knn(targets, decoded, 1, bvh=fixed_indexes)
                 # This direction indexes decoded coordinates, which change every step.
-                to_decoded = wp.point_query_knn_batch(
+                to_decoded = wp.knn(
                     decoded, targets, 1, backend=reverse_backend, objective=wp.PointQueryObjective.BUILD_AND_QUERY
                 )
                 wp.launch(mean_distance_kernel, decoded.shape, [to_target[2], loss, 1.0 / decoded.size])

@@ -38,7 +38,7 @@ def main():
         points = wp.array(rng.normal(size=(100_000, 3)).astype(np.float32), dtype=wp.vec3)
         queries = wp.array(rng.normal(size=(1_024, 3)).astype(np.float32), dtype=wp.vec3)
         k = 8
-        bvh, indices, distances_sq, _counts = wp.point_query_knn_batch(points, queries, k)
+        bvh, indices, distances_sq, _counts = wp.knn(points, queries, k)
         print("First query neighbors:", indices.numpy()[0])
         config = wp.point_query_config(len(points), len(queries), points.device)
         sums = wp.empty(len(queries), dtype=float)

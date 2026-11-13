@@ -52,7 +52,7 @@ class Query:
     def call(self, bvh=None, outputs=None):
         ids, distances, counts = self.outputs() if outputs is None else outputs
         if self.method == "warp_batch":
-            return wp.point_query_knn_batch(
+            return wp.knn(
                 self.points,
                 self.queries,
                 self.k,

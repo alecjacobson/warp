@@ -62,26 +62,24 @@ def benchmark_case(targets_host, queries_host, k, backend, objective, repeats, d
     queries = wp.array(queries_host, dtype=wp.vec3, device=device)
     wp.synchronize_device(device)
     baseline = wp.get_mempool_used_mem_current(device)
-    initial = wp.point_query_knn_batch(points, queries, k, backend=backend, objective=objective)
+    initial = wp.knn(points, queries, k, backend=backend, objective=objective)
     wp.synchronize_device(device)
     retained_bytes = wp.get_mempool_used_mem_current(device) - baseline
     checks = validate(targets_host, queries_host, initial, k)
     del initial
 
     def build_and_query():
-        return wp.point_query_knn_batch(points, queries, k, backend=backend, objective=objective)
+        return wp.knn(points, queries, k, backend=backend, objective=objective)
 
     build_time, result = measure(build_and_query, repeats, device)
     indexes = result[0]
 
     def query():
-        return wp.point_query_knn_batch(points, queries, k, bvh=indexes)
+        return wp.knn(points, queries, k, bvh=indexes)
 
     query_time, reused = measure(query, repeats, device)
     with wp.ScopedCapture(device=device) as capture:
-        graph_result = wp.point_query_knn_batch(
-            points, queries, k, bvh=indexes, indices=reused[1], distances=reused[2], counts=reused[3]
-        )
+        graph_result = wp.knn(points, queries, k, bvh=indexes, indices=reused[1], distances=reused[2], counts=reused[3])
     graph_time, _ = measure(lambda: wp.capture_launch(capture.graph), repeats, device)
     changed = queries_host + np.float32(0.003)
     queries.assign(changed)
@@ -110,8 +108,8 @@ def benchmark_case(targets_host, queries_host, k, backend, objective, repeats, d
             loss.zero_()
             decoded.grad.zero_()
             with wp.Tape() as tape:
-                forward = wp.point_query_knn_batch(points, decoded, 1, bvh=indexes)
-                reverse = wp.point_query_knn_batch(
+                forward = wp.knn(points, decoded, 1, bvh=indexes)
+                reverse = wp.knn(
                     decoded, points, 1, backend=reverse_backend, objective=wp.PointQueryObjective.BUILD_AND_QUERY
                 )
                 wp.launch(mean_distance_kernel, decoded.shape, [forward[2], loss, 1.0 / decoded.size], device=device)

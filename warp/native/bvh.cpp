@@ -920,7 +920,11 @@ void wp_bvh_refit_device(uint64_t id) { }
 void wp_bvh_destroy_device(uint64_t id) { }
 void wp_bvh_rebuild_device(uint64_t id) { }
 
-uint64_t wp_point_query_cubql_create_device(void*, const wp::vec3*, int, int, int) { return 0; }
+uint64_t wp_point_query_cubql_create_device(void*, const wp::vec3*, int, int, int)
+{
+    wp::set_error_string("Direct cuBQL point queries require CUDA support");
+    return 0;
+}
 void wp_point_query_cubql_destroy_device(uint64_t) { }
 bool wp_point_query_cubql_query_device(
     uint64_t, const wp::vec3*, const wp::vec3*, int, int, int, int, void*, float*, int*, bool, bool
