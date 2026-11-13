@@ -1,0 +1,662 @@
+{
+  "method": "warp",
+  "phase": "chamfer",
+  "environment": {
+    "python": "3.12.3",
+    "packages": {
+      "torch": "2.7.1+cu128",
+      "numpy": "2.5.3",
+      "cupy-cuda12x": "14.2.0",
+      "cuvs-cu12": "26.10.0",
+      "libcuvs-cu12": "26.10.0",
+      "rmm-cu12": "26.10.0",
+      "faiss-gpu-cu12": null,
+      "pykeops": "2.3",
+      "pytorch3d": null
+    },
+    "git_revision": "72918d0ecb2bc9ad6f008652b56a8d5c74e93123",
+    "benchmark_source_sha256": {
+      "benchmark_point_query_comparison.py": "3cdc9240bb1380f9a2a824d39a60a434426c779f2fbb8a1c53089aa846b0c217",
+      "point_query_backends.py": "00a36b4bc7d6b08c5a2f23d3ce88561949b23ed49e8bdc56a32054994e79820d"
+    },
+    "native_bvh_sha256": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb"
+  },
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb",
+  "sm_count": 94,
+  "repeats": 9,
+  "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f",
+  "manifest_sha256": "e02c1f16d84cbfcf9ed4f3f186836e50d66506a13d9a292e254bf510ab1201c8",
+  "tuning_sha256": "fb3749217ddf189276091b864a9686447c8f063be68e062e106be29af15af2df",
+  "cases": [
+    {
+      "name": "0102_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 11.783153982833028,
+      "timing": {
+        "median_ms": 0.6048388313502073,
+        "samples_ms": [
+          0.6516799330711365,
+          0.618260120972991,
+          0.6084090564399958,
+          0.6095599383115768,
+          0.6017200648784637,
+          0.6048388313502073,
+          0.5962399300187826,
+          0.5933598149567842,
+          0.6022390443831682
+        ]
+      },
+      "validation": {
+        "loss": 0.056361887603998184,
+        "reference_loss": 0.05636257881516662,
+        "gradient_relative_l2_error": 2.531425195879194e-07,
+        "gradient_max_abs_error": 9.67953361994539e-10,
+        "gradient_max_abs_tolerance": 1.3579568101227581e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0102_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.4537098575383425,
+      "timing": {
+        "median_ms": 0.6931798998266459,
+        "samples_ms": [
+          0.7117991335690022,
+          0.6931798998266459,
+          0.6892699748277664,
+          0.7491891738027334,
+          0.7072100415825844,
+          0.6860790308564901,
+          0.6888899952173233,
+          0.6949999369680882,
+          0.6910590454936028
+        ]
+      },
+      "validation": {
+        "loss": 0.007130250800400972,
+        "reference_loss": 0.007130269751104342,
+        "gradient_relative_l2_error": 8.615818957143388e-08,
+        "gradient_max_abs_error": 1.8786546510064436e-11,
+        "gradient_max_abs_tolerance": 5.3941238189302715e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0103_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.42882002890110016,
+      "timing": {
+        "median_ms": 0.5589700303971767,
+        "samples_ms": [
+          0.5930999759584665,
+          0.5642089527100325,
+          0.5617099814116955,
+          0.5552500952035189,
+          0.5523099098354578,
+          0.5699489265680313,
+          0.5541399586945772,
+          0.5589700303971767,
+          0.5466490983963013
+        ]
+      },
+      "validation": {
+        "loss": 0.09252622723579407,
+        "reference_loss": 0.09252755120459094,
+        "gradient_relative_l2_error": 2.3730646522002087e-07,
+        "gradient_max_abs_error": 1.3376850428129666e-09,
+        "gradient_max_abs_tolerance": 1.6982183052024558e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0103_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.4176099319010973,
+      "timing": {
+        "median_ms": 0.6496489513665438,
+        "samples_ms": [
+          0.6707299035042524,
+          0.6511399988085032,
+          0.6496489513665438,
+          0.6553400307893753,
+          0.6432801019400358,
+          0.6486692000180483,
+          0.6527400109916925,
+          0.6411389913409948,
+          0.6433199159801006
+        ]
+      },
+      "validation": {
+        "loss": 0.013101664371788502,
+        "reference_loss": 0.013101641954367582,
+        "gradient_relative_l2_error": 8.737620149729699e-08,
+        "gradient_max_abs_error": 2.3718376058762952e-11,
+        "gradient_max_abs_tolerance": 6.429533147500463e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0104_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.39332988671958447,
+      "timing": {
+        "median_ms": 0.49447990022599697,
+        "samples_ms": [
+          0.5403498653322458,
+          0.49532996490597725,
+          0.5025491118431091,
+          0.48465002328157425,
+          0.49447990022599697,
+          0.4826490767300129,
+          0.49136998131871223,
+          0.4798599984496832,
+          0.49764011055231094
+        ]
+      },
+      "validation": {
+        "loss": 0.04892555624246597,
+        "reference_loss": 0.04892535116902396,
+        "gradient_relative_l2_error": 1.8491306457250497e-07,
+        "gradient_max_abs_error": 5.872040952439872e-10,
+        "gradient_max_abs_tolerance": 1.2809609132420738e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0104_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.410580076277256,
+      "timing": {
+        "median_ms": 0.562008935958147,
+        "samples_ms": [
+          0.5766900721937418,
+          0.5771399009972811,
+          0.562008935958147,
+          0.5607600323855877,
+          0.5597600247710943,
+          0.5573190283030272,
+          0.5626000929623842,
+          0.5605299957096577,
+          0.5702089983969927
+        ]
+      },
+      "validation": {
+        "loss": 0.007074976339936256,
+        "reference_loss": 0.007074963838201172,
+        "gradient_relative_l2_error": 6.924488086050072e-08,
+        "gradient_max_abs_error": 1.1072147661065658e-11,
+        "gradient_max_abs_tolerance": 4.659239329228735e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0105_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 1.324069919064641,
+      "timing": {
+        "median_ms": 1.033938955515623,
+        "samples_ms": [
+          1.0687189642339945,
+          1.0479988995939493,
+          1.040539937093854,
+          1.0389888193458319,
+          1.0310399811714888,
+          1.0336791165173054,
+          1.0324399918317795,
+          1.0318090207874775,
+          1.033938955515623
+        ]
+      },
+      "validation": {
+        "loss": 0.09209058433771133,
+        "reference_loss": 0.09209072671316403,
+        "gradient_relative_l2_error": 4.30692133384812e-07,
+        "gradient_max_abs_error": 1.5982421204627922e-09,
+        "gradient_max_abs_tolerance": 1.9888375551535653e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0105_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.5589588545262814,
+      "timing": {
+        "median_ms": 1.1166390031576157,
+        "samples_ms": [
+          1.1604188475757837,
+          1.1401199735701084,
+          1.1289091780781746,
+          1.1244998313486576,
+          1.1166390031576157,
+          1.1102689895778894,
+          1.1082200799137354,
+          1.1073991190642118,
+          1.1127199977636337
+        ]
+      },
+      "validation": {
+        "loss": 0.012646553106606007,
+        "reference_loss": 0.01264669772256689,
+        "gradient_relative_l2_error": 1.3013639547016575e-07,
+        "gradient_max_abs_error": 2.621857097477153e-11,
+        "gradient_max_abs_tolerance": 6.820162407856261e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0108_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.5390089936554432,
+      "timing": {
+        "median_ms": 1.0037301108241081,
+        "samples_ms": [
+          1.0305601172149181,
+          1.0081788059324026,
+          1.0154389310628176,
+          1.0037301108241081,
+          0.9997389279305935,
+          1.0132300667464733,
+          1.0019589681178331,
+          0.9864699095487595,
+          0.9955691639333963
+        ]
+      },
+      "validation": {
+        "loss": 0.09371156990528107,
+        "reference_loss": 0.09371200284929775,
+        "gradient_relative_l2_error": 4.5893840322522356e-07,
+        "gradient_max_abs_error": 3.242148184038479e-09,
+        "gradient_max_abs_tolerance": 2.9081219595193586e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0108_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.5479298997670412,
+      "timing": {
+        "median_ms": 1.0895889718085527,
+        "samples_ms": [
+          1.1069190222769976,
+          1.103658927604556,
+          1.1080598924309015,
+          1.0895889718085527,
+          1.0839900933206081,
+          1.0821290779858828,
+          1.0835789144039154,
+          1.0899798944592476,
+          1.089239027351141
+        ]
+      },
+      "validation": {
+        "loss": 0.011553158983588219,
+        "reference_loss": 0.011553242667540776,
+        "gradient_relative_l2_error": 1.323306914349701e-07,
+        "gradient_max_abs_error": 3.526966374934725e-11,
+        "gradient_max_abs_tolerance": 5.414465057406897e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0114_H_PULM_ALGS_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.43323985300958157,
+      "timing": {
+        "median_ms": 0.5714499857276678,
+        "samples_ms": [
+          0.5963400471955538,
+          0.5772789008915424,
+          0.5714499857276678,
+          0.577900093048811,
+          0.5686590448021889,
+          0.574139878153801,
+          0.5644501652568579,
+          0.5708190146833658,
+          0.5661000031977892
+        ]
+      },
+      "validation": {
+        "loss": 0.07687675952911377,
+        "reference_loss": 0.07687751644459714,
+        "gradient_relative_l2_error": 2.4668056029254274e-07,
+        "gradient_max_abs_error": 6.650749233023251e-10,
+        "gradient_max_abs_tolerance": 1.0161255339899713e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0114_H_PULM_ALGS_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.42672897689044476,
+      "timing": {
+        "median_ms": 0.6482501048594713,
+        "samples_ms": [
+          0.6615289021283388,
+          0.6479499861598015,
+          0.6482501048594713,
+          0.6478389259427786,
+          0.6582299247384071,
+          0.6430789362639189,
+          0.6493399851024151,
+          0.6560101173818111,
+          0.6419189739972353
+        ]
+      },
+      "validation": {
+        "loss": 0.01076603215187788,
+        "reference_loss": 0.010766059840550747,
+        "gradient_relative_l2_error": 8.74559092260447e-08,
+        "gradient_max_abs_error": 1.7511086466493256e-11,
+        "gradient_max_abs_tolerance": 4.93673683935383e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0115_H_PULM_ALGS_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.43327989988029003,
+      "timing": {
+        "median_ms": 0.5469799507409334,
+        "samples_ms": [
+          0.5552200600504875,
+          0.5469799507409334,
+          0.5487289745360613,
+          0.544039998203516,
+          0.5481000989675522,
+          0.5363300442695618,
+          0.552288955077529,
+          0.5367400590330362,
+          0.5460199899971485
+        ]
+      },
+      "validation": {
+        "loss": 0.017031468451023102,
+        "reference_loss": 0.01703147973662126,
+        "gradient_relative_l2_error": 1.9919024183492104e-07,
+        "gradient_max_abs_error": 2.129537365674547e-10,
+        "gradient_max_abs_tolerance": 5.965290594488492e-07,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0115_H_PULM_ALGS_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.4239201080054045,
+      "timing": {
+        "median_ms": 0.6202398799359798,
+        "samples_ms": [
+          0.6340998224914074,
+          0.6346791051328182,
+          0.6202398799359798,
+          0.6192200817167759,
+          0.6202890072017908,
+          0.6222599186003208,
+          0.6194598972797394,
+          0.6128291133791208,
+          0.6146698724478483
+        ]
+      },
+      "validation": {
+        "loss": 0.0025854038540273905,
+        "reference_loss": 0.002585411466604007,
+        "gradient_relative_l2_error": 7.247328041004837e-08,
+        "gradient_max_abs_error": 9.258082310763943e-12,
+        "gradient_max_abs_tolerance": 3.828127236828015e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0116_H_PULM_ALGS_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.46119000762701035,
+      "timing": {
+        "median_ms": 0.5542400758713484,
+        "samples_ms": [
+          0.5677801091223955,
+          0.5580699071288109,
+          0.5501790437847376,
+          0.5542400758713484,
+          0.5607400089502335,
+          0.5536300595849752,
+          0.5584689788520336,
+          0.5472099874168634,
+          0.5537800025194883
+        ]
+      },
+      "validation": {
+        "loss": 0.05066373199224472,
+        "reference_loss": 0.050664577009185925,
+        "gradient_relative_l2_error": 2.3888324369810395e-07,
+        "gradient_max_abs_error": 1.1438305792983716e-09,
+        "gradient_max_abs_tolerance": 1.77823984655268e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0116_H_PULM_ALGS_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.42887916788458824,
+      "timing": {
+        "median_ms": 0.6295598577708006,
+        "samples_ms": [
+          0.6372090429067612,
+          0.6417599506676197,
+          0.6295598577708006,
+          0.6276790518313646,
+          0.6343999411910772,
+          0.6205388344824314,
+          0.6293000187724829,
+          0.6804000586271286,
+          0.6254990585148335
+        ]
+      },
+      "validation": {
+        "loss": 0.006414385978132486,
+        "reference_loss": 0.006414411137930062,
+        "gradient_relative_l2_error": 7.757242595857354e-08,
+        "gradient_max_abs_error": 1.266275460680942e-11,
+        "gradient_max_abs_tolerance": 4.893910956690139e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0117_H_PULM_ALGS_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.465769087895751,
+      "timing": {
+        "median_ms": 0.5947388708591461,
+        "samples_ms": [
+          0.7395199500024319,
+          0.5977097898721695,
+          0.5947388708591461,
+          0.5781201180070639,
+          0.5819699726998806,
+          0.5724288057535887,
+          0.6949501112103462,
+          0.5965197924524546,
+          0.5712991114705801
+        ]
+      },
+      "validation": {
+        "loss": 0.04010073468089104,
+        "reference_loss": 0.040100662860542646,
+        "gradient_relative_l2_error": 2.970160247210328e-07,
+        "gradient_max_abs_error": 1.9648384924284e-09,
+        "gradient_max_abs_tolerance": 1.5595112269207146e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0117_H_PULM_ALGS_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.46719005331397057,
+      "timing": {
+        "median_ms": 0.6715401541441679,
+        "samples_ms": [
+          0.6734100170433521,
+          0.6715401541441679,
+          0.6805688608437777,
+          0.6695101037621498,
+          0.663568964228034,
+          0.67712995223701,
+          0.6592900026589632,
+          0.6604089867323637,
+          0.6728200241923332
+        ]
+      },
+      "validation": {
+        "loss": 0.005314681213349104,
+        "reference_loss": 0.005314720086411949,
+        "gradient_relative_l2_error": 8.278808878026814e-08,
+        "gradient_max_abs_error": 1.683762053123882e-11,
+        "gradient_max_abs_tolerance": 5.4479118381164944e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "largest_full_b2",
+      "status": "ok",
+      "setup_ms": 0.7966288831084967,
+      "timing": {
+        "median_ms": 2.097698859870434,
+        "samples_ms": [
+          2.1012690849602222,
+          2.0975179504603148,
+          2.102799015119672,
+          2.095308853313327,
+          2.0965090952813625,
+          2.099169185385108,
+          2.096329117193818,
+          2.098277909681201,
+          2.097698859870434
+        ]
+      },
+      "validation": {
+        "loss": 0.012554897926747799,
+        "reference_loss": 0.01255570994443905,
+        "gradient_relative_l2_error": 1.3546514064898966e-07,
+        "gradient_max_abs_error": 1.8750005739112847e-11,
+        "gradient_max_abs_tolerance": 3.205320939013159e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "largest_full_b4",
+      "status": "ok",
+      "setup_ms": 1.2976189609616995,
+      "timing": {
+        "median_ms": 4.059928003698587,
+        "samples_ms": [
+          4.074016818776727,
+          4.059928003698587,
+          4.059588070958853,
+          4.0603079833090305,
+          4.056266974657774,
+          4.057127982378006,
+          4.063138039782643,
+          4.060487961396575,
+          4.048547009006143
+        ]
+      },
+      "validation": {
+        "loss": 0.012539312243461609,
+        "reference_loss": 0.012541608422428784,
+        "gradient_relative_l2_error": 1.3514309786070497e-07,
+        "gradient_max_abs_error": 1.2093248162581543e-11,
+        "gradient_max_abs_tolerance": 2.6400509913788952e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "mixed_subset_b4_m65536",
+      "status": "ok",
+      "setup_ms": 0.8278689347207546,
+      "timing": {
+        "median_ms": 1.8370188772678375,
+        "samples_ms": [
+          1.843079226091504,
+          1.8262190278619528,
+          1.8597091548144817,
+          1.8370188772678375,
+          1.8427090253680944,
+          1.8373490311205387,
+          1.8330488819628954,
+          1.8322390969842672,
+          1.8255689647048712
+        ]
+      },
+      "validation": {
+        "loss": 0.009697852656245232,
+        "reference_loss": 0.009698053954844698,
+        "gradient_relative_l2_error": 2.8967724032599965e-08,
+        "gradient_max_abs_error": 1.0913936421275139e-11,
+        "gradient_max_abs_tolerance": 4.4711718399194074e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    }
+  ]
+}

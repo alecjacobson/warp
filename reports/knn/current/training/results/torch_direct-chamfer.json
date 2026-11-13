@@ -1,0 +1,567 @@
+{
+  "method": "torch_direct",
+  "phase": "chamfer",
+  "environment": {
+    "python": "3.12.3",
+    "packages": {
+      "torch": "2.7.1+cu128",
+      "numpy": "2.5.3",
+      "cupy-cuda12x": "14.2.0",
+      "cuvs-cu12": "26.10.0",
+      "libcuvs-cu12": "26.10.0",
+      "rmm-cu12": "26.10.0",
+      "faiss-gpu-cu12": null,
+      "pykeops": "2.3",
+      "pytorch3d": null
+    },
+    "git_revision": "72918d0ecb2bc9ad6f008652b56a8d5c74e93123",
+    "benchmark_source_sha256": {
+      "benchmark_point_query_comparison.py": "3cdc9240bb1380f9a2a824d39a60a434426c779f2fbb8a1c53089aa846b0c217",
+      "point_query_backends.py": "00a36b4bc7d6b08c5a2f23d3ce88561949b23ed49e8bdc56a32054994e79820d"
+    },
+    "native_bvh_sha256": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb"
+  },
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb",
+  "sm_count": 94,
+  "repeats": 9,
+  "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f",
+  "manifest_sha256": "e02c1f16d84cbfcf9ed4f3f186836e50d66506a13d9a292e254bf510ab1201c8",
+  "tuning_sha256": "fb3749217ddf189276091b864a9686447c8f063be68e062e106be29af15af2df",
+  "cases": [
+    {
+      "name": "0102_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.056819990277290344,
+      "timing": {
+        "median_ms": 444.95115079917014,
+        "samples_ms": [
+          444.80340206064284,
+          445.0332620181143,
+          444.8381420224905,
+          444.95115079917014,
+          445.31352212652564,
+          445.1367720030248,
+          445.1787720900029,
+          443.85760207660496,
+          443.40909318998456
+        ]
+      },
+      "validation": {
+        "loss": 0.0563625805079937,
+        "reference_loss": 0.05636257881516662,
+        "gradient_relative_l2_error": 5.496884189619768e-08,
+        "gradient_max_abs_error": 1.9619985627480907e-10,
+        "gradient_max_abs_tolerance": 1.3579568101227581e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0102_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.041389837861061096,
+      "timing": {
+        "median_ms": 3558.125576004386,
+        "samples_ms": [
+          3558.156716171652,
+          3558.125576004386,
+          3557.415087008849,
+          3560.8167140744627,
+          3561.1657151021063,
+          3557.227386161685,
+          3557.6137769967318,
+          3553.702258039266,
+          3558.7377960328013
+        ]
+      },
+      "validation": {
+        "loss": 0.007130270358175039,
+        "reference_loss": 0.007130269751104342,
+        "gradient_relative_l2_error": 5.435348956132764e-08,
+        "gradient_max_abs_error": 4.8823064934997405e-12,
+        "gradient_max_abs_tolerance": 5.3941238189302715e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0103_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.03574998117983341,
+      "timing": {
+        "median_ms": 364.27415581420064,
+        "samples_ms": [
+          364.29276689887047,
+          364.2801169771701,
+          364.26136712543666,
+          364.2772969324142,
+          364.2744771204889,
+          364.25390699878335,
+          364.264216972515,
+          364.26708684302866,
+          364.27415581420064
+        ]
+      },
+      "validation": {
+        "loss": 0.09252754598855972,
+        "reference_loss": 0.09252755120459094,
+        "gradient_relative_l2_error": 4.710813126083909e-08,
+        "gradient_max_abs_error": 1.8679552522826715e-10,
+        "gradient_max_abs_tolerance": 1.6982183052024558e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0103_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.03350991755723953,
+      "timing": {
+        "median_ms": 2917.3652241006494,
+        "samples_ms": [
+          2916.760623920709,
+          2918.0630028713495,
+          2917.7529129665345,
+          2917.8434531204402,
+          2917.4955228809267,
+          2917.3652241006494,
+          2916.793883079663,
+          2916.509923990816,
+          2917.141873855144
+        ]
+      },
+      "validation": {
+        "loss": 0.013101642951369286,
+        "reference_loss": 0.013101641954367582,
+        "gradient_relative_l2_error": 5.43180429054129e-08,
+        "gradient_max_abs_error": 8.73656393540409e-12,
+        "gradient_max_abs_tolerance": 6.429533147500463e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0104_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.03369012847542763,
+      "timing": {
+        "median_ms": 249.86326089128852,
+        "samples_ms": [
+          249.86326089128852,
+          249.83452097512782,
+          249.8393899295479,
+          249.8312508687377,
+          249.85526106320322,
+          249.89628978073597,
+          249.8651910573244,
+          249.8793408740312,
+          249.90424001589417
+        ]
+      },
+      "validation": {
+        "loss": 0.048925355076789856,
+        "reference_loss": 0.04892535116902396,
+        "gradient_relative_l2_error": 5.1801948543161995e-08,
+        "gradient_max_abs_error": 2.0634895138080256e-10,
+        "gradient_max_abs_tolerance": 1.2809609132420738e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0104_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.03495998680591583,
+      "timing": {
+        "median_ms": 1998.8452750258148,
+        "samples_ms": [
+          1998.9774951245636,
+          1997.5259259808809,
+          1998.6617560498416,
+          1998.9601648412645,
+          1998.7887260504067,
+          1998.7953549716622,
+          1998.8574360031635,
+          1998.8452750258148,
+          1999.044856056571
+        ]
+      },
+      "validation": {
+        "loss": 0.007074963301420212,
+        "reference_loss": 0.007074963838201172,
+        "gradient_relative_l2_error": 5.405022329197023e-08,
+        "gradient_max_abs_error": 6.009564224832183e-12,
+        "gradient_max_abs_tolerance": 4.659239329228735e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0105_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.03829994238913059,
+      "timing": {
+        "median_ms": 1173.7471749074757,
+        "samples_ms": [
+          1173.4616660978645,
+          1173.438835889101,
+          1176.4985041227192,
+          1173.7471749074757,
+          1173.4693758189678,
+          1176.6435541212559,
+          1176.6644339077175,
+          1173.8263650331646,
+          1173.4968861564994
+        ]
+      },
+      "validation": {
+        "loss": 0.09209071844816208,
+        "reference_loss": 0.09209072671316403,
+        "gradient_relative_l2_error": 5.912366121978541e-08,
+        "gradient_max_abs_error": 2.717045876482471e-10,
+        "gradient_max_abs_tolerance": 1.9888375551535653e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f"
+    },
+    {
+      "name": "0105_H_PULM_H_full_q8192",
+      "status": "launch_error",
+      "error": "CUDA error: invalid configuration argument\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n",
+      "passed": false,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0108_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.05884002894163132,
+      "timing": {
+        "median_ms": 1116.5783458855003,
+        "samples_ms": [
+          1115.7742361538112,
+          1115.8012161031365,
+          1116.5783458855003,
+          1116.5462059434503,
+          1117.0760348904878,
+          1117.186265066266,
+          1117.2743060160428,
+          1117.2445048578084,
+          1105.5164719000459
+        ]
+      },
+      "validation": {
+        "loss": 0.09371200203895569,
+        "reference_loss": 0.09371200284929775,
+        "gradient_relative_l2_error": 6.631788188803468e-08,
+        "gradient_max_abs_error": 4.824041765008613e-10,
+        "gradient_max_abs_tolerance": 2.9081219595193586e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0108_H_PULM_H_full_q8192",
+      "status": "launch_error",
+      "error": "CUDA error: invalid configuration argument\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n",
+      "passed": false,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0114_H_PULM_ALGS_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.05749007686972618,
+      "timing": {
+        "median_ms": 411.74851008690894,
+        "samples_ms": [
+          411.9098000228405,
+          410.93208990059793,
+          411.8560201022774,
+          411.820919951424,
+          410.833939909935,
+          411.74851008690894,
+          410.86498997174203,
+          411.73668997362256,
+          412.67021908424795
+        ]
+      },
+      "validation": {
+        "loss": 0.07687751948833466,
+        "reference_loss": 0.07687751644459714,
+        "gradient_relative_l2_error": 5.6930982230767274e-08,
+        "gradient_max_abs_error": 1.2300790464339628e-10,
+        "gradient_max_abs_tolerance": 1.0161255339899713e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0114_H_PULM_ALGS_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.055688899010419846,
+      "timing": {
+        "median_ms": 3268.025313038379,
+        "samples_ms": [
+          3282.2068841196597,
+          3270.9632909391075,
+          3270.6132808234543,
+          3271.9308510422707,
+          3231.0253728646785,
+          3255.9814089909196,
+          3268.025313038379,
+          3248.702353099361,
+          3266.6838739532977
+        ]
+      },
+      "validation": {
+        "loss": 0.010766059160232544,
+        "reference_loss": 0.010766059840550747,
+        "gradient_relative_l2_error": 5.8306866146376046e-08,
+        "gradient_max_abs_error": 7.0194122731145545e-12,
+        "gradient_max_abs_tolerance": 4.93673683935383e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0115_H_PULM_ALGS_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.05674990825355053,
+      "timing": {
+        "median_ms": 347.049716161564,
+        "samples_ms": [
+          347.2431350965053,
+          349.39840505830944,
+          348.9982651080936,
+          347.049716161564,
+          346.79841599427164,
+          346.8539258465171,
+          347.04537596553564,
+          346.8319762032479,
+          347.3092261701822
+        ]
+      },
+      "validation": {
+        "loss": 0.017031479626893997,
+        "reference_loss": 0.01703147973662126,
+        "gradient_relative_l2_error": 5.568518894029412e-08,
+        "gradient_max_abs_error": 6.96545557777456e-11,
+        "gradient_max_abs_tolerance": 5.965290594488492e-07,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0115_H_PULM_ALGS_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.054579926654696465,
+      "timing": {
+        "median_ms": 2769.882271066308,
+        "samples_ms": [
+          2795.505946967751,
+          2796.5457760728896,
+          2769.882271066308,
+          2800.2677648328245,
+          2768.836321076378,
+          2795.085646910593,
+          2768.8444619998336,
+          2765.946122817695,
+          2766.7055728379637
+        ]
+      },
+      "validation": {
+        "loss": 0.0025854113046079874,
+        "reference_loss": 0.002585411466604007,
+        "gradient_relative_l2_error": 5.444918719527681e-08,
+        "gradient_max_abs_error": 4.158035095164388e-12,
+        "gradient_max_abs_tolerance": 3.828127236828015e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0116_H_PULM_ALGS_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.0588300172239542,
+      "timing": {
+        "median_ms": 367.0009740162641,
+        "samples_ms": [
+          367.1666339505464,
+          367.1271149069071,
+          367.00974497944117,
+          366.8799048755318,
+          366.84413510374725,
+          367.0009740162641,
+          366.88622483052313,
+          366.86813505366445,
+          367.01011494733393
+        ]
+      },
+      "validation": {
+        "loss": 0.05066457763314247,
+        "reference_loss": 0.050664577009185925,
+        "gradient_relative_l2_error": 5.2893566449722314e-08,
+        "gradient_max_abs_error": 2.726538075176199e-10,
+        "gradient_max_abs_tolerance": 1.77823984655268e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0116_H_PULM_ALGS_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.057320110499858856,
+      "timing": {
+        "median_ms": 2935.2065690327436,
+        "samples_ms": [
+          2937.327018007636,
+          2968.022180022672,
+          2958.7521250359714,
+          2956.326057203114,
+          2935.2065690327436,
+          2933.241799939424,
+          2931.501051178202,
+          2929.49696094729,
+          2932.2114309761673
+        ]
+      },
+      "validation": {
+        "loss": 0.006414411123842001,
+        "reference_loss": 0.006414411137930062,
+        "gradient_relative_l2_error": 5.182511602443188e-08,
+        "gradient_max_abs_error": 5.955009824419903e-12,
+        "gradient_max_abs_tolerance": 4.893910956690139e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0117_H_PULM_ALGS_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.058720121160149574,
+      "timing": {
+        "median_ms": 413.6011090595275,
+        "samples_ms": [
+          413.7305791955441,
+          413.58653898350894,
+          413.58015802688897,
+          413.426348939538,
+          413.6011090595275,
+          413.6077188886702,
+          413.8309380505234,
+          413.75626903027296,
+          413.59152900986373
+        ]
+      },
+      "validation": {
+        "loss": 0.04010066017508507,
+        "reference_loss": 0.040100662860542646,
+        "gradient_relative_l2_error": 4.647456636980522e-08,
+        "gradient_max_abs_error": 1.3063730045642652e-10,
+        "gradient_max_abs_tolerance": 1.5595112269207146e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "0117_H_PULM_ALGS_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.05663000047206879,
+      "timing": {
+        "median_ms": 3305.457941023633,
+        "samples_ms": [
+          3307.888810057193,
+          3340.438242070377,
+          3305.814411956817,
+          3305.0549619365484,
+          3305.457941023633,
+          3306.108321994543,
+          3304.4120520353317,
+          3304.8307518474758,
+          3305.3005319088697
+        ]
+      },
+      "validation": {
+        "loss": 0.0053147198632359505,
+        "reference_loss": 0.005314720086411949,
+        "gradient_relative_l2_error": 5.2938839710482746e-08,
+        "gradient_max_abs_error": 7.00914109738604e-12,
+        "gradient_max_abs_tolerance": 5.4479118381164944e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "largest_full_b2",
+      "status": "allocator_nvml_error",
+      "error": "NVML_SUCCESS == r INTERNAL ASSERT FAILED at \"/pytorch/c10/cuda/CUDACachingAllocator.cpp\":1016, please report a bug to PyTorch. ",
+      "passed": false,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "largest_full_b4",
+      "status": "launch_error",
+      "error": "CUDA error: invalid configuration argument\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n",
+      "passed": false,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    },
+    {
+      "name": "mixed_subset_b4_m65536",
+      "status": "launch_error",
+      "error": "CUDA error: invalid configuration argument\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n",
+      "passed": false,
+      "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+    }
+  ],
+  "source_versions": [
+    "482ca0e41cff84da526128a8e0815690aa036fa80c975818cf1185933c708d2f",
+    "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba"
+  ]
+}

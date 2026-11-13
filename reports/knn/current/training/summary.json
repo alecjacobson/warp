@@ -1,0 +1,157 @@
+{
+  "query": {
+    "case_count": 24,
+    "method_count": 8,
+    "methods": {
+      "warp": {
+        "passing_pairs": 24,
+        "method_over_reference_geomean": 1.0,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 24
+        }
+      },
+      "cubql_reuse": {
+        "passing_pairs": 24,
+        "method_over_reference_geomean": 0.7369467131841191,
+        "method_wins": 24,
+        "statuses": {
+          "pass": 24
+        }
+      },
+      "cubql_build": {
+        "passing_pairs": 24,
+        "method_over_reference_geomean": 1.1744149962120467,
+        "method_wins": 4,
+        "statuses": {
+          "pass": 24
+        }
+      },
+      "torch_mm": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "checks_failed": 24
+        }
+      },
+      "torch_direct": {
+        "passing_pairs": 18,
+        "method_over_reference_geomean": 2948.592186619179,
+        "method_wins": 1,
+        "statuses": {
+          "checks_failed": 1,
+          "launch_error": 5,
+          "pass": 18
+        }
+      },
+      "pytorch3d": {
+        "passing_pairs": 24,
+        "method_over_reference_geomean": 84.50023759677087,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 24
+        }
+      },
+      "pytorch3d_tuned": {
+        "passing_pairs": 24,
+        "method_over_reference_geomean": 73.07166754674198,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 24
+        }
+      },
+      "keops": {
+        "passing_pairs": 24,
+        "method_over_reference_geomean": 58.70611862755866,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 24
+        }
+      }
+    }
+  },
+  "chamfer": {
+    "case_count": 21,
+    "method_count": 9,
+    "methods": {
+      "warp": {
+        "passing_pairs": 21,
+        "method_over_reference_geomean": 1.0,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 21
+        }
+      },
+      "cubql_reuse": {
+        "passing_pairs": 21,
+        "method_over_reference_geomean": 0.9740326489440925,
+        "method_wins": 21,
+        "statuses": {
+          "pass": 21
+        }
+      },
+      "cubql_build": {
+        "passing_pairs": 21,
+        "method_over_reference_geomean": 2.4497581365140193,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 21
+        }
+      },
+      "torch_mm": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "allocator_nvml_error": 2,
+          "checks_failed": 19
+        }
+      },
+      "torch_direct": {
+        "passing_pairs": 16,
+        "method_over_reference_geomean": 1639.6093058765525,
+        "method_wins": 0,
+        "statuses": {
+          "allocator_nvml_error": 1,
+          "launch_error": 4,
+          "pass": 16
+        }
+      },
+      "torch_selected": {
+        "passing_pairs": 16,
+        "method_over_reference_geomean": 1022.7518404066778,
+        "method_wins": 0,
+        "statuses": {
+          "checks_failed": 1,
+          "launch_error": 4,
+          "pass": 16
+        }
+      },
+      "pytorch3d": {
+        "passing_pairs": 21,
+        "method_over_reference_geomean": 19.027369004856457,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 21
+        }
+      },
+      "pytorch3d_tuned": {
+        "passing_pairs": 21,
+        "method_over_reference_geomean": 15.83279312708174,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 21
+        }
+      },
+      "keops": {
+        "passing_pairs": 21,
+        "method_over_reference_geomean": 14.703856357527878,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 21
+        }
+      }
+    }
+  }
+}

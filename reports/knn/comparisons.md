@@ -1,6 +1,6 @@
 # Current kNN comparisons: colored tables and public settings
 
-**2026-11-13 · `alecjacobson/knn` · 94-SM Blackwell MIG.** The four colored tables below are freshly measured comparisons of **16 configurations across 40 workloads**: five public Warp choices plus standalone cuBQL, PhysicsNeMo, CuPy, KeOps, Faiss, cuVS, and PyTorch3D. Every timing in these tables comes from this run. The separate pulmonary/batched experiment appears below them.
+**2026-11-13 · `alecjacobson/knn` · 94-SM Blackwell MIG.** Six colored tables cover [single-cloud queries](#colored-cross-library-comparisons) and [batched queries / fixed-target Chamfer](#batched-queries-and-chamfer-against-external-libraries). The first four compare **16 configurations across 40 workloads**. The two new tables compare **eight query configurations across 24 workloads** and **nine Chamfer configurations across 21 workloads**, including native batched PyTorch, PyTorch3D, and KeOps calls. Each experiment has its own fresh timings and matching public Warp reference.
 
 Start with `backend=wp.PointQueryBackend.WARP` when targets change often. For repeated CUDA queries against fixed targets, start with `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE`. Both use **Warp's public `wp.build_point_index()` and `wp.knn()` APIs**; callers do not need a separate cuBQL Python library. See the [public API guide](public-api.md) for complete examples and contracts.
 
@@ -61,6 +61,45 @@ The standalone and external columns are benchmark controls; they are not additio
 - **Graph failures:** each external provider/phase has an isolated capture worker. A failed capture stops that worker; subsequent cases are labeled `not run`, not assigned ordinary-call timings. CuPy's adapter attempted a device-to-host transfer; KeOps attempted an incompatible synchronous transfer; Faiss exceeded its configured 256 MiB scratch pool and attempted `cudaMalloc`; standalone custom cuBQL construction synchronized a captured event. This reports the measured adapter and environment, not a universal claim that a library cannot support graphs. Standalone `findKNN` construction graphs were not measured.
 - **Builds and hardware:** 94-SM RTX PRO 6000 Blackwell MIG 2g.48gb, CUDA toolkit 12.9.1. The branch's existing quick-build Warp library is unchanged; its native cuBQL path uses `compute_75` PTX. Standalone cuBQL, Faiss, and PyTorch3D were built for `sm_120`. Use the separate [matched-build integration experiment](completion/README.md) to isolate wrapper overhead from that target difference. No other GPU job was launched by this agent during timing.
 
+## Batched queries and Chamfer against external libraries
+
+These tables measure the pulmonary use case through public APIs, including **B=2 and B=4 native batches**. The three multi-batch rows appear first; the remaining rows retain an explicit B=1 dimension. Each cell shows **column time / `backend=wp.PointQueryBackend.WARP` time**, followed by the median milliseconds for the **entire batch**. Blue favors the reference; red favors the column; gray marks failed correctness checks or runtime errors. These are ordinary calls, with fixed target indexes prebuilt where the API supports them.
+
+### Batched queries with precomputed target indexes
+
+[![Batched fixed-target kNN comparison](current/training/query.svg)](current/training/query.svg)
+
+`backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE` wins all **24/24** comparisons against `backend=wp.PointQueryBackend.WARP`, averaging **1.36×** faster. All three public configurations, both PyTorch3D configurations, and KeOps pass every query case. Outputs are sorted int64 IDs and float32 squared distances. PyTorch3D and KeOps perform their complete batched query operation on every call; they expose no reusable target index in the measured APIs.
+
+### Symmetric Chamfer with fixed targets, including backward
+
+[![Batched fixed-target symmetric Chamfer forward and backward comparison](current/training/chamfer.svg)](current/training/chamfer.svg)
+
+Every step queries both directions, reduces the sum of mean squared distances, and computes gradients with respect to decoded points. The fixed target index is reused; the reverse index on decoded points is constructed each step. The mixed choice—fixed `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE`, reverse `backend=wp.PointQueryBackend.WARP`—wins **21/21** comparisons against the default backend both ways, averaging **1.03×** faster. All three public configurations, both PyTorch3D configurations, and KeOps pass the full loss/gradient checks.
+
+For **B=4, M=379,385, N=8,192, k=1**, the new matched comparison is:
+
+| Public configuration | Fixed-target query (ms) | Symmetric Chamfer + backward (ms) |
+| --- | ---: | ---: |
+| `backend=wp.PointQueryBackend.WARP`; same backend for reverse | 0.31485 | 4.05993 |
+| `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE`; reverse `backend=wp.PointQueryBackend.WARP` | **0.20688** | **3.97031** |
+| PyTorch3D automatic `knn_points()` / native `chamfer_distance()` | 31.63746 | 53.15038 |
+| PyTorch3D `knn_points(version=...)`, independently tuned per direction | 36.15212 | 57.35345 |
+| KeOps batched `LazyTensor` reductions; selected-pair autograd | 35.96743 | 69.31399 |
+
+Independent tuning improves PyTorch3D's geometric-mean query and Chamfer times over the full suites, but its automatic setting wins this dense example. Both remain visible. These are workload-specific results on one GPU, not a universal ordering of libraries.
+
+### External settings, failures, and comparison limits
+
+- **PyTorch:** test both documented `torch.cdist` compute modes, with TF32 disabled. The matrix-multiplication mode is also the default algorithm for these sizes. For Chamfer, also test direct search under `torch.no_grad()` followed by gathers and squared-distance autograd, avoiding the dense `cdist` backward graph. These are compositions of unchanged public operators.
+- **PyTorch3D:** keep stock `knn_points(version=-1)` and native `chamfer_distance()` as columns. A second configuration selects among all supported D=3 public kernel versions on independent synthetic inputs, separately by batch size, query-count regime, k, and direction. The [tuning record](current/training/tuning.json) contains every candidate. This is the best tested setting in that search; it does not select the fastest version retrospectively on evaluation data.
+- **KeOps:** use native batch dimensions for `Kmin_argKmin` queries and bidirectional `argmin` plus selected-pair autograd for Chamfer. External calls process B directly, without a Python loop over clouds or flattening across batch boundaries.
+- **Correctness:** PyTorch's matrix-multiplication mode fails the query checks on all 24 cases. Its completed Chamfer calls fail gradient checks even where the scalar loss is close. Those timings are retained but never ranked. Direct mode also encounters launch limits at large pair counts, and its completed B=2 dense query fails checks. Some dense Chamfer calls fail inside PyTorch's NVML allocation-error diagnostics. Gray cells distinguish `checks_failed`, `launch_error`, and `allocator_nvml_error`; the [CSV](current/training/cases.csv) and raw logs retain exact outcomes. These findings apply to the pinned **Torch 2.7.1+cu128** environment.
+- **Timing:** nine synchronized wall-clock samples after two warmups, sequential provider processes, common CUDA stream. Uploads, compilation, and fixed-index construction are excluded. Allocation, previous-result retirement, changing reverse-index construction, loss reduction, gradient reset, and backward are included where applicable. Warp uses its native Tape; external libraries use PyTorch autograd. No Torch-to-Warp autograd bridge or full neural-network training step is timed.
+- **Validation and scope:** sampled exhaustive float64 neighbor checks plus complete decoded-gradient comparisons against an independent NumPy oracle. The oracle passes finite-difference and batch-isolation tests. PyTorch3D and KeOps sources are unchanged; supported public settings and normal operator composition provide the tuning. Peak training memory and graph replay are not measured in these two tables. The [retained public-only experiment](#separate-pulmonary-and-batched-measurements) supplies separate construction, query-graph, and live-allocation evidence.
+
+Inspect [all medians/statuses](current/training/cases.csv), [aggregate tables](current/training/tables.md), [raw results and provenance](current/training/provenance.json), and [reproduction instructions with API/source references](current/training/reproduce.md). Keep these timings separate from the earlier int32 pulmonary and int64 Euclidean single-cloud experiments.
+
 ## Which settings should I use?
 
 | Workload or requirement | Public arguments | Current evidence or contract |
@@ -70,7 +109,7 @@ The standalone and external columns are benchmark controls; they are not additio
 | Evaluate cheaper cuBQL construction | `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.BUILD_AND_QUERY` | Lowest construction-plus-query median among public choices in **2/40** cross-library cases and **1/24** pulmonary/batched cases. Usually slower reused queries than `objective=wp.PointQueryObjective.REUSE`. |
 | CPU, finite cutoff, self-exclusion, original-index tie ordering, or k > 64 | `backend=wp.PointQueryBackend.WARP` | Supports these requirements. The direct cuBQL route rejects unsupported requests. |
 | Capture index construction or refit | `backend=wp.PointQueryBackend.WARP` | Construction/refit capture supported with CUDA memory pools enabled. Both backends support querying prebuilt indexes in graphs. |
-| Symmetric Chamfer with fixed targets | Fixed: `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE`; reverse: `backend=wp.PointQueryBackend.WARP` | Faster forward/backward steps in **19/21** k=1 cases, averaging **1.06×** over `backend=wp.PointQueryBackend.WARP` both ways. |
+| Symmetric Chamfer with fixed targets | Fixed: `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE`; reverse: `backend=wp.PointQueryBackend.WARP` | Faster forward/backward steps in **21/21** k=1 cases in the new external-library comparison, averaging **1.03×** over `backend=wp.PointQueryBackend.WARP` both ways. |
 | Fuse neighbor processing inside your kernel | Build with `backend=wp.PointQueryBackend.WARP`; use `wp.point_query_knn()` and `while wp.point_query_next(...)` | Scalar queries accept `wp.Bvh.id`. Direct `for index in search` iteration is not implemented. |
 
 The backend choice is explicit. `objective` tunes cuBQL; it does not switch backends or change the default implementation's policy. Build the fixed target index once, then pass `bvh=indexes` on subsequent calls. Supplied indexes keep their original settings. Leave `leaf_size`, `query_stride`, and `ordered` automatic initially. The cuBQL route requires CUDA, memory-pool support, and a build with cuBQL enabled; it supports k=1–64.
@@ -127,7 +166,7 @@ Yes for GPU query graphs, within about **1% in geometric mean** of the matched s
 
 The raw native preallocated call averages 1.005× standalone time. The public wrapper validates inputs/options, creates batch views, and dispatches each cloud. Capturing the query avoids repeating that Python work. These B=1 measurements retain the leading batch dimension; they do not measure the single-cloud layout's wrapper overhead.
 
-This is a **separate 23-workload experiment** with 31 interleaved samples, int64 indices, Euclidean distances, and 32 replays per graph sample. The fresh 24-workload results above use int32 indices, squared distances, nine sequential samples, and one replay per graph sample. Do not pool their timings or geometric means. The integration experiment times queries only, including when `objective=wp.PointQueryObjective.BUILD_AND_QUERY` selects the tree policy.
+This is a **separate 23-workload experiment** with 31 interleaved samples, int64 indices, Euclidean distances, and 32 replays per graph sample. The retained public-only pulmonary experiment uses int32 indices, squared distances, nine sequential samples, and one replay per graph sample. The new batched cross-library query experiment uses int64 indices and squared distances, with ordinary calls only. Do not pool their timings or geometric means. The integration experiment times queries only, including when `objective=wp.PointQueryObjective.BUILD_AND_QUERY` selects the tree policy.
 
 ## Pulmonary methodology and remaining limits
 
@@ -139,11 +178,13 @@ This is a **separate 23-workload experiment** with 31 interleaved samples, int64
 - Retained completion evidence: **89 focused CPU/CUDA tests passed**, including finite-difference gradients and explicit route checks. The recorded source hashes still match. Saved build, strict documentation, and conditional translation-unit checks are in the [completion report](completion/README.md); those compile checks do not establish full alternate-platform runtime support.
 - Current scope: fixed-size independent batches, reusable target indexes, both query graph routes, and scalar kernel queries. No ragged batches. Larger-batch fusion, wider hardware tuning, peak training memory, and application integration remain follow-ups.
 
-The [historical archive](archive/README.md) preserves earlier implementations and **46-SM** measurements. Those timings are not included in either current experiment.
+The [historical archive](archive/README.md) preserves earlier implementations and **46-SM** measurements. Those timings are not included in the current experiments.
 
 ## Reproduce and inspect
 
 For the 40-workload colored tables, follow the [cross-library reproduction guide](current/libraries/reproduce.md). It records dependencies, native builds, dataset restoration, worker commands, and presentation generation.
+
+For the new batched query and fixed-target Chamfer tables, follow the [batched cross-library reproduction guide](current/training/reproduce.md), including independent tuning, per-case failure isolation, and gradient checks.
 
 From the repository root, with the supplied dataset and an already built native library matching the source:
 

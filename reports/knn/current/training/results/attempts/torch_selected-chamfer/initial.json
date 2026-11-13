@@ -1,0 +1,248 @@
+{
+  "method": "torch_selected",
+  "phase": "chamfer",
+  "environment": {
+    "python": "3.12.3",
+    "packages": {
+      "torch": "2.7.1+cu128",
+      "numpy": "2.5.3",
+      "cupy-cuda12x": "14.2.0",
+      "cuvs-cu12": "26.10.0",
+      "libcuvs-cu12": "26.10.0",
+      "rmm-cu12": "26.10.0",
+      "faiss-gpu-cu12": null,
+      "pykeops": "2.3",
+      "pytorch3d": null
+    },
+    "git_revision": "72918d0ecb2bc9ad6f008652b56a8d5c74e93123",
+    "benchmark_source_sha256": {
+      "benchmark_point_query_comparison.py": "3cdc9240bb1380f9a2a824d39a60a434426c779f2fbb8a1c53089aa846b0c217",
+      "point_query_backends.py": "00a36b4bc7d6b08c5a2f23d3ce88561949b23ed49e8bdc56a32054994e79820d"
+    },
+    "native_bvh_sha256": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb"
+  },
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb",
+  "sm_count": 94,
+  "repeats": 9,
+  "source_sha256": "decd03a77e8405df7d75371afdfb6e89eed3aa9f45ed9372c58370064b6562ba",
+  "manifest_sha256": "e02c1f16d84cbfcf9ed4f3f186836e50d66506a13d9a292e254bf510ab1201c8",
+  "tuning_sha256": "fb3749217ddf189276091b864a9686447c8f063be68e062e106be29af15af2df",
+  "cases": [
+    {
+      "name": "0102_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.05689985118806362,
+      "timing": {
+        "median_ms": 278.56784383766353,
+        "samples_ms": [
+          278.5437051206827,
+          278.5517550073564,
+          278.58439390547574,
+          278.5525149665773,
+          278.5966550000012,
+          278.56784383766353,
+          278.5574949812144,
+          278.5891948733479,
+          278.60708395019174
+        ]
+      },
+      "validation": {
+        "loss": 0.0563625805079937,
+        "reference_loss": 0.05636257881516662,
+        "gradient_relative_l2_error": 2.8788505483625675e-07,
+        "gradient_max_abs_error": 1.1176975252442933e-09,
+        "gradient_max_abs_tolerance": 1.3579568101227581e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0102_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.03725988790392876,
+      "timing": {
+        "median_ms": 2227.482717949897,
+        "samples_ms": [
+          2227.5562279392034,
+          2227.482717949897,
+          2227.5295678991824,
+          2227.545438101515,
+          2227.486127987504,
+          2227.479468099773,
+          2227.468467783183,
+          2227.4277680553496,
+          2227.4413779377937
+        ]
+      },
+      "validation": {
+        "loss": 0.007130270358175039,
+        "reference_loss": 0.007130269751104342,
+        "gradient_relative_l2_error": 8.361188735135375e-08,
+        "gradient_max_abs_error": 1.259837778533595e-11,
+        "gradient_max_abs_tolerance": 5.3941238189302715e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0103_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.03781984560191631,
+      "timing": {
+        "median_ms": 229.08609290607274,
+        "samples_ms": [
+          229.10293308086693,
+          229.08238205127418,
+          229.08770199865103,
+          229.09062216058373,
+          229.08609290607274,
+          229.08297181129456,
+          229.07959204167128,
+          229.07885303720832,
+          229.08634203486145
+        ]
+      },
+      "validation": {
+        "loss": 0.09252754598855972,
+        "reference_loss": 0.09252755120459094,
+        "gradient_relative_l2_error": 2.300802215937633e-07,
+        "gradient_max_abs_error": 1.4391946163462566e-09,
+        "gradient_max_abs_tolerance": 1.6982183052024558e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0103_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.0313599593937397,
+      "timing": {
+        "median_ms": 1831.8660480435938,
+        "samples_ms": [
+          1831.922529032454,
+          1831.9473390001804,
+          1831.8180290516466,
+          1831.8635288160294,
+          1831.8681980017573,
+          1831.9013791624457,
+          1831.8660480435938,
+          1831.7495891824365,
+          1831.8314389325678
+        ]
+      },
+      "validation": {
+        "loss": 0.013101642020046711,
+        "reference_loss": 0.013101641954367582,
+        "gradient_relative_l2_error": 8.273358655579082e-08,
+        "gradient_max_abs_error": 1.5080731517627503e-11,
+        "gradient_max_abs_tolerance": 6.429533147500463e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0104_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.03229011781513691,
+      "timing": {
+        "median_ms": 157.10007189773023,
+        "samples_ms": [
+          157.11282310076058,
+          157.1060421410948,
+          157.10148215293884,
+          157.0972530171275,
+          157.09978202357888,
+          157.10007189773023,
+          157.09696291014552,
+          157.09451190195978,
+          157.100253039971
+        ]
+      },
+      "validation": {
+        "loss": 0.048925355076789856,
+        "reference_loss": 0.04892535116902396,
+        "gradient_relative_l2_error": 1.933389121305906e-07,
+        "gradient_max_abs_error": 6.720102386885418e-10,
+        "gradient_max_abs_tolerance": 1.2809609132420738e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0104_H_PULM_H_full_q8192",
+      "status": "ok",
+      "setup_ms": 0.03171013668179512,
+      "timing": {
+        "median_ms": 1255.981609923765,
+        "samples_ms": [
+          1256.050128955394,
+          1255.981609923765,
+          1255.9718799311668,
+          1255.976938875392,
+          1255.9652300551534,
+          1255.9828800149262,
+          1256.006748881191,
+          1255.986720090732,
+          1255.9551999438554
+        ]
+      },
+      "validation": {
+        "loss": 0.007074963301420212,
+        "reference_loss": 0.007074963838201172,
+        "gradient_relative_l2_error": 6.872244894323855e-08,
+        "gradient_max_abs_error": 9.806193983457993e-12,
+        "gradient_max_abs_tolerance": 4.659239329228735e-08,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0105_H_PULM_H_full_q1024",
+      "status": "ok",
+      "setup_ms": 0.03499002195894718,
+      "timing": {
+        "median_ms": 720.0269680470228,
+        "samples_ms": [
+          720.031269127503,
+          720.0563680380583,
+          719.9816289357841,
+          719.989218050614,
+          720.0108089018613,
+          720.0625878758729,
+          719.9948988854885,
+          720.0269680470228,
+          720.036389073357
+        ]
+      },
+      "validation": {
+        "loss": 0.09209071844816208,
+        "reference_loss": 0.09209072671316403,
+        "gradient_relative_l2_error": 3.637519202091378e-07,
+        "gradient_max_abs_error": 1.3629186037134727e-09,
+        "gradient_max_abs_tolerance": 1.9888375551535653e-06,
+        "gradient_relative_l2_tolerance": 0.0005,
+        "loss_rtol": 0.0002,
+        "loss_atol": 1e-07
+      },
+      "passed": true
+    },
+    {
+      "name": "0105_H_PULM_H_full_q8192",
+      "status": "launch_error",
+      "error": "CUDA error: invalid configuration argument\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n",
+      "passed": false
+    }
+  ]
+}
