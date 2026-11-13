@@ -1,8 +1,18 @@
 # Warp kNN public API and settings guide
 
-The `alecjacobson/knn` branch exposes two main operations: `wp.build_point_index()` builds reusable target indexes, and `wp.knn()` queries them. Both accept a single point cloud or independent batches. This guide describes the API at [cafc98ee6](https://github.com/alecjacobson/warp/commit/cafc98ee6).
+The `alecjacobson/knn` branch exposes host array queries and scalar queries inside Warp kernels. `wp.build_point_index()` builds reusable target indexes, and `wp.knn()` queries single clouds or independent batches from Python. Inside a kernel, use `wp.point_query_knn()` with `wp.point_query_next()` to consume neighbors, or `wp.point_query_nearest()` for one neighbor. These APIs are implemented at [cafc98ee6](https://github.com/alecjacobson/warp/commit/cafc98ee6).
 
 **Start with Warp when targets change frequently. For repeated CUDA queries against fixed targets, start with cuBQL and the `REUSE` objective.** For symmetric Chamfer loss, use cuBQL for the fixed target cloud and Warp for the changing decoded cloud, then measure the complete training step. Leave the lower-level tuning overrides automatic initially.
+
+## Choose where the query runs
+
+| Caller | Public API | What it returns or consumes |
+| --- | --- | --- |
+| Python, querying whole arrays | `wp.build_point_index(...)` and `wp.knn(...)` | Reusable indexes and arrays of indices, distances, and counts. Supports `backend=wp.PointQueryBackend.WARP` or `backend=wp.PointQueryBackend.CUBQL`. |
+| A Warp kernel or `@wp.func`, consuming up to k neighbors | `wp.point_query_knn(...)` followed by `wp.point_query_next(...)` | A kernel-local query state and one selected target index per iteration. Uses a `wp.Bvh`. |
+| A Warp kernel or `@wp.func`, needing only one neighbor | `wp.point_query_nearest(...)` | One target index, or `-1` when no point is eligible. Uses a `wp.Bvh`. |
+
+The array APIs run on the host and launch query work. The scalar APIs run inside caller kernels and can fuse per-neighbor work without storing all neighbor outputs. The [scalar example below](#scalar-queries-inside-a-kernel) shows the complete iterator and launch pattern.
 
 ## Choose a configuration
 
@@ -94,6 +104,78 @@ The cuBQL route requires CUDA, memory-pool support, and a Warp build with cuBQL 
 
 `wp.point_query_config(M, N, device)` exposes Warp's suggested launch/tree settings for advanced users, including custom fused kernels. It is not the direct-cuBQL policy selector. Most callers can use the automatic settings in `knn`.
 
+## Scalar queries inside a kernel
+
+Use `wp.point_query_knn()` to select the final neighbors for one query point, then `wp.point_query_next()` to visit them. Each kernel thread can perform its own query. This example consumes eight neighbors and writes only their summed squared distance:
+
+```python
+import warp as wp
+
+
+@wp.kernel
+def sum_neighbor_distances_kernel(
+    bvh_id: wp.uint64,
+    points: wp.array[wp.vec3],
+    queries: wp.array[wp.vec3],
+    sums: wp.array[float],
+):
+    row = wp.tid()
+    query_point = queries[row]
+    search = wp.point_query_knn(bvh_id, points, query_point, wp.inf, 8)
+    index = int(-1)
+    total = float(0.0)
+    while wp.point_query_next(search, index):
+        # Replace this with your own per-neighbor computation.
+        total += wp.length_sq(query_point - points[index])
+    sums[row] = total
+
+
+# Host setup: points and queries are contiguous 1D wp.vec3 arrays
+# of shape (M,) and (N,) on the same CPU or CUDA device.
+bvh = wp.build_point_index(
+    points,
+    num_queries=queries.shape[0],
+    k=8,
+    backend=wp.PointQueryBackend.WARP,
+)
+sums = wp.empty(queries.shape[0], dtype=float, device=points.device)
+wp.launch(
+    sum_neighbor_distances_kernel,
+    dim=queries.shape[0],
+    inputs=[bvh.id, points, queries, sums],
+    device=points.device,
+)
+```
+
+`search` has an inferred, kernel-local type; no public query-state class needs to be constructed or annotated. `wp.point_query_next(search, index)` advances the cursor, writes the next index, and returns `True`. It yields only valid neighbors, ordered by computed squared distance and then original target index. If fewer than k are eligible, the loop ends early without padding. Once exhausted, it returns `False` and leaves `index` unchanged.
+
+Selection is eager: `wp.point_query_knn()` finishes searching and sorting before the loop starts. Breaking out of `point_query_next` enumeration early does not reduce search work. The scalar k must be a positive compile-time integer, such as literal `8` above or `wp.static(K)`; a runtime kernel argument cannot supply it.
+
+These scalar functions take a `wp.Bvh.id` and the corresponding one-dimensional target array. Use `backend=wp.PointQueryBackend.WARP` when building through the helper. A `wp.CubqlPointIndex.id` is not a Warp BVH handle and must not be passed to them; direct native cuBQL queries are exposed through the host `wp.knn` route. For independent clouds, select the matching Warp BVH and target cloud for each query, or launch this kernel separately per cloud.
+
+For one neighbor, use the simpler scalar call:
+
+```python
+@wp.kernel
+def nearest_distance_kernel(
+    bvh_id: wp.uint64,
+    points: wp.array[wp.vec3],
+    queries: wp.array[wp.vec3],
+    distances_sq: wp.array[float],
+):
+    row = wp.tid()
+    query_point = queries[row]
+    index = wp.point_query_nearest(bvh_id, points, query_point, wp.inf)
+    distance_sq = wp.inf
+    if index >= 0:
+        distance_sq = wp.length_sq(query_point - points[index])
+    distances_sq[row] = distance_sq
+```
+
+Launch it with the same `bvh.id`, `points`, and `queries`, plus an `(N,)` float32 output. Guard `index >= 0` before accessing target coordinates. Both scalar selectors accept a distance cutoff in coordinate units and an optional scalar `exclude_index`; pass the corresponding target ID to exclude self. Selection and cursor updates are nondifferentiable. Gathered coordinates and distance calculations support gradients with selected IDs held fixed; keep inputs and the index unchanged through backward.
+
+The example uses one query per thread. `wp.point_query_config()` also exposes tuned launch spacing for custom kernels; applying its `query_stride` requires matching thread-to-query indexing. See the [user guide](../../docs/user_guide/point_queries.rst) and [runnable fused example](../../warp/examples/geometry/example_point_query_batch.py) for that pattern.
+
 ## Updating data and replaying graphs
 
 Changing query coordinates requires another query, with no target rebuild. Changing target coordinates in place requires updating every index: call `index.refit()` for Warp or `index.rebuild()` for cuBQL. For batched inputs, iterate over the returned tuple. A new target allocation, point count, or batch layout requires new indexes. Indexes retain references to target coordinates; they do not take a coordinate snapshot.
@@ -133,7 +215,7 @@ wp.capture_launch(capture.graph)
 
 Keep index owners, input arrays, and outputs alive through replay. Replays use the captured allocations and shapes; update their contents in place. A shape or allocation change requires new outputs as appropriate and a new capture. cuBQL construction, rebuilding, and destruction can synchronize; construction/rebuilding must occur outside capture. Warp supports construction/refit capture with CUDA memory pools enabled.
 
-The measured public wrapper adds about 40 µs to an ordinary B=1 call versus standalone cuBQL. Graph replay avoids repeating that Python work. For small repeated queries, measure graphs and preallocated outputs before manually tuning launch spacing. For custom fused Warp kernels, the scalar `wp.point_query_knn` and `wp.point_query_nearest` remain available; see the [kernel API examples](../../docs/user_guide/point_queries.rst).
+The measured public wrapper adds about 40 µs to an ordinary B=1 call versus standalone cuBQL. Graph replay avoids repeating that Python work. For small repeated queries, measure graphs and preallocated outputs before manually tuning launch spacing. Use the [scalar APIs](#scalar-queries-inside-a-kernel) when per-neighbor work belongs inside your own kernel.
 
 ## Chamfer loss with fixed pulmonary targets
 
