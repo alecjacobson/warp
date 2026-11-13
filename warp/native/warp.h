@@ -110,6 +110,24 @@ WP_API void wp_bvh_destroy_device(uint64_t id);
 WP_API void wp_bvh_refit_device(uint64_t id);
 WP_API void wp_bvh_rebuild_device(uint64_t id);
 
+WP_API uint64_t
+wp_point_query_cubql_create_device(void* context, const wp::vec3* points, int count, int builder, int leaf_size);
+WP_API void wp_point_query_cubql_destroy_device(uint64_t id);
+WP_API bool wp_point_query_cubql_query_device(
+    uint64_t id,
+    const wp::vec3* points,
+    const wp::vec3* queries,
+    int count,
+    int k,
+    int stride,
+    int block_dim,
+    void* indices,
+    float* distances,
+    int* counts,
+    bool indices_int64,
+    bool squared
+);
+
 // create a user-accessible copy of the mesh, it is the
 // users responsibility to keep-alive the points/tris data for the duration of the mesh lifetime
 WP_API uint64_t wp_mesh_create_host(

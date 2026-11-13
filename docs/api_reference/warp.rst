@@ -630,7 +630,10 @@ Point Queries
    :nosignatures:
    :toctree: _generated
 
+   CubqlPointIndex
+   PointQueryBackend
    PointQueryConfig
+   PointQueryObjective
    point_query_config
    point_query_knn_batch
 

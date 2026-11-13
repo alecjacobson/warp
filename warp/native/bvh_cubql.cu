@@ -31,6 +31,11 @@
 
 #ifndef WP_DISABLE_CUBQL
 #include "cuBQL/bvh.h"
+
+// Builder implementation headers depend on definitions emitted by bvh.h.
+#include "cuBQL/builder/cuda/radix.h"
+#include "cuBQL/builder/cuda/rebinMortonBuilder.h"
+#include "cuBQL/queries/pointData/knn.h"
 #endif
 
 extern CUcontext get_current_context();
@@ -661,3 +666,228 @@ void cubql_bvh_rebuild_device(BVH&) { }
 #endif  // WP_DISABLE_CUBQL
 
 }  // namespace wp
+
+#ifndef WP_DISABLE_CUBQL
+namespace {
+
+// Use the caller's pool policy; cuBQL's default resource changes its release threshold.
+struct PointQueryMemoryResource final : cuBQL::GpuMemoryResource {
+    void malloc(void** pointer, size_t size, cudaStream_t stream) override
+    {
+        const cudaError_t status = cudaMallocAsync(pointer, size, stream);
+        if (status != cudaSuccess)
+            throw std::runtime_error(cudaGetErrorString(status));
+    }
+    void free(void* pointer, cudaStream_t stream) override
+    {
+        const cudaError_t status = cudaFreeAsync(pointer, stream);
+        if (status != cudaSuccess)
+            throw std::runtime_error(cudaGetErrorString(status));
+    }
+};
+
+struct CubqlPointIndex {
+    void* context;
+    cuBQL::bvh3f tree {};
+    PointQueryMemoryResource memory;
+};
+
+template <int Capacity, int Stride>
+__global__ void cubql_point_query_kernel(
+    cuBQL::bvh3f tree,
+    const cuBQL::vec3f* points,
+    const cuBQL::vec3f* queries,
+    int count,
+    int k,
+    void* indices,
+    float* distances,
+    int* counts,
+    bool indices_int64,
+    bool squared
+)
+{
+    const size_t thread = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (thread % Stride || thread / Stride >= size_t(count))
+        return;
+    const int row = int(thread / Stride);
+    const cuBQL::vec3f query = queries[row];
+    cuBQL::knn::Candidate candidates[Capacity];
+    int found = 0;
+    // Keep exact-capacity specializations for the measured k=1/11/32 regimes.
+    const int requested = Capacity == 64 ? k : Capacity;
+    if (tree.numPrims && isfinite(query.x) && isfinite(query.y) && isfinite(query.z))
+        found = cuBQL::points::findKNN(candidates, requested, tree, points, query).numFound;
+    counts[row] = found;
+    for (int neighbor = 0; neighbor < requested; ++neighbor) {
+        const size_t output = size_t(row) * requested + neighbor;
+        const int index = neighbor < found ? candidates[neighbor].primID : -1;
+        if (indices_int64)
+            static_cast<int64_t*>(indices)[output] = index;
+        else
+            static_cast<int*>(indices)[output] = index;
+        float distance = INFINITY;
+        if (index >= 0) {
+            // Differentiate the same Euclidean distance that is returned to callers.
+            const cuBQL::vec3f delta = query - points[index];
+            distance = delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
+            if (!squared)
+                distance = sqrtf(distance);
+        }
+        distances[output] = distance;
+    }
+}
+
+template <int Capacity>
+void cubql_launch_point_query(
+    const CubqlPointIndex& index,
+    const wp::vec3* points,
+    const wp::vec3* queries,
+    int count,
+    int k,
+    int stride,
+    int block_dim,
+    void* indices,
+    float* distances,
+    int* counts,
+    bool indices_int64,
+    bool squared,
+    cudaStream_t stream
+)
+{
+    const unsigned blocks = unsigned((size_t(count) * stride + block_dim - 1) / block_dim);
+#define WP_CUBQL_QUERY(Stride) \
+    case Stride: \
+        cubql_point_query_kernel<Capacity, Stride><<<blocks, block_dim, 0, stream>>>( \
+            index.tree, reinterpret_cast<const cuBQL::vec3f*>(points), reinterpret_cast<const cuBQL::vec3f*>(queries), \
+            count, k, indices, distances, counts, indices_int64, squared); \
+        break
+    switch (stride) {
+        WP_CUBQL_QUERY(1);
+        WP_CUBQL_QUERY(2);
+        WP_CUBQL_QUERY(4);
+        WP_CUBQL_QUERY(8);
+        WP_CUBQL_QUERY(16);
+        WP_CUBQL_QUERY(32);
+    }
+#undef WP_CUBQL_QUERY
+}
+
+}  // namespace
+#endif
+
+uint64_t
+wp_point_query_cubql_create_device(void* context, const wp::vec3* points, int count, int builder, int leaf_size)
+{
+#ifndef WP_DISABLE_CUBQL
+    ContextGuard guard(context);
+    const cudaStream_t stream = static_cast<cudaStream_t>(wp_cuda_context_get_stream(context));
+    cudaStreamCaptureStatus capture_status;
+    if (cudaStreamIsCapturing(stream, &capture_status) != cudaSuccess
+        || capture_status != cudaStreamCaptureStatusNone) {
+        wp::set_error_string("Direct cuBQL construction cannot be captured; build the index before capture");
+        return 0;
+    }
+    if (count < 0 || (count && !points) || builder < 0 || builder > 2 || leaf_size < 0) {
+        wp::set_error_string("Invalid direct cuBQL construction arguments");
+        return 0;
+    }
+    auto* index = new CubqlPointIndex { context };
+    cuBQL::box3f* boxes = nullptr;
+    try {
+        if (count) {
+            index->memory.malloc(reinterpret_cast<void**>(&boxes), sizeof(cuBQL::box3f) * count, stream);
+            wp::cubql_make_boxes<<<(count + 255) / 256, 256, 0, stream>>>(points, points, boxes, count);
+            cuBQL::BuildConfig config(leaf_size);
+            if (builder == 0)
+                cuBQL::gpuBuilder(index->tree, boxes, count, config.enableELH(), stream, index->memory);
+            else if (builder == 1)
+                cuBQL::cuda::radixBuilder(index->tree, boxes, count, config, stream, index->memory);
+            else
+                cuBQL::cuda::rebinRadixBuilder(index->tree, boxes, count, config, stream, index->memory);
+            index->memory.free(boxes, stream);
+            boxes = nullptr;
+        }
+        return reinterpret_cast<uint64_t>(index);
+    } catch (const std::exception& error) {
+        wp::set_error_string("Direct cuBQL construction failed: %s", error.what());
+    } catch (...) {
+        wp::set_error_string("Direct cuBQL construction failed: unknown exception");
+    }
+    // Preserve the original diagnostic if cleanup encounters another CUDA error.
+    cudaFreeAsync(boxes, stream);
+    cudaFreeAsync(index->tree.nodes, stream);
+    cudaFreeAsync(index->tree.primIDs, stream);
+    delete index;
+#else
+    wp::set_error_string("Direct cuBQL point queries are disabled in this build");
+#endif
+    return 0;
+}
+
+void wp_point_query_cubql_destroy_device(uint64_t id)
+{
+#ifndef WP_DISABLE_CUBQL
+    if (!id)
+        return;
+    auto* index = reinterpret_cast<CubqlPointIndex*>(id);
+    ContextGuard guard(index->context);
+    // Owners must outlive launches and graph replay, as with ordinary Warp BVHs.
+    // Async allocations require an explicit wait before cudaFree. Destruction
+    // is outside the reusable query path and cannot occur during capture.
+    const cudaError_t wait_status = cudaDeviceSynchronize();
+    const cudaError_t nodes_status = cudaFree(index->tree.nodes);
+    const cudaError_t indices_status = cudaFree(index->tree.primIDs);
+    if (wait_status != cudaSuccess || nodes_status != cudaSuccess || indices_status != cudaSuccess)
+        wp::set_error_string("Failed to retire direct cuBQL point index storage");
+    delete index;
+#endif
+}
+
+bool wp_point_query_cubql_query_device(
+    uint64_t id,
+    const wp::vec3* points,
+    const wp::vec3* queries,
+    int count,
+    int k,
+    int stride,
+    int block_dim,
+    void* indices,
+    float* distances,
+    int* counts,
+    bool indices_int64,
+    bool squared
+)
+{
+#ifndef WP_DISABLE_CUBQL
+    if (!id || count < 0 || k < 1 || k > 64 || stride < 1 || stride > 32 || (stride & (stride - 1)) || block_dim < 32
+        || block_dim > 256 || block_dim % 32 || (count && (!queries || !indices || !distances || !counts))) {
+        wp::set_error_string("Invalid direct cuBQL query arguments");
+        return false;
+    }
+    if (!count)
+        return true;
+    const auto& index = *reinterpret_cast<const CubqlPointIndex*>(id);
+    ContextGuard guard(index.context);
+    const cudaStream_t stream = static_cast<cudaStream_t>(wp_cuda_context_get_stream(index.context));
+#define WP_CUBQL_LAUNCH(Capacity) \
+    cubql_launch_point_query<Capacity>(index, points, queries, count, k, stride, block_dim, indices, distances, counts, \
+        indices_int64, squared, stream)
+    if (k == 1) {
+        WP_CUBQL_LAUNCH(1);
+    } else if (k == 11) {
+        WP_CUBQL_LAUNCH(11);
+    } else if (k == 32) {
+        WP_CUBQL_LAUNCH(32);
+    } else {
+        WP_CUBQL_LAUNCH(64);
+    }
+#undef WP_CUBQL_LAUNCH
+    const cudaError_t status = cudaGetLastError();
+    if (status == cudaSuccess)
+        return true;
+    wp::set_error_string("Direct cuBQL query launch failed: %s", cudaGetErrorString(status));
+#else
+    wp::set_error_string("Direct cuBQL point queries are disabled in this build");
+#endif
+    return false;
+}
