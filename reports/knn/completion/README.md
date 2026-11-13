@@ -1,5 +1,7 @@
 # Fixed-size kNN and direct cuBQL completion
 
+**Supporting evidence.** Start with [current comparisons](../comparisons.md) for settings and refreshed construction, Chamfer, and memory measurements, or the [public API guide](../public-api.md) for usage. The standalone-integration and validation source hashes below still match the current implementation; see the [hash audit](../current/provenance.json). This experiment has its own timing methodology and is not pooled with the fresh workload run.
+
 2026-11-13. Completion evidence for [optional native cuBQL (#20)](https://github.com/alecjacobson/warp/issues/20) and [fixed-size batches (#21)](https://github.com/alecjacobson/warp/issues/21). The initial scope is implemented. Wider hardware tuning, fused batches, peak training memory, and application integration remain follow-up work.
 
 ## Public API
@@ -25,14 +27,14 @@ The integrated native route preserves standalone traversal performance closely. 
 
 | Tuning objective | Call mode | Public integrated / matched standalone time, geometric mean | Median B=1 added time |
 | --- | --- | ---: | ---: |
-| Reuse | Preallocated ordinary call | 2.040× | 40.35 µs |
-| Reuse | Allocation-inclusive ordinary call | 1.724× | 42.01 µs |
-| Reuse | Query graph replay | 1.010× | 0.29 µs |
-| Build + query | Preallocated ordinary call | 1.477× | 41.32 µs |
-| Build + query | Allocation-inclusive ordinary call | 1.414× | 42.99 µs |
-| Build + query | Query graph replay | 1.014× | 1.39 µs |
+| `objective=wp.PointQueryObjective.REUSE` | Preallocated ordinary call | 2.040× | 40.35 µs |
+| `objective=wp.PointQueryObjective.REUSE` | Allocation-inclusive ordinary call | 1.724× | 42.01 µs |
+| `objective=wp.PointQueryObjective.REUSE` | Query graph replay | 1.010× | 0.29 µs |
+| `objective=wp.PointQueryObjective.BUILD_AND_QUERY` | Preallocated ordinary call | 1.477× | 41.32 µs |
+| `objective=wp.PointQueryObjective.BUILD_AND_QUERY` | Allocation-inclusive ordinary call | 1.414× | 42.99 µs |
+| `objective=wp.PointQueryObjective.BUILD_AND_QUERY` | Query graph replay | 1.014× | 1.39 µs |
 
-These timings exclude construction even for the **build + query tuning objective**: that label selects the construction-oriented tree/launch policy. Construction-inclusive measurements are in the [initial pulmonary report](../batched-cubql/README.md).
+These timings exclude construction even for the **build + query tuning objective**: that label selects the construction-oriented tree/launch policy. Fresh construction-inclusive measurements are in [current comparisons](../comparisons.md).
 
 The preallocated raw native C API is only 1.005× standalone time with reuse tuning, versus 2.040× through the public wrapper. Public and raw native graph replay differ by 0.15% in geometric mean. This isolates the material ordinary-call difference to the Python wrapper, which validates arrays/options, constructs zero-copy batch views, and dispatches each cloud. It is visible for tiny queries, and graph replay avoids repeating that work. This comparison uses the batched layout even when B=1; it does not measure the single-cloud layout's wrapper cost.
 
@@ -48,13 +50,13 @@ B=4, M=379,385, N=8,192, k=1, reuse tuning. All four clouds use the largest orig
 
 | Route | Preallocated ordinary (ms) | Allocation-inclusive ordinary (ms) | Query graph (ms) |
 | --- | ---: | ---: | ---: |
-| Public cuBQL | 0.23675 | 0.26626 | 0.15696 |
+| `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE` | 0.23675 | 0.26626 | 0.15696 |
 | Raw integrated native C API | 0.20221 | — | 0.15701 |
 | Standalone, matched PTX target | 0.20169 | 0.22027 | 0.15431 |
 | Standalone, sm_120 | 0.19989 | 0.21634 | 0.15330 |
-| Public Warp | 0.39675 | 0.41735 | 0.23463 |
+| `backend=wp.PointQueryBackend.WARP` | 0.39675 | 0.41735 | 0.23463 |
 
-The [initial report](../batched-cubql/README.md) separately measures construction, symmetric Chamfer forward/backward, and retained memory. Its 98.79 MiB cuBQL index/output footprint plus 17.74 MiB input coordinates compares with a theoretical 46.31 GiB pairwise tensor for this shape. Those are retained-memory measurements, not peak training memory or a measured `torch.cdist` run.
+The [current comparison report](../comparisons.md) separately measures construction, symmetric Chamfer forward/backward, and retained memory with the completed API. It supersedes the [initial pulmonary report](../archive/batched-cubql/README.md).
 
 ## Method and evidence
 

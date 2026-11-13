@@ -1,0 +1,71 @@
+{
+  "case_count": 24,
+  "modes": {
+    "build_and_query": {
+      "warp": {
+        "geomean_speedup_over_warp": 1.0,
+        "wins_over_warp": 0,
+        "lowest_median_cases": 23
+      },
+      "cubql_reuse": {
+        "geomean_speedup_over_warp": 0.05009418630598037,
+        "wins_over_warp": 0,
+        "lowest_median_cases": 0
+      },
+      "cubql_build": {
+        "geomean_speedup_over_warp": 0.47016454318262657,
+        "wins_over_warp": 1,
+        "lowest_median_cases": 1
+      }
+    },
+    "reused_query": {
+      "warp": {
+        "geomean_speedup_over_warp": 1.0,
+        "wins_over_warp": 0,
+        "lowest_median_cases": 0
+      },
+      "cubql_reuse": {
+        "geomean_speedup_over_warp": 1.3651991353410429,
+        "wins_over_warp": 24,
+        "lowest_median_cases": 24
+      },
+      "cubql_build": {
+        "geomean_speedup_over_warp": 0.8440393340001004,
+        "wins_over_warp": 6,
+        "lowest_median_cases": 0
+      }
+    },
+    "graph_query": {
+      "warp": {
+        "geomean_speedup_over_warp": 1.0,
+        "wins_over_warp": 0,
+        "lowest_median_cases": 2
+      },
+      "cubql_reuse": {
+        "geomean_speedup_over_warp": 1.2043384073111434,
+        "wins_over_warp": 22,
+        "lowest_median_cases": 22
+      },
+      "cubql_build": {
+        "geomean_speedup_over_warp": 0.4937003588458722,
+        "wins_over_warp": 2,
+        "lowest_median_cases": 0
+      }
+    }
+  },
+  "mixed_chamfer": {
+    "case_count": 21,
+    "wins_over_warp_both_directions": 19,
+    "geomean_speedup_over_warp_both_directions": 1.0571000588251482
+  },
+  "validation": {
+    "workload_variant_combinations": 72,
+    "sampled_rows": 5952,
+    "min_tie_aware_recall_at_k": 1.0,
+    "all_shapes_and_indices_valid": true,
+    "duplicate_rows": 0,
+    "unsorted_rows": 0,
+    "distance_rank_mismatch_rows": 0,
+    "reported_distance_mismatch_rows": 0
+  }
+}
