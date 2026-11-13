@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Remeasure simple, tuned, and automatic Warp queries, including graph replay.
+"""Measure scalar and public array queries, including CUDA graph replay.
 
 Use the refresh comparison's timer, stream, output contract and environment.
 Torch is used by the shared timer only; query implementations use Warp arrays.
@@ -35,11 +35,25 @@ class Query:
         self.stride = 1 if method == "warp_scalar" else self.config.query_stride
         self.ordered = method != "warp_scalar" and self.config.ordered
         self.kernel = make_ordered_query(k, True) if self.ordered else make_api_query(k, True, self.stride)
+        self.backend = (
+            wp.PointQueryBackend.CUBQL
+            if method in ("warp_cubql_reuse", "warp_cubql_build")
+            else wp.PointQueryBackend.WARP
+        )
+        self.objective = (
+            wp.PointQueryObjective.BUILD_AND_QUERY if method == "warp_cubql_build" else wp.PointQueryObjective.REUSE
+        )
 
     def build(self):
         if self.method == "warp_scalar":
             # Literal simple usage: preserve the actual default leaf size (1).
             return wp.Bvh(self.points, self.points)
+        if self.method == "warp_bvh_cubql":
+            return wp.Bvh(self.points, self.points, constructor="cubql", leaf_size=self.config.leaf_size)
+        if self.method in ("warp_batch", "warp_cubql_reuse", "warp_cubql_build"):
+            return wp.build_point_index(
+                self.points, num_queries=self.nq, k=self.k, backend=self.backend, objective=self.objective
+            )
         return wp.Bvh(self.points, self.points, leaf_size=self.config.leaf_size)
 
     def outputs(self):
@@ -51,7 +65,9 @@ class Query:
 
     def call(self, bvh=None, outputs=None):
         ids, distances, counts = self.outputs() if outputs is None else outputs
-        if self.method == "warp_batch":
+        if self.method in ("warp_batch", "warp_cubql_reuse", "warp_cubql_build", "warp_bvh_cubql"):
+            if bvh is None and self.method == "warp_bvh_cubql":
+                bvh = self.build()
             return wp.knn(
                 self.points,
                 self.queries,
@@ -61,6 +77,8 @@ class Query:
                 distances=distances,
                 counts=counts,
                 squared=False,
+                backend=self.backend,
+                objective=self.objective,
             )
         if bvh is None:
             bvh = self.build()
@@ -119,15 +137,27 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repeats", type=int, default=9)
     parser.add_argument("--limit", type=int)
+    parser.add_argument(
+        "--methods",
+        nargs="+",
+        choices=("warp_scalar", "warp_tuned", "warp_batch", "warp_cubql_reuse", "warp_cubql_build", "warp_bvh_cubql"),
+        default=("warp_scalar", "warp_tuned", "warp_batch"),
+    )
     args = parser.parse_args()
     wp.init()
     torch.set_grad_enabled(False)
     torch.backends.cuda.matmul.allow_tf32 = False
+    if "warp_bvh_cubql" in args.methods:
+        # Initialize the upstream allocator before applying the application policy.
+        initial_points = wp.zeros(8, dtype=wp.vec3, device="cuda:0")
+        initial_index = wp.Bvh(initial_points, initial_points, constructor="cubql")
+        del initial_index, initial_points
     wp.set_mempool_release_threshold("cuda:0", 512 * 1024**2)
     stream = wp.Stream("cuda:0")
     source_files = (
         "warp/_src/point_query.py",
         "warp/native/bvh.cu",
+        "warp/native/bvh_cubql.cu",
         "warp/native/point_query.h",
         "warp/bin/warp.so",
         "warp/examples/benchmarks/benchmark_point_query_replay.py",
@@ -160,7 +190,7 @@ def main():
                 p, q = data["points"], data["queries"][: case["Q"]]
             points, queries = wp.array(p, dtype=wp.vec3, device="cuda:0"), wp.array(q, dtype=wp.vec3, device="cuda:0")
             row = {"case": case, "variants": {}}
-            for method in ("warp_scalar", "warp_tuned", "warp_batch"):
+            for method in args.methods:
                 problem = Query(points, queries, case["k"], method)
                 build, index = measure(problem.build, args.repeats)
                 query_timing, result = measure(lambda problem=problem, index=index: problem.call(index), args.repeats)
@@ -168,7 +198,8 @@ def main():
                 one_shot, result = measure(problem.call, args.repeats)
                 valid = validate(p, q, result, case["k"])
                 graph_query = graph_measure(problem, p, q, index, args.repeats)
-                graph_full = graph_measure(problem, p, q, None, args.repeats)
+                build_capturable = problem.backend == wp.PointQueryBackend.WARP and method != "warp_bvh_cubql"
+                graph_full = graph_measure(problem, p, q, None, args.repeats) if build_capturable else None
                 row["variants"][method] = {
                     "build": build,
                     "reused_index_search": query_timing,
@@ -176,11 +207,21 @@ def main():
                     "validation": valid,
                     "reused_validation": query_valid,
                     "graph_one_shot": graph_full,
+                    "graph_one_shot_status": "measured" if build_capturable else "construction_not_capturable",
                     "graph_reused_index_search": graph_query,
                     "config": {
-                        "leaf_size": 1 if method == "warp_scalar" else problem.config.leaf_size,
-                        "query_stride": problem.stride,
-                        "ordered": problem.ordered,
+                        "backend": problem.backend.name,
+                        "objective": problem.objective.name,
+                        "constructor": "cubql" if method == "warp_bvh_cubql" else "automatic",
+                        "leaf_size": (
+                            index.leaf_size
+                            if problem.backend == wp.PointQueryBackend.CUBQL
+                            else 1
+                            if method == "warp_scalar"
+                            else problem.config.leaf_size
+                        ),
+                        "query_stride": problem.stride if problem.backend == wp.PointQueryBackend.WARP else "automatic",
+                        "ordered": problem.ordered if problem.backend == wp.PointQueryBackend.WARP else False,
                     },
                 }
                 print(
@@ -190,7 +231,7 @@ def main():
                     round(one_shot["wall_median_ms"], 4),
                     round(query_timing["wall_median_ms"], 4),
                     "graph",
-                    round(graph_full["wall_median_ms"], 4),
+                    round(graph_full["wall_median_ms"], 4) if graph_full else "unsupported",
                     round(graph_query["wall_median_ms"], 4),
                     flush=True,
                 )

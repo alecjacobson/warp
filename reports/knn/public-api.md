@@ -19,7 +19,7 @@ The array APIs run on the host and launch query work. The scalar APIs run inside
 | Your workload or requirement | Starting choice | Reason |
 | --- | --- | --- |
 | General use, CPU execution, or one portable configuration | `backend=wp.PointQueryBackend.WARP` (default) | Supports CPU/CUDA and the full query contract. |
-| Build a new target index for each query call | `backend=wp.PointQueryBackend.WARP` | Lowest build-plus-query median in 23/24 current benchmark cases; see [comparisons](comparisons.md). |
+| Build a new target index for each query call | `backend=wp.PointQueryBackend.WARP` | Lowest build-plus-query median among public settings in 38/40 cross-library cases and 23/24 pulmonary/batched cases; see [comparisons](comparisons.md). |
 | Many queries against unchanged targets on CUDA | `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE` | Faster reused queries in the measured workloads; pay construction once. |
 | Capture construction or refitting as part of a CUDA graph | `backend=wp.PointQueryBackend.WARP` | Supports construction/refit capture with CUDA memory pools enabled. |
 | Capture queries against an already built index | For fixed CUDA targets, start with `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE`; `backend=wp.PointQueryBackend.WARP` also supports query replay | Build native cuBQL indexes outside capture and retain them. |
@@ -243,7 +243,7 @@ uv run --no-sync -m warp.examples.geometry.example_point_query_chamfer \
 
 ## Measurements behind the recommendations
 
-The [current comparisons](comparisons.md) are the authoritative performance report for this branch, with refreshed construction, reused-query, graph, Chamfer, and retained-memory measurements. They also explain the retained standalone-integration evidence and its different timing convention. All current measurements use the 94-SM RTX PRO 6000 Blackwell MIG slice; historical 46-SM experiments are archived separately.
+The [current comparisons](comparisons.md) are the authoritative performance report for this branch, with four colored tables comparing public settings and external libraries, plus separate pulmonary/Chamfer and retained-memory measurements. They also explain the retained standalone-integration evidence and its different timing convention. All current measurements use the 94-SM RTX PRO 6000 Blackwell MIG slice; historical 46-SM experiments are archived separately.
 
 Reuse tuning can make construction substantially more expensive. Compare `T_build + R*T_query` for the expected R query calls, using the same allocation/capture mode and including relevant retirement costs. For symmetric Chamfer, include the changing reverse index and backward pass. Query-only speedups alone do not establish a win for a short-lived index or a complete training step.
 

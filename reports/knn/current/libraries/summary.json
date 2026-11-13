@@ -1,0 +1,544 @@
+{
+  "case_count": 40,
+  "method_count": 16,
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb",
+  "sm_count": 94,
+  "measurement_dates": [
+    "2026-11-13"
+  ],
+  "phases": {
+    "one_shot": {
+      "warp_scalar": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 3.123574106970783,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_batch": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 1.0,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_bvh_cubql": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 14.717658887243074,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_cubql_reuse": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 12.181221855457972,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_cubql_build": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 1.870530963745622,
+        "method_wins": 2,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "physicsnemo": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 5.23080395493023,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cubql": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 6.722216867501528,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cubql_defaults": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 7.766049466278728,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cubql_tuned": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 1.7666445513298716,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cupy_kdtree": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 49.87608765379863,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "keops": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 22.2021367591074,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "faiss_flat": {
+        "passing_pairs": 5,
+        "method_over_reference_geomean": 1.5352658471143523,
+        "method_wins": 3,
+        "statuses": {
+          "checks failed": 35,
+          "pass": 5
+        }
+      },
+      "cuvs_brute_force": {
+        "passing_pairs": 3,
+        "method_over_reference_geomean": 0.4821437792238808,
+        "method_wins": 3,
+        "statuses": {
+          "checks failed": 37,
+          "pass": 3
+        }
+      },
+      "cuvs_unexpanded": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 2.8693959369029978,
+        "method_wins": 4,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cuvs_minkowski": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 49.84041545653021,
+        "method_wins": 4,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "pytorch3d": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 24.43788174281071,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      }
+    },
+    "reused_index_search": {
+      "warp_scalar": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 4.225158965622852,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_batch": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 1.0,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_bvh_cubql": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 0.9570977442058556,
+        "method_wins": 31,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_cubql_reuse": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 0.7227993573557754,
+        "method_wins": 40,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_cubql_build": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 1.1061182557099702,
+        "method_wins": 16,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "physicsnemo": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 11.119729875636937,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cubql": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 4.823365107293897,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cubql_defaults": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 4.649780216121595,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cubql_tuned": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 0.6492856300638712,
+        "method_wins": 40,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cupy_kdtree": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 52.841382106180575,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "keops": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 47.19767086482533,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "faiss_flat": {
+        "passing_pairs": 5,
+        "method_over_reference_geomean": 1.7800465110189494,
+        "method_wins": 3,
+        "statuses": {
+          "checks failed": 35,
+          "pass": 5
+        }
+      },
+      "cuvs_brute_force": {
+        "passing_pairs": 3,
+        "method_over_reference_geomean": 0.5528165764995286,
+        "method_wins": 3,
+        "statuses": {
+          "checks failed": 37,
+          "pass": 3
+        }
+      },
+      "cuvs_unexpanded": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 6.020351612085767,
+        "method_wins": 4,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cuvs_minkowski": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 105.37264725389096,
+        "method_wins": 4,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "pytorch3d": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 51.95045466322376,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      }
+    },
+    "graph_one_shot": {
+      "warp_scalar": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 3.5589619753054977,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_batch": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 1.0,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_bvh_cubql": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "unsupported": 40
+        }
+      },
+      "warp_cubql_reuse": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "unsupported": 40
+        }
+      },
+      "warp_cubql_build": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "unsupported": 40
+        }
+      },
+      "physicsnemo": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 4.538660642815509,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cubql": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "capture failed": 1,
+          "not run": 39
+        }
+      },
+      "cubql_defaults": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "not measured": 40
+        }
+      },
+      "cubql_tuned": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "not measured": 40
+        }
+      },
+      "cupy_kdtree": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "capture failed": 1,
+          "not run": 39
+        }
+      },
+      "keops": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "capture failed": 1,
+          "not run": 39
+        }
+      },
+      "faiss_flat": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "capture failed": 1,
+          "not run": 39
+        }
+      },
+      "cuvs_brute_force": {
+        "passing_pairs": 3,
+        "method_over_reference_geomean": 0.27900839409046535,
+        "method_wins": 3,
+        "statuses": {
+          "checks failed": 37,
+          "pass": 3
+        }
+      },
+      "cuvs_unexpanded": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 3.1011664132868493,
+        "method_wins": 4,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cuvs_minkowski": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 58.754738876831766,
+        "method_wins": 4,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "pytorch3d": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 30.075267040742894,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      }
+    },
+    "graph_reused_index_search": {
+      "warp_scalar": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 5.651546399316798,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_batch": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 1.0,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_bvh_cubql": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 0.9217229997090237,
+        "method_wins": 32,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_cubql_reuse": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 0.8048660277012727,
+        "method_wins": 40,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "warp_cubql_build": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 1.4526465954082899,
+        "method_wins": 9,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "physicsnemo": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 12.303195625396247,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cubql": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 7.199871635728468,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cubql_defaults": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 6.925248026331031,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cubql_tuned": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 0.8060643658248947,
+        "method_wins": 40,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cupy_kdtree": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "capture failed": 1,
+          "not run": 39
+        }
+      },
+      "keops": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "capture failed": 1,
+          "not run": 39
+        }
+      },
+      "faiss_flat": {
+        "passing_pairs": 0,
+        "method_over_reference_geomean": null,
+        "method_wins": 0,
+        "statuses": {
+          "capture failed": 1,
+          "not run": 39
+        }
+      },
+      "cuvs_brute_force": {
+        "passing_pairs": 3,
+        "method_over_reference_geomean": 0.3707651065418263,
+        "method_wins": 3,
+        "statuses": {
+          "checks failed": 37,
+          "pass": 3
+        }
+      },
+      "cuvs_unexpanded": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 8.439643339847091,
+        "method_wins": 4,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "cuvs_minkowski": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 159.56494190574617,
+        "method_wins": 4,
+        "statuses": {
+          "pass": 40
+        }
+      },
+      "pytorch3d": {
+        "passing_pairs": 40,
+        "method_over_reference_geomean": 81.51510646788107,
+        "method_wins": 0,
+        "statuses": {
+          "pass": 40
+        }
+      }
+    }
+  }
+}

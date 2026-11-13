@@ -1,0 +1,304 @@
+{
+  "audited_at_utc": "2026-11-13T04:04:31.610736+00:00",
+  "runtime_base_commit": "0a3c9033d8ccee43c358a8b117253a94db6d9bf3",
+  "scope": "Fresh 16-configuration, 40-workload timings on the completed API; benchmark/report additions accompany this snapshot. All runtime/native source is unchanged from runtime_base_commit.",
+  "hardware": {
+    "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb",
+    "sm_count": 94,
+    "driver": "595.58"
+  },
+  "toolkit": {
+    "path": "/home/horde/cuda/12.9.1",
+    "nvcc": "12.9.86",
+    "external_build_target": "sm_120",
+    "warp_native_cubql_target": "compute_75 PTX, retained quick build"
+  },
+  "source_sha256": {
+    "warp/_src/point_query.py": "9b1927dcc252dca32325e3c9828a1b493a32546f8d54bc5545eace243615a09a",
+    "warp/native/bvh.cu": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb",
+    "warp/native/bvh_cubql.cu": "e4d5fc0d515ba7b5583ed7a878a2565e837311e46d05e1e6add509c02f1dc0db",
+    "warp/native/point_query.h": "ccf0e04a1f8424f890dc466cc1f0b8e7aec989e7679844861cef2b7c6c339625",
+    "warp/bin/warp.so": "29f46520dfa3c2f7fca0edcfedd5fb5ff740ce00f48401fcd136050efcdf1443",
+    "warp/examples/benchmarks/benchmark_point_query_replay.py": "c1bfb6e0b9c1dfac300dbb26c5fd720bb2c9c2ff39303ac86a46ca51deb27410",
+    "warp/examples/benchmarks/point_query_common.py": "ee2b0d97f374c98f2e45d2a8c6ec9618b07886cd5d12930c719413584d389c8f",
+    "warp/examples/benchmarks/point_query_backends.py": "00a36b4bc7d6b08c5a2f23d3ce88561949b23ed49e8bdc56a32054994e79820d",
+    "warp/examples/benchmarks/benchmark_point_query_comparison.py": "3cdc9240bb1380f9a2a824d39a60a434426c779f2fbb8a1c53089aa846b0c217",
+    "warp/examples/benchmarks/benchmark_point_query_cubql.py": "322141b058d367b6b89f13dfa4c28749bdce459cf475e94d848db6614ed5771b",
+    "warp/examples/benchmarks/benchmark_point_query_graphs.py": "efcde7f3dd30adc5e2f38d83553892224d740832bb40cb30a9b2b6d7d5bbc95a",
+    "warp/examples/benchmarks/point_query_datasets.py": "ebfdb41fbe250cb72107223d3db7d8f6fa1534ee71b0c949f02133d5ac4c1a3e",
+    "warp/examples/benchmarks/point_query_comparison_environment.py": "c9f3221fefc7d0ecf2947c60747da3233cbc8997b1feab52156aea722f4abb4c",
+    "warp/examples/benchmarks/point_query_cubql.cu": "dd80ae8f69cdcf220e58db237e8bf7b34db174f0cb0790d00f354b1bdd535444",
+    "warp/examples/benchmarks/point_query_cubql_upstream.cu": "954573e2b2933f8c2f1ece46863ef9135b28e569b7da02ec2c3400bd1bc3c50a",
+    "warp/_src/types.py": "caa251d85127ba90d6e057fb47c6700649f954380df4e901d023ce76279b2504",
+    "warp/_src/context.py": "45c46361004533b597b6a2892af713e5d7d8bcf6d0ce71e5fe16f15c82b19de9",
+    "reports/knn/current/libraries/run.py": "c369fe4627dac340dbece0c2dc652220e90ebb0536307f5663006e1f65c3ad31",
+    "reports/knn/current/libraries/summarize.py": "49c3f508a5598c694141c244e26d314196e302f186ab24e8aa1dacd34ee63b59"
+  },
+  "binary_sha256": {
+    "warp/bin/warp.so": "29f46520dfa3c2f7fca0edcfedd5fb5ff740ce00f48401fcd136050efcdf1443",
+    ".benchmarks/knn/libraries/cubql_custom.so": "f5a5e3e6428b348246dd106585046443f82ec2df528b40b1cec1b0faab124860",
+    ".benchmarks/knn/libraries/cubql_upstream.so": "2dd77f23cb089ad3e79e694deaed863c294b1dbe68159c7a6419d607c32684a1",
+    ".benchmarks/knn/third_party/pytorch3d/pytorch3d/_C.cpython-312-x86_64-linux-gnu.so": "2949ad7efc4f5dba7abe1d9e38149706efb78e92560b925a2fa7f1b3af485180",
+    ".benchmarks/knn/third_party/faiss/build-knn/faiss/python/faiss/_swigfaiss.so": "01df3a585dde6263959ba0e03d7c2f6edd49f1cfffad4eb5cd2183eee60f65cc"
+  },
+  "dependencies": {
+    "pytorch3d": {
+      "revision": "e4ad6e5687a360ccdc6ebd91348e8dbbac97bf31",
+      "tracked_source_clean": true
+    },
+    "faiss": {
+      "revision": "5622e93733b64b2e033362dbdfda019b2ab33ef0",
+      "tracked_source_clean": true
+    }
+  },
+  "source_pins": {
+    "physicsnemo": "bc1c912528f0409c6853dbd33e00346a9184185c",
+    "pytorch3d": "e4ad6e5687a360ccdc6ebd91348e8dbbac97bf31",
+    "faiss": "5622e93733b64b2e033362dbdfda019b2ab33ef0"
+  },
+  "physicsnemo_adapted_source_sha256": "01255c7377bcb65aa13d5c6d75acd5ef346a1799e014b410974bf6205506b85c",
+  "manifest_sha256": "36461dcc131158820ea1fa6a7e4355950fcefdfbb02f4ef4bfae286f66de225a",
+  "dataset_audit": {
+    "matching_historical_coordinate_hash_cases": 40,
+    "historical_manifest": "reports/knn/archive/refresh/manifest.json",
+    "historical_timings_reused": false
+  },
+  "frozen_tuning": {
+    "sha256": "21c5c9d2524e699594ca88c3ebcbc6943f34a47c64db9fb7da00c699bb8250b8",
+    "source": "reports/knn/archive/refresh/results/cubql-tuning.json.gz",
+    "training_hardware_sm_count": 46,
+    "evaluation_hardware_sm_count": 94,
+    "new_tuning": false
+  },
+  "measurements": {
+    "processes": 29,
+    "timing_records_with_verified_nine_samples_and_medians": 2480,
+    "first_started_at": "2026-11-13T03:47:08.941280+00:00",
+    "last_finished_at": "2026-11-13T04:02:16.094753+00:00",
+    "failed_processes": [
+      "cubql-graph-full",
+      "cupy_kdtree-graph-query",
+      "cupy_kdtree-graph-full",
+      "keops-graph-query",
+      "keops-graph-full",
+      "faiss_flat-graph-query",
+      "faiss_flat-graph-full"
+    ],
+    "note": "Failed graph capture stops only its isolated worker. Ordinary and graph numerical failures are retained and excluded from rankings."
+  },
+  "build_commands": {
+    "standalone_cubql": [
+      [
+        "/home/horde/cuda/12.9.1/bin/nvcc",
+        "-std=c++17",
+        "-O3",
+        "-DNDEBUG",
+        "--extended-lambda",
+        "-t",
+        "4",
+        "-arch=sm_120",
+        "-Xcompiler=-fPIC",
+        "-shared",
+        "-Iwarp/native",
+        "warp/examples/benchmarks/point_query_cubql.cu",
+        "-o",
+        "/home/horde/projects/warp-knn/.benchmarks/knn/libraries/cubql_custom.so"
+      ],
+      [
+        "/home/horde/cuda/12.9.1/bin/nvcc",
+        "-std=c++17",
+        "-O3",
+        "-DNDEBUG",
+        "--extended-lambda",
+        "-t",
+        "4",
+        "-arch=sm_120",
+        "-Xcompiler=-fPIC",
+        "-shared",
+        "-Iwarp/native",
+        "warp/examples/benchmarks/point_query_cubql_upstream.cu",
+        "-o",
+        "/home/horde/projects/warp-knn/.benchmarks/knn/libraries/cubql_upstream.so"
+      ]
+    ],
+    "faiss_configure": [
+      "/home/horde/projects/warp-knn/.venv/bin/cmake",
+      "-S",
+      "/home/horde/projects/warp-knn/.benchmarks/knn/third_party/faiss",
+      "-B",
+      "/home/horde/projects/warp-knn/.benchmarks/knn/third_party/faiss/build-knn",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_CUDA_ARCHITECTURES=120",
+      "-DCMAKE_CUDA_COMPILER=/home/horde/cuda/12.9.1/bin/nvcc",
+      "-DCUDAToolkit_ROOT=/home/horde/cuda/12.9.1",
+      "-DFAISS_ENABLE_GPU=ON",
+      "-DFAISS_ENABLE_CUVS=OFF",
+      "-DFAISS_ENABLE_MKL=OFF",
+      "-DFAISS_ENABLE_PYTHON=ON",
+      "-DFAISS_ENABLE_EXTRAS=OFF",
+      "-DBUILD_TESTING=OFF",
+      "-DFAISS_OPT_LEVEL=generic",
+      "-DSWIG_EXECUTABLE=/home/horde/projects/warp-knn/.venv/bin/swig",
+      "-DPython_EXECUTABLE=/home/horde/projects/warp-knn/.venv/bin/python",
+      "-DBLAS_LIBRARIES=/home/horde/projects/warp-knn/.benchmarks/knn/openblas/usr/lib/x86_64-linux-gnu/openblas-pthread/libopenblas.so",
+      "-DLAPACK_LIBRARIES=/home/horde/projects/warp-knn/.benchmarks/knn/openblas/usr/lib/x86_64-linux-gnu/openblas-pthread/libopenblas.so",
+      "-DCUDA_cublas_LIBRARY=/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/cublas/lib/libcublas.so.12",
+      "-DCUDA_cublasLt_LIBRARY=/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/cublas/lib/libcublasLt.so.12",
+      "-DCMAKE_CUDA_FLAGS=-I/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/cublas/include",
+      "-DCMAKE_BUILD_RPATH=/home/horde/projects/warp-knn/.benchmarks/knn/openblas/usr/lib/x86_64-linux-gnu;/home/horde/projects/warp-knn/.benchmarks/knn/openblas/usr/lib/x86_64-linux-gnu/openblas-pthread;/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/cublas/lib;/home/horde/cuda/12.9.1/lib64"
+    ],
+    "faiss_build": [
+      "cmake",
+      "--build",
+      ".benchmarks/knn/third_party/faiss/build-knn",
+      "--target",
+      "swigfaiss",
+      "-j",
+      "4"
+    ],
+    "faiss_python_build": {
+      "cwd": ".benchmarks/knn/third_party/faiss/build-knn/faiss/python",
+      "command": [
+        "python",
+        "setup.py",
+        "build"
+      ]
+    },
+    "pytorch3d": {
+      "cwd": ".benchmarks/knn/third_party/pytorch3d",
+      "command": [
+        "python",
+        "setup.py",
+        "build_ext",
+        "--inplace"
+      ],
+      "environment": {
+        "CUDA_HOME": "/home/horde/cuda/12.9.1",
+        "CUB_HOME": "/home/horde/cuda/12.9.1/include",
+        "FORCE_CUDA": "1",
+        "TORCH_CUDA_ARCH_LIST": "12.0",
+        "MAX_JOBS": "4",
+        "CPATH": "/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/nccl/include:/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/cusolver/include:/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/cusparse/include:/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/cuda_cupti/include:/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/cufft/include:/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/cuda_runtime/include:/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/nvjitlink/include:/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/cuda_nvrtc/include:/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/cufile/include:/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/cublas/include:/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/nvtx/include:/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/curand/include:/home/horde/projects/warp-knn/.venv/lib/python3.12/site-packages/nvidia/cudnn/include"
+      }
+    }
+  },
+  "openblas_packages": [
+    {
+      "Package": "libopenblas-pthread-dev",
+      "Version": "0.3.26+ds-1",
+      "Filename": "pool/universe/o/openblas/libopenblas-pthread-dev_0.3.26+ds-1_amd64.deb",
+      "SHA256": "354fee05796c9c61539888a0c44b08efeeccce65a268a9684c903433f59bfbd7"
+    },
+    {
+      "Package": "libopenblas0-pthread",
+      "Version": "0.3.26+ds-1",
+      "Filename": "pool/universe/o/openblas/libopenblas0-pthread_0.3.26+ds-1_amd64.deb",
+      "SHA256": "48a08fb3ee766109992a7d843a90646fdfb0127e2e9c8759bd91d45abd6873e6"
+    },
+    {
+      "Package": "libgfortran5",
+      "Version": "14-20240412-0ubuntu1",
+      "Filename": "pool/main/g/gcc-14/libgfortran5_14-20240412-0ubuntu1_amd64.deb",
+      "SHA256": "86d85417b95626b45080550fc03c7a83a05f100454987b722901da20fc358682"
+    }
+  ],
+  "profiler_headers": {
+    "version": "12.9.79",
+    "redistributable_sha256": "8c50636bfb97e9420905aa795b9fa6e3ad0b30ec6a6c8b0b8db519beb9241ce6",
+    "files": [
+      "cudaProfiler.h",
+      "cuda_profiler_api.h"
+    ]
+  },
+  "retained_evidence": {
+    "reports/knn/current/batched.json": {
+      "sha256": "0b99d947338543bc0c78224efd72d542f188aaa285030d12930173329b1a6775",
+      "recorded_source_hashes_verified": 5
+    },
+    "reports/knn/completion/integration.json": {
+      "sha256": "4bfa54a3505f51fc2a1c6e9bf30ec615ca0981c7beffbec38aa1f2d6dc012aa4",
+      "recorded_source_hashes_verified": 5
+    },
+    "reports/knn/completion/validation.json": {
+      "sha256": "aba9ce270e7d772245e145ca63920ec25f49c468fb186c4a8b1673c704b7ba61",
+      "recorded_source_hashes_verified": 7
+    }
+  },
+  "unchanged_archived_raw_files": 288,
+  "evidence_sha256": {
+    "environment-freeze.txt": "679a3e8596d6f99d5ab933c582e882a80ef03634e0f6039878038f4c7342b470",
+    "manifest.json": "36461dcc131158820ea1fa6a7e4355950fcefdfbb02f4ef4bfae286f66de225a",
+    "results/cubql-graph-full.json": "ea1e5648a0ed5df37776c7beda2ed54cc873a03ab36e7697e84061598aa55a6e",
+    "results/cubql-graph-full.log.gz": "ae0e0b5c1ab363659b5fe6e43c890c84a7007f2a363bd37708f7220dfe93197b",
+    "results/cubql-graph-query.json": "a5be37fb957d71e846576d0df5f3800b4b02bb6bc9928f32b785dfd5d1365712",
+    "results/cubql-graph-query.log.gz": "734f9ae8fd112fbbc090da606f4e2d68ac54011b603439f74b387b2c85072566",
+    "results/cubql-upstream.log.gz": "a8376f64a129642ec6970ade1f9d54a2bff001e8294b4f6a5bc986bfa98df40b",
+    "results/cubql.json": "f103ffebe5e4de5a218127d52c0c764fc6d82bd784b65298a117ceeb9eb2dbce",
+    "results/cubql.log.gz": "0991f47f5a4849a17359aa3fb0dc08eee34f9ff55232284d4f6b3b9785690663",
+    "results/cubql_defaults.json": "73f13718711612c5766a15d2c0508ccdb6c4bf34c2cac5e90efe30c68442fd8e",
+    "results/cubql_tuned.json": "b003fab41c5a4c7bb1d6d09e1a658200e2585acd7c2c2802cc990e9423139120",
+    "results/cupy_kdtree-graph-full.json": "a779e4df33273fe5d291e8678f56c9c9c992e909fb64691abfb56a18b5b34b70",
+    "results/cupy_kdtree-graph-full.log.gz": "c6455c624e3d3260f1ce5443c7596d4e2e394c2b458acec81b2732fe456fd7f4",
+    "results/cupy_kdtree-graph-query.json": "fd67683aea1b585ae53ec1ed6a80720ab8bdd37916ac97fdcbdbd81dd0fe5bee",
+    "results/cupy_kdtree-graph-query.log.gz": "875df1119fa99acdb9c65b3eb2faaffc43c2762e4bfc343ded8893bda46d2c04",
+    "results/cupy_kdtree.json": "7629a7492f25384dff71d530edee6e01d5f9c0b204c567b864bc670e1480a455",
+    "results/cupy_kdtree.log.gz": "05721aad240a01e37d6a872c8616d0bfdecece65fb302895412b7f71e8361be2",
+    "results/cuvs_brute_force-graph-full.json": "12523e402ca67526a4d0bdea3c039a60fb45b86da762a5ec6920d3b5406e8221",
+    "results/cuvs_brute_force-graph-full.log.gz": "4f9fd5618fed204a2aeb00e616b98c58a58fc856f499221920055fc46382abc3",
+    "results/cuvs_brute_force-graph-query.json": "f56e81aa564e4a2648bc94d063d325ee79a02977dd9634600ba5189e42a53063",
+    "results/cuvs_brute_force-graph-query.log.gz": "46c64f2d1cbff17b3d0a3ee7016c096f19f565248154bf85b4fe699d08bcb1f9",
+    "results/cuvs_brute_force.json": "707765ef1a8bace22e75b6048f1ef40149710a40554a7b0b0f1e19cf87181c73",
+    "results/cuvs_brute_force.log.gz": "e9bd397e1cc14230085a96e325f4badf3d1920da0962987757081a603eed51b2",
+    "results/cuvs_minkowski-graph-full.json": "acaa884c5f60a1f529230a16ba7f8f6594b7e40c9066c13acddc176678d77fcc",
+    "results/cuvs_minkowski-graph-full.log.gz": "9cd0fddb17a18a6b3ba970528b8c696f53447635298aaf2b532ee590c5d24be0",
+    "results/cuvs_minkowski-graph-query.json": "034e75be76a9be74c680413c8376b3da49eee70807296fb2dfdfa34b06aaadbd",
+    "results/cuvs_minkowski-graph-query.log.gz": "0f9a88940750cafd18a1ed2cb290dc76cee4204d5c747982eb8dbca32654ae1e",
+    "results/cuvs_minkowski.json": "bf353d8f5392f80af95bedb9be64021fa0d648d60c2836388b6a1ecc4d00de9d",
+    "results/cuvs_minkowski.log.gz": "0e61e3c57f53db3c1dc73b8912536f805234be7bda289dab56fc46a799916bcd",
+    "results/cuvs_unexpanded-graph-full.json": "961b9abb155c76a8e467a2b05482eceb2dcc14a946014db11b3f59b66f171e63",
+    "results/cuvs_unexpanded-graph-full.log.gz": "87493ef30989f8a044637425e0fc09297cc6f6cb239fb56d591f9276ab5a327d",
+    "results/cuvs_unexpanded-graph-query.json": "518c88e48eb7088f3ce52bed187cfac4435cbb08e97ecde864d94acdda68f911",
+    "results/cuvs_unexpanded-graph-query.log.gz": "c783a6c4867df8939752e09f159a6642a9f03face79ce58dbffe68dbb54f17ea",
+    "results/cuvs_unexpanded.json": "817a38b87536c3a2ada943d831cd2636677c1790c011a025c9c65c8c3a092a4f",
+    "results/cuvs_unexpanded.log.gz": "4d02341ed2d3a69c02ca2bbdb854dc5b41f4d5bc9e6c943fe95796cf0ded2c9f",
+    "results/faiss_flat-graph-full.json": "343572bf4830b88c3fa75e47bbad767849988e0712e86e488071ac74e184d41a",
+    "results/faiss_flat-graph-full.log.gz": "b27c90a512e3fe30b10c2e389230557b94ec769312668cce3e2fb32ba54c7380",
+    "results/faiss_flat-graph-query.json": "1a6f653977c7facbdbe78f1c45c1d274ffbe35f2e6b41868179a58cc2b71f209",
+    "results/faiss_flat-graph-query.log.gz": "f5ca7caf8212dd19aac0502df604994b9bb2411f7fa3e1b3d7411c4ff07546dc",
+    "results/faiss_flat.json": "ed5b2c431a0e92d6e2e6c873bf93f6a65ae2e232d56b49ff33da0205d8f81d29",
+    "results/faiss_flat.log.gz": "92a9add90e194b4a272d2bf6c91174844a15249a104380e8b8d2eb2f7830de91",
+    "results/keops-graph-full.json": "c5a5710d5555881aef1407a450d4ca7985d95e8cc446d6ed1b7feaeb744bfb39",
+    "results/keops-graph-full.log.gz": "af4637334d730142c6b14ffb8463fb0f5210c36d84b85df511d9083c219265c4",
+    "results/keops-graph-query.json": "25a756575500ada54f134b2a132c6c5f99d24d66a3c30da7a1ab5de0e6912259",
+    "results/keops-graph-query.log.gz": "af4637334d730142c6b14ffb8463fb0f5210c36d84b85df511d9083c219265c4",
+    "results/keops.json": "78e4848398f6a6a6270628581f1aea91c7cadd552079fd0e9b446702f4d264de",
+    "results/keops.log.gz": "b6bdbc74213e0a4925875a3cf88ecf3a9880590efc4a7e9f1e21779c8a5d9951",
+    "results/physicsnemo-graph-full.json": "8f1f20550ea45be39b61a07f48b8336030fdbf2bfca307ef6c0a10ae476e1932",
+    "results/physicsnemo-graph-full.log.gz": "26616e91232928cfbeb56f0f5a73ea10454b77930a24a25a13ce8835548c5fdf",
+    "results/physicsnemo-graph-query.json": "b80bcc190c6b8418667194dda2ecffc38e2971df095efa8bcdc6a50750967485",
+    "results/physicsnemo-graph-query.log.gz": "e7fdbf5771c40e9e5252698be8494df2dcae1a86a0b2ecc0c3174c4e2ba8157d",
+    "results/physicsnemo.json": "8598954a82f67a446fc25d10c20be559729db19dc11037b93f18a44f52a62a61",
+    "results/physicsnemo.log.gz": "35663c5336cdf121d1e433ea1191fba6fa6b1c92835bff00283bb5336538bf12",
+    "results/processes.json": "8ffecf1c6d64be2f8ebd95404cb5bca2e8e9ab9b943e7b9b878832b836d7d226",
+    "results/pytorch3d-graph-full.json": "e927bd5e07fa4a035d254d5c5b5f5507e7880e865bb740bc670ad5406880a5ad",
+    "results/pytorch3d-graph-full.log.gz": "28af6cfd9291418dce0c7be97e3247310625210ef32ac9f9b478b84898061b7f",
+    "results/pytorch3d-graph-query.json": "2004785d66cb5fcda436fedf3baf82b23a350d5f0d4d8ec453069078134579a4",
+    "results/pytorch3d-graph-query.log.gz": "5ef6668a671e5b56cfefdfd9d915366d7263c949109ceec59737a54f16d4082d",
+    "results/pytorch3d.json": "20f0222fbca4831707ff18dc276e2d0e613c2f19bcecd9589b10d009e74897cf",
+    "results/pytorch3d.log.gz": "5c769753bb1a8386c8878c084602b3511214348df7207feab5901fdb748dfca9",
+    "results/warp-public.json": "a2973101ae9c9ec2c1f5325a6aacfa86fa4dbdba375917e5ed3470647eeedeaa",
+    "results/warp-public.log.gz": "28921081dbc2dbaa6fe5fbef15d4071ffda3feb47fb899ef21090cc7c1a5261a",
+    "setup/build-faiss.log.gz": "51afeb0bbbfdc1dcaf76f8c61ad98370049f82f13ab4c32b4dc1351df81a9416",
+    "setup/build-pytorch3d.log.gz": "0727cde90bcc362ecb7fc9da5473a5a724205e6b1ff1ff0062742aa30b64551c",
+    "setup/build-standalone.log.gz": "a690d851bb90b0e5d44f95e5ddc4fdb8dc55cdcf9224a45ab88825e39b61ed98",
+    "setup/download-data.log.gz": "f756b595d2e2bb44ce546716d1e98ab467ad91c30a278c96ccad7a6fe404211e",
+    "setup/full-coordinator.log.gz": "d41efab88c85359397a44a04af7d226bd764e1e40054ae3539c90b4aafc06f04",
+    "setup/install-blas.log.gz": "ff842bebc0c3d7ae7d099ec5e7e858649adc40a56f355a99467d44dad39c4213",
+    "setup/install-libraries.log.gz": "bf94afee6ba09578ac27c8c0c13f3c8c187c7ba8abd6923fc461a9eaed8c4be0",
+    "setup/install-torch.log.gz": "98b25c07c25cb0e92bb55ded3027c5a8b645969a9af7d7f3e7437a0f131f0da0",
+    "setup/prepare-data.log.gz": "c5b053460f5321d8106a878271f771c1054ccca2d2dd6d5e93d6ddd5d5ed4a67",
+    "setup/prepare-openblas.log.gz": "e2957f0d7a1c933a9c5d3c40ff357db76fd1adbcb15b8562de30bbea88ab9b6a"
+  }
+}
