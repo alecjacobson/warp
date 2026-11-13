@@ -1,0 +1,123 @@
+{
+  "audited_at_utc": "2026-11-13T03:12:44.477907+00:00",
+  "source_commit": "93e506474cdc0e10e57b875a60e986f6f5fbf7f9",
+  "fresh_measurements": "current/batched.json",
+  "fresh_benchmark_command": "uv run --no-sync -m warp.examples.benchmarks.benchmark_point_query_batched --archive pulmonary_point_clouds.zip --output reports/knn/current/batched.json",
+  "retained_evidence": [
+    "completion/integration.json",
+    "completion/validation.json"
+  ],
+  "note": "Fresh measurements rerun against the completed public API. Retained integration and validation evidence was not rerun: every source and native binary hash recorded in those artifacts still matches. This audit covers recorded hashes, not every file in the repository. Report text, navigation, and an unrelated archival-baseline path change accompany this snapshot.",
+  "artifacts": {
+    "current/batched.json": {
+      "sha256": "0b99d947338543bc0c78224efd72d542f188aaa285030d12930173329b1a6775",
+      "source_checks": [
+        {
+          "path": "warp/_src/point_query.py",
+          "sha256": "9b1927dcc252dca32325e3c9828a1b493a32546f8d54bc5545eace243615a09a",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/native/bvh_cubql.cu",
+          "sha256": "e4d5fc0d515ba7b5583ed7a878a2565e837311e46d05e1e6add509c02f1dc0db",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/native/bvh.cu",
+          "sha256": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/bin/warp.so",
+          "sha256": "29f46520dfa3c2f7fca0edcfedd5fb5ff740ce00f48401fcd136050efcdf1443",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/examples/benchmarks/benchmark_point_query_batched.py",
+          "sha256": "f50ef3065141f32948fc739245bf0d03c25e3c5e93a1fff58de9e9dbbd787397",
+          "matches_recorded_hash": true
+        }
+      ]
+    },
+    "completion/integration.json": {
+      "sha256": "4bfa54a3505f51fc2a1c6e9bf30ec615ca0981c7beffbec38aa1f2d6dc012aa4",
+      "source_checks": [
+        {
+          "path": "warp/_src/point_query.py",
+          "sha256": "9b1927dcc252dca32325e3c9828a1b493a32546f8d54bc5545eace243615a09a",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/native/bvh_cubql.cu",
+          "sha256": "e4d5fc0d515ba7b5583ed7a878a2565e837311e46d05e1e6add509c02f1dc0db",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/bin/warp.so",
+          "sha256": "29f46520dfa3c2f7fca0edcfedd5fb5ff740ce00f48401fcd136050efcdf1443",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/examples/benchmarks/point_query_cubql_upstream.cu",
+          "sha256": "954573e2b2933f8c2f1ece46863ef9135b28e569b7da02ec2c3400bd1bc3c50a",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/examples/benchmarks/benchmark_point_query_integration.py",
+          "sha256": "7bec1999c3197b40654743ae14d2cb35b3387f257cfc29243291035d1a7dc600",
+          "matches_recorded_hash": true
+        }
+      ]
+    },
+    "completion/validation.json": {
+      "sha256": "aba9ce270e7d772245e145ca63920ec25f49c468fb186c4a8b1673c704b7ba61",
+      "source_checks": [
+        {
+          "path": "warp/_src/point_query.py",
+          "sha256": "9b1927dcc252dca32325e3c9828a1b493a32546f8d54bc5545eace243615a09a",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/native/bvh.cpp",
+          "sha256": "952d5791d82bf3722914025f181fef5edb87ab0bf06c8fefb064baad629cffe1",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/native/bvh_cubql.cu",
+          "sha256": "e4d5fc0d515ba7b5583ed7a878a2565e837311e46d05e1e6add509c02f1dc0db",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/tests/geometry/test_point_query_batched.py",
+          "sha256": "6ce53ae32dbc7e830f6e92f3e790a4af3adcfd3e0ecd0bdf8a0c155f7a98d843",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/examples/geometry/example_point_query_chamfer.py",
+          "sha256": "cd1becd1ebd9c95e0da933ea44b52594566dbd9bebf074efee43c49cd17bd4c3",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/examples/benchmarks/benchmark_point_query_integration.py",
+          "sha256": "7bec1999c3197b40654743ae14d2cb35b3387f257cfc29243291035d1a7dc600",
+          "matches_recorded_hash": true
+        },
+        {
+          "path": "warp/bin/warp.so",
+          "sha256": "29f46520dfa3c2f7fca0edcfedd5fb5ff740ce00f48401fcd136050efcdf1443",
+          "matches_recorded_hash": true
+        }
+      ]
+    }
+  },
+  "archive": {
+    "manifest": "archive/manifest.json",
+    "moved_files": 315,
+    "byte_identical_non_navigation_artifacts": 288,
+    "navigation_suffixes": [
+      ".md",
+      ".html",
+      ".rst"
+    ]
+  }
+}

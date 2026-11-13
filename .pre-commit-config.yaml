@@ -10,6 +10,9 @@ ci:
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
+# Preserve historical benchmark artifacts and their recorded source hashes.
+exclude: ^reports/knn/archive/
+
 repos:
   - repo: local
     hooks:

@@ -88,7 +88,7 @@ def run_variant(points, queries, excludes, k, leaf, stride, ordered, repeats):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--original", type=Path, default=Path("reports/knn/results.json"))
+    parser.add_argument("--original", type=Path, default=Path("reports/knn/archive/baseline/results.json"))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--scan", type=Path, required=True)
     parser.add_argument("--losses-only", action="store_true")

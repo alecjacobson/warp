@@ -2,7 +2,7 @@
 
 The `alecjacobson/knn` branch exposes host array queries and scalar queries inside Warp kernels. `wp.build_point_index()` builds reusable target indexes, and `wp.knn()` queries single clouds or independent batches from Python. Inside a kernel, use `wp.point_query_knn()` with `wp.point_query_next()` to consume neighbors, or `wp.point_query_nearest()` for one neighbor. These APIs are implemented at [cafc98ee6](https://github.com/alecjacobson/warp/commit/cafc98ee6).
 
-**Start with Warp when targets change frequently. For repeated CUDA queries against fixed targets, start with cuBQL and the `REUSE` objective.** For symmetric Chamfer loss, use cuBQL for the fixed target cloud and Warp for the changing decoded cloud, then measure the complete training step. Leave the lower-level tuning overrides automatic initially.
+**Start with `backend=wp.PointQueryBackend.WARP` when targets change frequently. For repeated CUDA queries against fixed targets, start with `backend=wp.PointQueryBackend.CUBQL` and `objective=wp.PointQueryObjective.REUSE`.** For symmetric Chamfer loss, use that fixed-target choice with `backend=wp.PointQueryBackend.WARP` for the changing decoded cloud, then measure the complete training step. Leave the lower-level tuning overrides automatic initially. The [current comparisons](comparisons.md) contain the latest measurements and methodology.
 
 ## Choose where the query runs
 
@@ -19,7 +19,7 @@ The array APIs run on the host and launch query work. The scalar APIs run inside
 | Your workload or requirement | Starting choice | Reason |
 | --- | --- | --- |
 | General use, CPU execution, or one portable configuration | `backend=wp.PointQueryBackend.WARP` (default) | Supports CPU/CUDA and the full query contract. |
-| Build a new target index for each query call | `backend=wp.PointQueryBackend.WARP` | Lowest build-plus-query median in 23/24 initial benchmark cases; the remaining case was effectively tied. |
+| Build a new target index for each query call | `backend=wp.PointQueryBackend.WARP` | Lowest build-plus-query median in 23/24 current benchmark cases; see [comparisons](comparisons.md). |
 | Many queries against unchanged targets on CUDA | `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE` | Faster reused queries in the measured workloads; pay construction once. |
 | Capture construction or refitting as part of a CUDA graph | `backend=wp.PointQueryBackend.WARP` | Supports construction/refit capture with CUDA memory pools enabled. |
 | Capture queries against an already built index | For fixed CUDA targets, start with `backend=wp.PointQueryBackend.CUBQL`, `objective=wp.PointQueryObjective.REUSE`; `backend=wp.PointQueryBackend.WARP` also supports query replay | Build native cuBQL indexes outside capture and retain them. |
@@ -149,6 +149,8 @@ wp.launch(
 
 `search` has an inferred, kernel-local type; no public query-state class needs to be constructed or annotated. `wp.point_query_next(search, index)` advances the cursor, writes the next index, and returns `True`. It yields only valid neighbors, ordered by computed squared distance and then original target index. If fewer than k are eligible, the loop ends early without padding. Once exhausted, it returns `False` and leaves `index` unchanged.
 
+Use the `while wp.point_query_next(search, index)` form shown above. Direct `for index in search` iteration is not implemented for this query type and fails to compile. A fixed `for` loop over k also needs to check `point_query_next` because fewer than k neighbors may be eligible.
+
 Selection is eager: `wp.point_query_knn()` finishes searching and sorting before the loop starts. Breaking out of `point_query_next` enumeration early does not reduce search work. The scalar k must be a positive compile-time integer, such as literal `8` above or `wp.static(K)`; a runtime kernel argument cannot supply it.
 
 These scalar functions take a `wp.Bvh.id` and the corresponding one-dimensional target array. Use `backend=wp.PointQueryBackend.WARP` when building through the helper. A `wp.CubqlPointIndex.id` is not a Warp BVH handle and must not be passed to them; direct native cuBQL queries are exposed through the host `wp.knn` route. For independent clouds, select the matching Warp BVH and target cloud for each query, or launch this kernel separately per cloud.
@@ -241,20 +243,12 @@ uv run --no-sync -m warp.examples.geometry.example_point_query_chamfer \
 
 ## Measurements behind the recommendations
 
-Measurements use the 94-SM RTX PRO 6000 Blackwell MIG slice in this project. They guide starting settings; they do not establish a fastest configuration for every GPU or geometry.
+The [current comparisons](comparisons.md) are the authoritative performance report for this branch, with refreshed construction, reused-query, graph, Chamfer, and retained-memory measurements. They also explain the retained standalone-integration evidence and its different timing convention. All current measurements use the 94-SM RTX PRO 6000 Blackwell MIG slice; historical 46-SM experiments are archived separately.
 
-| Measurement | Result | Consequence for a caller |
-| --- | --- | --- |
-| Completed API, reused queries including output allocation | cuBQL reuse wins 23/23 workloads; 1.33× geometric-mean speedup over Warp | Consider cuBQL for fixed targets. |
-| Completed API, reused query graphs | cuBQL reuse wins 22/23; 1.26× geometric-mean speedup over Warp | Capture can retain the query advantage; a Warp graph still wins one case. |
-| Completed API, cuBQL integration versus matched standalone | Query graphs average about 1% slower; ordinary public B=1 calls add about 40 µs | Distinguish traversal speed from Python call overhead. |
-| Initial implementation, build plus query | Warp has the lowest median in 23/24 workloads; remaining case effectively tied | Start with Warp when rebuilding often. |
-| Initial implementation, dense symmetric Chamfer, B=4, M=379,385, N=8,192 | Warp both ways: 4.04 ms; cuBQL fixed/Warp reverse: 3.97 ms; cuBQL both ways: 13.68 ms | Faster fixed-target queries produce a modest full-step gain; backend choice for the reverse direction matters. |
+Reuse tuning can make construction substantially more expensive. Compare `T_build + R*T_query` for the expected R query calls, using the same allocation/capture mode and including relevant retirement costs. For symmetric Chamfer, include the changing reverse index and backward pass. Query-only speedups alone do not establish a win for a short-lived index or a complete training step.
 
-Reuse tuning can make construction substantially more expensive. In the initial dense case, cuBQL reuse construction plus query took 46.12 ms versus 1.34 ms for Warp. Decide using `T_build + R*T_query` for the expected R query calls, measured with the same allocation/capture mode and including relevant retirement costs. Query-only speedups alone do not establish a win for a short-lived index.
+For fixed k, index/output storage scales as `O(B*M + B*N*k)`, plus input coordinates and linear scratch, without a `B*N*M` pairwise tensor. Each batch currently uses a separate index and query operation, so large B also deserves measurement.
 
-For fixed k, index/output storage scales as `O(B*M + B*N*k)`, plus input coordinates and linear scratch, without a `B*N*M` pairwise tensor. The initial dense case retained 98.79 MiB in cuBQL indexes/outputs plus 17.74 MiB in inputs; a float32 pairwise tensor would be 46.31 GiB. These are retained-memory figures, not peak training memory. Each batch currently uses a separate index and query operation, so large B also deserves measurement.
-
-Sources: [completed API and standalone comparison](completion/README.md), [construction, Chamfer, and memory measurements](batched-cubql/README.md), [public API implementation](../../warp/_src/point_query.py), and [user guide](../../docs/user_guide/point_queries.rst).
+References: [current comparisons](comparisons.md), [public API implementation](../../warp/_src/point_query.py), and [user guide](../../docs/user_guide/point_queries.rst).
 
 `wp.point_query_knn_batch()` remains a working deprecated alias for `wp.knn()`, with the same arguments and four return values. New callers should use `wp.knn()`.
