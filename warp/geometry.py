@@ -7,6 +7,11 @@ This module provides functions to process 2D and 3D geometry and their
 associated topological data structures (e.g., meshes), and GPU-accelerated
 isosurface extraction.
 
+For point clouds, :class:`PointIndex` owns reusable targets and :func:`knn`
+queries either a single cloud or independent fixed-size batches. For scalar
+queries inside caller kernels, use :class:`warp.Bvh` with
+:func:`warp.point_query_nearest` or :func:`warp.point_query_knn`.
+
 Dense-grid isosurface backends take a 3-D ``wp.float32`` field sampled at grid
 nodes and share the :class:`IsoSurfaceBase` interface, so they can be swapped
 without changing calling code: :class:`IsoSurfaceMarchingCubes` produces

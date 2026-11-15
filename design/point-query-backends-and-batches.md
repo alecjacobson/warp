@@ -6,7 +6,7 @@
 
 ## Motivation
 
-Dense point-cloud encoders need differentiable nearest-neighbor distances without a B×N×M pairwise tensor. Targets can stay fixed while decoded clouds move. The existing query-batch API handles only one target cloud. Separately, the retained benchmarks show that native cuBQL queries often outperform Warp traversal for reused indexes, whereas Warp LBVH construction is inexpensive and fully capturable. Both execution paths have useful regimes.
+Dense point-cloud encoders need differentiable nearest-neighbor distances without a B×N×M pairwise tensor. Targets can stay fixed while decoded clouds move. The original array-query API handled only one target cloud. Separately, the retained benchmarks show that native cuBQL queries often outperform Warp traversal for reused indexes, whereas Warp LBVH construction is inexpensive and fully capturable. Both execution paths have useful regimes.
 
 ## Design
 

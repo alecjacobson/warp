@@ -1,4 +1,6 @@
-# Reproduce the current cross-library comparison
+# Reproduce the November 13 cross-library comparison
+
+**Recorded November 13 experiment.** Use the pre-migration snapshot [60c4da49f](https://github.com/alecjacobson/warp/commit/60c4da49fe101233663578334094f789b27bc1c3) and a native library built from that source to reproduce these timings. The old harness calls `wp.knn()`; on the current branch those calls carry deprecation warnings. New callers use `warp.geometry.PointIndex` and `warp.geometry.knn()`. See [migration](../../public-api.md#migrate-the-earlier-branch-api) and [current API regression measurements](../../api-revision/README.md).
 
 Run from the Warp checkout. These are optional benchmark dependencies; Warp's public API does not require them. The prepared workspace is `.benchmarks/knn/`, excluded from Git, with one project `.venv`. The existing CUDA toolkit is `/home/horde/cuda/12.9.1`.
 

@@ -6514,7 +6514,16 @@ class BvhConstructor(enum.IntEnum):
 
 
 class Bvh:
-    """Bounding Volume Hierarchy (BVH) for accelerated spatial queries."""
+    """Represent a bounding volume hierarchy for accelerated spatial queries.
+
+    To index a point cloud, pass the same contiguous ``vec3`` array as both
+    bounds: ``Bvh(points, points)``. Query its ``id`` in kernels with
+    :func:`warp.point_query_nearest` or :func:`warp.point_query_knn`, supplying
+    the same point array. For reusable array queries and independent fixed-size
+    batches, use :class:`warp.geometry.PointIndex` and :func:`warp.geometry.knn`.
+    Their default backend owns ordinary Warp BVHs; the optional native cuBQL
+    backend has separate handles that cannot be passed to these kernel queries.
+    """
 
     def __new__(cls, *args, **kwargs):
         instance = super().__new__(cls)

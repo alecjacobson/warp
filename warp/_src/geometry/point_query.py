@@ -79,6 +79,10 @@ class CubqlPointIndex:
     allocation alive through asynchronous work and graph replay. Order updates
     against readers on all streams. Rebuild after modifying target coordinates.
 
+    The deprecated ``wp.CubqlPointIndex`` alias exposes this implementation type.
+    New callers should construct :class:`warp.geometry.PointIndex` with
+    ``backend=warp.geometry.PointQueryBackend.CUBQL`` instead.
+
     Args:
         points: Contiguous one-dimensional ``wp.vec3`` CUDA target array.
         num_queries: Expected query count, used to choose the construction policy.
@@ -170,6 +174,17 @@ def point_query_config(num_points: int, num_queries: int, device: DeviceLike = N
     query. Large batches use dense launches and spatial query ordering. CPU
     queries use dense launches. This heuristic can be overridden by the caller;
     it does not change the defaults of :class:`warp.Bvh` or :func:`warp.launch`.
+
+    Args:
+        num_points: Nonnegative target count per cloud.
+        num_queries: Nonnegative query count per cloud, excluding the batch dimension.
+        device: Device on which queries will run. Omit to use the current device.
+
+    Returns:
+        Immutable Warp-backend settings for BVH leaf size, threads per query,
+        CUDA block size, and query ordering. A custom kernel must implement the
+        returned thread-to-query mapping and any requested ordering itself.
+        These settings do not describe the native cuBQL policy.
     """
     if num_points < 0 or num_queries < 0:
         raise ValueError("Point and query counts must be nonnegative")
@@ -312,7 +327,8 @@ def _build_point_index(
 ) -> wp.Bvh | CubqlPointIndex | tuple:
     """Build reusable target indexes without performing a nearest-neighbor query.
 
-    Pass the returned index to :func:`warp.knn` as ``bvh``. Construction requires
+    This private builder serves the geometry owner and legacy compatibility API.
+    Pass its raw index to :func:`_knn` as ``bvh``. Construction requires
     no query coordinates and allocates no neighbor outputs. Retain the index and
     targets during asynchronous execution and graph replay. The index references
     the supplied target storage; it does not copy the coordinates. Refit Warp
@@ -330,7 +346,7 @@ def _build_point_index(
         leaf_size: Override the Warp BVH leaf size. Unsupported for cuBQL.
 
     Returns:
-        One :class:`warp.Bvh` or :class:`warp.CubqlPointIndex` for a single cloud,
+        One :class:`warp.Bvh` or internal ``CubqlPointIndex`` for a single cloud,
         or a tuple of B indexes for batched inputs. Empty clouds and B=0 are
         supported. Warp CUDA construction supports graph capture with memory
         pools enabled; cuBQL construction must occur outside capture.
@@ -615,16 +631,24 @@ class PointIndex:
     queries. Native cuBQL handles are private and cannot be used with the scalar
     Warp BVH query functions.
 
+    Empty clouds and zero batches are supported. Target coordinates must be
+    finite, with queried squared distances representable in float32. Coordinate
+    contents may be updated in place; the ``points``, ``backend``, and
+    ``objective`` properties cannot be reassigned.
+
     Args:
         points: Contiguous float32 ``vec3`` targets of shape ``(M,)`` or ``(B, M)``.
-        num_queries: Expected queries per cloud, used only for construction
-            tuning. When omitted, use M. Later queries may have different counts.
-        k: Expected positive neighbor count, used only for construction tuning.
+        num_queries: Nonnegative Python integer giving expected queries per
+            cloud, used only for construction tuning. When omitted, use M.
+            Later queries may have different counts.
+        k: Positive Python integer giving the expected neighbor count, used only
+            for construction tuning.
         backend: Choose Warp on CPU/CUDA or native cuBQL on CUDA. Native cuBQL
             supports k=1-64, requires memory pools, and constructs outside capture.
         objective: Choose construction-inclusive or reused-index cuBQL tuning.
             This does not select a backend or change Warp's construction policy.
-        leaf_size: Override the Warp BVH leaf size; unsupported for native cuBQL.
+        leaf_size: Positive Python integer overriding the Warp BVH leaf size;
+            unsupported for native cuBQL.
     """
 
     def __init__(
@@ -735,11 +759,18 @@ def knn(
     and selected indices unchanged until backward finishes. Preallocated
     distance outputs must have ``requires_grad=True`` when gradients are needed.
 
+    Targets must be finite, with queried squared distances representable in
+    float32. A nonfinite query returns zero valid neighbors, -1 indices, and
+    infinite distances. The Warp backend also returns no neighbors for a zero,
+    negative, or NaN cutoff. Native cuBQL requires a positive infinite cutoff.
+
     Args:
         points: A reusable target owner, or contiguous float32 ``vec3`` targets
             of shape ``(M,)`` or ``(B, M)``. Arrays create a new owner each call.
         queries: Contiguous ``vec3`` queries of shape ``(N,)`` or ``(B, N)``, on
-            the target device. Each batch searches only its corresponding targets.
+            the target device and with the same array dimensionality and batch
+            count as the targets. Each batch searches only its corresponding
+            targets; ragged batches and batch broadcasting are unsupported.
         k: Positive Python integer. Native cuBQL supports 1-64.
         max_dist: Strict distance cutoff in coordinate units, including for
             squared outputs. Native cuBQL requires infinity.
@@ -763,7 +794,9 @@ def knn(
 
     Returns:
         ``(index, indices, distances, counts)``: the reusable :class:`PointIndex`,
-        sorted neighbor IDs, corresponding distances, and valid neighbor counts.
+        neighbor IDs sorted by computed distance, corresponding distances, and
+        valid neighbor counts. Shapes are ``(N, k)`` for IDs/distances and
+        ``(N,)`` for counts, or ``(B, N, k)`` and ``(B, N)`` for batched inputs.
         A supplied owner is returned unchanged. Missing neighbors have index -1
         and infinite distance. Empty clouds and B=0 are supported. Warp breaks
         equal-distance ties by original target index; native cuBQL uses its own

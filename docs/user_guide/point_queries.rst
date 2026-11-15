@@ -103,7 +103,11 @@ clouds, output shapes are ``(N, k)``, ``(N, k)``, and ``(N,)``. Indices default 
 int32; preallocated int64 outputs are supported. Distances are squared float32
 values unless ``squared=False``. Missing neighbors have index -1 and infinite
 distance; counts report how many entries are valid. Optional int32
-``exclude_indices`` has the query shape and contains target IDs to omit.
+``exclude_indices`` has the query shape and contains target IDs to omit, with
+-1 excluding nothing. Target coordinates must be finite, with queried squared
+distances representable in float32. Nonfinite queries return zero counts and
+padded results. The Warp backend also returns no neighbors for nonpositive or
+NaN cutoffs; native cuBQL requires positive infinity.
 Output buffers must not overlap inputs or one another.
 
 ``target_index.bvhs`` exposes a tuple of ordinary Warp BVHs, one per cloud,
@@ -157,7 +161,8 @@ clouds, native cuBQL is an explicit alternative:
     _, indices, distances_sq, counts = geometry.knn(target_index, decoded, 1)
 
 Native cuBQL requires CUDA, memory pools, a build with cuBQL enabled, and k=1-64.
-It requires infinite cutoff, no exclusions, and no explicit query ordering;
+It requires infinite cutoff, no exclusions, and no query reordering
+(``ordered=None`` or ``False``; ``True`` is rejected);
 unsupported options raise errors. Equal-distance choices follow upstream
 cuBQL ordering. Construction, rebuilding, and retirement can synchronize;
 construct and rebuild outside capture. Use ``rebuild()`` after modifying
@@ -168,7 +173,9 @@ graphs afterward because native handles change.
 ``PointQueryObjective.BUILD_AND_QUERY`` favors construction followed by a query
 set. These are measured cuBQL policies, not universal performance guarantees.
 They do not select a backend or affect Warp's policy. Existing owners retain
-their backend, objective, and leaf size; conflicting overrides raise errors.
+their backend and objective; conflicting overrides raise errors. Any non-None
+``leaf_size`` override is rejected for an existing owner, even if it matches the
+current layout.
 
 Leave ``leaf_size``, ``query_stride``, and ``ordered`` automatic initially.
 ``geometry.point_query_config(M, N, device)`` exposes the default Warp policy
@@ -176,6 +183,15 @@ for custom fused kernels. Its launch spacing requires matching thread-to-query
 indexing. The default array path already applies this policy; scalar calls can
 use the same traversal and tuning without an array output allocation. The
 ordinary ``wp.Bvh`` defaults remain unchanged.
+
+For the complete argument and return contracts, see :func:`warp.geometry.knn`,
+:class:`warp.geometry.PointIndex`, and :func:`warp.geometry.point_query_config`.
+The generic ``wp.Bvh(constructor="cubql")`` builds a converted Warp BVH, which
+still uses Warp traversal. It is separate from
+``PointQueryBackend.CUBQL``, whose native indexes are queried through
+``geometry.knn()``. A raw ``wp.Bvh`` is not accepted as a ``PointIndex``; use it
+directly with scalar queries or retain an earlier ``wp.knn(..., bvh=...)`` call
+while migrating.
 
 Graphs and gradients
 --------------------
@@ -229,3 +245,21 @@ Replace ``wp.build_point_index(targets, ...)`` with
 but the geometry API's first value is always a ``PointIndex``. Do not pass a
 legacy raw index as a geometry owner. Kernel calls and ordinary ``wp.Bvh``
 construction are unchanged.
+
+Runnable examples
+-----------------
+
+:github:`warp/examples/geometry/example_point_query.py` demonstrates scalar
+queries and gradients through gathered coordinates.
+:github:`warp/examples/geometry/example_point_query_batch.py` compares the
+geometry array API with a fused caller kernel using the same Warp BVH.
+:github:`warp/examples/geometry/example_point_query_chamfer.py` includes the
+complete symmetric loss reduction and optimization loop for fixed targets.
+
+From a built checkout, run:
+
+.. code-block:: bash
+
+    uv run --no-sync -m warp.examples.geometry.example_point_query --device cpu
+    uv run --no-sync -m warp.examples.geometry.example_point_query_batch --device cuda:0
+    uv run --no-sync -m warp.examples.geometry.example_point_query_chamfer --device cuda:0 --backend cubql --reverse-backend warp

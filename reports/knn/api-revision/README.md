@@ -4,6 +4,8 @@
 
 **No material performance regression was observed in this suite.** Across 300 matched timing comparisons, phase geometric means changed by **−0.05% to +0.58%** after both the API revision and main update. All 72 workload/configuration pairs retained exactly the same GPU pool allocation sizes. These measurements cover one GPU and the tested shapes; they do not establish performance on other hardware.
 
+This is the implementation and validation snapshot published in [76c02f750](https://github.com/alecjacobson/warp/commit/76c02f75056647cb9102d8dcc94cbdbc400c37be). Saved source hashes refer to that revision. Later documentation corrections can change file hashes without changing the measured algorithms. The [public API guide](../public-api.md) is maintained separately.
+
 ## Before/after colored table
 
 [![Runtime changes after the API revision and rebase](before-after.svg)](before-after.svg)

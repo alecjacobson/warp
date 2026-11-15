@@ -5,7 +5,7 @@
   "official_main": "3afdd69addbf0486f4d3d01ba93ee9ee279f4323",
   "fork_main_at_start": "18c936d4390e3ff1a91eb7a7ecc9668e425e2c52",
   "rebased_parent": "c338633238e61328a0056bed8e2ebe0f335e525d",
-  "revision_source": "The commit containing this report; final source hashes below identify the implementation.",
+  "revision_source": "Implementation snapshot at 76c02f75056647cb9102d8dcc94cbdbc400c37be; source hashes below identify the files at that revision, before later documentation-only corrections.",
   "native_build_command": "uv run --no-sync build_lib.py --quick --cuda-path /home/horde/cuda/12.9.1 --jobs 4",
   "final_source_sha256": {
     "warp/__init__.py": "1cfb218b3232cdf3db18ec8b08a85133326e5baf8400c188667f236fe8b258a8",

@@ -1,25 +1,29 @@
 # Fixed-size kNN and direct cuBQL completion
 
-**Supporting evidence.** Start with [current comparisons](../comparisons.md) for settings and refreshed construction, Chamfer, and memory measurements, or the [public API guide](../public-api.md) for usage. The standalone-integration and validation source hashes below still match the current implementation; see the [hash audit](../current/provenance.json). This experiment has its own timing methodology and is not pooled with the fresh workload run.
+**November 13 measurement snapshot; API example updated November 15.** Start with [current comparisons](../comparisons.md) for settings or the [public API guide](../public-api.md) for usage. The source/native hashes below identify the earlier measured implementation; they do not match the branch after the namespace move and main rebase. See the [API revision report](../api-revision/README.md) for current implementation validation. These integration timings retain their original API labels and methodology and are not pooled with other experiments.
 
 2026-11-13. Completion evidence for [optional native cuBQL (#20)](https://github.com/alecjacobson/warp/issues/20) and [fixed-size batches (#21)](https://github.com/alecjacobson/warp/issues/21). The initial scope is implemented. Wider hardware tuning, fused batches, peak training memory, and application integration remain follow-up work.
 
-## Public API
+## Current public API
 
 ```python
+import warp.geometry as geometry
+
 # targets: contiguous wp.vec3 array of shape (B, M), or (M,) for one cloud.
 # decoded: contiguous wp.vec3 array of shape (B, N), or (N,) for one cloud.
-indexes = wp.build_point_index(targets, num_queries=N, k=1, backend=wp.PointQueryBackend.CUBQL)
+target_index = geometry.PointIndex(targets, num_queries=N, k=1, backend=geometry.PointQueryBackend.CUBQL)
 
 # Repeat while targets stay fixed; decoded coordinates may change each step.
-_, indices, distances_sq, counts = wp.knn(targets, decoded, 1, bvh=indexes)
+_, indices, distances_sq, counts = geometry.knn(target_index, decoded, 1)
 ```
 
-Construction needs no query coordinates or neighbor outputs. `num_queries` and `k` are optional tuning hints; later calls may use different valid values. Batched outputs have shapes `(B, N, k)`, `(B, N, k)`, and `(B, N)`, with batch-local indices. The builder returns a tuple of B indexes; single-cloud inputs return one index and preserve single-cloud output shapes.
+Construction needs no query coordinates or neighbor outputs. `num_queries` and `k` are optional tuning hints; later calls may use different valid values. Batched outputs have shapes `(B, N, k)`, `(B, N, k)`, and `(B, N)`, with batch-local indices. Construction returns a `PointIndex` owner for both layouts. `geometry.knn()` returns that owner first, followed by the neighbor IDs, distances, and counts. Single-cloud outputs omit the leading batch dimension.
 
-Warp remains the default backend. Direct cuBQL is optional and retains its documented CUDA, capacity, filtering, and tie contracts. Existing `wp.point_query_knn_batch` calls work through a deprecated alias with the same signature and returns. The scalar `wp.point_query_knn` primitive is unchanged. The [user guide](../../../docs/user_guide/point_queries.rst) covers graph capture, output reuse, distance gradients, and index lifetime. The Chamfer example builds fixed targets once and defaults to Warp for the changing reverse-direction index.
+Warp remains the default backend. Direct cuBQL is optional and retains its documented CUDA, capacity, filtering, and tie contracts. Earlier `wp.point_query_knn_batch`, `wp.knn`, and `wp.build_point_index` calls remain available with deprecation warnings and their original raw-index return values. The scalar `wp.point_query_knn` primitive is unchanged. The [user guide](../../../docs/user_guide/point_queries.rst) covers graph capture, output reuse, distance gradients, and index lifetime. The Chamfer example builds fixed targets once and defaults to Warp for the changing reverse-direction index.
 
 ## Integration comparison
+
+The following tables measured the earlier `wp.knn()` entry point on November 13. Their `wp.PointQueryBackend` and `wp.PointQueryObjective` labels name the enums used in that snapshot. New code uses the corresponding `geometry` enums.
 
 All **230 route/objective/workload combinations** pass structural checks and sampled exhaustive float64 reference comparisons, including replay after changing queries. The checks cover **16,640 sampled rows**, with tie-aware recall 1.0 and zero rank or reported-distance mismatches. Numerical checks are sampled; they do not exhaustively validate every output distance.
 
@@ -34,7 +38,7 @@ The integrated native route preserves standalone traversal performance closely. 
 | `objective=wp.PointQueryObjective.BUILD_AND_QUERY` | Allocation-inclusive ordinary call | 1.414× | 42.99 µs |
 | `objective=wp.PointQueryObjective.BUILD_AND_QUERY` | Query graph replay | 1.014× | 1.39 µs |
 
-These timings exclude construction even for the **build + query tuning objective**: that label selects the construction-oriented tree/launch policy. Fresh construction-inclusive measurements are in [current comparisons](../comparisons.md).
+These timings exclude construction even for the **build + query tuning objective**: that label selects the construction-oriented tree/launch policy. Separate November 13 construction-inclusive measurements are in [current comparisons](../comparisons.md).
 
 The preallocated raw native C API is only 1.005× standalone time with reuse tuning, versus 2.040× through the public wrapper. Public and raw native graph replay differ by 0.15% in geometric mean. This isolates the material ordinary-call difference to the Python wrapper, which validates arrays/options, constructs zero-copy batch views, and dispatches each cloud. It is visible for tiny queries, and graph replay avoids repeating that work. This comparison uses the batched layout even when B=1; it does not measure the single-cloud layout's wrapper cost.
 
@@ -56,7 +60,7 @@ B=4, M=379,385, N=8,192, k=1, reuse tuning. All four clouds use the largest orig
 | Standalone, sm_120 | 0.19989 | 0.21634 | 0.15330 |
 | `backend=wp.PointQueryBackend.WARP` | 0.39675 | 0.41735 | 0.23463 |
 
-The [current comparison report](../comparisons.md) separately measures construction, symmetric Chamfer forward/backward, and retained memory with the completed API. It supersedes the [initial pulmonary report](../archive/batched-cubql/README.md).
+The [current comparison report](../comparisons.md) separately measures construction, symmetric Chamfer forward/backward, and retained memory with the then-current top-level API; the November 15 geometry API is measured separately in the [API revision report](../api-revision/README.md). It supersedes the [initial pulmonary report](../archive/batched-cubql/README.md).
 
 ## Method and evidence
 
@@ -81,7 +85,7 @@ Compressed logs and `validation.json` preserve the build/test/check evidence. Wi
 
 ## Reproduce
 
-From this checkout, with the supplied archive and existing CUDA toolkit:
+Reproduce the recorded experiment at the pre-migration snapshot [60c4da49f](https://github.com/alecjacobson/warp/commit/60c4da49fe101233663578334094f789b27bc1c3), with the supplied archive and a native library built from that source. Running the old harness on the current branch includes deprecated-call overhead and does not reproduce these timings. For current API measurements, use the [revision commands](../api-revision/README.md#reproduce).
 
 ```bash
 uv run --no-sync build_lib.py --quick --cuda-path /home/horde/cuda/12.9.1 --jobs 4

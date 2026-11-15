@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Query neighbors and differentiate gathered distances, without a point-cloud owner."""
+"""Query a Warp BVH in a scalar kernel and differentiate gathered distances."""
 
 import argparse
 

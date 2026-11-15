@@ -38,6 +38,12 @@ The public `objective=geometry.PointQueryObjective.REUSE` graph route and standa
 
 ### What each column measures
 
+The call names below identify the measured November 13 API. Enum values are
+shown in their current `geometry` namespace; the legacy `wp` aliases denote
+the same settings. The converted-tree `bvh=` control belongs to the legacy
+`wp.knn()` signature. New `geometry.knn()` calls accept a target array or
+`PointIndex`, without a `bvh=` argument; see the [migration guide](public-api.md#migrate-the-earlier-branch-api).
+
 | Column | Actual public call or external configuration |
 | --- | --- |
 | Scalar kernel | `wp.Bvh(points, points)` with its default leaf size; `wp.point_query_knn()` in a dense launch. |

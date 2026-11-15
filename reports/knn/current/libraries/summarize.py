@@ -157,6 +157,8 @@ def main():
     lines = [
         "# Current cross-library timings",
         "",
+        "**November 13 snapshot.** These tables retain the measured `wp.knn()` calls and top-level enum labels. The current API is `warp.geometry.PointIndex` / `warp.geometry.knn()`; see [migration](../../public-api.md#migrate-the-earlier-branch-api) and [API revision measurements](../../api-revision/README.md).",
+        "",
         "See [comparisons](../../comparisons.md) for the colored tables and methodology. "
         "[cases.csv](cases.csv) contains every median, ratio, and check status. "
         "All ratios below are method time divided by the public `backend=wp.PointQueryBackend.WARP` time; "

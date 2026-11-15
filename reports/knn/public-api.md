@@ -1,6 +1,6 @@
 # Warp kNN: kernel queries and reusable array indexes
 
-The branch builds on **`wp.Bvh` and scalar kernel queries**. The optional **`warp.geometry`** module supplies array queries and a concrete `PointIndex` owner for single clouds and fixed-size batches. The native cuBQL optimization remains available through that array API. See [comparisons](comparisons.md) for measurements and the [API revision report](api-revision/README.md) for before/after validation against current NVIDIA `main`.
+The branch builds on **`wp.Bvh` and scalar kernel queries**. The optional **`warp.geometry`** module supplies array queries and a concrete `PointIndex` owner for single clouds and fixed-size batches. The native cuBQL optimization remains available through that array API. See [comparisons](comparisons.md) for measurements and the [API revision report](api-revision/README.md) for validation after the November 15 rebase onto NVIDIA `main` at `3afdd69addbf`.
 
 ## Kernel queries come first
 
@@ -84,7 +84,7 @@ target_index, indices, distances_sq, counts = geometry.knn(targets, decoded, 1)
 | Counts | `(N,)` | `(B, N)` |
 | Target owner | `geometry.PointIndex` | `geometry.PointIndex` |
 
-Inputs are contiguous float32 arrays on the same device. Each batch searches only its own targets; IDs are local to that cloud. B=1 preserves the leading dimension. Empty clouds and B=0 work; missing neighbors have index -1, infinite distance, and valid counts. Ragged batches and cross-batch broadcasting are unsupported.
+Inputs are contiguous float32 arrays on the same device. Targets must be finite, with queried squared distances representable in float32. Each batch searches only its own targets; IDs are local to that cloud. B=1 preserves the leading dimension. Empty clouds and B=0 work; missing neighbors have index -1 and infinite distance, and counts report valid neighbors. Nonfinite queries return zero counts and padded results. Ragged batches and cross-batch broadcasting are unsupported.
 
 `target_index.points` exposes the retained target allocation. With the default backend, `target_index.bvhs` is a tuple of ordinary Warp BVHs, one per cloud, available for caller kernels. A single cloud has one entry. The owner has no ambiguous aggregate `id`. Native cuBQL owners reject `.bvhs` access: their private handles cannot be passed to scalar Warp BVH queries.
 
@@ -104,7 +104,9 @@ Import `warp.geometry` explicitly; the `geometry` alias below refers to that mod
 | Symmetric fixed-target Chamfer | Fixed: `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE`; changing reverse targets: `backend=geometry.PointQueryBackend.WARP` |
 | Fuse neighbor processing in a kernel | `wp.Bvh` plus scalar `wp.point_query_nearest()` / `wp.point_query_knn()` |
 
-The backend is explicit. Objectives tune cuBQL; they do not switch backends or change Warp's policy. Existing owners reject conflicting backend/objective overrides and any leaf-size override. Native cuBQL requires CUDA, memory pools, cuBQL-enabled builds, k=1-64, infinite cutoff, no exclusion, and no explicit query ordering. It uses upstream tie selection. Construction and rebuilding occur outside capture and can synchronize.
+The backend is explicit. Objectives tune cuBQL; they do not switch backends or change Warp's policy. Existing owners reject conflicting backend/objective overrides and any non-None leaf-size override. Native cuBQL requires CUDA, memory pools, cuBQL-enabled builds, k=1-64, positive infinite cutoff, no exclusion, and `ordered=None` or `False`. It rejects `ordered=True` and uses upstream tie selection. Construction and rebuilding occur outside capture and can synchronize.
+
+`wp.Bvh(constructor="cubql")` is a separate choice: it converts a cuBQL-built tree into Warp's BVH layout and uses Warp traversal. The native `backend=geometry.PointQueryBackend.CUBQL` route retains its own handles. A raw `wp.Bvh` is not a `PointIndex` input to `geometry.knn()`; query it inside a kernel or retain the legacy `wp.knn(..., bvh=...)` call while migrating. The historical converted-tree benchmark column therefore has no direct `geometry.knn(bvh=...)` equivalent.
 
 Leave `leaf_size`, `query_stride`, and `ordered` automatic initially. `geometry.point_query_config(M, N, device)` exposes Warp's tuning policy for custom kernels; applying its launch spacing requires matching thread-to-query indexing. The default array route already uses the scalar primitive with tuned scheduling and tree choices. The native cuBQL route retains its separate optimized implementation.
 

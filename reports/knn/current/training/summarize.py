@@ -60,6 +60,8 @@ def main():
     lines = [
         "# Batched query and Chamfer timings",
         "",
+        "**November 13 snapshot.** These tables retain the measured `wp.knn()` calls and top-level enum labels. The current API is `warp.geometry.PointIndex` / `warp.geometry.knn()`; see [migration](../../public-api.md#migrate-the-earlier-branch-api) and [API revision measurements](../../api-revision/README.md).",
+        "",
         "All ratios are method / the matching public `backend=wp.PointQueryBackend.WARP` reference. "
         "Values above 1 favor the reference. Only passing paired cases enter geometric means. "
         "Passing counts differ; geometric means over different subsets are not head-to-head rankings. "

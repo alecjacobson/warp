@@ -1,5 +1,7 @@
 # Reproduce the batched query and fixed-target Chamfer comparison
 
+**Recorded November 13 experiment.** Use the pre-migration snapshot [60c4da49f](https://github.com/alecjacobson/warp/commit/60c4da49fe101233663578334094f789b27bc1c3) and a native library built from that source to reproduce these timings. The old harness calls `wp.knn()`; on the current branch those calls carry deprecation warnings. New callers use `warp.geometry.PointIndex` and `warp.geometry.knn()`. See [migration](../../public-api.md#migrate-the-earlier-branch-api) and [current API regression measurements](../../api-revision/README.md).
+
 This experiment measures native batch dimensions through public Warp, PyTorch, PyTorch3D, and KeOps APIs. External library source is unchanged. The benchmark adapters compose public calls and loss reductions; they contain no replacement CUDA kernels, modified library internals, batch flattening, or Python loops over external batches.
 
 ## Configurations and supported tuning

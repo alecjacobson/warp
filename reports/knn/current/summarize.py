@@ -38,6 +38,8 @@ def main():
     lines = [
         "# Current kNN timings",
         "",
+        "**November 13 snapshot.** These tables retain the measured `wp.knn()` calls and top-level enum labels. The current API is `warp.geometry.PointIndex` / `warp.geometry.knn()`; see [migration](../public-api.md#migrate-the-earlier-branch-api) and [API revision measurements](../api-revision/README.md).",
+        "",
         "Generated from [batched.json](batched.json). See [current comparisons](../comparisons.md) "
         "for methodology and recommendations. All times are median milliseconds; lower is better.",
         "",
