@@ -8,7 +8,7 @@ import argparse
 import numpy as np
 
 import warp as wp
-import warp.geometry as geometry
+import warp.geometry
 
 
 @wp.kernel
@@ -34,9 +34,9 @@ def main():
     args = parser.parse_args()
     if args.steps < 2:
         raise ValueError("steps must be at least two to demonstrate optimization")
-    backend = geometry.PointQueryBackend.CUBQL if args.backend == "cubql" else geometry.PointQueryBackend.WARP
+    backend = wp.geometry.PointQueryBackend.CUBQL if args.backend == "cubql" else wp.geometry.PointQueryBackend.WARP
     reverse_backend = (
-        geometry.PointQueryBackend.CUBQL if args.reverse_backend == "cubql" else geometry.PointQueryBackend.WARP
+        wp.geometry.PointQueryBackend.CUBQL if args.reverse_backend == "cubql" else wp.geometry.PointQueryBackend.WARP
     )
     rng = np.random.default_rng(42)
     targets_host = rng.normal(size=(2, 256, 3)).astype(np.float32)
@@ -47,16 +47,20 @@ def main():
         if not targets.shape[1] or not decoded.shape[1]:
             raise ValueError("Chamfer loss requires nonempty clouds in both directions")
         # The target coordinates stay fixed for the entire optimization.
-        fixed_indexes = geometry.PointIndex(targets, num_queries=decoded.shape[1], k=1, backend=backend)
+        fixed_indexes = wp.geometry.PointIndex(targets, num_queries=decoded.shape[1], k=1, backend=backend)
         loss = wp.zeros(1, dtype=float, requires_grad=True)
         values = []
         for _ in range(args.steps):
             loss.zero_()
             with wp.Tape() as tape:
-                to_target = geometry.knn(fixed_indexes, decoded, 1)
+                to_target = wp.geometry.knn(fixed_indexes, decoded, 1)
                 # This direction indexes decoded coordinates, which change every step.
-                to_decoded = geometry.knn(
-                    decoded, targets, 1, backend=reverse_backend, objective=geometry.PointQueryObjective.BUILD_AND_QUERY
+                to_decoded = wp.geometry.knn(
+                    decoded,
+                    targets,
+                    1,
+                    backend=reverse_backend,
+                    objective=wp.geometry.PointQueryObjective.BUILD_AND_QUERY,
                 )
                 wp.launch(mean_distance_kernel, decoded.shape, [to_target[2], loss, 1.0 / decoded.size])
                 wp.launch(mean_distance_kernel, targets.shape, [to_decoded[2], loss, 1.0 / targets.size])

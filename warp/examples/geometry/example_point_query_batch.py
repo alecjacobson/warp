@@ -8,7 +8,7 @@ import argparse
 import numpy as np
 
 import warp as wp
-import warp.geometry as geometry
+import warp.geometry
 
 
 def fused_kernel(k, stride):
@@ -39,9 +39,9 @@ def main():
         points = wp.array(rng.normal(size=(100_000, 3)).astype(np.float32), dtype=wp.vec3)
         queries = wp.array(rng.normal(size=(1_024, 3)).astype(np.float32), dtype=wp.vec3)
         k = 8
-        index, indices, distances_sq, _counts = geometry.knn(points, queries, k)
+        index, indices, distances_sq, _counts = wp.geometry.knn(points, queries, k)
         print("First query neighbors:", indices.numpy()[0])
-        config = geometry.point_query_config(len(points), len(queries), points.device)
+        config = wp.geometry.point_query_config(len(points), len(queries), points.device)
         sums = wp.empty(len(queries), dtype=float)
         wp.launch(
             fused_kernel(k, config.query_stride),

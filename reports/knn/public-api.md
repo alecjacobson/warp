@@ -48,20 +48,21 @@ Both selectors support a strict distance cutoff and optional `exclude_index` (-1
 ## Build fixed targets once
 
 ```python
-import warp.geometry as geometry
+import warp as wp
+import warp.geometry
 
 # target_numpy: float32 (B, M, 3); decoded_numpy: float32 (B, N, 3).
 targets = wp.array(target_numpy, dtype=wp.vec3, device="cuda:0")
 decoded = wp.array(decoded_numpy, dtype=wp.vec3, device=targets.device, requires_grad=True)
 
-target_index = geometry.PointIndex(
+target_index = wp.geometry.PointIndex(
     targets,
     num_queries=decoded.shape[1],
     k=1,
-    backend=geometry.PointQueryBackend.CUBQL,
-    objective=geometry.PointQueryObjective.REUSE,
+    backend=wp.geometry.PointQueryBackend.CUBQL,
+    objective=wp.geometry.PointQueryObjective.REUSE,
 )
-_, indices, distances_sq, counts = geometry.knn(target_index, decoded, 1)
+_, indices, distances_sq, counts = wp.geometry.knn(target_index, decoded, 1)
 ```
 
 Construction needs no query coordinates or neighbor outputs. `num_queries` and `k` are tuning hints; later calls may use different counts. The owner retains target coordinates by reference. Updating decoded coordinates requires another query, without rebuilding fixed targets.
@@ -69,7 +70,7 @@ Construction needs no query coordinates or neighbor outputs. `num_queries` and `
 For construction plus query in one call:
 
 ```python
-target_index, indices, distances_sq, counts = geometry.knn(targets, decoded, 1)
+target_index, indices, distances_sq, counts = wp.geometry.knn(targets, decoded, 1)
 ```
 
 **Every call returns `(PointIndex, indices, distances, counts)`**, with the same owner returned when supplied. Supplying a target array constructs a new owner. Keeping the owner in the result also makes its asynchronous lifetime explicit.
@@ -82,7 +83,7 @@ target_index, indices, distances_sq, counts = geometry.knn(targets, decoded, 1)
 | Warp `wp.vec3` array | `(M,)`, `(N,)` | `(B, M)`, `(B, N)` |
 | Indices and distances | `(N, k)` | `(B, N, k)` |
 | Counts | `(N,)` | `(B, N)` |
-| Target owner | `geometry.PointIndex` | `geometry.PointIndex` |
+| Target owner | `wp.geometry.PointIndex` | `wp.geometry.PointIndex` |
 
 Inputs are contiguous float32 arrays on the same device. Targets must be finite, with queried squared distances representable in float32. Each batch searches only its own targets; IDs are local to that cloud. B=1 preserves the leading dimension. Empty clouds and B=0 work; missing neighbors have index -1 and infinite distance, and counts report valid neighbors. Nonfinite queries return zero counts and padded results. Ragged batches and cross-batch broadcasting are unsupported.
 
@@ -92,23 +93,23 @@ After changing target coordinates in place, call `target_index.refit()` or `.reb
 
 ## Which settings should I use?
 
-Import `warp.geometry` explicitly; the `geometry` alias below refers to that module.
+Use `import warp as wp` and explicitly `import warp.geometry` to access the array API as `wp.geometry`.
 
 | Workload or requirement | Public settings |
 | --- | --- |
-| Frequent construction, CPU execution, or a portable default | `backend=geometry.PointQueryBackend.WARP` |
-| Repeated queries against fixed CUDA targets | `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE` |
-| Evaluate cheaper native cuBQL construction | `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.BUILD_AND_QUERY` |
-| Capture construction/refit/rebuild, finite cutoff, exclusion, original-index ties, or k > 64 | `backend=geometry.PointQueryBackend.WARP` |
+| Frequent construction, CPU execution, or a portable default | `backend=wp.geometry.PointQueryBackend.WARP` |
+| Repeated queries against fixed CUDA targets | `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE` |
+| Evaluate cheaper native cuBQL construction | `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.BUILD_AND_QUERY` |
+| Capture construction/refit/rebuild, finite cutoff, exclusion, original-index ties, or k > 64 | `backend=wp.geometry.PointQueryBackend.WARP` |
 | Capture queries against prebuilt indexes | Both backends; keep owners and allocations alive |
-| Symmetric fixed-target Chamfer | Fixed: `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE`; changing reverse targets: `backend=geometry.PointQueryBackend.WARP` |
+| Symmetric fixed-target Chamfer | Fixed: `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE`; changing reverse targets: `backend=wp.geometry.PointQueryBackend.WARP` |
 | Fuse neighbor processing in a kernel | `wp.Bvh` plus scalar `wp.point_query_nearest()` / `wp.point_query_knn()` |
 
 The backend is explicit. Objectives tune cuBQL; they do not switch backends or change Warp's policy. Existing owners reject conflicting backend/objective overrides and any non-None leaf-size override. Native cuBQL requires CUDA, memory pools, cuBQL-enabled builds, k=1-64, positive infinite cutoff, no exclusion, and `ordered=None` or `False`. It rejects `ordered=True` and uses upstream tie selection. Construction and rebuilding occur outside capture and can synchronize.
 
-`wp.Bvh(constructor="cubql")` is a separate choice: it converts a cuBQL-built tree into Warp's BVH layout and uses Warp traversal. The native `backend=geometry.PointQueryBackend.CUBQL` route retains its own handles. A raw `wp.Bvh` is not a `PointIndex` input to `geometry.knn()`; query it inside a kernel or retain the legacy `wp.knn(..., bvh=...)` call while migrating. The historical converted-tree benchmark column therefore has no direct `geometry.knn(bvh=...)` equivalent.
+`wp.Bvh(constructor="cubql")` is a separate choice: it converts a cuBQL-built tree into Warp's BVH layout and uses Warp traversal. The native `backend=wp.geometry.PointQueryBackend.CUBQL` route retains its own handles. A raw `wp.Bvh` is not a `PointIndex` input to `wp.geometry.knn()`; query it inside a kernel or retain the legacy `wp.knn(..., bvh=...)` call while migrating. The historical converted-tree benchmark column therefore has no direct `wp.geometry.knn(bvh=...)` equivalent.
 
-Leave `leaf_size`, `query_stride`, and `ordered` automatic initially. `geometry.point_query_config(M, N, device)` exposes Warp's tuning policy for custom kernels; applying its launch spacing requires matching thread-to-query indexing. The default array route already uses the scalar primitive with tuned scheduling and tree choices. The native cuBQL route retains its separate optimized implementation.
+Leave `leaf_size`, `query_stride`, and `ordered` automatic initially. `wp.geometry.point_query_config(M, N, device)` exposes Warp's tuning policy for custom kernels; applying its launch spacing requires matching thread-to-query indexing. The default array route already uses the scalar primitive with tuned scheduling and tree choices. The native cuBQL route retains its separate optimized implementation.
 
 ## Outputs, capture, and gradients
 
@@ -118,7 +119,7 @@ After warmup, capture with retained outputs:
 
 ```python
 with wp.ScopedCapture(device=targets.device) as capture:
-    geometry.knn(
+    wp.geometry.knn(
         target_index,
         decoded,
         1,
@@ -136,8 +137,8 @@ For symmetric Chamfer:
 
 ```python
 with wp.Tape() as tape:
-    to_target = geometry.knn(target_index, decoded, 1)
-    to_decoded = geometry.knn(decoded, targets, 1)
+    to_target = wp.geometry.knn(target_index, decoded, 1)
+    to_decoded = wp.geometry.knn(decoded, targets, 1)
     # Reduce to_target[2] by B*N and to_decoded[2] by B*M; add the means.
 ```
 
@@ -154,11 +155,11 @@ uv run --no-sync -m warp.examples.geometry.example_point_query_chamfer \
 
 | Earlier call | Recommended call |
 | --- | --- |
-| `wp.build_point_index(targets, ...)` | `geometry.PointIndex(targets, ...)` |
-| `wp.knn(targets, queries, k, bvh=indexes)` | `geometry.knn(target_index, queries, k)` |
-| `wp.knn(targets, queries, k)` | `geometry.knn(targets, queries, k)` |
-| `wp.point_query_config(...)` | `geometry.point_query_config(...)` |
-| Top-level configuration enums | Corresponding `geometry` enums |
+| `wp.build_point_index(targets, ...)` | `wp.geometry.PointIndex(targets, ...)` |
+| `wp.knn(targets, queries, k, bvh=indexes)` | `wp.geometry.knn(target_index, queries, k)` |
+| `wp.knn(targets, queries, k)` | `wp.geometry.knn(targets, queries, k)` |
+| `wp.point_query_config(...)` | `wp.geometry.point_query_config(...)` |
+| Top-level configuration enums | Corresponding `wp.geometry` enums |
 
 The old calls, configuration types, and `wp.CubqlPointIndex` remain functional with deprecation warnings. Their original signatures and raw BVH/cuBQL-index/tuple returns are preserved. `wp.point_query_knn_batch()` remains a compatibility alias with the same old return values. The geometry API returns a `PointIndex` as its first value; a legacy raw index is not a geometry owner. Scalar kernel queries and `wp.Bvh` construction are unchanged.
 

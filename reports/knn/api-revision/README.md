@@ -10,7 +10,7 @@ This is the implementation and validation snapshot published in [76c02f750](http
 
 [![Runtime changes after the API revision and rebase](before-after.svg)](before-after.svg)
 
-Each cell is **100 × (new median / old median − 1)**. Blue means faster, red means slower, and gray is not applicable (Chamfer is measured only for k=1). Columns use `geometry.PointQueryBackend.WARP`, or `geometry.PointQueryBackend.CUBQL` with the indicated `geometry.PointQueryObjective`. Mixed Chamfer uses `CUBQL`/`REUSE` for fixed targets and `WARP` for the changing decoded targets.
+Each cell is **100 × (new median / old median − 1)**. Blue means faster, red means slower, and gray is not applicable (Chamfer is measured only for k=1). Columns use `wp.geometry.PointQueryBackend.WARP`, or `wp.geometry.PointQueryBackend.CUBQL` with the indicated `wp.geometry.PointQueryObjective`. Mixed Chamfer uses `CUBQL`/`REUSE` for fixed targets and `WARP` for the changing decoded targets.
 
 | Phase | Comparisons | Runtime change, new API vs published branch |
 | --- | ---: | ---: |

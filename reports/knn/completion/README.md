@@ -7,23 +7,24 @@
 ## Current public API
 
 ```python
-import warp.geometry as geometry
+import warp as wp
+import warp.geometry
 
 # targets: contiguous wp.vec3 array of shape (B, M), or (M,) for one cloud.
 # decoded: contiguous wp.vec3 array of shape (B, N), or (N,) for one cloud.
-target_index = geometry.PointIndex(targets, num_queries=N, k=1, backend=geometry.PointQueryBackend.CUBQL)
+target_index = wp.geometry.PointIndex(targets, num_queries=N, k=1, backend=wp.geometry.PointQueryBackend.CUBQL)
 
 # Repeat while targets stay fixed; decoded coordinates may change each step.
-_, indices, distances_sq, counts = geometry.knn(target_index, decoded, 1)
+_, indices, distances_sq, counts = wp.geometry.knn(target_index, decoded, 1)
 ```
 
-Construction needs no query coordinates or neighbor outputs. `num_queries` and `k` are optional tuning hints; later calls may use different valid values. Batched outputs have shapes `(B, N, k)`, `(B, N, k)`, and `(B, N)`, with batch-local indices. Construction returns a `PointIndex` owner for both layouts. `geometry.knn()` returns that owner first, followed by the neighbor IDs, distances, and counts. Single-cloud outputs omit the leading batch dimension.
+Construction needs no query coordinates or neighbor outputs. `num_queries` and `k` are optional tuning hints; later calls may use different valid values. Batched outputs have shapes `(B, N, k)`, `(B, N, k)`, and `(B, N)`, with batch-local indices. Construction returns a `PointIndex` owner for both layouts. `wp.geometry.knn()` returns that owner first, followed by the neighbor IDs, distances, and counts. Single-cloud outputs omit the leading batch dimension.
 
 Warp remains the default backend. Direct cuBQL is optional and retains its documented CUDA, capacity, filtering, and tie contracts. Earlier `wp.point_query_knn_batch`, `wp.knn`, and `wp.build_point_index` calls remain available with deprecation warnings and their original raw-index return values. The scalar `wp.point_query_knn` primitive is unchanged. The [user guide](../../../docs/user_guide/point_queries.rst) covers graph capture, output reuse, distance gradients, and index lifetime. The Chamfer example builds fixed targets once and defaults to Warp for the changing reverse-direction index.
 
 ## Integration comparison
 
-The following tables measured the earlier `wp.knn()` entry point on November 13. Their `wp.PointQueryBackend` and `wp.PointQueryObjective` labels name the enums used in that snapshot. New code uses the corresponding `geometry` enums.
+The following tables measured the earlier `wp.knn()` entry point on November 13. Their `wp.PointQueryBackend` and `wp.PointQueryObjective` labels name the enums used in that snapshot. New code uses the corresponding `wp.geometry` enums.
 
 All **230 route/objective/workload combinations** pass structural checks and sampled exhaustive float64 reference comparisons, including replay after changing queries. The checks cover **16,640 sampled rows**, with tie-aware recall 1.0 and zero rank or reported-distance mismatches. Numerical checks are sampled; they do not exhaustively validate every output distance.
 

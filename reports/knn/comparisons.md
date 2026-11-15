@@ -2,55 +2,55 @@
 
 **API updated 2026-11-15 · cross-library measurements 2026-11-13 · 94-SM Blackwell MIG.** Six colored tables cover [single-cloud queries](#colored-cross-library-comparisons) and [batched queries / fixed-target Chamfer](#batched-queries-and-chamfer-against-external-libraries). The first four compare **16 configurations across 40 workloads**. The two new tables compare **eight query configurations across 24 workloads** and **nine Chamfer configurations across 21 workloads**, including native batched PyTorch, PyTorch3D, and KeOps calls. Each experiment retains its original timings and matching public Warp reference. **[The November 15 API/main regression report](api-revision/README.md)** compares the current geometry API against the published branch before its rebase onto NVIDIA main; external libraries were not rerun for that API revision.
 
-Start with `backend=geometry.PointQueryBackend.WARP` when targets change often. For repeated CUDA queries against fixed targets, start with `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE`. Both use **`warp.geometry.PointIndex` and `warp.geometry.knn()`**; callers do not need a separate cuBQL Python library. Import `warp.geometry as geometry` for the recommended settings below. The six preserved tables measured the earlier `wp.knn()` API: its enum settings map directly to the `geometry` enums, and its original calls remain available with deprecation warnings. See the [public API guide](public-api.md) for complete examples and contracts.
+Start with `backend=wp.geometry.PointQueryBackend.WARP` when targets change often. For repeated CUDA queries against fixed targets, start with `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE`. Both use **`warp.geometry.PointIndex` and `warp.geometry.knn()`**; callers do not need a separate cuBQL Python library. Use `import warp as wp` and `import warp.geometry` for the recommended settings below. The six preserved tables measured the earlier `wp.knn()` API: its enum settings map directly to the `wp.geometry` enums, and its original calls remain available with deprecation warnings. See the [public API guide](public-api.md) for complete examples and contracts.
 
 ## Colored cross-library comparisons
 
 These are the November 13 snapshots. Their original API labels and source hashes are preserved; use the [migration guide](public-api.md#migrate-the-earlier-branch-api) for current calls.
 
-Each cell is **column time / `wp.knn(backend=geometry.PointQueryBackend.WARP)` time**. **Blue above 1 means the reference is faster; red below 1 means the column is faster.** A row combines a clean/noisy pair by geometric mean only when both pass. Gray cells have failed checks, failed/unsupported capture, or no measurement. `1/2 pass` means one case passed: that individual case can enter the linked case-level aggregates, but the pair gets no colored ratio. Failed or missing measurements never enter rankings. Open an image for its full-size table. [All medians and statuses](current/libraries/cases.csv), [aggregate tables](current/libraries/tables.md), [raw results and provenance](current/libraries/provenance.json), and [reproduction instructions](current/libraries/reproduce.md) are available.
+Each cell is **column time / `wp.knn(backend=wp.geometry.PointQueryBackend.WARP)` time**. **Blue above 1 means the reference is faster; red below 1 means the column is faster.** A row combines a clean/noisy pair by geometric mean only when both pass. Gray cells have failed checks, failed/unsupported capture, or no measurement. `1/2 pass` means one case passed: that individual case can enter the linked case-level aggregates, but the pair gets no colored ratio. Failed or missing measurements never enter rankings. Open an image for its full-size table. [All medians and statuses](current/libraries/cases.csv), [aggregate tables](current/libraries/tables.md), [raw results and provenance](current/libraries/provenance.json), and [reproduction instructions](current/libraries/reproduce.md) are available.
 
 ### Build + query, ordinary calls
 
 [![Current construction-plus-query comparison](current/libraries/one-shot.svg)](current/libraries/one-shot.svg)
 
-`backend=geometry.PointQueryBackend.WARP` has the lowest construction-plus-query median among the five public choices in **38/40** cases, and among all passing configurations in **34/40**. `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.BUILD_AND_QUERY` wins the other two public comparisons. External brute-force methods win four of the overall comparisons on the tiny workloads.
+`backend=wp.geometry.PointQueryBackend.WARP` has the lowest construction-plus-query median among the five public choices in **38/40** cases, and among all passing configurations in **34/40**. `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.BUILD_AND_QUERY` wins the other two public comparisons. External brute-force methods win four of the overall comparisons on the tiny workloads.
 
 ### Reused-index query, ordinary calls
 
 [![Current reused-index query comparison](current/libraries/reused-query.svg)](current/libraries/reused-query.svg)
 
-`backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE` beats `backend=geometry.PointQueryBackend.WARP` in **40/40**, averaging **1.38×** faster. Standalone cuBQL with frozen tuning is faster still in ordinary calls; its column omits Warp's public wrapper. PhysicsNeMo, KeOps, and PyTorch3D expose complete operators, so their columns still include the entire operation rather than pretending to reuse an index.
+`backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE` beats `backend=wp.geometry.PointQueryBackend.WARP` in **40/40**, averaging **1.38×** faster. Standalone cuBQL with frozen tuning is faster still in ordinary calls; its column omits Warp's public wrapper. PhysicsNeMo, KeOps, and PyTorch3D expose complete operators, so their columns still include the entire operation rather than pretending to reuse an index.
 
 ### Build + query, CUDA graph replay
 
 [![Current construction-plus-query graph comparison](current/libraries/graph-one-shot.svg)](current/libraries/graph-one-shot.svg)
 
-`backend=geometry.PointQueryBackend.WARP` has the lowest passing graph median in **36/40** cases; cuVS direct L2 wins the four tiny cases. PhysicsNeMo, cuVS direct L2/Minkowski, and PyTorch3D complete all 40 construction-inclusive capture checks; expanded L2 captures but retains its numerical failures.
+`backend=wp.geometry.PointQueryBackend.WARP` has the lowest passing graph median in **36/40** cases; cuVS direct L2 wins the four tiny cases. PhysicsNeMo, cuVS direct L2/Minkowski, and PyTorch3D complete all 40 construction-inclusive capture checks; expanded L2 captures but retains its numerical failures.
 
 ### Reused-index query, CUDA graph replay
 
 [![Current reused-index graph comparison](current/libraries/graph-reused-query.svg)](current/libraries/graph-reused-query.svg)
 
-For prebuilt target indexes, `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE` beats `backend=geometry.PointQueryBackend.WARP` in **40/40**, averaging **1.24×** faster. Construction capture is supported by `backend=geometry.PointQueryBackend.WARP`; the direct cuBQL routes require construction outside capture. Every colored graph cell passed checks using both original and changed inputs.
+For prebuilt target indexes, `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE` beats `backend=wp.geometry.PointQueryBackend.WARP` in **40/40**, averaging **1.24×** faster. Construction capture is supported by `backend=wp.geometry.PointQueryBackend.WARP`; the direct cuBQL routes require construction outside capture. Every colored graph cell passed checks using both original and changed inputs.
 
-The public `objective=geometry.PointQueryObjective.REUSE` graph route and standalone frozen-tuned cuBQL are effectively tied in geometric mean in this run. The `backend=geometry.PointQueryBackend.WARP`, `bvh=wp.Bvh(..., constructor="cubql")` control has the lowest passing query-graph median in **4/40** cases, but carries expensive construction. These workload-specific wins are a reason to preserve the explicit alternatives and measure the caller's workload.
+The public `objective=wp.geometry.PointQueryObjective.REUSE` graph route and standalone frozen-tuned cuBQL are effectively tied in geometric mean in this run. The `backend=wp.geometry.PointQueryBackend.WARP`, `bvh=wp.Bvh(..., constructor="cubql")` control has the lowest passing query-graph median in **4/40** cases, but carries expensive construction. These workload-specific wins are a reason to preserve the explicit alternatives and measure the caller's workload.
 
 ### What each column measures
 
 The call names below identify the measured November 13 API. Enum values are
-shown in their current `geometry` namespace; the legacy `wp` aliases denote
+shown in their current `wp.geometry` namespace; the legacy `wp` aliases denote
 the same settings. The converted-tree `bvh=` control belongs to the legacy
-`wp.knn()` signature. New `geometry.knn()` calls accept a target array or
+`wp.knn()` signature. New `wp.geometry.knn()` calls accept a target array or
 `PointIndex`, without a `bvh=` argument; see the [migration guide](public-api.md#migrate-the-earlier-branch-api).
 
 | Column | Actual public call or external configuration |
 | --- | --- |
 | Scalar kernel | `wp.Bvh(points, points)` with its default leaf size; `wp.point_query_knn()` in a dense launch. |
-| `wp.knn()`, `backend=WARP` | `backend=geometry.PointQueryBackend.WARP`, automatic policy. This is the reference column. |
-| `wp.knn()`, `Bvh(constructor="cubql")` | `backend=geometry.PointQueryBackend.WARP`, supplied `bvh=wp.Bvh(..., constructor="cubql", leaf_size=config.leaf_size)`; `config=wp.point_query_config(...)`. |
-| `wp.knn()`, `objective=REUSE` | `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE`. |
-| `wp.knn()`, `objective=BUILD_AND_QUERY` | `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.BUILD_AND_QUERY`. |
+| `wp.knn()`, `backend=WARP` | `backend=wp.geometry.PointQueryBackend.WARP`, automatic policy. This is the reference column. |
+| `wp.knn()`, `Bvh(constructor="cubql")` | `backend=wp.geometry.PointQueryBackend.WARP`, supplied `bvh=wp.Bvh(..., constructor="cubql", leaf_size=config.leaf_size)`; `config=wp.point_query_config(...)`. |
+| `wp.knn()`, `objective=REUSE` | `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE`. |
+| `wp.knn()`, `objective=BUILD_AND_QUERY` | `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.BUILD_AND_QUERY`. |
 | Standalone cuBQL, custom top-k | Earlier benchmark adapter with its own exact top-k traversal. |
 | Standalone cuBQL, defaults / frozen tuning | Unmodified `cuBQL::points::findKNN`, either defaults or the previously selected regime policy. Separate policies optimize construction-inclusive and reused-query timing. |
 | PhysicsNeMo | Pinned kNN implementation from the earlier PR, with import adaptation recorded by the benchmark. |
@@ -71,26 +71,26 @@ The standalone and external columns are benchmark controls; they are not additio
 
 ## Batched queries and Chamfer against external libraries
 
-These tables measure the pulmonary use case through public APIs, including **B=2 and B=4 native batches**. The three multi-batch rows appear first; the remaining rows retain an explicit B=1 dimension. Each cell shows **column time / `backend=geometry.PointQueryBackend.WARP` time**, followed by the median milliseconds for the **entire batch**. Blue favors the reference; red favors the column; gray marks failed correctness checks or runtime errors. These are ordinary calls, with fixed target indexes prebuilt where the API supports them.
+These tables measure the pulmonary use case through public APIs, including **B=2 and B=4 native batches**. The three multi-batch rows appear first; the remaining rows retain an explicit B=1 dimension. Each cell shows **column time / `backend=wp.geometry.PointQueryBackend.WARP` time**, followed by the median milliseconds for the **entire batch**. Blue favors the reference; red favors the column; gray marks failed correctness checks or runtime errors. These are ordinary calls, with fixed target indexes prebuilt where the API supports them.
 
 ### Batched queries with precomputed target indexes
 
 [![Batched fixed-target kNN comparison](current/training/query.svg)](current/training/query.svg)
 
-`backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE` wins all **24/24** comparisons against `backend=geometry.PointQueryBackend.WARP`, averaging **1.36×** faster. All three public configurations, both PyTorch3D configurations, and KeOps pass every query case. Outputs are sorted int64 IDs and float32 squared distances. PyTorch3D and KeOps perform their complete batched query operation on every call; they expose no reusable target index in the measured APIs.
+`backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE` wins all **24/24** comparisons against `backend=wp.geometry.PointQueryBackend.WARP`, averaging **1.36×** faster. All three public configurations, both PyTorch3D configurations, and KeOps pass every query case. Outputs are sorted int64 IDs and float32 squared distances. PyTorch3D and KeOps perform their complete batched query operation on every call; they expose no reusable target index in the measured APIs.
 
 ### Symmetric Chamfer with fixed targets, including backward
 
 [![Batched fixed-target symmetric Chamfer forward and backward comparison](current/training/chamfer.svg)](current/training/chamfer.svg)
 
-Every step queries both directions, reduces the sum of mean squared distances, and computes gradients with respect to decoded points. The fixed target index is reused; the reverse index on decoded points is constructed each step. The mixed choice—fixed `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE`, reverse `backend=geometry.PointQueryBackend.WARP`—wins **21/21** comparisons against the default backend both ways, averaging **1.03×** faster. All three public configurations, both PyTorch3D configurations, and KeOps pass the full loss/gradient checks.
+Every step queries both directions, reduces the sum of mean squared distances, and computes gradients with respect to decoded points. The fixed target index is reused; the reverse index on decoded points is constructed each step. The mixed choice—fixed `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE`, reverse `backend=wp.geometry.PointQueryBackend.WARP`—wins **21/21** comparisons against the default backend both ways, averaging **1.03×** faster. All three public configurations, both PyTorch3D configurations, and KeOps pass the full loss/gradient checks.
 
 For **B=4, M=379,385, N=8,192, k=1**, the new matched comparison is:
 
 | Public configuration | Fixed-target query (ms) | Symmetric Chamfer + backward (ms) |
 | --- | ---: | ---: |
-| `backend=geometry.PointQueryBackend.WARP`; same backend for reverse | 0.31485 | 4.05993 |
-| `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE`; reverse `backend=geometry.PointQueryBackend.WARP` | **0.20688** | **3.97031** |
+| `backend=wp.geometry.PointQueryBackend.WARP`; same backend for reverse | 0.31485 | 4.05993 |
+| `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE`; reverse `backend=wp.geometry.PointQueryBackend.WARP` | **0.20688** | **3.97031** |
 | PyTorch3D automatic `knn_points()` / native `chamfer_distance()` | 31.63746 | 53.15038 |
 | PyTorch3D `knn_points(version=...)`, independently tuned per direction | 36.15212 | 57.35345 |
 | KeOps batched `LazyTensor` reductions; selected-pair autograd | 35.96743 | 69.31399 |
@@ -112,13 +112,13 @@ Inspect [all medians/statuses](current/training/cases.csv), [aggregate tables](c
 
 | Workload or requirement | Public arguments | Current evidence or contract |
 | --- | --- | --- |
-| Construct an index and query it once | `backend=geometry.PointQueryBackend.WARP` | Lowest construction-plus-query median among public choices in **38/40** cross-library cases and **23/24** pulmonary/batched cases. |
-| Repeated queries against fixed CUDA targets | `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE` | Faster ordinary/query-graph calls in **40/40** cross-library cases, averaging **1.38× / 1.24×**; pulmonary/batched results are **24/24 / 22/24**, averaging **1.37× / 1.20×**. Construction must be amortized. |
-| Evaluate cheaper cuBQL construction | `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.BUILD_AND_QUERY` | Lowest construction-plus-query median among public choices in **2/40** cross-library cases and **1/24** pulmonary/batched cases. Usually slower reused queries than `objective=geometry.PointQueryObjective.REUSE`. |
-| CPU, finite cutoff, self-exclusion, original-index tie ordering, or k > 64 | `backend=geometry.PointQueryBackend.WARP` | Supports these requirements. The direct cuBQL route rejects unsupported requests. |
-| Capture index construction or refit | `backend=geometry.PointQueryBackend.WARP` | Construction/refit capture supported with CUDA memory pools enabled. Both backends support querying prebuilt indexes in graphs. |
-| Symmetric Chamfer with fixed targets | Fixed: `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE`; reverse: `backend=geometry.PointQueryBackend.WARP` | Faster forward/backward steps in **21/21** k=1 cases in the new external-library comparison, averaging **1.03×** over `backend=geometry.PointQueryBackend.WARP` both ways. |
-| Fuse neighbor processing inside your kernel | Build with `backend=geometry.PointQueryBackend.WARP`; use `wp.point_query_knn()` and `while wp.point_query_next(...)` | Scalar queries accept `wp.Bvh.id`. Direct `for index in search` iteration is not implemented. |
+| Construct an index and query it once | `backend=wp.geometry.PointQueryBackend.WARP` | Lowest construction-plus-query median among public choices in **38/40** cross-library cases and **23/24** pulmonary/batched cases. |
+| Repeated queries against fixed CUDA targets | `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE` | Faster ordinary/query-graph calls in **40/40** cross-library cases, averaging **1.38× / 1.24×**; pulmonary/batched results are **24/24 / 22/24**, averaging **1.37× / 1.20×**. Construction must be amortized. |
+| Evaluate cheaper cuBQL construction | `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.BUILD_AND_QUERY` | Lowest construction-plus-query median among public choices in **2/40** cross-library cases and **1/24** pulmonary/batched cases. Usually slower reused queries than `objective=wp.geometry.PointQueryObjective.REUSE`. |
+| CPU, finite cutoff, self-exclusion, original-index tie ordering, or k > 64 | `backend=wp.geometry.PointQueryBackend.WARP` | Supports these requirements. The direct cuBQL route rejects unsupported requests. |
+| Capture index construction or refit | `backend=wp.geometry.PointQueryBackend.WARP` | Construction/refit capture supported with CUDA memory pools enabled. Both backends support querying prebuilt indexes in graphs. |
+| Symmetric Chamfer with fixed targets | Fixed: `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE`; reverse: `backend=wp.geometry.PointQueryBackend.WARP` | Faster forward/backward steps in **21/21** k=1 cases in the new external-library comparison, averaging **1.03×** over `backend=wp.geometry.PointQueryBackend.WARP` both ways. |
+| Fuse neighbor processing inside your kernel | Build with `backend=wp.geometry.PointQueryBackend.WARP`; use `wp.point_query_knn()` and `while wp.point_query_next(...)` | Scalar queries accept `wp.Bvh.id`. Direct `for index in search` iteration is not implemented. |
 
 The backend choice is explicit. `objective` tunes cuBQL; it does not switch backends or change the default implementation's policy. Build the fixed target index once, then pass `bvh=indexes` on subsequent calls. Supplied indexes keep their original settings. Leave `leaf_size`, `query_stride`, and `ordered` automatic initially. The cuBQL route requires CUDA, memory-pool support, and a build with cuBQL enabled; it supports k=1–64.
 
@@ -128,7 +128,7 @@ This separately measured November 13 experiment used the earlier branch API and 
 
 ![Per-workload speedup for fixed targets](current/query-speedups.svg)
 
-The chart compares `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE` against `backend=geometry.PointQueryBackend.WARP`; values above 1 favor the former. Query graphs lose on `0116_H_PULM_ALGS_full_q8192` (0.04609 versus 0.04262 ms) and `0117_H_PULM_ALGS_full_q8192` (0.04751 versus 0.04466 ms). These are observed medians, not statistical guarantees of a winner.
+The chart compares `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE` against `backend=wp.geometry.PointQueryBackend.WARP`; values above 1 favor the former. Query graphs lose on `0116_H_PULM_ALGS_full_q8192` (0.04609 versus 0.04262 ms) and `0117_H_PULM_ALGS_full_q8192` (0.04751 versus 0.04466 ms). These are observed medians, not statistical guarantees of a winner.
 
 ### Dense fixed-target example
 
@@ -136,13 +136,13 @@ The chart compares `backend=geometry.PointQueryBackend.CUBQL`, `objective=geomet
 
 | Public arguments | Construct + query | Reused ordinary query | Reused query graph |
 | --- | ---: | ---: | ---: |
-| `backend=geometry.PointQueryBackend.WARP` | **1.34463** | 0.30096 | 0.21059 |
-| `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE` | 46.37292 | **0.20496** | **0.14676** |
-| `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.BUILD_AND_QUERY` | 2.83211 | 0.51076 | 0.45455 |
+| `backend=wp.geometry.PointQueryBackend.WARP` | **1.34463** | 0.30096 | 0.21059 |
+| `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE` | 46.37292 | **0.20496** | **0.14676** |
+| `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.BUILD_AND_QUERY` | 2.83211 | 0.51076 | 0.45455 |
 
 Reuse tuning buys query speed with substantially more expensive construction. Compare total time over the expected number of calls, including index retirement and the chosen output-allocation/capture mode. A query-only advantage does not establish a benefit for short-lived indexes.
 
-The construction exception across the full suite is the synthetic M=1,000,000, N=8,192, k=11 case: `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.BUILD_AND_QUERY` takes **0.9313 ms**, versus **0.9535 ms** for `backend=geometry.PointQueryBackend.WARP`. This narrow measured win is workload-specific.
+The construction exception across the full suite is the synthetic M=1,000,000, N=8,192, k=11 case: `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.BUILD_AND_QUERY` takes **0.9313 ms**, versus **0.9535 ms** for `backend=wp.geometry.PointQueryBackend.WARP`. This narrow measured win is workload-specific.
 
 ### Symmetric Chamfer: measure both directions and backward
 
@@ -150,15 +150,15 @@ For the same dense example, fixed target construction is paid before timing. Eve
 
 | Fixed target arguments | Changing reverse target arguments | Forward + backward (ms) |
 | --- | --- | ---: |
-| `backend=geometry.PointQueryBackend.WARP` | `backend=geometry.PointQueryBackend.WARP` | 4.05286 |
-| `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE` | `backend=geometry.PointQueryBackend.WARP` | **3.96831** |
-| `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE` | `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.BUILD_AND_QUERY` | 13.73926 |
+| `backend=wp.geometry.PointQueryBackend.WARP` | `backend=wp.geometry.PointQueryBackend.WARP` | 4.05286 |
+| `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE` | `backend=wp.geometry.PointQueryBackend.WARP` | **3.96831** |
+| `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE` | `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.BUILD_AND_QUERY` | 13.73926 |
 
 The mixed choice improves this dense step by about **2%**, despite the larger fixed-target query improvement. Across all 21 k=1 workloads it wins 19, with a 1.06× geometric-mean speedup. This measures the Chamfer computation and its gradients, not an encoder, decoder, optimizer, or complete training iteration. The [runnable example](../../warp/examples/geometry/example_point_query_chamfer.py) uses Warp's tape; sharing Torch storage does not automatically connect the two autograd systems.
 
 ### Retained memory
 
-For the dense example, live index/output allocations retain **121.94 MiB** with `backend=geometry.PointQueryBackend.WARP`, or **98.79 MiB** with `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE`. Input coordinates add **17.74 MiB** in either case. A float32 B×N×M distance tensor would require **46.31 GiB**.
+For the dense example, live index/output allocations retain **121.94 MiB** with `backend=wp.geometry.PointQueryBackend.WARP`, or **98.79 MiB** with `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE`. Input coordinates add **17.74 MiB** in either case. A float32 B×N×M distance tensor would require **46.31 GiB**.
 
 These are live CUDA-pool bytes retained after construction and query. They exclude inputs from the index/output count and exclude transient construction scratch, tape storage, and peak training memory. The pairwise figure is arithmetic, not a measured `torch.cdist` allocation. For fixed k, index/output storage scales as `O(B*M + B*N*k)`; the API does not materialize a B×N×M tensor.
 
@@ -166,7 +166,7 @@ These are live CUDA-pool bytes retained after construction and query. They exclu
 
 Yes for GPU query graphs, within about **1% in geometric mean** of the matched standalone implementation. Ordinary calls have additional public-wrapper work. The retained [integration comparison](completion/README.md) and [provenance](current/provenance.json) describe the November 13 source and binary snapshot. They were not rerun for the API revision; current validation is recorded separately in the [API/main regression report](api-revision/README.md).
 
-| `backend=geometry.PointQueryBackend.CUBQL`, `objective=geometry.PointQueryObjective.REUSE` | Public time / matched standalone time | Median added time, B=1 |
+| `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE` | Public time / matched standalone time | Median added time, B=1 |
 | --- | ---: | ---: |
 | Ordinary query, preallocated outputs | 2.040× | 40.35 µs |
 | Ordinary query, output allocation included | 1.724× | 42.01 µs |
@@ -174,7 +174,7 @@ Yes for GPU query graphs, within about **1% in geometric mean** of the matched s
 
 The raw native preallocated call averages 1.005× standalone time. The public wrapper validates inputs/options, creates batch views, and dispatches each cloud. Capturing the query avoids repeating that Python work. These B=1 measurements retain the leading batch dimension; they do not measure the single-cloud layout's wrapper overhead.
 
-This is a **separate 23-workload experiment** with 31 interleaved samples, int64 indices, Euclidean distances, and 32 replays per graph sample. The retained public-only pulmonary experiment uses int32 indices, squared distances, nine sequential samples, and one replay per graph sample. The new batched cross-library query experiment uses int64 indices and squared distances, with ordinary calls only. Do not pool their timings or geometric means. The integration experiment times queries only, including when `objective=geometry.PointQueryObjective.BUILD_AND_QUERY` selects the tree policy.
+This is a **separate 23-workload experiment** with 31 interleaved samples, int64 indices, Euclidean distances, and 32 replays per graph sample. The retained public-only pulmonary experiment uses int32 indices, squared distances, nine sequential samples, and one replay per graph sample. The new batched cross-library query experiment uses int64 indices and squared distances, with ordinary calls only. Do not pool their timings or geometric means. The integration experiment times queries only, including when `objective=wp.geometry.PointQueryObjective.BUILD_AND_QUERY` selects the tree policy.
 
 ## Pulmonary methodology and remaining limits
 

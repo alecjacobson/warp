@@ -83,14 +83,15 @@ builds ordinary Warp BVHs and calls the scalar primitive shown above.
 
 .. code-block:: python
 
-    import warp.geometry as geometry
+    import warp as wp
+    import warp.geometry
 
     # Construct without query coordinates or neighbor output allocation.
-    target_index = geometry.PointIndex(points, num_queries=1024, k=8)
-    _, indices, distances_sq, counts = geometry.knn(target_index, queries, 8)
+    target_index = wp.geometry.PointIndex(points, num_queries=1024, k=8)
+    _, indices, distances_sq, counts = wp.geometry.knn(target_index, queries, 8)
 
     # Supplying an array constructs and queries in one call.
-    target_index, indices, distances_sq, counts = geometry.knn(points, queries, 8)
+    target_index, indices, distances_sq, counts = wp.geometry.knn(points, queries, 8)
 
 The return is always ``(PointIndex, indices, distances, counts)``. Supplying an
 owner returns that same object without rebuilding. Supplying an array creates a
@@ -125,8 +126,8 @@ with shape ``(B, M)``. Queries have shape ``(B, N)``; M and N may differ.
 
     targets = wp.array(target_numpy, dtype=wp.vec3)
     decoded = wp.array(decoded_numpy, dtype=wp.vec3, requires_grad=True)
-    target_index = geometry.PointIndex(targets, num_queries=decoded.shape[1])
-    _, indices, distances_sq, counts = geometry.knn(target_index, decoded, 1)
+    target_index = wp.geometry.PointIndex(targets, num_queries=decoded.shape[1])
+    _, indices, distances_sq, counts = wp.geometry.knn(target_index, decoded, 1)
 
 Each batch searches only its corresponding target cloud. Indices are local to
 that cloud. Indices/distances have shape ``(B, N, k)``; counts and exclusions
@@ -144,21 +145,21 @@ The current implementation submits one query operation per cloud.
 Backend choices and tuning
 --------------------------
 
-``geometry.PointQueryBackend.WARP`` supports CPU/CUDA, finite cutoffs,
+``wp.geometry.PointQueryBackend.WARP`` supports CPU/CUDA, finite cutoffs,
 exclusions, original-index ties, and CUDA construction/refit capture with memory
 pools enabled. It is the default. For repeated queries against fixed CUDA
 clouds, native cuBQL is an explicit alternative:
 
 .. code-block:: python
 
-    target_index = geometry.PointIndex(
+    target_index = wp.geometry.PointIndex(
         targets,
         num_queries=decoded.shape[1],
         k=1,
-        backend=geometry.PointQueryBackend.CUBQL,
-        objective=geometry.PointQueryObjective.REUSE,
+        backend=wp.geometry.PointQueryBackend.CUBQL,
+        objective=wp.geometry.PointQueryObjective.REUSE,
     )
-    _, indices, distances_sq, counts = geometry.knn(target_index, decoded, 1)
+    _, indices, distances_sq, counts = wp.geometry.knn(target_index, decoded, 1)
 
 Native cuBQL requires CUDA, memory pools, a build with cuBQL enabled, and k=1-64.
 It requires infinite cutoff, no exclusions, and no query reordering
@@ -178,7 +179,7 @@ their backend and objective; conflicting overrides raise errors. Any non-None
 current layout.
 
 Leave ``leaf_size``, ``query_stride``, and ``ordered`` automatic initially.
-``geometry.point_query_config(M, N, device)`` exposes the default Warp policy
+``wp.geometry.point_query_config(M, N, device)`` exposes the default Warp policy
 for custom fused kernels. Its launch spacing requires matching thread-to-query
 indexing. The default array path already applies this policy; scalar calls can
 use the same traversal and tuning without an array output allocation. The
@@ -189,7 +190,7 @@ For the complete argument and return contracts, see :func:`warp.geometry.knn`,
 The generic ``wp.Bvh(constructor="cubql")`` builds a converted Warp BVH, which
 still uses Warp traversal. It is separate from
 ``PointQueryBackend.CUBQL``, whose native indexes are queried through
-``geometry.knn()``. A raw ``wp.Bvh`` is not accepted as a ``PointIndex``; use it
+``wp.geometry.knn()``. A raw ``wp.Bvh`` is not accepted as a ``PointIndex``; use it
 directly with scalar queries or retain an earlier ``wp.knn(..., bvh=...)`` call
 while migrating.
 
@@ -201,7 +202,7 @@ After warmup, reuse outputs and capture queries against a retained owner:
 .. code-block:: python
 
     with wp.ScopedCapture(device=targets.device) as capture:
-        geometry.knn(
+        wp.geometry.knn(
             target_index, decoded, 1,
             indices=indices, distances=distances_sq, counts=counts,
         )
@@ -219,8 +220,8 @@ construct or refit the changing decoded index each step:
 .. code-block:: python
 
     with wp.Tape() as tape:
-        to_target = geometry.knn(target_index, decoded, 1)
-        to_decoded = geometry.knn(decoded, targets, 1)
+        to_target = wp.geometry.knn(target_index, decoded, 1)
+        to_decoded = wp.geometry.knn(decoded, targets, 1)
         # Reduce to_target[2] by B*N and to_decoded[2] by B*M, then sum.
 
 Set ``requires_grad=True`` on each input needing gradients, and on any
@@ -239,9 +240,9 @@ The old top-level configuration types remain deprecated aliases. New code
 should explicitly import ``warp.geometry`` and use its configuration enums.
 
 Replace ``wp.build_point_index(targets, ...)`` with
-``geometry.PointIndex(targets, ...)``. Replace
+``wp.geometry.PointIndex(targets, ...)``. Replace
 ``wp.knn(targets, queries, k, bvh=indexes)`` with
-``geometry.knn(target_index, queries, k)``. Both array APIs return four values,
+``wp.geometry.knn(target_index, queries, k)``. Both array APIs return four values,
 but the geometry API's first value is always a ``PointIndex``. Do not pass a
 legacy raw index as a geometry owner. Kernel calls and ordinary ``wp.Bvh``
 construction are unchanged.
