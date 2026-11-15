@@ -1,0 +1,65 @@
+{
+  "timing_records": 300,
+  "identical_retained_memory_pairs": 72,
+  "phases": {
+    "build_and_query": {
+      "count": 72,
+      "after_over_before": 0.9994889277433427,
+      "engine_over_before": 0.9960626836801885,
+      "after_over_engine": 1.0034397875949888,
+      "median_delta_us": 0.5250039976090193
+    },
+    "reused_query": {
+      "count": 72,
+      "after_over_before": 1.0058107797357663,
+      "engine_over_before": 1.0009941217346905,
+      "after_over_engine": 1.0048118744121382,
+      "median_delta_us": 1.0145013220608234
+    },
+    "graph_query": {
+      "count": 72,
+      "after_over_before": 1.002829071513704,
+      "engine_over_before": 1.0033646266566596,
+      "after_over_engine": 0.9994662407576196,
+      "median_delta_us": 0.13996032066643238
+    },
+    "symmetric_chamfer_forward_backward": {
+      "count": 63,
+      "after_over_before": 1.0041420027445913,
+      "engine_over_before": 1.0013486630871549,
+      "after_over_engine": 1.0027895774572912,
+      "median_delta_us": 4.2800093069672585
+    },
+    "mixed_chamfer_forward_backward": {
+      "count": 21,
+      "after_over_before": 1.0057932949234263,
+      "engine_over_before": 1.0025695520390796,
+      "after_over_engine": 1.003215480539769,
+      "median_delta_us": 2.5199842639267445
+    }
+  },
+  "largest_ratio": {
+    "case": "0105_H_PULM_H_full_q1024",
+    "variant": "warp",
+    "phase": "graph_query",
+    "before_ms": 0.027279951609671116,
+    "after_ms": 0.028800044674426317,
+    "engine_ms": 0.02893002238124609,
+    "after_over_before": 1.0557219853797801,
+    "engine_over_before": 1.0604865725271302,
+    "after_over_engine": 0.9955071688121462,
+    "delta_us": 1.5200930647552013
+  },
+  "smallest_ratio": {
+    "case": "0116_H_PULM_ALGS_full_q8192",
+    "variant": "cubql_build",
+    "phase": "build_and_query",
+    "before_ms": 0.6496100104413927,
+    "after_ms": 0.6093800184316933,
+    "engine_ms": 0.6300400127656758,
+    "after_over_before": 0.9380705479240319,
+    "engine_over_before": 0.9698742362938348,
+    "after_over_engine": 0.9672084408682369,
+    "delta_us": -40.229992009699345
+  }
+}

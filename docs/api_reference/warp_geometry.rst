@@ -17,11 +17,17 @@ Python API
    IsoSurfaceMarchingCubes
    IsoSurfaceNets
    OBBMeasureType
+   PointIndex
+   PointQueryBackend
+   PointQueryConfig
+   PointQueryObjective
    SweptVolumeSignMode
    delaunay_edge_flip
+   knn
    lipschitz_octree
    oriented_bounding_box
    oriented_bounding_boxes
+   point_query_config
    sparse_marching_cubes
    sparse_marching_cubes_from_cells
    swept_volume_bounds

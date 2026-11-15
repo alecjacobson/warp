@@ -623,25 +623,6 @@ Constants
    pi
    tau
 
-Geometry
---------
-
-Point Queries
-^^^^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: _generated
-
-   CubqlPointIndex
-   PointQueryBackend
-   PointQueryConfig
-   PointQueryObjective
-   build_point_index
-   knn
-   point_query_config
-   point_query_knn_batch
-
 Configuration Modes
 -------------------
 

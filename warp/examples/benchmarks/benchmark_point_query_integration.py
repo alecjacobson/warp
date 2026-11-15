@@ -17,7 +17,7 @@ import numpy as np
 
 import warp as wp
 from warp._src import context
-from warp._src.point_query import _cubql_config
+from warp._src.geometry.point_query import _cubql_config
 from warp.examples.benchmarks.benchmark_point_query_comparison import accuracy
 
 

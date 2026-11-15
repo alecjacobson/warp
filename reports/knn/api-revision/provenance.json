@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-15",
+  "original_branch": "60c4da49fe101233663578334094f789b27bc1c3",
+  "original_backup_branch": "alecjacobson/knn-before-api-20261115",
+  "official_main": "3afdd69addbf0486f4d3d01ba93ee9ee279f4323",
+  "fork_main_at_start": "18c936d4390e3ff1a91eb7a7ecc9668e425e2c52",
+  "rebased_parent": "c338633238e61328a0056bed8e2ebe0f335e525d",
+  "revision_source": "The commit containing this report; final source hashes below identify the implementation.",
+  "native_build_command": "uv run --no-sync build_lib.py --quick --cuda-path /home/horde/cuda/12.9.1 --jobs 4",
+  "final_source_sha256": {
+    "warp/__init__.py": "1cfb218b3232cdf3db18ec8b08a85133326e5baf8400c188667f236fe8b258a8",
+    "warp/geometry.py": "08785f37fad53e0dd466baba38f4abb509a38a4ebecca31ae65187407d0b616a",
+    "warp/_src/point_query.py": "66d15dc627b3eb2c892a012025a59739f4a6b1bb9a1ebee4093f2223cfc7ceff",
+    "warp/_src/geometry/point_query.py": "c68011610647ed26f2eca6ba6c6855426b494685633112786dcc0c0f5cde1d49",
+    "warp/native/point_query.h": "ccf0e04a1f8424f890dc466cc1f0b8e7aec989e7679844861cef2b7c6c339625",
+    "warp/native/bvh.cu": "4c0b13af187e78b40529732b74faacfd761fbb2ffbad996a67943472b307ddfb",
+    "warp/native/bvh_cubql.cu": "e4d5fc0d515ba7b5583ed7a878a2565e837311e46d05e1e6add509c02f1dc0db",
+    "warp/bin/warp.so": "23cf4018c6212d30e74e1574ae435aa30de5b2584c4dca1a8c0b740a6242682d",
+    "warp/examples/benchmarks/benchmark_point_query_api_revision.py": "e1340265c30814459da1ce2e437bf92c6744c733054c646cd63fb9b78bd4a189",
+    "warp/tests/geometry/test_point_query_batched.py": "5e5b26240bbbd1884c869318a1b21463ebce2d2db68bb4e71d3a48166bdd1d1e",
+    "docs/user_guide/point_queries.rst": "b9ced5570a6a36571fae5a0d7763102046a6aa6d6c3a0ad976221e18955a5531",
+    "reports/knn/public-api.md": "393cbef6efbc6bf973fe92a37c5870442b6abd52c9d5d475eb917ba4685ee7b9"
+  },
+  "run_sha256": {
+    "summary.json": "f98b49bad38a404504fea0457f951ac0a6179b630bb94777617b2107708f8634",
+    "after.json": "77cefee7e744cd45f4766a3b365722aa322d794c7884ad01872b305a69724626",
+    "before.json": "0bbf53cf3e4fe7354cfe9f0520f2a29c9aa7101d08f44aa5b180fb00aed1adbf",
+    "investigation.json": "1ee2bdae23e3c7dd12fcdfe766d636153a2dc46d5b7a8cd96fafaac6eb8fca95",
+    "engine.json": "a1d9b4f077401d991a11396221385ee4f45cb24fc1e13e1fd472dcdfe423a357"
+  },
+  "notes": [
+    "Each primary run records its source hashes at run start. The compatibility shim metadata changed afterward, outside both post-change measured paths.",
+    "No native query algorithm changes in the API revision. The native binary was rebuilt because the main update changed other native sources.",
+    "External library experiments retain their original snapshots; they were not rerun for the API revision."
+  ]
+}

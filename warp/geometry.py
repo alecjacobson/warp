@@ -32,6 +32,13 @@ Usage:
 
 # category: Python API
 
+from warp._src.geometry.point_query import PointIndex as PointIndex
+from warp._src.geometry.point_query import PointQueryBackend as PointQueryBackend
+from warp._src.geometry.point_query import PointQueryConfig as PointQueryConfig
+from warp._src.geometry.point_query import PointQueryObjective as PointQueryObjective
+from warp._src.geometry.point_query import knn as knn
+from warp._src.geometry.point_query import point_query_config as point_query_config
+
 from warp._src.geometry.iso_surface import IsoSurfaceBase as IsoSurfaceBase
 from warp._src.geometry.marching_cubes import IsoSurfaceMarchingCubes as IsoSurfaceMarchingCubes
 from warp._src.geometry.surface_nets import IsoSurfaceNets as IsoSurfaceNets

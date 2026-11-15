@@ -16,7 +16,7 @@ import numpy as np
 import torch
 
 import warp as wp
-from warp._src.point_query import _init_bounds, _query_bounds, _query_codes
+from warp._src.geometry.point_query import _init_bounds, _query_bounds, _query_codes
 from warp.examples.benchmarks.benchmark_point_query_comparison import accuracy, environment, measure
 from warp.examples.benchmarks.point_query_datasets import prepare
 
