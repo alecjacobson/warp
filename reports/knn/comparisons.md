@@ -46,7 +46,7 @@ the same settings. The converted-tree `bvh=` control belongs to the legacy
 
 | Column | Actual public call or external configuration |
 | --- | --- |
-| Scalar kernel | `wp.Bvh(points, points)` with its default leaf size; `wp.point_query_knn()` in a dense launch. |
+| Scalar kernel | `wp.Bvh(lowers=points, uppers=points)` with its default leaf size; `wp.point_query_knn()` in a dense launch. |
 | `wp.knn()`, `backend=WARP` | `backend=wp.geometry.PointQueryBackend.WARP`, automatic policy. This is the reference column. |
 | `wp.knn()`, `Bvh(constructor="cubql")` | `backend=wp.geometry.PointQueryBackend.WARP`, supplied `bvh=wp.Bvh(..., constructor="cubql", leaf_size=config.leaf_size)`; `config=wp.point_query_config(...)`. |
 | `wp.knn()`, `objective=REUSE` | `backend=wp.geometry.PointQueryBackend.CUBQL`, `objective=wp.geometry.PointQueryObjective.REUSE`. |

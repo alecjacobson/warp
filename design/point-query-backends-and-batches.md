@@ -10,7 +10,7 @@ Dense point-cloud encoders need differentiable nearest-neighbor distances withou
 
 ## Design
 
-The kernel layer uses the existing `wp.Bvh(points, points)` object, treating points as zero-volume boxes. `wp.point_query_nearest`, `wp.point_query_knn`, and `while wp.point_query_next(...)` support caller-defined fused processing. No second scalar point-cloud handle type is needed.
+The kernel layer uses the existing `wp.Bvh(lowers=points, uppers=points)` object, treating points as zero-volume boxes. `wp.point_query_nearest`, `wp.point_query_knn`, and `while wp.point_query_next(...)` support caller-defined fused processing. No second scalar point-cloud handle type is needed.
 
 The array layer lives in the explicitly imported `warp.geometry` module. `wp.geometry.PointIndex(targets, num_queries=N, k=k, backend=...)` owns one or B target indexes without query coordinates or neighbor outputs. `wp.geometry.knn(index, queries, k)` reuses that owner; `wp.geometry.knn(targets, queries, k)` constructs one. Every geometry call returns `(PointIndex, indices, distances, counts)`, including single clouds and empty batches. Retaining the owner makes asynchronous resource lifetime explicit. Target storage is retained by reference; coordinate updates require `refit()` or `rebuild()`, and allocation/shape replacement requires a new owner.
 

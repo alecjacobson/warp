@@ -28,7 +28,7 @@ def neighbor_sum_kernel(
 
 points = wp.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=wp.vec3)
 queries = wp.array([[0.9, 0, 0]], dtype=wp.vec3, device=points.device)
-bvh = wp.Bvh(points, points)
+bvh = wp.Bvh(lowers=points, uppers=points)
 sums = wp.empty(len(queries), dtype=float, device=points.device)
 wp.launch(neighbor_sum_kernel, len(queries), [bvh.id, points, queries, sums], device=points.device)
 ```

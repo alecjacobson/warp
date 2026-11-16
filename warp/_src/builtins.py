@@ -9648,7 +9648,7 @@ add_builtin(
 
     Args:
         bvh: ID of a :class:`warp.Bvh` whose primitive bounds enclose the points.
-            ``warp.Bvh(points, points)`` indexes points as zero-volume boxes.
+            ``warp.Bvh(lowers=points, uppers=points)`` indexes points as zero-volume boxes.
         points: Contiguous one-dimensional ``vec3`` target array on the BVH device,
             with the same original-index mapping used to construct the bounds.
         point: Query position in the same coordinate system as the targets.

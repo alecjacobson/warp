@@ -28,7 +28,7 @@ The post-main control calls the retained query engine directly, excluding the ow
 
 ## Public API decisions
 
-- Keep `wp.Bvh(points, points)`, `wp.point_query_nearest()`, and `wp.point_query_knn()` / `while wp.point_query_next(...)` as the kernel foundation. Points are zero-volume AABBs in the existing BVH infrastructure.
+- Keep `wp.Bvh(lowers=points, uppers=points)`, `wp.point_query_nearest()`, and `wp.point_query_knn()` / `while wp.point_query_next(...)` as the kernel foundation. Points are zero-volume AABBs in the existing BVH infrastructure.
 - Put array construction and queries in the explicitly imported `warp.geometry` module. `PointIndex(targets, ...)` builds fixed targets without allocating neighbor outputs; `knn(owner, queries, k)` reuses them. Passing an array constructs an owner.
 - Always return `(PointIndex, indices, distances, counts)` from the geometry API, for single clouds and batches. Keep the owner alive through asynchronous queries and graph replay.
 - Expose ordinary Warp BVHs through `owner.bvhs` for caller kernels. Native cuBQL handles remain private and incompatible with scalar Warp BVH queries. Preserve the optimized native route rather than forcing it through a different traversal.

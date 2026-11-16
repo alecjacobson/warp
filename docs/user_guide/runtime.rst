@@ -3051,7 +3051,7 @@ The :class:`wp.Bvh <warp.Bvh>` class can be used to create a BVH for a group of 
 to determine which parts are intersected by a ray using :func:`wp.bvh_query_ray <warp._src.lang.bvh_query_ray>` and which parts overlap
 with a certain bounding volume using :func:`wp.bvh_query_aabb() <warp._src.lang.bvh_query_aabb>`.
 
-For point-cloud nearest neighbors, construct ``wp.Bvh(points, points)`` and use
+For point-cloud nearest neighbors, construct ``wp.Bvh(lowers=points, uppers=points)`` and use
 :func:`wp.point_query_nearest() <warp.point_query_nearest>` or
 :func:`wp.point_query_knn() <warp.point_query_knn>` inside a kernel. Array queries
 and reusable batched targets are available through :class:`warp.geometry.PointIndex`
@@ -3070,7 +3070,7 @@ The following snippet demonstrates how to create a :class:`wp.Bvh <warp.Bvh>` ob
     device_lowers = wp.array(lowers, dtype=wp.vec3, device="cuda:0")
     device_uppers = wp.array(uppers, dtype=wp.vec3, device="cuda:0")
 
-    bvh = wp.Bvh(device_lowers, device_uppers)
+    bvh = wp.Bvh(lowers=device_lowers, uppers=device_uppers)
 
 
 Example: BVH Ray Traversal

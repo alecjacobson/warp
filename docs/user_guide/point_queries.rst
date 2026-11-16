@@ -25,7 +25,7 @@ each BVH primitive must enclose the point at the same original array index.
 
     points = wp.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=wp.vec3)
     queries = wp.array([[0.9, 0, 0]], dtype=wp.vec3, device=points.device)
-    bvh = wp.Bvh(points, points)
+    bvh = wp.Bvh(lowers=points, uppers=points)
     indices = wp.empty(len(queries), dtype=int, device=points.device)
     wp.launch(nearest_kernel, len(queries), [bvh.id, points, queries, indices], device=points.device)
 

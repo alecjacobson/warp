@@ -36,7 +36,7 @@ def main():
     with wp.ScopedDevice(args.device):
         points = wp.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=wp.vec3, requires_grad=True)
         queries = wp.array([[0.9, 0.1, 0]], dtype=wp.vec3, requires_grad=True)
-        bvh = wp.Bvh(points, points, leaf_size=4)
+        bvh = wp.Bvh(lowers=points, uppers=points, leaf_size=4)
         indices = wp.empty((1, 4), dtype=int)
         loss = wp.zeros(1, dtype=float, requires_grad=True)
         with wp.Tape() as tape:

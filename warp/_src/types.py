@@ -6517,7 +6517,7 @@ class Bvh:
     """Represent a bounding volume hierarchy for accelerated spatial queries.
 
     To index a point cloud, pass the same contiguous ``vec3`` array as both
-    bounds: ``Bvh(points, points)``. Query its ``id`` in kernels with
+    bounds: ``Bvh(lowers=points, uppers=points)``. Query its ``id`` in kernels with
     :func:`warp.point_query_nearest` or :func:`warp.point_query_knn`, supplying
     the same point array. For reusable array queries and independent fixed-size
     batches, use :class:`warp.geometry.PointIndex` and :func:`warp.geometry.knn`.
