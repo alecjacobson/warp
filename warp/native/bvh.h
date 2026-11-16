@@ -535,6 +535,8 @@ CUDA_CALLABLE inline bvh_query_t bvh_query(uint64_t id, const vec3& lower, const
     BVH bvh = bvh_get(id);
 
     query.bvh = bvh;
+    if (bvh.num_items == 0)
+        return query;
 
     query.stack[0] = root == -1 ? *bvh.root : root;
     query.count = 1;
