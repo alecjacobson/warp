@@ -1,5 +1,7 @@
 # kNN branch reports
 
+**Latest review (2026-11-16): [PR validation and regression report](review-2348/README.md).** The reviewed implementation is on [`alecjacobson/knn-review`](https://github.com/alecjacobson/warp/tree/alecjacobson/knn-review); this research branch retains its experiment history.
+
 **Start here: [Current comparisons and recommended settings](comparisons.md).**
 
 Updated **2026-11-15** for `alecjacobson/knn`. The branch is rebased onto NVIDIA main `3afdd69addbf`. The recommended array API is now `warp.geometry.PointIndex` plus `warp.geometry.knn()`; core scalar queries continue to use `wp.Bvh`. **[API/main regression validation](api-revision/README.md)** records the matched before/after measurements and current tests.

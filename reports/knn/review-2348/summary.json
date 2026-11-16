@@ -1,0 +1,83 @@
+{
+  "timing_records": 300,
+  "identical_memory_pairs": 72,
+  "phases": {
+    "build_and_query": {
+      "count": 72,
+      "percent_change": -0.05377121497287529
+    },
+    "reused_query": {
+      "count": 72,
+      "percent_change": -1.3329330389460048
+    },
+    "graph_query": {
+      "count": 72,
+      "percent_change": 0.009188149660954714
+    },
+    "symmetric_chamfer_forward_backward": {
+      "count": 63,
+      "percent_change": -0.3847452937054796
+    },
+    "mixed_chamfer_forward_backward": {
+      "count": 21,
+      "percent_change": -0.6561617160701361
+    }
+  },
+  "rechecks": [
+    {
+      "case": "0115_H_PULM_ALGS_full_q8192",
+      "phase": "build_and_query",
+      "initial_percent": 10.358774345026344,
+      "paired_round_percent": [
+        0.22235813767110812,
+        -0.20213259628080182,
+        -1.5477620494189548
+      ],
+      "paired_geomean_percent": -0.5120481421506118
+    },
+    {
+      "case": "0117_H_PULM_ALGS_full_q1024",
+      "phase": "symmetric_chamfer_forward_backward",
+      "initial_percent": 8.576533820299769,
+      "paired_round_percent": [
+        0.2939013827708781,
+        1.207414231938042,
+        0.5444297703125489
+      ],
+      "paired_geomean_percent": 0.6811783979090658
+    },
+    {
+      "case": "0116_H_PULM_ALGS_full_q1024",
+      "phase": "build_and_query",
+      "initial_percent": 8.191205615465002,
+      "paired_round_percent": [
+        2.0779964552585684,
+        1.3264189328325404,
+        -0.06358001659041435
+      ],
+      "paired_geomean_percent": 1.1097119279920298
+    },
+    {
+      "case": "0102_H_PULM_H_full_q1024",
+      "phase": "graph_query",
+      "initial_percent": 7.092347546033739,
+      "paired_round_percent": [
+        0.7121690417147386,
+        -0.1566340326765503,
+        -1.1700553017989002
+      ],
+      "paired_geomean_percent": -0.2078058022972007
+    },
+    {
+      "case": "synthetic_volume_m1000_k32",
+      "phase": "graph_query",
+      "initial_percent": 5.567779047686816,
+      "paired_round_percent": [
+        0.36290851526006307,
+        3.373383311012046,
+        0.2778752305633736
+      ],
+      "paired_geomean_percent": 1.32789736920087
+    }
+  ]
+}
