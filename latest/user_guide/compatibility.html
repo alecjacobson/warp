@@ -396,7 +396,10 @@
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Compatibility &amp; Support</a></li>
 <li class="toctree-l1"><a class="reference internal" href="basics.html">Basics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="runtime.html">Runtime</a></li>
-<li class="toctree-l1"><a class="reference internal" href="differentiability.html">Differentiability</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="differentiability.html">Differentiability</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="forward_mode_jets.html">Forward-Mode Jets</a></li>
+</ul>
+</details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="programming_model.html">Programming Model</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="programming_model/generics.html">Generics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="programming_model/tiles.html">Tiles</a></li>
@@ -671,10 +674,9 @@ library, not the version installed on the system when running Warp.</p>
 <li><p>Builds using <code class="docutils literal notranslate"><span class="pre">--quick</span></code> can require a newer driver; see <a class="reference internal" href="installation.html#cuda-requirements"><span class="std std-ref">CUDA Requirements</span></a>.</p></li>
 </ul>
 </li>
-<li><p><strong>Advanced Features</strong>: Half-precision (<code class="docutils literal notranslate"><span class="pre">float16</span></code>) atomic operations require compute capability 7.0+ (Volta).
-On older GPUs, these operations return zero. Double-precision (<code class="docutils literal notranslate"><span class="pre">float64</span></code>) atomic addition
-requires compute capability 6.0+ (Pascal). When targeting older GPUs, it returns zero without modifying
-the target memory.</p></li>
+<li><p><strong>Advanced Features</strong>: <code class="docutils literal notranslate"><span class="pre">float16</span></code> and <code class="docutils literal notranslate"><span class="pre">bfloat16</span></code> atomic operations require compute capability 7.0+ (Volta).
+<code class="docutils literal notranslate"><span class="pre">float64</span></code> atomic addition and subtraction require compute capability 6.0+ (Pascal).
+Kernels compiled for older GPUs skip these updates without raising an error.</p></li>
 <li><p><strong>CPU-only execution</strong> is supported on all supported platforms for users without a compatible GPU or driver.</p></li>
 </ul>
 </section>

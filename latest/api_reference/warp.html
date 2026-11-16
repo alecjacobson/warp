@@ -396,7 +396,10 @@
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/compatibility.html">Compatibility &amp; Support</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/basics.html">Basics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/runtime.html">Runtime</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/differentiability.html">Differentiability</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../user_guide/differentiability.html">Differentiability</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/forward_mode_jets.html">Forward-Mode Jets</a></li>
+</ul>
+</details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../user_guide/programming_model.html">Programming Model</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="../user_guide/programming_model/generics.html">Generics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../user_guide/programming_model/tiles.html">Tiles</a></li>
@@ -627,7 +630,7 @@ element methods, and <a class="reference internal" href="warp_sparse.html#module
 <td><p>64-bit double-precision floating-point scalar type.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.handle.html#warp.handle" title="warp.handle"><code class="xref py py-obj docutils literal notranslate"><span class="pre">handle</span></code></a></p></td>
-<td><p>Type for object handles (Mesh, Volume, BVH) in kernel parameters, struct fields, and arrays.</p></td>
+<td><p>Object handle type for meshes, volumes, BVHs, and hash grids.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.int8.html#warp.int8" title="warp.int8"><code class="xref py py-obj docutils literal notranslate"><span class="pre">int8</span></code></a></p></td>
 <td><p>8-bit signed integer scalar type.</p></td>
@@ -1205,6 +1208,12 @@ element methods, and <a class="reference internal" href="warp_sparse.html#module
 <tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.Tape.html#warp.Tape" title="warp.Tape"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Tape</span></code></a></p></td>
 <td><p>Record kernel launches within a Tape scope to enable automatic differentiation.</p></td>
 </tr>
+<tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.JetSpace.html#warp.JetSpace" title="warp.JetSpace"><code class="xref py py-obj docutils literal notranslate"><span class="pre">JetSpace</span></code></a></p></td>
+<td><p>Return the jet types and helpers for a set of differentiated inputs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.JetSpace2.html#warp.JetSpace2" title="warp.JetSpace2"><code class="xref py py-obj docutils literal notranslate"><span class="pre">JetSpace2</span></code></a></p></td>
+<td><p>Return second-order (forward-over-forward) jet types for a set of differentiated inputs.</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -1246,22 +1255,25 @@ element methods, and <a class="reference internal" href="warp_sparse.html#module
 <tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.get_devices.html#warp.get_devices" title="warp.get_devices"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_devices</span></code></a></p></td>
 <td><p>Return a list of devices supported in this environment.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.get_preferred_device.html#warp.get_preferred_device" title="warp.get_preferred_device"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_preferred_device</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.get_libmathdx_version.html#warp.get_libmathdx_version" title="warp.get_libmathdx_version"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_libmathdx_version</span></code></a></p></td>
+<td><p>Return the libmathdx version used by Warp.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.get_preferred_device.html#warp.get_preferred_device" title="warp.get_preferred_device"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_preferred_device</span></code></a></p></td>
 <td><p>Return the preferred compute device, <code class="docutils literal notranslate"><span class="pre">cuda:0</span></code> if available and <code class="docutils literal notranslate"><span class="pre">cpu</span></code> otherwise.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.is_device_available.html#warp.is_device_available" title="warp.is_device_available"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_device_available</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.is_device_available.html#warp.is_device_available" title="warp.is_device_available"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_device_available</span></code></a></p></td>
 <td><p>Check whether a device is available in the current environment.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.map_cuda_device.html#warp.map_cuda_device" title="warp.map_cuda_device"><code class="xref py py-obj docutils literal notranslate"><span class="pre">map_cuda_device</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.map_cuda_device.html#warp.map_cuda_device" title="warp.map_cuda_device"><code class="xref py py-obj docutils literal notranslate"><span class="pre">map_cuda_device</span></code></a></p></td>
 <td><p>Assign a device alias to a CUDA context.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.set_device.html#warp.set_device" title="warp.set_device"><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_device</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.set_device.html#warp.set_device" title="warp.set_device"><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_device</span></code></a></p></td>
 <td><p>Set the default device identified by the argument.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.synchronize_device.html#warp.synchronize_device" title="warp.synchronize_device"><code class="xref py py-obj docutils literal notranslate"><span class="pre">synchronize_device</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.synchronize_device.html#warp.synchronize_device" title="warp.synchronize_device"><code class="xref py py-obj docutils literal notranslate"><span class="pre">synchronize_device</span></code></a></p></td>
 <td><p>Synchronize the calling CPU thread with any outstanding CUDA work on the specified device</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.unmap_cuda_device.html#warp.unmap_cuda_device" title="warp.unmap_cuda_device"><code class="xref py py-obj docutils literal notranslate"><span class="pre">unmap_cuda_device</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.unmap_cuda_device.html#warp.unmap_cuda_device" title="warp.unmap_cuda_device"><code class="xref py py-obj docutils literal notranslate"><span class="pre">unmap_cuda_device</span></code></a></p></td>
 <td><p>Remove a CUDA device with the given alias.</p></td>
 </tr>
 </tbody>
@@ -1443,7 +1455,7 @@ element methods, and <a class="reference internal" href="warp_sparse.html#module
 <td><p>Begin capture of a graph.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="_generated/warp.capture_debug_dot_print.html#warp.capture_debug_dot_print" title="warp.capture_debug_dot_print"><code class="xref py py-obj docutils literal notranslate"><span class="pre">capture_debug_dot_print</span></code></a></p></td>
-<td><p>Export a CUDA graph to a DOT file for visualization</p></td>
+<td><p>Export a CUDA graph to a DOT file for visualization.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="_generated/warp.capture_end.html#warp.capture_end" title="warp.capture_end"><code class="xref py py-obj docutils literal notranslate"><span class="pre">capture_end</span></code></a></p></td>
 <td><p>End the capture of a graph.</p></td>

@@ -395,7 +395,10 @@
 <li class="toctree-l1"><a class="reference internal" href="user_guide/compatibility.html">Compatibility &amp; Support</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/basics.html">Basics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/runtime.html">Runtime</a></li>
-<li class="toctree-l1"><a class="reference internal" href="user_guide/differentiability.html">Differentiability</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="user_guide/differentiability.html">Differentiability</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/forward_mode_jets.html">Forward-Mode Jets</a></li>
+</ul>
+</details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="user_guide/programming_model.html">Programming Model</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/programming_model/generics.html">Generics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/programming_model/tiles.html">Tiles</a></li>
@@ -809,6 +812,18 @@ tile-based GPU programming. Install the optional dependencies with
 <td><p>particle repulsion</p></td>
 <td><p>navier-stokes perturbation</p></td>
 </tr>
+<tr class="row-odd"><td><a class="reference external image-reference" href="https://github.com/NVIDIA/warp/blob/main/warp/examples/optim/example_implicit_projection.py"><img alt="_images/optim_implicit_projection.png" src="_images/optim_implicit_projection.png" />
+</a>
+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="row-even"><td><p>implicit projection</p></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -915,6 +930,7 @@ tile-based GPU programming. Install the optional dependencies with
 <li class="toctree-l2"><a class="reference internal" href="user_guide/interoperability.html#guides-in-this-section">Guides in this section</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/interoperability.html#quick-reference">Quick Reference</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/interoperability.html#pass-arrays-directly">Pass Arrays Directly</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/interoperability.html#object-handle-arrays">Object Handle Arrays</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/interoperability.html#numpy">NumPy</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/interoperability.html#cupy-numba">CuPy / Numba</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/interoperability.html#paddle">Paddle</a></li>

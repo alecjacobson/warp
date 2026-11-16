@@ -396,7 +396,10 @@
 <li class="toctree-l1"><a class="reference internal" href="../../user_guide/compatibility.html">Compatibility &amp; Support</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../user_guide/basics.html">Basics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../user_guide/runtime.html">Runtime</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../user_guide/differentiability.html">Differentiability</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../user_guide/differentiability.html">Differentiability</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../user_guide/forward_mode_jets.html">Forward-Mode Jets</a></li>
+</ul>
+</details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../../user_guide/programming_model.html">Programming Model</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../user_guide/programming_model/generics.html">Generics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../user_guide/programming_model/tiles.html">Tiles</a></li>
@@ -521,7 +524,7 @@
 <dd><em class="sig-param"><span class="n"><span class="pre">family</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
-<span class="sig-paren">)</span><a class="reference external" href="https://github.com/NVIDIA/warp/blob/main/warp/_src/fem/space/__init__.py#L203-L236"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#warp.fem.make_polynomial_space" title="Link to this definition">#</a></dt>
+<span class="sig-paren">)</span><a class="reference external" href="https://github.com/NVIDIA/warp/blob/main/warp/_src/fem/space/__init__.py#L205-L238"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#warp.fem.make_polynomial_space" title="Link to this definition">#</a></dt>
 <dd><p>Equips a geometry with a collocated, polynomial function space.
 Equivalent to successive calls to <a class="reference internal" href="warp.fem.make_polynomial_basis_space.html#warp.fem.make_polynomial_basis_space" title="warp.fem.make_polynomial_basis_space"><code class="xref py py-func docutils literal notranslate"><span class="pre">make_polynomial_basis_space()</span></code></a> then <a class="reference internal" href="warp.fem.make_collocated_function_space.html#warp.fem.make_collocated_function_space" title="warp.fem.make_collocated_function_space"><code class="xref py py-func docutils literal notranslate"><span class="pre">make_collocated_function_space()</span></code></a>, <a class="reference internal" href="warp.fem.make_covariant_function_space.html#warp.fem.make_covariant_function_space" title="warp.fem.make_covariant_function_space"><code class="xref py py-func docutils literal notranslate"><span class="pre">make_covariant_function_space()</span></code></a> or <a class="reference internal" href="warp.fem.make_contravariant_function_space.html#warp.fem.make_contravariant_function_space" title="warp.fem.make_contravariant_function_space"><code class="xref py py-func docutils literal notranslate"><span class="pre">make_contravariant_function_space()</span></code></a>.</p>
 <dl class="field-list simple">

@@ -65,7 +65,7 @@
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
     <link rel="next" title="warp.fem.project_system_matrix" href="warp.fem.project_system_matrix.html" />
-    <link rel="prev" title="warp.fem.normalize_dirichlet_projector" href="warp.fem.normalize_dirichlet_projector.html" />
+    <link rel="prev" title="warp.fem.periodic_prolongation" href="warp.fem.periodic_prolongation.html" />
 
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -396,7 +396,10 @@
 <li class="toctree-l1"><a class="reference internal" href="../../user_guide/compatibility.html">Compatibility &amp; Support</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../user_guide/basics.html">Basics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../user_guide/runtime.html">Runtime</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../user_guide/differentiability.html">Differentiability</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../user_guide/differentiability.html">Differentiability</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../user_guide/forward_mode_jets.html">Forward-Mode Jets</a></li>
+</ul>
+</details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../../user_guide/programming_model.html">Programming Model</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../user_guide/programming_model/generics.html">Generics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../user_guide/programming_model/tiles.html">Tiles</a></li>
@@ -517,11 +520,14 @@
 <dd><em class="sig-param"><span class="n"><span class="pre">projector_matrix</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fixed_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">normalize_projector</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">projector_structure</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'general'</span></span></em>,</dd>
 </dl>
 
-<span class="sig-paren">)</span><a class="reference external" href="https://github.com/NVIDIA/warp/blob/main/warp/_src/fem/dirichlet.py#L107-L123"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#warp.fem.project_linear_system" title="Link to this definition">#</a></dt>
+<span class="sig-paren">)</span><a class="reference external" href="https://github.com/NVIDIA/warp/blob/main/warp/_src/fem/dirichlet.py#L149-L171"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#warp.fem.project_linear_system" title="Link to this definition">#</a></dt>
 <dd><p>Projects both the left-hand-side and right-hand-side of a linear system to enforce Dirichlet boundary conditions</p>
-<p>If normalize_projector is True, first apply scaling so that the projector_matrix is idempotent</p>
+<p>If normalize_projector is True, first apply scaling so that the projector_matrix is idempotent.
+<code class="docutils literal notranslate"><span class="pre">projector_structure</span></code> selects how the system matrix is projected; pass <code class="docutils literal notranslate"><span class="pre">&quot;block_diagonal&quot;</span></code> for
+the in-place, graph-capturable projection of block-diagonal projectors. See <a class="reference internal" href="warp.fem.project_system_matrix.html#warp.fem.project_system_matrix" title="warp.fem.project_system_matrix"><code class="xref py py-func docutils literal notranslate"><span class="pre">project_system_matrix()</span></code></a>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -529,6 +535,7 @@
 <li><p><strong>system_rhs</strong> (<a class="reference internal" href="warp.array.html#warp.array" title="warp._src.types.array"><em>array</em></a>)</p></li>
 <li><p><strong>projector_matrix</strong> (<a class="reference internal" href="warp.sparse.BsrMatrix.html#warp.sparse.BsrMatrix" title="warp._src.sparse.BsrMatrix"><em>BsrMatrix</em></a>)</p></li>
 <li><p><strong>fixed_value</strong> (<a class="reference internal" href="warp.array.html#warp.array" title="warp._src.types.array"><em>array</em></a><em> | </em><em>None</em>)</p></li>
+<li><p><strong>projector_structure</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'general'</em><em>, </em><em>'block_diagonal'</em><em>]</em>)</p></li>
 </ul>
 </dd>
 </dl>
@@ -547,12 +554,12 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="warp.fem.normalize_dirichlet_projector.html"
+       href="warp.fem.periodic_prolongation.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">warp.fem.normalize_dirichlet_projector</p>
+        <p class="prev-next-title">warp.fem.periodic_prolongation</p>
       </div>
     </a>
     <a class="right-next"

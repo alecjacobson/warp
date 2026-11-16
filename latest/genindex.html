@@ -389,7 +389,10 @@
 <li class="toctree-l1"><a class="reference internal" href="user_guide/compatibility.html">Compatibility &amp; Support</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/basics.html">Basics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/runtime.html">Runtime</a></li>
-<li class="toctree-l1"><a class="reference internal" href="user_guide/differentiability.html">Differentiability</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="user_guide/differentiability.html">Differentiability</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/forward_mode_jets.html">Forward-Mode Jets</a></li>
+</ul>
+</details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="user_guide/programming_model.html">Programming Model</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/programming_model/generics.html">Generics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/programming_model/tiles.html">Tiles</a></li>
@@ -623,6 +626,8 @@
       <li><a href="api_reference/_generated/warp.utils.array_inner.html#warp.utils.array_inner">array_inner() (in module warp.utils)</a>
 </li>
       <li><a href="api_reference/_generated/warp.utils.array_scan.html#warp.utils.array_scan">array_scan() (in module warp.utils)</a>
+</li>
+      <li><a href="api_reference/_generated/warp.utils.array_scan_temp_storage_size.html#warp.utils.array_scan_temp_storage_size">array_scan_temp_storage_size() (in module warp.utils)</a>
 </li>
       <li><a href="api_reference/_generated/warp.utils.array_sum.html#warp.utils.array_sum">array_sum() (in module warp.utils)</a>
 </li>
@@ -1929,7 +1934,11 @@
       <li><a href="api_reference/_generated/warp.fem.ElementKind.html#warp.fem.ElementKind">ElementKind (class in warp.fem)</a>
 </li>
       <li><a href="api_reference/_generated/warp.empty.html#warp.empty">empty() (in module warp)</a>
+
+      <ul>
+        <li><a href="language_reference/_generated/warp.empty.html#warp._src.lang.empty">(in module warp._src.lang)</a>
 </li>
+      </ul></li>
       <li><a href="api_reference/_generated/warp.empty_like.html#warp.empty_like">empty_like() (in module warp)</a>
 </li>
       <li><a href="api_reference/_generated/warp.config.enable_backward.html#warp.config.enable_backward">enable_backward (in module warp.config)</a>
@@ -1949,6 +1958,8 @@
       <li><a href="api_reference/_generated/warp.config.enable_tiles_in_stack_memory.html#warp.config.enable_tiles_in_stack_memory">enable_tiles_in_stack_memory (in module warp.config)</a>
 </li>
       <li><a href="api_reference/_generated/warp.config.enable_vector_component_overwrites.html#warp.config.enable_vector_component_overwrites">enable_vector_component_overwrites (in module warp.config)</a>
+</li>
+      <li><a href="api_reference/_generated/warp.config.enable_wide_array_access.html#warp.config.enable_wide_array_access">enable_wide_array_access (in module warp.config)</a>
 </li>
       <li><a href="api_reference/_generated/warp.ScopedTimer.html#warp.ScopedTimer.enabled">enabled (warp.ScopedTimer attribute)</a>
 </li>
@@ -2422,6 +2433,8 @@
 </li>
       <li><a href="api_reference/_generated/warp.Module.html#warp.Module.get_kernel_hooks">get_kernel_hooks() (warp.Module method)</a>
 </li>
+      <li><a href="api_reference/_generated/warp.get_libmathdx_version.html#warp.get_libmathdx_version">get_libmathdx_version() (in module warp)</a>
+</li>
       <li><a href="api_reference/_generated/warp.get_logger.html#warp.get_logger">get_logger() (in module warp)</a>
 </li>
       <li><a href="api_reference/_generated/warp.Kernel.html#warp.Kernel.get_mangled_name">get_mangled_name() (warp.Kernel method)</a>
@@ -2430,10 +2443,10 @@
 </li>
       <li><a href="api_reference/_generated/warp.get_mempool_used_mem_current.html#warp.get_mempool_used_mem_current">get_mempool_used_mem_current() (in module warp)</a>
 </li>
-      <li><a href="api_reference/_generated/warp.get_mempool_used_mem_high.html#warp.get_mempool_used_mem_high">get_mempool_used_mem_high() (in module warp)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference/_generated/warp.get_mempool_used_mem_high.html#warp.get_mempool_used_mem_high">get_mempool_used_mem_high() (in module warp)</a>
+</li>
       <li><a href="api_reference/_generated/warp.get_module.html#warp.get_module">get_module() (in module warp)</a>
 </li>
       <li><a href="api_reference/_generated/warp.Module.html#warp.Module.get_module_hash">get_module_hash() (warp.Module method)</a>
@@ -2572,20 +2585,30 @@
 </li>
       <li><a href="api_reference/_generated/warp.handle.html#warp.handle">handle (class in warp)</a>
 </li>
+      <li><a href="api_reference/_generated/warp.fem.hanging_node_prolongation.html#warp.fem.hanging_node_prolongation">hanging_node_prolongation() (in module warp.fem)</a>
+</li>
       <li><a href="api_reference/_generated/warp.Device.html#warp.Device.has_context">has_context (warp.Device property)</a>
 </li>
       <li><a href="api_reference/_generated/warp.render.OpenGLRenderer.html#warp.render.OpenGLRenderer.has_exit">has_exit (warp.render.OpenGLRenderer property)</a>
 </li>
       <li><a href="api_reference/_generated/warp.Device.html#warp.Device.has_stream">has_stream (warp.Device property)</a>
 </li>
+      <li><a href="api_reference/_generated/warp.fem.PicQuadrature.html#warp.fem.PicQuadrature.has_unique_evaluation_indices">has_unique_evaluation_indices() (warp.fem.PicQuadrature method)</a>
+
+      <ul>
+        <li><a href="api_reference/_generated/warp.fem.Quadrature.html#warp.fem.Quadrature.has_unique_evaluation_indices">(warp.fem.Quadrature method)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference/_generated/warp.fem.SpaceTopology.html#warp.fem.SpaceTopology.has_unique_node_incidence">has_unique_node_incidence() (warp.fem.SpaceTopology method)</a>
+</li>
       <li><a href="api_reference/_generated/warp.Kernel.html#warp.Kernel.hash">hash (warp.Kernel property)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="language_reference/_generated/warp.hash_grid_point_id.html#warp._src.lang.hash_grid_point_id">hash_grid_point_id() (in module warp._src.lang)</a>
 </li>
       <li><a href="language_reference/_generated/warp.hash_grid_query.html#warp._src.lang.hash_grid_query">hash_grid_query() (in module warp._src.lang)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="language_reference/_generated/warp.hash_grid_query_next.html#warp._src.lang.hash_grid_query_next">hash_grid_query_next() (in module warp._src.lang)</a>
 </li>
       <li><a href="api_reference/_generated/warp.Module.html#warp.Module.hash_module">hash_module() (warp.Module method)</a>
@@ -2620,6 +2643,8 @@
         <li><a href="api_reference/_generated/warp.Mesh.html#warp.Mesh.id">(warp.Mesh attribute)</a>
 </li>
         <li><a href="api_reference/_generated/warp.Texture.html#warp.Texture.id">(warp.Texture property)</a>
+</li>
+        <li><a href="api_reference/_generated/warp.Volume.html#warp.Volume.id">(warp.Volume attribute)</a>
 </li>
       </ul></li>
       <li><a href="language_reference/_generated/warp.identity.html#warp._src.lang.identity">identity() (in module warp._src.lang)</a>
@@ -2702,12 +2727,52 @@
 </li>
       <li><a href="api_reference/_generated/warp.fem.interpolate.html#warp.fem.interpolate">interpolate() (in module warp.fem)</a>
 </li>
+      <li><a href="api_reference/_generated/warp.fem.ShapeFunction.html#warp.fem.ShapeFunction.INTERPOLATORY">INTERPOLATORY (warp.fem.ShapeFunction attribute)</a>
+
+      <ul>
+        <li><a href="api_reference/_generated/warp.fem.space.shape.ConstantShapeFunction.html#warp.fem.space.shape.ConstantShapeFunction.INTERPOLATORY">(warp.fem.space.shape.ConstantShapeFunction attribute)</a>
+</li>
+        <li><a href="api_reference/_generated/warp.fem.space.shape.CubeNonConformingPolynomialShapeFunctions.html#warp.fem.space.shape.CubeNonConformingPolynomialShapeFunctions.INTERPOLATORY">(warp.fem.space.shape.CubeNonConformingPolynomialShapeFunctions attribute)</a>
+</li>
+        <li><a href="api_reference/_generated/warp.fem.space.shape.CubeSerendipityShapeFunctions.html#warp.fem.space.shape.CubeSerendipityShapeFunctions.INTERPOLATORY">(warp.fem.space.shape.CubeSerendipityShapeFunctions attribute)</a>
+</li>
+        <li><a href="api_reference/_generated/warp.fem.space.shape.CubeTripolynomialShapeFunctions.html#warp.fem.space.shape.CubeTripolynomialShapeFunctions.INTERPOLATORY">(warp.fem.space.shape.CubeTripolynomialShapeFunctions attribute)</a>
+</li>
+        <li><a href="api_reference/_generated/warp.fem.space.shape.SquareBipolynomialShapeFunctions.html#warp.fem.space.shape.SquareBipolynomialShapeFunctions.INTERPOLATORY">(warp.fem.space.shape.SquareBipolynomialShapeFunctions attribute)</a>
+</li>
+        <li><a href="api_reference/_generated/warp.fem.space.shape.SquareNonConformingPolynomialShapeFunctions.html#warp.fem.space.shape.SquareNonConformingPolynomialShapeFunctions.INTERPOLATORY">(warp.fem.space.shape.SquareNonConformingPolynomialShapeFunctions attribute)</a>
+</li>
+        <li><a href="api_reference/_generated/warp.fem.space.shape.SquareSerendipityShapeFunctions.html#warp.fem.space.shape.SquareSerendipityShapeFunctions.INTERPOLATORY">(warp.fem.space.shape.SquareSerendipityShapeFunctions attribute)</a>
+</li>
+        <li><a href="api_reference/_generated/warp.fem.space.shape.TetrahedronNonConformingPolynomialShapeFunctions.html#warp.fem.space.shape.TetrahedronNonConformingPolynomialShapeFunctions.INTERPOLATORY">(warp.fem.space.shape.TetrahedronNonConformingPolynomialShapeFunctions attribute)</a>
+</li>
+        <li><a href="api_reference/_generated/warp.fem.space.shape.TetrahedronPolynomialShapeFunctions.html#warp.fem.space.shape.TetrahedronPolynomialShapeFunctions.INTERPOLATORY">(warp.fem.space.shape.TetrahedronPolynomialShapeFunctions attribute)</a>
+</li>
+        <li><a href="api_reference/_generated/warp.fem.space.shape.TriangleNonConformingPolynomialShapeFunctions.html#warp.fem.space.shape.TriangleNonConformingPolynomialShapeFunctions.INTERPOLATORY">(warp.fem.space.shape.TriangleNonConformingPolynomialShapeFunctions attribute)</a>
+</li>
+        <li><a href="api_reference/_generated/warp.fem.space.shape.TrianglePolynomialShapeFunctions.html#warp.fem.space.shape.TrianglePolynomialShapeFunctions.INTERPOLATORY">(warp.fem.space.shape.TrianglePolynomialShapeFunctions attribute)</a>
+</li>
+      </ul></li>
       <li><a href="api_reference/_generated/warp.Event.html#warp.Event.Flags.INTERPROCESS">INTERPROCESS (warp.Event.Flags attribute)</a>
 </li>
-      <li><a href="language_reference/_generated/warp.intersect_tri_tri.html#warp._src.lang.intersect_tri_tri">intersect_tri_tri() (in module warp._src.lang)</a>
+      <li><a href="api_reference/_generated/warp.geometry.intersect_aabb_aabb.html#warp.geometry.intersect_aabb_aabb">intersect_aabb_aabb() (in module warp.geometry)</a>
 </li>
+      <li><a href="api_reference/_generated/warp.geometry.intersect_seg_aabb.html#warp.geometry.intersect_seg_aabb">intersect_seg_aabb() (in module warp.geometry)</a>
+</li>
+      <li><a href="api_reference/_generated/warp.geometry.intersect_seg_tri.html#warp.geometry.intersect_seg_tri">intersect_seg_tri() (in module warp.geometry)</a>
+</li>
+      <li><a href="api_reference/_generated/warp.geometry.intersect_tri_aabb.html#warp.geometry.intersect_tri_aabb">intersect_tri_aabb() (in module warp.geometry)</a>
+</li>
+      <li><a href="language_reference/_generated/warp.intersect_tri_tri.html#warp._src.lang.intersect_tri_tri">intersect_tri_tri() (in module warp._src.lang)</a>
+
+      <ul>
+        <li><a href="api_reference/_generated/warp.geometry.intersect_tri_tri.html#warp.geometry.intersect_tri_tri">(in module warp.geometry)</a>
+</li>
+      </ul></li>
       <li><a href="language_reference/_generated/warp.inverse.html#warp._src.lang.inverse">inverse() (in module warp._src.lang)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="language_reference/_generated/warp.inverse_approx.html#warp._src.lang.inverse_approx">inverse_approx() (in module warp._src.lang)</a>
 </li>
       <li><a href="api_reference/_generated/warp.fem.linalg.inverse_qr.html#warp.fem.linalg.inverse_qr">inverse_qr() (in module warp.fem.linalg)</a>
@@ -2732,8 +2797,6 @@
         <li><a href="api_reference/_generated/warp.Stream.html#warp.Stream.is_capturing">(warp.Stream property)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference/_generated/warp.Event.html#warp.Event.is_complete">is_complete (warp.Event property)</a>
 
       <ul>
@@ -2854,15 +2917,19 @@
 </li>
       <li><a href="api_reference/_generated/warp.JaxCallableGraphMode.html#warp.JaxCallableGraphMode.JAX">JAX (warp.JaxCallableGraphMode attribute)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference/_generated/warp.jax_callable.html#warp.jax_callable">jax_callable() (in module warp)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference/_generated/warp.jax_kernel.html#warp.jax_kernel">jax_kernel() (in module warp)</a>
 </li>
       <li><a href="api_reference/_generated/warp.JaxCallableGraphMode.html#warp.JaxCallableGraphMode">JaxCallableGraphMode (class in warp)</a>
 </li>
       <li><a href="api_reference/_generated/warp.JaxModulePreloadMode.html#warp.JaxModulePreloadMode">JaxModulePreloadMode (class in warp)</a>
+</li>
+      <li><a href="api_reference/_generated/warp.JetSpace.html#warp.JetSpace">JetSpace() (in module warp)</a>
+</li>
+      <li><a href="api_reference/_generated/warp.JetSpace2.html#warp.JetSpace2">JetSpace2() (in module warp)</a>
 </li>
       <li><a href="api_reference/_generated/warp.fem.jump.html#warp.fem.jump">jump (in module warp.fem)</a>
 </li>
@@ -3059,6 +3126,10 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference/_generated/warp.fem.make_collocated_function_space.html#warp.fem.make_collocated_function_space">make_collocated_function_space() (in module warp.fem)</a>
+</li>
+      <li><a href="api_reference/_generated/warp.fem.make_conforming_basis_space.html#warp.fem.make_conforming_basis_space">make_conforming_basis_space() (in module warp.fem)</a>
+</li>
+      <li><a href="api_reference/_generated/warp.fem.make_constrained_basis_space.html#warp.fem.make_constrained_basis_space">make_constrained_basis_space() (in module warp.fem)</a>
 </li>
       <li><a href="api_reference/_generated/warp.fem.make_contravariant_function_space.html#warp.fem.make_contravariant_function_space">make_contravariant_function_space() (in module warp.fem)</a>
 </li>
@@ -3362,6 +3433,8 @@
         <li><a href="api_reference/_generated/warp.fem.space.shape.TriangleRaviartThomasShapeFunctions.html#warp.fem.space.shape.TriangleRaviartThomasShapeFunctions.make_node_quadrature_weight">(warp.fem.space.shape.TriangleRaviartThomasShapeFunctions method)</a>
 </li>
       </ul></li>
+      <li><a href="api_reference/_generated/warp.fem.BasisSpace.html#warp.fem.BasisSpace.make_node_sample">make_node_sample() (warp.fem.BasisSpace method)</a>
+</li>
       <li><a href="api_reference/_generated/warp.fem.make_polynomial_basis_space.html#warp.fem.make_polynomial_basis_space">make_polynomial_basis_space() (in module warp.fem)</a>
 </li>
   </ul></td>
@@ -3532,6 +3605,8 @@
 </li>
       <li><a href="api_reference/_generated/warp.utils.GraphColoringAlgorithm.html#warp.utils.GraphColoringAlgorithm.MCS">MCS (warp.utils.GraphColoringAlgorithm attribute)</a>
 </li>
+      <li><a href="api_reference/_generated/warp.geometry.OBBMeasureType.html#warp.geometry.OBBMeasureType.MEAN_WIDTH">MEAN_WIDTH (warp.geometry.OBBMeasureType attribute)</a>
+</li>
       <li><a href="api_reference/_generated/warp.fem.measure.html#warp.fem.measure">measure (in module warp.fem)</a>
 </li>
       <li><a href="api_reference/_generated/warp.fem.measure_ratio.html#warp.fem.measure_ratio">measure_ratio (in module warp.fem)</a>
@@ -3670,6 +3745,8 @@
       <li><a href="api_reference/_generated/warp.Graph.html#warp.Graph.module_execs">module_execs (warp.Graph attribute)</a>
 </li>
       <li><a href="api_reference/_generated/warp.ModuleBuildOptions.html#warp.ModuleBuildOptions">ModuleBuildOptions (class in warp)</a>
+</li>
+      <li><a href="api_reference/_generated/warp.fem.BasisSpace.html#warp.fem.BasisSpace.moves_node_samples">moves_node_samples (warp.fem.BasisSpace attribute)</a>
 </li>
       <li><a href="language_reference/_generated/warp.mul.html#warp._src.lang.mul">mul() (in module warp._src.lang)</a>
 </li>
@@ -3979,6 +4056,8 @@
 <h2 id="O">O</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference/_generated/warp.geometry.OBBMeasureType.html#warp.geometry.OBBMeasureType">OBBMeasureType (class in warp.geometry)</a>
+</li>
       <li><a href="api_reference/_generated/warp.sparse.BsrMatrix.html#warp.sparse.BsrMatrix.offsets">offsets (warp.sparse.BsrMatrix attribute)</a>
 </li>
       <li><a href="api_reference/_generated/warp.ones.html#warp.ones">ones() (in module warp)</a>
@@ -4001,11 +4080,15 @@
         <li><a href="api_reference/_generated/warp.fem.ShapeFunction.html#warp.fem.ShapeFunction.ORDER">(warp.fem.ShapeFunction attribute)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference/_generated/warp.Device.html#warp.Device.ordinal">ordinal (warp.Device attribute)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference/_generated/warp.fem.Grid2D.html#warp.fem.Grid2D.orient">orient (warp.fem.Grid2D attribute)</a>
+</li>
+      <li><a href="api_reference/_generated/warp.geometry.oriented_bounding_box.html#warp.geometry.oriented_bounding_box">oriented_bounding_box() (in module warp.geometry)</a>
+</li>
+      <li><a href="api_reference/_generated/warp.geometry.oriented_bounding_boxes.html#warp.geometry.oriented_bounding_boxes">oriented_bounding_boxes() (in module warp.geometry)</a>
 </li>
       <li><a href="api_reference/_generated/warp.fem.Grid2D.html#warp.fem.Grid2D.origin">origin (warp.fem.Grid2D property)</a>
 
@@ -4063,6 +4146,8 @@
 </li>
       <li><a href="api_reference/_generated/warp.Device.html#warp.Device.pci_bus_id">pci_bus_id (warp.Device attribute)</a>
 </li>
+      <li><a href="api_reference/_generated/warp.fem.periodic_prolongation.html#warp.fem.periodic_prolongation">periodic_prolongation() (in module warp.fem)</a>
+</li>
       <li><a href="api_reference/_generated/warp.PHI.html#warp.PHI">PHI (in module warp)</a>
 </li>
       <li><a href="api_reference/_generated/warp.phi_constant.html#warp.phi">phi (in module warp)</a>
@@ -4083,10 +4168,10 @@
 </li>
       <li><a href="api_reference/_generated/warp.fem.ExplicitQuadrature.html#warp.fem.ExplicitQuadrature.point_count">point_count (warp.fem.ExplicitQuadrature attribute)</a>
 </li>
-      <li><a href="api_reference/_generated/warp.fem.Quadrature.html#warp.fem.Quadrature.point_count">point_count() (warp.fem.Quadrature static method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference/_generated/warp.fem.Quadrature.html#warp.fem.Quadrature.point_count">point_count() (warp.fem.Quadrature static method)</a>
+</li>
       <li><a href="api_reference/_generated/warp.fem.Quadrature.html#warp.fem.Quadrature.point_evaluation_index">point_evaluation_index() (warp.fem.Quadrature static method)</a>
 </li>
       <li><a href="api_reference/_generated/warp.fem.Quadrature.html#warp.fem.Quadrature.point_index">point_index() (warp.fem.Quadrature static method)</a>
@@ -4593,6 +4678,8 @@
 </li>
       <li><a href="language_reference/_generated/warp.select.html#warp._src.lang.select">select() (in module warp._src.lang)</a>
 </li>
+      <li><a href="api_reference/_generated/warp.geometry.self_intersect_tri_tri.html#warp.geometry.self_intersect_tri_tri">self_intersect_tri_tri() (in module warp.geometry)</a>
+</li>
       <li><a href="api_reference/_generated/warp.fem.ElementBasis.html#warp.fem.ElementBasis.SERENDIPITY">SERENDIPITY (warp.fem.ElementBasis attribute)</a>
 </li>
       <li><a href="api_reference/_generated/warp.set_cuda_allocator.html#warp.set_cuda_allocator">set_cuda_allocator() (in module warp)</a>
@@ -4753,6 +4840,12 @@
         <li><a href="api_reference/_generated/warp.fem.Hexmesh.html#warp.fem.Hexmesh.side_environment_index">(warp.fem.Hexmesh attribute)</a>
 </li>
         <li><a href="api_reference/_generated/warp.fem.Tetmesh.html#warp.fem.Tetmesh.side_environment_index">(warp.fem.Tetmesh attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference/_generated/warp.fem.AdaptiveNanogrid.html#warp.fem.AdaptiveNanogrid.side_facet_incidence">side_facet_incidence() (warp.fem.AdaptiveNanogrid method)</a>
+
+      <ul>
+        <li><a href="api_reference/_generated/warp.fem.Geometry.html#warp.fem.Geometry.side_facet_incidence">(warp.fem.Geometry method)</a>
 </li>
       </ul></li>
       <li><a href="api_reference/_generated/warp.fem.AdaptiveNanogrid.html#warp.fem.AdaptiveNanogrid.side_from_cell_coords">side_from_cell_coords (warp.fem.AdaptiveNanogrid attribute)</a>
@@ -5149,6 +5242,8 @@
 </li>
       <li><a href="api_reference/_generated/warp.fem.Subdomain.html#warp.fem.Subdomain">Subdomain (class in warp.fem)</a>
 </li>
+      <li><a href="api_reference/_generated/warp.geometry.super_fibonacci.html#warp.geometry.super_fibonacci">super_fibonacci() (in module warp.geometry)</a>
+</li>
       <li><a href="api_reference/_generated/warp.Mesh.html#warp.Mesh.support_winding_number">support_winding_number (warp.Mesh attribute)</a>
 </li>
       <li><a href="api_reference/_generated/warp.fem.AdaptiveNanogrid.html#warp.fem.AdaptiveNanogrid.supports_cell_lookup">supports_cell_lookup() (warp.fem.AdaptiveNanogrid method)</a>
@@ -5171,6 +5266,10 @@
         <li><a href="api_reference/_generated/warp.fem.Subdomain.html#warp.fem.Subdomain.supports_lookup">(warp.fem.Subdomain method)</a>
 </li>
       </ul></li>
+      <li><a href="api_reference/_generated/warp.fem.BasisSpace.html#warp.fem.BasisSpace.supports_nodal_assembly">supports_nodal_assembly (warp.fem.BasisSpace attribute)</a>
+</li>
+      <li><a href="api_reference/_generated/warp.fem.BasisSpace.html#warp.fem.BasisSpace.supports_nodal_quadrature">supports_nodal_quadrature (warp.fem.BasisSpace attribute)</a>
+</li>
       <li><a href="api_reference/_generated/warp.geometry.IsoSurfaceBase.html#warp.geometry.IsoSurfaceBase.surface">surface() (warp.geometry.IsoSurfaceBase method)</a>
 
       <ul>
@@ -5179,6 +5278,8 @@
         <li><a href="api_reference/_generated/warp.geometry.IsoSurfaceNets.html#warp.geometry.IsoSurfaceNets.surface">(warp.geometry.IsoSurfaceNets method)</a>
 </li>
       </ul></li>
+      <li><a href="api_reference/_generated/warp.geometry.OBBMeasureType.html#warp.geometry.OBBMeasureType.SURFACE_AREA">SURFACE_AREA (warp.geometry.OBBMeasureType attribute)</a>
+</li>
       <li><a href="api_reference/_generated/warp.TextureResourceFlags.html#warp.TextureResourceFlags.SURFACE_LDST">SURFACE_LDST (warp.TextureResourceFlags attribute)</a>
 </li>
       <li><a href="language_reference/_generated/warp.svd2.html#warp._src.lang.svd2">svd2() (in module warp._src.lang)</a>
@@ -5346,6 +5447,8 @@
       <li><a href="language_reference/_generated/warp.tile_lower_solve.html#warp._src.lang.tile_lower_solve">tile_lower_solve() (in module warp._src.lang)</a>
 </li>
       <li><a href="language_reference/_generated/warp.tile_lower_solve_inplace.html#warp._src.lang.tile_lower_solve_inplace">tile_lower_solve_inplace() (in module warp._src.lang)</a>
+</li>
+      <li><a href="language_reference/_generated/warp.tile_lu.html#warp._src.lang.tile_lu">tile_lu() (in module warp._src.lang)</a>
 </li>
       <li><a href="language_reference/_generated/warp.tile_map.html#warp._src.lang.tile_map">tile_map() (in module warp._src.lang)</a>
 </li>
@@ -5777,6 +5880,8 @@
         <li><a href="api_reference/_generated/warp.fem.UniformField.html#warp.fem.UniformField.value">(warp.fem.UniformField property)</a>
 </li>
       </ul></li>
+      <li><a href="language_reference/_generated/warp.value.html#warp._src.lang.value">value() (in module warp._src.lang)</a>
+</li>
       <li><a href="api_reference/_generated/warp.fem.FunctionSpace.html#warp.fem.FunctionSpace.value_basis_element">value_basis_element() (warp.fem.FunctionSpace static method)</a>
 </li>
       <li><a href="api_reference/_generated/warp.Volume.html#warp.Volume.FeatureArrayInfo.value_count">value_count (warp.Volume.FeatureArrayInfo attribute)</a>
@@ -5978,6 +6083,8 @@
       <li><a href="api_reference/_generated/warp.fem.SymmetricTensorMapper.html#warp.fem.SymmetricTensorMapper.Mapping.VOIGT">VOIGT (warp.fem.SymmetricTensorMapper.Mapping attribute)</a>
 </li>
       <li><a href="api_reference/_generated/warp.Volume.html#warp.Volume">Volume (class in warp)</a>
+</li>
+      <li><a href="api_reference/_generated/warp.geometry.OBBMeasureType.html#warp.geometry.OBBMeasureType.VOLUME">VOLUME (warp.geometry.OBBMeasureType attribute)</a>
 </li>
       <li><a href="api_reference/_generated/warp.Volume.html#warp.Volume.ActiveStats">Volume.ActiveStats (class in warp)</a>
 </li>

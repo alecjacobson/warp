@@ -396,7 +396,10 @@
 <li class="toctree-l1"><a class="reference internal" href="compatibility.html">Compatibility &amp; Support</a></li>
 <li class="toctree-l1"><a class="reference internal" href="basics.html">Basics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="runtime.html">Runtime</a></li>
-<li class="toctree-l1"><a class="reference internal" href="differentiability.html">Differentiability</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="differentiability.html">Differentiability</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="forward_mode_jets.html">Forward-Mode Jets</a></li>
+</ul>
+</details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="programming_model.html">Programming Model</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="programming_model/generics.html">Generics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="programming_model/tiles.html">Tiles</a></li>
@@ -649,7 +652,7 @@ setting.</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
 <td><p>If <code class="docutils literal notranslate"><span class="pre">True</span></code>, CUDA kernels will be compiled with the <code class="docutils literal notranslate"><span class="pre">--use_fast_math</span></code>
 compiler option, which enables some fast math operations that are faster
-but less accurate.</p></td>
+but less accurate. CPU compilation currently ignores this option.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fuse_fp</span></code></p></td>
 <td><p>Boolean</p></td>
@@ -726,9 +729,12 @@ module string replaces the global string; include <code class="docutils literal 
 module should detect host CPU features. The global default uses host CPU
 features and sets <code class="docutils literal notranslate"><span class="pre">-inline-threshold=9000</span></code> and
 <code class="docutils literal notranslate"><span class="pre">-inline-cold-callsite-threshold=3000</span></code> to make LLVM more eager to inline CPU
-helpers, and limits SLP recursion depth to four. Set the global value to
-<code class="docutils literal notranslate"><span class="pre">None</span></code> before a module is first hashed to keep host CPU detection with
-LLVM’s default inlining thresholds and SLP recursion depth. For one module,
+helpers, and limits SLP recursion depth to four. On x86-64 it also sets
+<code class="docutils literal notranslate"><span class="pre">-undef-reg-clearance=4294967295</span></code> to favor clearing unused scalar-conversion
+operands and avoid denormal penalties in unused SIMD lanes. This changes
+code generation without flushing valid subnormal values. Set the global value
+to <code class="docutils literal notranslate"><span class="pre">None</span></code> before a module is first hashed to keep host CPU detection with
+LLVM’s default optimization settings. For one module,
 use <code class="docutils literal notranslate"><span class="pre">&quot;-march=native&quot;</span></code>; a module-level <code class="docutils literal notranslate"><span class="pre">None</span></code> inherits the global setting.
 Warp enables the loop and SLP vectorizers for CPU modules at effective
 optimization levels 2 and 3. Include <code class="docutils literal notranslate"><span class="pre">-fno-vectorize</span></code> or
