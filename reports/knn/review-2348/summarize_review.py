@@ -128,4 +128,6 @@ with plt.rc_context({"svg.fonttype": "none", "svg.hashsalt": "knn-review-2348", 
     fig.tight_layout()
     fig.savefig(root / "before-after.svg")
     plt.close(fig)
+svg = root / "before-after.svg"
+svg.write_text("\n".join(line.rstrip() for line in svg.read_text().splitlines()) + "\n")
 print(json.dumps(summary, indent=2))

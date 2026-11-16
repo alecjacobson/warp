@@ -1,6 +1,6 @@
 # kNN review and PR validation
 
-Reviewed **2026-11-16**, authored by **Codex**. Implementation: [`alecjacobson/knn-review`](https://github.com/alecjacobson/warp/tree/alecjacobson/knn-review), commit [`1e11e4f430bf`](https://github.com/alecjacobson/warp/commit/1e11e4f430bfda8cc01e95daa82625f6a92331ec), based on NVIDIA main `eb5d91725`. References [NVIDIA/warp#2348](https://github.com/NVIDIA/warp/issues/2348).
+Reviewed **2026-11-16**, authored by **Codex**. Implementation: [`alecjacobson/knn-review`](https://github.com/alecjacobson/warp/tree/alecjacobson/knn-review), commit [`1e11e4f430bf`](https://github.com/alecjacobson/warp/commit/1e11e4f430bfda8cc01e95daa82625f6a92331ec), based on NVIDIA main `eb5d91725`. **PR: [alecjacobson/warp#27](https://github.com/alecjacobson/warp/pull/27).** References [NVIDIA/warp#2348](https://github.com/NVIDIA/warp/issues/2348).
 
 The research branch retains the experiments. The PR contains 30 implementation, test, documentation, changelog, and ASV benchmark files in one signed-off commit. It excludes historical reports and experimental benchmark implementations. The public API remains `wp.geometry.PointIndex` / `wp.geometry.knn`, with scalar kernel queries using `wp.Bvh(lowers=points, uppers=points)`.
 
