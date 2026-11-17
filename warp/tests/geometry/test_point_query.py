@@ -265,7 +265,7 @@ def test_motion_capture(test, device):
         bvh.rebuild()
         check(test, device, moved, q, bvh=bvh, points=points)
         if device.is_cuda:
-            with wp.ScopedCapture(device=device) as capture:
+            with wp.ScopedCapture(device=device, force_module_load=False) as capture:
                 bvh.refit()
                 wp.launch(query_kernel(8), len(q), inputs=args, device=device)
             for _ in range(2):
@@ -469,7 +469,7 @@ def test_lbvh_capture_construction(test, device):
     counts = wp.empty(len(q), dtype=int, device=device)
     kernel = make_sparse_query_kernel(32, True, 32)
     wp.load_module(module=kernel.module, device=device, block_dim=32)
-    with wp.ScopedCapture(device=device) as capture:
+    with wp.ScopedCapture(device=device, force_module_load=False) as capture:
         bvh = wp.Bvh(points, points, constructor="lbvh", leaf_size=32)
         wp.launch(
             kernel,

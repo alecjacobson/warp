@@ -249,7 +249,7 @@ def test_batched_capture(test, device):
     query_points = wp.array(queries, dtype=wp.vec3, device=device)
     for backend in query_backends(device):
         result = wp.geometry.knn(points, query_points, 11, backend=backend)
-        with wp.ScopedCapture(device=device) as capture:
+        with wp.ScopedCapture(device=device, force_module_load=False) as capture:
             replayed = wp.geometry.knn(
                 result[0], query_points, 11, indices=result[1], distances=result[2], counts=result[3]
             )
@@ -259,24 +259,30 @@ def test_batched_capture(test, device):
             wp.capture_launch(capture.graph)
             check_batches(test, targets, queries, 11, replayed)
         if backend == wp.geometry.PointQueryBackend.CUBQL:
-            with wp.ScopedCapture(device=device):
+            with wp.ScopedCapture(device=device, force_module_load=False):
                 with test.assertRaisesRegex(ValueError, "cannot be captured"):
                     wp.geometry.knn(points, query_points, 1, backend=backend)
                 with test.assertRaisesRegex(ValueError, "cannot be captured"):
                     wp.geometry.PointIndex(points, backend=backend)
                 with test.assertRaisesRegex(ValueError, "cannot be captured"):
                     result[0].rebuild()
-        else:
+            # APIC records only Warp launches, so a saved capture could not replay a native cuBQL query.
+            with wp.ScopedCapture(device=device, apic=True, force_module_load=False):
+                with test.assertRaisesRegex(NotImplementedError, "APIC capture does not support direct cuBQL queries"):
+                    wp.geometry.knn(
+                        result[0], query_points, 11, indices=result[1], distances=result[2], counts=result[3]
+                    )
+        elif wp.is_mempool_enabled(device):
             # Compile the ordered path before capturing full construction.
             warm = wp.geometry.knn(points, query_points, 11, ordered=True)
-            with wp.ScopedCapture(device=device) as build_capture:
+            with wp.ScopedCapture(device=device, force_module_load=False) as build_capture:
                 rebuilt_indexes = wp.geometry.PointIndex(points, num_queries=query_points.shape[1], k=11)
                 rebuilt = wp.geometry.knn(rebuilt_indexes, query_points, 11, ordered=True)
             targets *= np.float32(1.3)
             points.assign(targets)
             wp.capture_launch(build_capture.graph)
             check_batches(test, targets, queries, 11, rebuilt)
-            with wp.ScopedCapture(device=device) as refit_capture:
+            with wp.ScopedCapture(device=device, force_module_load=False) as refit_capture:
                 warm[0].refit()
                 refitted = wp.geometry.knn(warm[0], query_points, 11, ordered=True)
             targets += np.float32(0.21)

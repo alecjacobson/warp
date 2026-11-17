@@ -573,6 +573,12 @@ def _knn(
                 _, _, cubql_stride, block_dim = _cubql_config(num_points, nq, k, bvh.objective)
                 if query_stride is not None:
                     cubql_stride = query_stride
+                if context._get_apic_capture_for_device(device) is not None:
+                    # A CUDA graph captures this native launch, but APIC records only Warp
+                    # launches, so a saved capture would replay without the query.
+                    raise NotImplementedError(
+                        "APIC capture does not support direct cuBQL queries; use PointQueryBackend.WARP"
+                    )
                 if not context.runtime.core.wp_point_query_cubql_query_device(
                     bvh.id,
                     points.ptr,
@@ -771,7 +777,7 @@ def knn(
     Euclidean distances use the zero subgradient at coincident coordinates.
 
     Targets must be finite, with queried squared distances representable in
-    float32. A nonfinite query returns zero valid neighbors, -1 indices, and
+    float32. A nonfinite query returns zero valid neighbors, ``-1`` indices, and
     infinite distances. The Warp backend also returns no neighbors for a zero,
     negative, or NaN cutoff. Native cuBQL requires a positive infinite cutoff.
 
@@ -782,34 +788,34 @@ def knn(
             the target device and with the same array dimensionality and batch
             count as the targets. Each batch searches only its corresponding
             targets; ragged batches and batch broadcasting are unsupported.
-        k: Positive Python integer. Native cuBQL supports 1-64.
+        k: Positive Python integer. Native cuBQL supports ``1`` to ``64``.
         max_dist: Strict distance cutoff in coordinate units, including for
             squared outputs. Native cuBQL requires infinity.
-        exclude_indices: Optional int32 array matching the query shape. Each
-            entry excludes one batch-local target ID; -1 excludes nothing. Warp only.
-        indices: Optional int32/int64 output of shape ``(*queries.shape, k)``.
-            Newly allocated outputs use int32.
-        distances: Optional float32 output with the same shape as indices.
-        counts: Optional int32 output matching the query shape. Output buffers
+        exclude_indices: Optional ``int32`` array matching the query shape. Each
+            entry excludes one batch-local target ID; ``-1`` excludes nothing. Warp only.
+        indices: Optional ``int32`` or ``int64`` output of shape ``(*queries.shape, k)``.
+            Newly allocated outputs use ``int32``.
+        distances: Optional ``float32`` output with the same shape as ``indices``.
+        counts: Optional ``int32`` output matching the query shape. Output buffers
             must not overlap one another or inputs.
-        squared: Return squared distances; set False for Euclidean distances.
+        squared: Return squared distances; set ``False`` for Euclidean distances.
         leaf_size: Override Warp leaf size for a new owner. Existing owners keep
             their layout and reject this override; native cuBQL also rejects it.
         query_stride: Override threads per query with a power of two from 1 to 32.
-        ordered: Override spatial query ordering; None uses the measured policy.
-            Native cuBQL rejects True.
+        ordered: Override spatial query ordering; ``None`` uses the measured policy.
+            Native cuBQL rejects ``True``.
         backend: Choose Warp or native cuBQL when constructing targets. An
             existing owner selects its own backend; conflicting overrides raise.
-        objective: Choose cuBQL construction tuning. New owners use REUSE when
-            omitted. Existing owners retain their objective and reject conflicts.
+        objective: Choose cuBQL construction tuning. New owners use
+            :attr:`PointQueryObjective.REUSE` when omitted. Existing owners retain their objective and reject conflicts.
 
     Returns:
         ``(index, indices, distances, counts)``: the reusable :class:`PointIndex`,
         neighbor IDs sorted by computed distance, corresponding distances, and
         valid neighbor counts. Shapes are ``(N, k)`` for IDs/distances and
         ``(N,)`` for counts, or ``(B, N, k)`` and ``(B, N)`` for batched inputs.
-        A supplied owner is returned unchanged. Missing neighbors have index -1
-        and infinite distance. Empty clouds and B=0 are supported. Warp breaks
+        A supplied owner is returned unchanged. Missing neighbors have index ``-1``
+        and infinite distance. Empty clouds and ``B = 0`` are supported. Warp breaks
         equal-distance ties by original target index; native cuBQL uses its own
         tie ordering. Warm up before capture and retain owners, inputs, and
         outputs through replay. Native cuBQL construction occurs outside capture.

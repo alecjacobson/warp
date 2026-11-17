@@ -118,6 +118,8 @@ def test_gradients(test, device):
 
 def test_capture(test, device):
     """Replay construction and refit with changing targets and queries."""
+    if not wp.is_mempool_enabled(device):
+        test.skipTest("CUDA capture of construction requires memory pools")
     rng = np.random.default_rng(118)
     p, q = rng.normal(size=(513, 3)).astype(np.float32), rng.normal(size=(65, 3)).astype(np.float32)
     points, queries = wp.array(p, dtype=wp.vec3, device=device), wp.array(q, dtype=wp.vec3, device=device)
@@ -125,7 +127,7 @@ def test_capture(test, device):
     with wp.ScopedStream(stream):
         for ordered in (False, True):
             warm = wp.point_query_knn_batch(points, queries, 5, ordered=ordered)
-            with wp.ScopedCapture(stream=stream) as capture:
+            with wp.ScopedCapture(stream=stream, force_module_load=False) as capture:
                 result = wp.point_query_knn_batch(points, queries, 5, ordered=ordered)
             for _ in range(3):
                 p = p * np.float32(1.1)
@@ -135,7 +137,7 @@ def test_capture(test, device):
                 wp.capture_launch(capture.graph, stream=stream)
                 check(test, p, q, 5, result)
             # Capture refit and a query writing into caller-owned output buffers.
-            with wp.ScopedCapture(stream=stream) as reuse:
+            with wp.ScopedCapture(stream=stream, force_module_load=False) as reuse:
                 result[0].refit()
                 again = wp.point_query_knn_batch(
                     points,
