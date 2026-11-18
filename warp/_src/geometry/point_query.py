@@ -415,17 +415,17 @@ def _knn(
         queries: Contiguous ``vec3`` queries of shape ``(N,)`` or ``(B, N)`` on
             the same device. Each batch searches only its corresponding targets.
         k: Positive Python integer, specialized when compiling the query kernel.
-        bvh: Optional index from :func:`warp.build_point_index`: a reusable
+        bvh: Index from :func:`warp.build_point_index`: a reusable
             BVH or cuBQL point index, or a tuple of B indexes
             for batched inputs. Refit Warp BVHs or rebuild cuBQL indexes after
             moving targets. When omitted, construct the indexes.
         max_dist: Strict distance cutoff in coordinate units, even for squared outputs.
-        exclude_indices: Optional int32 array matching the query shape; each row
+        exclude_indices: ``int32`` array matching the query shape; each row
             excludes a batch-local target index. ``-1`` excludes nothing. Warp only.
-        indices: Optional int32/int64 output with the query shape followed by k.
+        indices: ``int32`` or ``int64`` output with the query shape followed by k.
             Newly allocated outputs use int32. Returned indices are batch-local.
-        distances: Optional float32 output with the same shape as indices.
-        counts: Optional int32 output matching the query shape.
+        distances: ``float32`` output with the same shape as indices.
+        counts: ``int32`` output matching the query shape.
         squared: Return squared distances; set ``False`` for Euclidean distances.
         leaf_size: Override leaf size when constructing a new BVH. Not accepted
             with an existing BVH, whose layout is retained.
@@ -791,12 +791,12 @@ def knn(
         k: Positive Python integer. Native cuBQL supports ``1`` to ``64``.
         max_dist: Strict distance cutoff in coordinate units, including for
             squared outputs. Native cuBQL requires infinity.
-        exclude_indices: Optional ``int32`` array matching the query shape. Each
+        exclude_indices: ``int32`` array matching the query shape. Each
             entry excludes one batch-local target ID; ``-1`` excludes nothing. Warp only.
-        indices: Optional ``int32`` or ``int64`` output of shape ``(*queries.shape, k)``.
+        indices: ``int32`` or ``int64`` output of shape ``(*queries.shape, k)``.
             Newly allocated outputs use ``int32``.
-        distances: Optional ``float32`` output with the same shape as ``indices``.
-        counts: Optional ``int32`` output matching the query shape. Output buffers
+        distances: ``float32`` output with the same shape as ``indices``.
+        counts: ``int32`` output matching the query shape. Output buffers
             must not overlap one another or inputs.
         squared: Return squared distances; set ``False`` for Euclidean distances.
         leaf_size: Override Warp leaf size for a new owner. Existing owners keep
