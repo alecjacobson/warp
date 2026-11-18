@@ -421,12 +421,12 @@ def _knn(
             moving targets. When omitted, construct the indexes.
         max_dist: Strict distance cutoff in coordinate units, even for squared outputs.
         exclude_indices: Optional int32 array matching the query shape; each row
-            excludes a batch-local target index. -1 excludes nothing. Warp only.
+            excludes a batch-local target index. ``-1`` excludes nothing. Warp only.
         indices: Optional int32/int64 output with the query shape followed by k.
             Newly allocated outputs use int32. Returned indices are batch-local.
         distances: Optional float32 output with the same shape as indices.
         counts: Optional int32 output matching the query shape.
-        squared: Return squared distances; set False for Euclidean distances.
+        squared: Return squared distances; set ``False`` for Euclidean distances.
         leaf_size: Override leaf size when constructing a new BVH. Not accepted
             with an existing BVH, whose layout is retained.
         query_stride: Override threads per query with a power of two from 1 to 32.
