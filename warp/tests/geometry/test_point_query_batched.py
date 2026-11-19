@@ -373,6 +373,64 @@ def test_cubql_route(test, device):
         np.testing.assert_array_equal(tied[2].numpy()[1:], np.inf)
 
 
+def test_fused_batch_reuse(test, device):
+    """Reuse more than one handle chunk without per-cloud Python views or gathers."""
+    rng = np.random.default_rng(348)
+    p = rng.normal(size=(33, 17, 3)).astype(np.float32)
+    q = rng.normal(size=(33, 7, 3)).astype(np.float32)
+    for backend in query_backends(device):
+        points = wp.array(p, dtype=wp.vec3, device=device, requires_grad=True)
+        queries = wp.array(q, dtype=wp.vec3, device=device, requires_grad=True)
+        warm = wp.geometry.knn(points, queries, 5, backend=backend)
+        with mock.patch.object(point_query, "_batch_view", side_effect=AssertionError("Per-cloud view in query")):
+            result = wp.geometry.knn(warm[0], queries, 5, indices=warm[1], distances=warm[2], counts=warm[3])
+        check_batches(test, p, q, 5, result)
+        moved = p + np.float32(0.4)
+        points.assign(moved)
+        result[0].rebuild()
+        check_batches(test, moved, q, 5, wp.geometry.knn(result[0], queries, 5))
+
+
+def test_fused_construction_capture(test, device):
+    """Capture device handle packing, rebuild, fused queries, and changed-input replay."""
+    if not wp.is_mempool_enabled(device):
+        test.skipTest("Construction capture requires memory pools")
+    rng = np.random.default_rng(349)
+    p = rng.normal(size=(3, 23, 3)).astype(np.float32)
+    q = rng.normal(size=(3, 9, 3)).astype(np.float32)
+    points = wp.array(p, dtype=wp.vec3, device=device)
+    queries = wp.array(q, dtype=wp.vec3, device=device)
+    stream = wp.Stream(device)
+    stream.wait_stream(device.stream)
+    with wp.ScopedStream(stream):
+        warm = wp.geometry.knn(points, queries, 5, ordered=False)
+        with wp.ScopedCapture(stream=stream, force_module_load=False) as capture:
+            result = wp.geometry.knn(points, queries, 5, ordered=False)
+        for _ in range(2):
+            p *= np.float32(1.2)
+            q += np.float32(0.17)
+            points.assign(p)
+            queries.assign(q)
+            wp.capture_launch(capture.graph, stream=stream)
+            check_batches(test, p, q, 5, result)
+        with wp.ScopedCapture(stream=stream, force_module_load=False) as capture:
+            warm[0].refit()
+            refitted = wp.geometry.knn(warm[0], queries, 5, ordered=False)
+        p += np.float32(0.4)
+        points.assign(p)
+        wp.capture_launch(capture.graph, stream=stream)
+        check_batches(test, p, q, 5, refitted)
+        # A query-only graph retains its cached descriptor allocation even
+        # when the owner rebuilds its Warp BVHs between replays.
+        with wp.ScopedCapture(stream=stream, force_module_load=False) as capture:
+            reused = wp.geometry.knn(warm[0], queries, 5, ordered=False)
+        p *= np.float32(1.3)
+        points.assign(p)
+        warm[0].rebuild()
+        wp.capture_launch(capture.graph, stream=stream)
+        check_batches(test, p, q, 5, reused)
+
+
 class TestPointQueryBatched(unittest.TestCase):
     def test_empty_batch_leaf_validation(self):
         """Reject invalid leaf sizes before returning an empty batch."""
@@ -476,6 +534,14 @@ add_function_test(
 )
 add_function_test(TestPointQueryBatched, "test_batched_capture", test_batched_capture, devices=get_cuda_test_devices())
 add_function_test(TestPointQueryBatched, "test_cubql_route", test_cubql_route, devices=get_cuda_test_devices())
+
+add_function_test(TestPointQueryBatched, "test_fused_batch_reuse", test_fused_batch_reuse, devices=get_test_devices())
+add_function_test(
+    TestPointQueryBatched,
+    "test_fused_construction_capture",
+    test_fused_construction_capture,
+    devices=get_cuda_test_devices(),
+)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

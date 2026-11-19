@@ -488,3 +488,27 @@ void cubql_bvh_rebuild_host(BVH&) { }
 #endif  // WP_DISABLE_CUBQL
 
 }  // namespace wp
+
+#if !WP_ENABLE_CUDA
+bool wp_point_query_cubql_pack_device(uint64_t, void*) { return false; }
+bool wp_point_query_cubql_query_batched_device(
+    uint64_t,
+    const void*,
+    const wp::vec3*,
+    const wp::vec3*,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    void*,
+    float*,
+    int*,
+    bool,
+    bool
+)
+{
+    return false;
+}
+#endif

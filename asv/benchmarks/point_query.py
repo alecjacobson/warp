@@ -16,6 +16,7 @@ class PointQuery:
     param_names = ["configuration", "batches", "targets", "k"]
     repeat = 10
     number = 1
+    query_count = 1024
 
     @setup_once
     def setup(self, configuration, batches, targets, k):
@@ -37,7 +38,9 @@ class PointQuery:
             rng.normal(size=(batches, targets, 3)).astype(np.float32), dtype=wp.vec3, device=self.device
         )
         self.queries = wp.array(
-            rng.normal(size=(batches, 1024, 3)).astype(np.float32), dtype=wp.vec3, device=self.device
+            rng.normal(size=(batches, targets if self.query_count is None else self.query_count, 3)).astype(np.float32),
+            dtype=wp.vec3,
+            device=self.device,
         )
         self.result = wp.geometry.knn(self.points, self.queries, k, backend=self.backend, objective=self.objective)
         self.outputs = {"indices": self.result[1], "distances": self.result[2], "counts": self.result[3]}
@@ -62,3 +65,10 @@ class PointQuery:
     def time_reused_graph(self, configuration, batches, targets, k):
         wp.capture_launch(self.graph)
         wp.synchronize_device(self.device)
+
+
+class DensePointQuery(PointQuery):
+    """Cover training-shaped batches, where sparse-query tuning need not win."""
+
+    params = (["warp", "cubql_reuse"], [1, 32], [1024, 4096, 65536], [1])
+    query_count = None

@@ -140,7 +140,13 @@ The owner has the same type for single clouds and batches. ``refit()`` or
 allocations, point counts, or batch layouts require a new owner. Changing
 query coordinates does not require target updates. For fixed k, storage is
 ``O(B*M + B*N*k)`` with linear scratch; no B×N×M distance tensor is materialized.
-The current implementation submits one query operation per cloud.
+Unordered batches submit one query kernel across all clouds, with a single
+batched distance-gather kernel when gradients are enabled. CUDA graph replay
+uses retained device descriptors and reads current query coordinates. Query
+spacing is selected from the total ``B*N`` work rather than treating each cloud
+as a separate sparse launch. ``ordered=True`` retains the per-cloud ordering
+path; APIC captures retain per-cloud launches for resource tracking. Index construction, refitting, and rebuilding still process each cloud;
+reuse a ``PointIndex`` when targets remain fixed.
 
 Backend choices and tuning
 --------------------------
@@ -173,7 +179,9 @@ graphs afterward because native handles change.
 ``PointQueryObjective.REUSE`` favors reused queries;
 ``PointQueryObjective.BUILD_AND_QUERY`` favors construction followed by a query
 set. These are measured cuBQL policies, not universal performance guarantees.
-They do not select a backend or affect Warp's policy. Existing owners retain
+They do not select a backend or affect Warp's policy. The dense-batch query
+launch policy also accounts for total query count, independently of the tree's
+construction objective. Existing owners retain
 their backend and objective; conflicting overrides raise errors. Any non-None
 ``leaf_size`` override is rejected for an existing owner, even if it matches the
 current layout.
@@ -266,3 +274,75 @@ From a built checkout, run:
     uv run --no-sync -m warp.examples.geometry.example_point_query --device cpu
     uv run --no-sync -m warp.examples.geometry.example_point_query_batch --device cuda:0
     uv run --no-sync -m warp.examples.geometry.example_point_query_chamfer --device cuda:0 --backend cubql --reverse-backend warp
+
+
+Batched Chamfer performance
+---------------------------
+
+Measure the complete workload when selecting a backend: both search directions,
+distance gathers, reduction, backward, and any changing-target index construction.
+An encoder's full training epoch also includes work outside Chamfer. Speedups
+for loss evaluation alone do not predict the same training speedup.
+
+A customer using an earlier branch revision (``6e7ce08ea``) reported the
+following A40 results for 32 independently subsampled pulmonary point clouds.
+These are externally reported measurements, not results reproduced by this
+repository's benchmark. The customer's chunked baseline performs direct search
+under ``torch.no_grad()`` followed by differentiable selected-pair gathers.
+
+.. list-table:: Customer-reported symmetric Chamfer forward + backward (ms)
+   :header-rows: 1
+
+   * - Points per cloud
+     - cdist
+     - Chunked cdist + gathers
+     - Earlier Warp implementation
+   * - 1,024
+     - 6.1
+     - 3.2
+     - 11.0
+   * - 4,096
+     - 90.0
+     - 46.6
+     - 10.6
+   * - 16,384
+     - Out of memory
+     - 762.8
+     - 17.7
+   * - 65,536
+     - Out of memory
+     - 13,637
+     - 34.4
+
+The corresponding full training epoch times (chunked baseline versus Warp)
+were 0.55 versus 0.60 seconds at 1,024 points, 1.86 versus 1.39 at 4,096,
+14.17 versus 4.69 at 16,384, 49.23 versus 9.15 at 32,768, and approximately
+191 (estimated) versus 17.95 at 65,536. Small clouds can favor brute force;
+large clouds avoid the quadratic distance-matrix cost.
+
+That earlier implementation submitted Python query and gradient work for each
+cloud separately. The current unordered batch path fuses those launches. Tree
+construction remains per cloud, so fixed-target reuse and graph capture still
+matter. The runnable benchmark below separates reused queries, query replay,
+reused-index Chamfer, and Chamfer with a rebuilt reverse index.
+
+Backend rankings depend on query density, geometry, hardware, and launch policy.
+The customer also reported reused Warp BVHs at 29 ms versus reused cuBQL indexes
+at 46 ms for B=32 and N=M=65,536 on A40. That result contrasts with earlier
+sparse-query cuBQL wins. It is evidence against choosing a universal winner,
+not a prediction for the fused launch policy. Benchmark both backends on the
+actual shapes and device; changing reverse targets can additionally make cuBQL
+construction more expensive than Warp construction.
+
+.. code-block:: console
+
+    uv run --no-sync -m warp.examples.benchmarks.benchmark_point_query_chamfer \
+        --batches 1 8 32 --points 1024 4096 16384 32768 65536 \
+        --output chamfer.json --profile
+
+The default inputs are synthetic Gaussian volumes, explicitly labeled in the
+JSON. To subsample a supplied pulmonary archive containing ``.npz`` files with
+``points`` arrays, add ``--archive /path/to/pulmonary_point_clouds.zip``. Archive
+and generated-array hashes identify the measured data. Raw customer coordinates
+are not stored in the report. This benchmark measures the loss, not encoder
+training or an A40 reproduction on a different GPU.

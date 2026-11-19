@@ -7742,6 +7742,27 @@ class Runtime:
                 ctypes.c_bool,
             ]
 
+            self.core.wp_point_query_cubql_pack_device.restype = ctypes.c_bool
+            self.core.wp_point_query_cubql_pack_device.argtypes = [ctypes.c_uint64, ctypes.c_void_p]
+            self.core.wp_point_query_cubql_query_batched_device.restype = ctypes.c_bool
+            self.core.wp_point_query_cubql_query_batched_device.argtypes = [
+                ctypes.c_uint64,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_bool,
+                ctypes.c_bool,
+            ]
+
             self.core.wp_bvh_refit_host.argtypes = [ctypes.c_uint64]
             self.core.wp_bvh_rebuild_host.argtypes = [ctypes.c_uint64, ctypes.c_int]
             self.core.wp_bvh_refit_device.argtypes = [ctypes.c_uint64]
