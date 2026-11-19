@@ -1,0 +1,390 @@
+{
+  "newton_commit": "03b36585233ef0ae5dcdb7ebdd9a40a5e127c330",
+  "warp_commit": "c2c7a667e2689932f36d6ace589143c0e1faa022",
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+  "samples": 21,
+  "launches": 30,
+  "block_dim": 128,
+  "seed": 2360,
+  "output_layout": "SoA (11 scalars/contact, 7 scalars/witness); vec3 for axis parameters/distance",
+  "benchmark_sha256": "d557c104fd60fed13b2c9de1f920ac9fd48f0a0106356eb1a72a0ac0a81801cd",
+  "implementation_sha256": "6a481422c4e5afe63b7b6249711659615976b8870d0da70da438ae2967c191da",
+  "results": [
+    {
+      "workload": "random",
+      "count": 262144,
+      "parallel_branch_count": 0,
+      "original_two_candidate_count": 0,
+      "hybrid_two_candidate_count": 0,
+      "branch_disagreements": 0,
+      "shared_parallel_max_record_delta": 0.0,
+      "contact_us": {
+        "original": 17.411200205485027,
+        "copy": 17.413334051767986,
+        "hybrid": 17.73866613705953
+      },
+      "axis_us": {
+        "newton_extracted": 11.468799908955893,
+        "warp": 11.53600017229716
+      },
+      "witness_us": {
+        "newton_helper": 12.220799922943115,
+        "warp": 12.959999839464823
+      },
+      "max_abs_distance_error_subset": {
+        "warp_closest": 2.0697508773537265e-07,
+        "newton_extracted": 1.9915181725949083e-07,
+        "newton_helper_witness": 1.8834238080245314e-07,
+        "warp_witness": 1.6823097048757063e-07,
+        "original_contact_minimum": 1.960160835867697e-07,
+        "copy_contact_minimum": 1.960160835867697e-07,
+        "hybrid_contact_minimum": 1.960160835867697e-07
+      },
+      "nonfinite_contact_records": {
+        "original": 0,
+        "copy": 0,
+        "hybrid": 0
+      },
+      "contacts_below_zero": {
+        "original": 7914,
+        "copy": 7914,
+        "hybrid": 7914
+      },
+      "axis_closest_below_zero": 7914,
+      "original_missed_overlaps_confirmed_subset": 0,
+      "copy_max_record_delta": 0.0
+    },
+    {
+      "workload": "near",
+      "count": 262144,
+      "parallel_branch_count": 0,
+      "original_two_candidate_count": 0,
+      "hybrid_two_candidate_count": 0,
+      "branch_disagreements": 0,
+      "shared_parallel_max_record_delta": 0.0,
+      "contact_us": {
+        "original": 17.324799299240112,
+        "copy": 17.413334051767986,
+        "hybrid": 17.667200167973835
+      },
+      "axis_us": {
+        "newton_extracted": 11.462400356928507,
+        "warp": 11.527466773986816
+      },
+      "witness_us": {
+        "newton_helper": 12.23253309726715,
+        "warp": 12.904533743858337
+      },
+      "max_abs_distance_error_subset": {
+        "warp_closest": 9.885749312210645e-08,
+        "newton_extracted": 9.402053732787685e-08,
+        "newton_helper_witness": 1.202187701748736e-07,
+        "warp_witness": 9.592011543380075e-08,
+        "original_contact_minimum": 9.402053732787685e-08,
+        "copy_contact_minimum": 9.402053732787685e-08,
+        "hybrid_contact_minimum": 5.865743579747118e-08
+      },
+      "nonfinite_contact_records": {
+        "original": 0,
+        "copy": 0,
+        "hybrid": 0
+      },
+      "contacts_below_zero": {
+        "original": 176927,
+        "copy": 176927,
+        "hybrid": 176927
+      },
+      "axis_closest_below_zero": 176927,
+      "original_missed_overlaps_confirmed_subset": 0,
+      "copy_max_record_delta": 0.0
+    },
+    {
+      "workload": "endcap",
+      "count": 262144,
+      "parallel_branch_count": 0,
+      "original_two_candidate_count": 0,
+      "hybrid_two_candidate_count": 0,
+      "branch_disagreements": 0,
+      "shared_parallel_max_record_delta": 0.0,
+      "contact_us": {
+        "original": 17.40799943606059,
+        "copy": 17.45919982592265,
+        "hybrid": 17.88373390833537
+      },
+      "axis_us": {
+        "newton_extracted": 11.404800415039062,
+        "warp": 11.566932996114096
+      },
+      "witness_us": {
+        "newton_helper": 12.217600146929422,
+        "warp": 12.904533743858337
+      },
+      "max_abs_distance_error_subset": {
+        "warp_closest": 2.1224730406554926e-07,
+        "newton_extracted": 1.4631018752098157e-07,
+        "newton_helper_witness": 2.718519488409399e-07,
+        "warp_witness": 1.631312835925769e-07,
+        "original_contact_minimum": 1.3327167147636487e-07,
+        "copy_contact_minimum": 1.3327167147636487e-07,
+        "hybrid_contact_minimum": 1.3327167147636487e-07
+      },
+      "nonfinite_contact_records": {
+        "original": 0,
+        "copy": 0,
+        "hybrid": 0
+      },
+      "contacts_below_zero": {
+        "original": 4107,
+        "copy": 4107,
+        "hybrid": 4107
+      },
+      "axis_closest_below_zero": 4107,
+      "original_missed_overlaps_confirmed_subset": 0,
+      "copy_max_record_delta": 0.0
+    },
+    {
+      "workload": "parallel",
+      "count": 262144,
+      "parallel_branch_count": 262144,
+      "original_two_candidate_count": 262144,
+      "hybrid_two_candidate_count": 262144,
+      "branch_disagreements": 0,
+      "shared_parallel_max_record_delta": 0.0,
+      "contact_us": {
+        "original": 17.237333456675213,
+        "copy": 17.454934120178223,
+        "hybrid": 17.45706597963969
+      },
+      "axis_us": null,
+      "witness_us": {
+        "newton_helper": 13.86240025361379,
+        "warp": 12.891733646392822
+      },
+      "max_abs_distance_error_subset": {
+        "warp_closest": 7.450580596923828e-09,
+        "newton_helper_witness": 7.450580596923828e-09,
+        "warp_witness": 7.450580596923828e-09,
+        "original_contact_minimum": 7.450580596923828e-09,
+        "copy_contact_minimum": 7.450580596923828e-09,
+        "hybrid_contact_minimum": 7.450580596923828e-09
+      },
+      "nonfinite_contact_records": {
+        "original": 0,
+        "copy": 0,
+        "hybrid": 0
+      },
+      "contacts_below_zero": {
+        "original": 524288,
+        "copy": 524288,
+        "hybrid": 524288
+      },
+      "axis_closest_below_zero": 262144,
+      "original_missed_overlaps_confirmed_subset": 0,
+      "copy_max_record_delta": 0.0
+    },
+    {
+      "workload": "parallel_varied_lengths",
+      "count": 262144,
+      "parallel_branch_count": 0,
+      "original_two_candidate_count": 0,
+      "hybrid_two_candidate_count": 0,
+      "branch_disagreements": 0,
+      "shared_parallel_max_record_delta": 0.0,
+      "contact_us": {
+        "original": 17.668267091115315,
+        "copy": 17.80373255411784,
+        "hybrid": 17.45813290278117
+      },
+      "axis_us": {
+        "newton_extracted": 11.265066266059875,
+        "warp": 11.452800035476685
+      },
+      "witness_us": {
+        "newton_helper": 13.857066631317139,
+        "warp": 12.821333607037863
+      },
+      "max_abs_distance_error_subset": {
+        "warp_closest": 7.450580596923828e-09,
+        "newton_extracted": 7.450580596923828e-09,
+        "newton_helper_witness": 7.450580596923828e-09,
+        "warp_witness": 7.450580596923828e-09,
+        "original_contact_minimum": 7.450580596923828e-09,
+        "copy_contact_minimum": 7.450580596923828e-09,
+        "hybrid_contact_minimum": 7.450580596923828e-09
+      },
+      "nonfinite_contact_records": {
+        "original": 0,
+        "copy": 0,
+        "hybrid": 0
+      },
+      "contacts_below_zero": {
+        "original": 262144,
+        "copy": 262144,
+        "hybrid": 262144
+      },
+      "axis_closest_below_zero": 262144,
+      "original_missed_overlaps_confirmed_subset": 0,
+      "copy_max_record_delta": 0.0
+    },
+    {
+      "workload": "contained_parallel",
+      "count": 262144,
+      "parallel_branch_count": 262144,
+      "original_two_candidate_count": 262144,
+      "hybrid_two_candidate_count": 262144,
+      "branch_disagreements": 0,
+      "shared_parallel_max_record_delta": 0.0,
+      "contact_us": {
+        "original": 17.998933792114258,
+        "copy": 18.028799692789715,
+        "hybrid": 18.02346706390381
+      },
+      "axis_us": null,
+      "witness_us": {
+        "newton_helper": 13.927466670672098,
+        "warp": 12.827733159065247
+      },
+      "max_abs_distance_error_subset": {
+        "warp_closest": 7.450580596923828e-09,
+        "newton_helper_witness": 7.450580596923828e-09,
+        "warp_witness": 7.450580596923828e-09,
+        "original_contact_minimum": 1.3574813157320023,
+        "copy_contact_minimum": 1.3574813157320023,
+        "hybrid_contact_minimum": 1.3574813157320023
+      },
+      "nonfinite_contact_records": {
+        "original": 0,
+        "copy": 0,
+        "hybrid": 0
+      },
+      "contacts_below_zero": {
+        "original": 0,
+        "copy": 0,
+        "hybrid": 0
+      },
+      "axis_closest_below_zero": 262144,
+      "original_missed_overlaps_confirmed_subset": 256,
+      "copy_max_record_delta": 0.0
+    },
+    {
+      "workload": "near_parallel",
+      "count": 262144,
+      "parallel_branch_count": 108788,
+      "original_two_candidate_count": 108788,
+      "hybrid_two_candidate_count": 108788,
+      "branch_disagreements": 0,
+      "shared_parallel_max_record_delta": 0.0,
+      "contact_us": {
+        "original": 17.454934120178223,
+        "copy": 17.75040030479431,
+        "hybrid": 17.88160006205241
+      },
+      "axis_us": null,
+      "witness_us": {
+        "newton_helper": 12.341333429018656,
+        "warp": 12.902399897575378
+      },
+      "max_abs_distance_error_subset": {
+        "warp_closest": 8.85088087890229e-08,
+        "newton_helper_witness": 9.07563568741665e-08,
+        "warp_witness": 9.089387176947072e-08,
+        "original_contact_minimum": 3.105723107854619e-07,
+        "copy_contact_minimum": 3.105723107854619e-07,
+        "hybrid_contact_minimum": 3.105723107854619e-07
+      },
+      "nonfinite_contact_records": {
+        "original": 0,
+        "copy": 0,
+        "hybrid": 0
+      },
+      "contacts_below_zero": {
+        "original": 369919,
+        "copy": 369919,
+        "hybrid": 369919
+      },
+      "axis_closest_below_zero": 261411,
+      "original_missed_overlaps_confirmed_subset": 0,
+      "copy_max_record_delta": 0.0
+    },
+    {
+      "workload": "small",
+      "count": 262144,
+      "parallel_branch_count": 262144,
+      "original_two_candidate_count": 262144,
+      "hybrid_two_candidate_count": 262144,
+      "branch_disagreements": 0,
+      "shared_parallel_max_record_delta": 0.0,
+      "contact_us": {
+        "original": 17.372800906499226,
+        "copy": 17.480534315109253,
+        "hybrid": 17.697066068649292
+      },
+      "axis_us": null,
+      "witness_us": {
+        "newton_helper": 12.314666310946146,
+        "warp": 12.964266538619995
+      },
+      "max_abs_distance_error_subset": {
+        "warp_closest": 1.712544000923369e-11,
+        "newton_helper_witness": 7.797700088612572e-05,
+        "warp_witness": 1.712544000923369e-11,
+        "original_contact_minimum": 3.435211999563208e-05,
+        "copy_contact_minimum": 3.435211999563208e-05,
+        "hybrid_contact_minimum": 3.435211999563208e-05
+      },
+      "nonfinite_contact_records": {
+        "original": 0,
+        "copy": 0,
+        "hybrid": 0
+      },
+      "contacts_below_zero": {
+        "original": 4519,
+        "copy": 4519,
+        "hybrid": 4519
+      },
+      "axis_closest_below_zero": 7914,
+      "original_missed_overlaps_confirmed_subset": 1,
+      "copy_max_record_delta": 0.0
+    },
+    {
+      "workload": "collapsed",
+      "count": 262144,
+      "parallel_branch_count": 262144,
+      "original_two_candidate_count": 262144,
+      "hybrid_two_candidate_count": 262144,
+      "branch_disagreements": 0,
+      "shared_parallel_max_record_delta": 0.0,
+      "contact_us": {
+        "original": 17.94240077336629,
+        "copy": 17.886932690938313,
+        "hybrid": 18.007467190424602
+      },
+      "axis_us": null,
+      "witness_us": {
+        "newton_helper": 13.575466473897299,
+        "warp": 12.688000003496805
+      },
+      "max_abs_distance_error_subset": {
+        "warp_closest": 1.951226629159919e-07,
+        "newton_helper_witness": 1.951226629159919e-07,
+        "warp_witness": 1.951226629159919e-07,
+        "original_contact_minimum": 0.1954894284047375,
+        "copy_contact_minimum": 0.1954894284047375,
+        "hybrid_contact_minimum": 0.1954894284047375
+      },
+      "nonfinite_contact_records": {
+        "original": 0,
+        "copy": 0,
+        "hybrid": 0
+      },
+      "contacts_below_zero": {
+        "original": 3339,
+        "copy": 3339,
+        "hybrid": 3339
+      },
+      "axis_closest_below_zero": 2656,
+      "original_missed_overlaps_confirmed_subset": 0,
+      "copy_max_record_delta": 0.0
+    }
+  ]
+}

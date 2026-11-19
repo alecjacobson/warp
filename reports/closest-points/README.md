@@ -1,5 +1,10 @@
 # Closest-pair implementation and benchmark report
 
+See also the [analytic capsule comparison](capsule-analytic.md), which compares
+Newton's existing capsule–capsule contact routine and segment-witness helper.
+Those are different baselines from the iterative SDF optimizers measured below;
+the analytic comparisons do not show a uniform speedup.
+
 These measurements describe the initial implementation. The subsequent
 [normalization review](normalization-review.md) records the reviewed source,
 additional regression fixes, and updated timings. The original JSON source
