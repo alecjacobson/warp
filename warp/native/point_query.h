@@ -36,6 +36,9 @@ template <int K> struct point_query_t {
     int count;
     int cursor;
 
+    // Only entries [0, count) are read, so the heap arrays are left uninitialized to avoid
+    // filling K entries per query in this per-thread state.
+    // cppcheck-suppress uninitMemberVar
     CUDA_CALLABLE point_query_t()
         : count(0)
         , cursor(0)
@@ -102,6 +105,8 @@ template <> struct point_query_t<1> {
     int indices[1];
     int count;
     int cursor;
+    // Only distances[0] and indices[0] are read once count is 1, so they start uninitialized.
+    // cppcheck-suppress uninitMemberVar
     CUDA_CALLABLE point_query_t()
         : count(0)
         , cursor(0)
