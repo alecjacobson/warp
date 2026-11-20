@@ -26,18 +26,21 @@ def update_decoded_kernel(decoded: wp.array2d[wp.vec3], gradients: wp.array2d[wp
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", default=None)
-    parser.add_argument("--backend", choices=("warp", "cubql"), default="warp", help="Fixed-target query backend")
     parser.add_argument(
-        "--reverse-backend", choices=("warp", "cubql"), default="warp", help="Changing decoded index backend"
+        "--backend", choices=("warp", "cubql", "brute_force"), default="warp", help="Fixed-target query backend"
+    )
+    parser.add_argument(
+        "--reverse-backend",
+        choices=("warp", "cubql", "brute_force"),
+        default="warp",
+        help="Changing decoded index backend",
     )
     parser.add_argument("--steps", type=int, default=20)
     args = parser.parse_args()
     if args.steps < 2:
         raise ValueError("steps must be at least two to demonstrate optimization")
-    backend = wp.geometry.PointQueryBackend.CUBQL if args.backend == "cubql" else wp.geometry.PointQueryBackend.WARP
-    reverse_backend = (
-        wp.geometry.PointQueryBackend.CUBQL if args.reverse_backend == "cubql" else wp.geometry.PointQueryBackend.WARP
-    )
+    backend = wp.geometry.PointQueryBackend[args.backend.upper()]
+    reverse_backend = wp.geometry.PointQueryBackend[args.reverse_backend.upper()]
     rng = np.random.default_rng(42)
     targets_host = rng.normal(size=(2, 256, 3)).astype(np.float32)
     decoded_host = targets_host[:, :128] + np.float32(0.2)
