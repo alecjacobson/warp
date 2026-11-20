@@ -140,7 +140,13 @@ The owner has the same type for single clouds and batches. ``refit()`` or
 allocations, point counts, or batch layouts require a new owner. Changing
 query coordinates does not require target updates. For fixed k, storage is
 ``O(B*M + B*N*k)`` with linear scratch; no B×N×M distance tensor is materialized.
-The current implementation submits one query operation per cloud.
+Unordered batches submit one query kernel across all clouds, with a single
+batched distance-gather kernel when gradients are enabled. CUDA graph replay
+uses retained device descriptors and reads current query coordinates. Query
+spacing is selected from the total ``B*N`` work rather than treating each cloud
+as a separate sparse launch. ``ordered=True`` retains the per-cloud ordering
+path; APIC captures retain per-cloud launches for resource tracking. Index construction, refitting, and rebuilding still process each cloud;
+reuse a ``PointIndex`` when targets remain fixed.
 
 Backend choices and tuning
 --------------------------
@@ -173,7 +179,9 @@ graphs afterward because native handles change.
 ``PointQueryObjective.REUSE`` favors reused queries;
 ``PointQueryObjective.BUILD_AND_QUERY`` favors construction followed by a query
 set. These are measured cuBQL policies, not universal performance guarantees.
-They do not select a backend or affect Warp's policy. Existing owners retain
+They do not select a backend or affect Warp's policy. The dense-batch query
+launch policy also accounts for total query count, independently of the tree's
+construction objective. Existing owners retain
 their backend and objective; conflicting overrides raise errors. Any non-None
 ``leaf_size`` override is rejected for an existing owner, even if it matches the
 current layout.
@@ -224,6 +232,8 @@ construct or refit the changing decoded index each step:
         to_decoded = wp.geometry.knn(decoded, targets, 1)
         # Reduce to_target[2] by B*N and to_decoded[2] by B*M, then sum.
 
+Euclidean distances use a zero subgradient at coincident coordinates.
+
 Set ``requires_grad=True`` on each input needing gradients, and on any
 preallocated distance output. Both directions contribute to decoded gradients.
 Keep coordinates and selected indices unchanged until backward completes.
@@ -264,3 +274,50 @@ From a built checkout, run:
     uv run --no-sync -m warp.examples.geometry.example_point_query --device cpu
     uv run --no-sync -m warp.examples.geometry.example_point_query_batch --device cuda:0
     uv run --no-sync -m warp.examples.geometry.example_point_query_chamfer --device cuda:0 --backend cubql --reverse-backend warp
+
+
+Batched Chamfer performance
+---------------------------
+
+Measure the complete workload when selecting a backend: both search directions,
+distance gathers, reduction, backward, and any changing-target index construction.
+Loss evaluation is only part of a training step, so a faster Chamfer loss does not
+translate into the same training speedup.
+
+Unordered batches submit one query kernel across all clouds, plus one gather kernel
+when gradients are enabled. Tree construction still runs per cloud, so once query
+dispatch is inexpensive, reusing a ``PointIndex`` for fixed targets and capturing
+steady-state work in a CUDA graph matter most.
+
+Backend rankings depend on query density, geometry, hardware, and launch policy, so
+there is no universal winner; benchmark both backends on the actual shapes and
+device. Construction policy is a separate choice. When a reverse index is rebuilt on
+every call, a construction-oriented cuBQL objective (``BUILD_AND_QUERY``) or a Warp
+reverse index paired with a fixed cuBQL target index can outperform ``REUSE``, and
+the query-only winner is not necessarily the winner once construction is included.
+These policies are explicit; the API does not switch backends automatically.
+
+.. code-block:: console
+
+    uv run --no-sync -m warp.examples.benchmarks.benchmark_point_query_chamfer \
+        --batches 1 8 32 --points 1024 4096 16384 32768 65536 \
+        --output chamfer.json --profile
+
+The default inputs are synthetic Gaussian volumes, explicitly labeled in the
+JSON. To subsample your own point clouds instead, pass ``--archive`` with a
+``.zip`` of ``.npz`` files that each contain a ``points`` array. Archive and
+generated-array hashes identify the measured data, and raw coordinates are not
+stored in the report. The benchmark measures the loss, not a full training step.
+
+To measure a fixed cuBQL target index with a rebuilt Warp reverse index, add:
+
+.. code-block:: console
+
+    --backends cubql --reverse-backend warp --reverse-objective build_and_query
+
+For native cuBQL in both directions with a construction-oriented reverse tree,
+use ``--reverse-backend cubql --reverse-objective build_and_query``. Without
+these options the benchmark uses the forward backend and ``REUSE`` in both
+directions. Every measured configuration checks all output IDs and counts and
+compares up to eight queries per cloud and direction with exhaustive float32
+search. These are sampled correctness checks, not a full exhaustive comparison.

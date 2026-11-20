@@ -39,6 +39,9 @@ def _validate_backend(device, k, backend, objective, leaf_size):
         raise TypeError("backend must be a PointQueryBackend")
     if not isinstance(objective, PointQueryObjective):
         raise TypeError("objective must be a PointQueryObjective")
+    if backend == PointQueryBackend.WARP and leaf_size is not None:
+        if not isinstance(leaf_size, int) or isinstance(leaf_size, bool) or leaf_size < 1:
+            raise ValueError("leaf_size must be a positive Python integer")
     if backend == PointQueryBackend.CUBQL:
         if not device.is_cuda or not context.is_cubql_available():
             raise ValueError("Direct cuBQL requires CUDA and a Warp build with cuBQL enabled")
@@ -200,14 +203,14 @@ def point_query_config(num_points: int, num_queries: int, device: DeviceLike = N
 
 
 @wp.kernel(enable_backward=False)
-def _init_bounds(bounds: wp.array2d[float]):
+def _init_bounds_kernel(bounds: wp.array2d[float]):
     a = wp.tid()
     bounds[0, a] = wp.inf
     bounds[1, a] = -wp.inf
 
 
 @wp.kernel(enable_backward=False)
-def _query_bounds(queries: wp.array[wp.vec3], bounds: wp.array2d[float], workers: int):
+def _query_bounds_kernel(queries: wp.array[wp.vec3], bounds: wp.array2d[float], workers: int):
     lo = wp.vec3(wp.inf)
     hi = wp.vec3(-wp.inf)
     for i in range(wp.tid(), queries.shape[0], workers):
@@ -230,7 +233,9 @@ def _spread_bits(n: wp.uint32):
 
 
 @wp.kernel(enable_backward=False)
-def _query_codes(queries: wp.array[wp.vec3], bounds: wp.array2d[float], keys: wp.array[int], order: wp.array[int]):
+def _query_codes_kernel(
+    queries: wp.array[wp.vec3], bounds: wp.array2d[float], keys: wp.array[int], order: wp.array[int]
+):
     i = wp.tid()
     p = queries[i]
     code = wp.uint32(0)
@@ -249,7 +254,7 @@ def _query_codes(queries: wp.array[wp.vec3], bounds: wp.array2d[float], keys: wp
 @functools.cache
 def _query_kernel(k, stride, ordered, squared, index_type, has_excludes):
     @wp.kernel(module="unique", enable_backward=False)
-    def query(
+    def query_kernel(
         bvh: wp.uint64,
         points: wp.array[wp.vec3],
         queries: wp.array[wp.vec3],
@@ -284,13 +289,13 @@ def _query_kernel(k, stride, ordered, squared, index_type, has_excludes):
             indices[t, j] = index_type(-1)
             distances[t, j] = wp.inf
 
-    return query
+    return query_kernel
 
 
 @functools.cache
 def _distance_kernel(index_type, squared):
     @wp.kernel(module="unique")
-    def distances_from_indices(
+    def distances_from_indices_kernel(
         points: wp.array[wp.vec3],
         queries: wp.array[wp.vec3],
         indices: wp.array2d[index_type],
@@ -301,12 +306,126 @@ def _distance_kernel(index_type, squared):
         if index >= 0:
             d = wp.length_sq(queries[q] - points[index])
             if wp.static(not squared):
-                d = wp.sqrt(d)
+                # Choose the zero subgradient at coincidence without changing
+                # derivatives for arbitrarily small positive distances.
+                if d > 0.0:
+                    d = wp.sqrt(d)
             distances[q, j] = d
         else:
             distances[q, j] = wp.inf
 
-    return distances_from_indices
+    return distances_from_indices_kernel
+
+
+# Pack handles as launch parameters, not a host-to-device copy: construction
+# remains capturable and no temporary host buffer must survive graph replay.
+_HandleChunk = wp.types.vector(length=32, dtype=wp.uint64)
+
+
+@wp.kernel(enable_backward=False)
+def _pack_handles_kernel(values: _HandleChunk, offset: int, handles: wp.array[wp.uint64]):
+    i = wp.tid()
+    handles[offset + i] = values[i]
+
+
+class _BatchedPointIndexes(tuple):
+    """Tuple-compatible ownership plus lazy device-side query descriptors."""
+
+    def __new__(cls, indexes):
+        result = super().__new__(cls, indexes)
+        result._query_data = None
+        result._query_ids = None
+        return result
+
+    def query_data(self, backend, device):
+        ids = tuple(index.id for index in self)
+        if self._query_ids != ids:
+            self._query_data = None
+        if self._query_data is None:
+            if backend == PointQueryBackend.WARP:
+                self._query_data = wp.empty(len(self), dtype=wp.uint64, device=device)
+                for offset in range(0, len(self), 32):
+                    chunk = list(ids[offset : offset + 32])
+                    values = _HandleChunk(*(chunk + [0] * (32 - len(chunk))))
+                    wp.launch(
+                        _pack_handles_kernel,
+                        len(chunk),
+                        inputs=[values, offset, self._query_data],
+                        device=device,
+                        record_tape=False,
+                    )
+            else:
+                # Native code asserts this four-word descriptor ABI. The array
+                # owns descriptors only; the tuple retains all referenced trees.
+                self._query_data = wp.empty((len(self), 4), dtype=wp.uint64, device=device)
+                for batch, index in enumerate(self):
+                    if not context.runtime.core.wp_point_query_cubql_pack_device(
+                        index.id, self._query_data.ptr + 32 * batch
+                    ):
+                        raise RuntimeError(context.runtime.get_error_string())
+            self._query_ids = ids
+        return self._query_data
+
+
+@functools.cache
+def _batched_query_kernel(k, stride, squared, index_type, has_excludes):
+    @wp.kernel(module="unique", enable_backward=False)
+    def query_kernel(
+        handles: wp.array[wp.uint64],
+        points: wp.array2d[wp.vec3],
+        queries: wp.array2d[wp.vec3],
+        max_dist: float,
+        excludes: wp.array2d[int],
+        indices: wp.array3d[index_type],
+        distances: wp.array3d[float],
+        counts: wp.array2d[int],
+    ):
+        batch, thread = wp.tid()
+        if thread % wp.static(stride) != 0:
+            return
+        row = thread // wp.static(stride)
+        exclude = int(-1)
+        if wp.static(has_excludes):
+            exclude = excludes[batch, row]
+        search = wp.point_query_knn(handles[batch], points[batch], queries[batch, row], max_dist, wp.static(k), exclude)
+        index = int(-1)
+        count = int(0)
+        while wp.point_query_next(search, index):
+            indices[batch, row, count] = index_type(index)
+            d = wp.length_sq(queries[batch, row] - points[batch, index])
+            if wp.static(not squared):
+                d = wp.sqrt(d)
+            distances[batch, row, count] = d
+            count += 1
+        counts[batch, row] = count
+        for j in range(count, wp.static(k)):
+            indices[batch, row, j] = index_type(-1)
+            distances[batch, row, j] = wp.inf
+
+    return query_kernel
+
+
+@functools.cache
+def _batched_distance_kernel(index_type, squared):
+    @wp.kernel(module="unique")
+    def distances_from_indices_kernel(
+        points: wp.array2d[wp.vec3],
+        queries: wp.array2d[wp.vec3],
+        indices: wp.array3d[index_type],
+        distances: wp.array3d[float],
+    ):
+        batch, row, j = wp.tid()
+        index = int(indices[batch, row, j])
+        if index >= 0:
+            d = wp.length_sq(queries[batch, row] - points[batch, index])
+            if wp.static(not squared):
+                if d > 0.0:
+                    d = wp.sqrt(d)
+            distances[batch, row, j] = d
+        else:
+            distances[batch, row, j] = wp.inf
+
+    return distances_from_indices_kernel
 
 
 def _validate_array(array, name, dtype, shape, device):
@@ -361,8 +480,6 @@ def _build_point_index(
     num_queries = points.shape[-1] if num_queries is None else num_queries
     _validate_query_count(num_queries)
     leaf = point_query_config(points.shape[-1], num_queries, device).leaf_size if leaf_size is None else leaf_size
-    if backend == PointQueryBackend.WARP and (not isinstance(leaf, int) or isinstance(leaf, bool) or leaf < 1):
-        raise ValueError("leaf_size must be a positive Python integer")
     with ScopedDevice(device):
         if backend == PointQueryBackend.CUBQL and device.stream.is_capturing:
             raise ValueError("Direct cuBQL construction cannot be captured; build the index before capture")
@@ -373,7 +490,7 @@ def _build_point_index(
             else wp.Bvh(cloud, cloud, leaf_size=leaf)
             for cloud in clouds
         )
-    return indexes if points.ndim == 2 else indexes[0]
+    return _BatchedPointIndexes(indexes) if points.ndim == 2 else indexes[0]
 
 
 def _knn(
@@ -409,18 +526,18 @@ def _knn(
         queries: Contiguous ``vec3`` queries of shape ``(N,)`` or ``(B, N)`` on
             the same device. Each batch searches only its corresponding targets.
         k: Positive Python integer, specialized when compiling the query kernel.
-        bvh: Optional index from :func:`warp.build_point_index`: a reusable
+        bvh: Index from :func:`warp.build_point_index`: a reusable
             BVH or cuBQL point index, or a tuple of B indexes
             for batched inputs. Refit Warp BVHs or rebuild cuBQL indexes after
             moving targets. When omitted, construct the indexes.
         max_dist: Strict distance cutoff in coordinate units, even for squared outputs.
-        exclude_indices: Optional int32 array matching the query shape; each row
-            excludes a batch-local target index. -1 excludes nothing. Warp only.
-        indices: Optional int32/int64 output with the query shape followed by k.
+        exclude_indices: ``int32`` array matching the query shape; each row
+            excludes a batch-local target index. ``-1`` excludes nothing. Warp only.
+        indices: ``int32`` or ``int64`` output with the query shape followed by k.
             Newly allocated outputs use int32. Returned indices are batch-local.
-        distances: Optional float32 output with the same shape as indices.
-        counts: Optional int32 output matching the query shape.
-        squared: Return squared distances; set False for Euclidean distances.
+        distances: ``float32`` output with the same shape as indices.
+        counts: ``int32`` output matching the query shape.
+        squared: Return squared distances; set ``False`` for Euclidean distances.
         leaf_size: Override leaf size when constructing a new BVH. Not accepted
             with an existing BVH, whose layout is retained.
         query_stride: Override threads per query with a power of two from 1 to 32.
@@ -530,6 +647,72 @@ def _knn(
             )
         if counts is None:
             counts = wp.empty(queries.shape, dtype=int, device=device)
+        # APIC must see individual BVH handles as launch arguments for its
+        # resource tracking; preserve that path for saved/replayable captures.
+        # Legacy caller-created tuples have no owner for cached descriptors;
+        # keep their per-cloud path, including its graph-lifetime contract.
+        if (
+            points.ndim == 2
+            and (bvh is None or isinstance(bvh, _BatchedPointIndexes))
+            and (
+                backend == PointQueryBackend.CUBQL
+                or (not use_order and context._get_apic_capture_for_device(device) is None)
+            )
+        ):
+            if bvh is None:
+                bvh = _build_point_index(
+                    points, num_queries=nq, k=k, backend=backend, objective=objective, leaf_size=leaf_size
+                )
+            batch_indexes = bvh
+            if queries.size:
+                if backend == PointQueryBackend.CUBQL and context._get_apic_capture_for_device(device) is not None:
+                    raise NotImplementedError(
+                        "APIC capture does not support direct cuBQL queries; use PointQueryBackend.WARP"
+                    )
+                data = batch_indexes.query_data(backend, device)
+                # Schedule the whole batch together. Per-cloud sparse launch
+                # spacing wastes lanes when B*N already saturates the device.
+                batch_stride = point_query_config(num_points, queries.size, device).query_stride
+                if query_stride is not None:
+                    batch_stride = query_stride
+                if backend == PointQueryBackend.WARP:
+                    wp.launch(
+                        _batched_query_kernel(k, batch_stride, squared, indices.dtype, exclude_indices is not None),
+                        (points.shape[0], nq * batch_stride),
+                        inputs=[data, points, queries, max_dist, exclude_indices, indices, distances, counts],
+                        block_dim=32 if batch_stride > 1 else 256,
+                        device=device,
+                        record_tape=False,
+                    )
+                else:
+                    if not context.runtime.core.wp_point_query_cubql_query_batched_device(
+                        batch_indexes[0].id,
+                        data.ptr,
+                        points.ptr,
+                        queries.ptr,
+                        points.shape[0],
+                        num_points,
+                        nq,
+                        k,
+                        batch_stride,
+                        32 if batch_stride > 1 else 256,
+                        indices.ptr,
+                        distances.ptr,
+                        counts.ptr,
+                        indices.dtype == wp.int64,
+                        squared,
+                    ):
+                        raise RuntimeError(context.runtime.get_error_string())
+                if points.requires_grad or queries.requires_grad:
+                    wp.launch(
+                        _batched_distance_kernel(indices.dtype, squared),
+                        (*queries.shape, k),
+                        inputs=[points, queries, indices, distances],
+                        device=device,
+                    )
+            if device.is_cuda and not device.stream.is_blocking and not device.stream.is_capturing:
+                device.null_stream.wait_stream(device.stream)
+            return bvh, indices, distances, counts
         if points.ndim == 2:
             indexes = []
             for batch in range(points.shape[0]):
@@ -551,7 +734,7 @@ def _knn(
                     objective=objective,
                 )
                 indexes.append(result[0])
-            return bvh if bvh is not None else tuple(indexes), indices, distances, counts
+            return bvh if bvh is not None else _BatchedPointIndexes(indexes), indices, distances, counts
         if bvh is None:
             bvh = _build_point_index(
                 points,
@@ -567,6 +750,12 @@ def _knn(
                 _, _, cubql_stride, block_dim = _cubql_config(num_points, nq, k, bvh.objective)
                 if query_stride is not None:
                     cubql_stride = query_stride
+                if context._get_apic_capture_for_device(device) is not None:
+                    # A CUDA graph captures this native launch, but APIC records only Warp
+                    # launches, so a saved capture would replay without the query.
+                    raise NotImplementedError(
+                        "APIC capture does not support direct cuBQL queries; use PointQueryBackend.WARP"
+                    )
                 if not context.runtime.core.wp_point_query_cubql_query_device(
                     bvh.id,
                     points.ptr,
@@ -587,9 +776,13 @@ def _knn(
                 order = wp.empty_like(keys)
                 bounds = wp.empty((2, 3), dtype=float, device=device)
                 workers = min(nq, 256)
-                wp.launch(_init_bounds, 3, inputs=[bounds], device=device, record_tape=False)
-                wp.launch(_query_bounds, workers, inputs=[queries, bounds, workers], device=device, record_tape=False)
-                wp.launch(_query_codes, nq, inputs=[queries, bounds, keys, order], device=device, record_tape=False)
+                wp.launch(_init_bounds_kernel, 3, inputs=[bounds], device=device, record_tape=False)
+                wp.launch(
+                    _query_bounds_kernel, workers, inputs=[queries, bounds, workers], device=device, record_tape=False
+                )
+                wp.launch(
+                    _query_codes_kernel, nq, inputs=[queries, bounds, keys, order], device=device, record_tape=False
+                )
                 radix_sort_pairs(keys, order, nq)
             if backend == PointQueryBackend.WARP:
                 wp.launch(
@@ -724,6 +917,10 @@ class PointIndex:
         with ScopedDevice(self._points.device):
             if self._backend == PointQueryBackend.CUBQL and self._points.device.stream.is_capturing:
                 raise ValueError("Direct cuBQL rebuilding cannot be captured; rebuild the index before capture")
+            # Invalidate before rebuilding, including partial failure: native
+            # cuBQL handles may have changed for the preceding clouds.
+            if self._backend == PointQueryBackend.CUBQL and isinstance(self._index, _BatchedPointIndexes):
+                self._index._query_data = None
             for index in self._indexes:
                 index.rebuild()
 
@@ -758,9 +955,10 @@ def knn(
     support gradients with respect to both input coordinate arrays. Keep inputs
     and selected indices unchanged until backward finishes. Preallocated
     distance outputs must have ``requires_grad=True`` when gradients are needed.
+    Euclidean distances use the zero subgradient at coincident coordinates.
 
     Targets must be finite, with queried squared distances representable in
-    float32. A nonfinite query returns zero valid neighbors, -1 indices, and
+    float32. A nonfinite query returns zero valid neighbors, ``-1`` indices, and
     infinite distances. The Warp backend also returns no neighbors for a zero,
     negative, or NaN cutoff. Native cuBQL requires a positive infinite cutoff.
 
@@ -771,34 +969,34 @@ def knn(
             the target device and with the same array dimensionality and batch
             count as the targets. Each batch searches only its corresponding
             targets; ragged batches and batch broadcasting are unsupported.
-        k: Positive Python integer. Native cuBQL supports 1-64.
+        k: Positive Python integer. Native cuBQL supports ``1`` to ``64``.
         max_dist: Strict distance cutoff in coordinate units, including for
             squared outputs. Native cuBQL requires infinity.
-        exclude_indices: Optional int32 array matching the query shape. Each
-            entry excludes one batch-local target ID; -1 excludes nothing. Warp only.
-        indices: Optional int32/int64 output of shape ``(*queries.shape, k)``.
-            Newly allocated outputs use int32.
-        distances: Optional float32 output with the same shape as indices.
-        counts: Optional int32 output matching the query shape. Output buffers
+        exclude_indices: ``int32`` array matching the query shape. Each
+            entry excludes one batch-local target ID; ``-1`` excludes nothing. Warp only.
+        indices: ``int32`` or ``int64`` output of shape ``(*queries.shape, k)``.
+            Newly allocated outputs use ``int32``.
+        distances: ``float32`` output with the same shape as ``indices``.
+        counts: ``int32`` output matching the query shape. Output buffers
             must not overlap one another or inputs.
-        squared: Return squared distances; set False for Euclidean distances.
+        squared: Return squared distances; set ``False`` for Euclidean distances.
         leaf_size: Override Warp leaf size for a new owner. Existing owners keep
             their layout and reject this override; native cuBQL also rejects it.
         query_stride: Override threads per query with a power of two from 1 to 32.
-        ordered: Override spatial query ordering; None uses the measured policy.
-            Native cuBQL rejects True.
+        ordered: Override spatial query ordering; ``None`` uses the measured policy.
+            Native cuBQL rejects ``True``.
         backend: Choose Warp or native cuBQL when constructing targets. An
             existing owner selects its own backend; conflicting overrides raise.
-        objective: Choose cuBQL construction tuning. New owners use REUSE when
-            omitted. Existing owners retain their objective and reject conflicts.
+        objective: Choose cuBQL construction tuning. New owners use
+            :attr:`PointQueryObjective.REUSE` when omitted. Existing owners retain their objective and reject conflicts.
 
     Returns:
         ``(index, indices, distances, counts)``: the reusable :class:`PointIndex`,
         neighbor IDs sorted by computed distance, corresponding distances, and
         valid neighbor counts. Shapes are ``(N, k)`` for IDs/distances and
         ``(N,)`` for counts, or ``(B, N, k)`` and ``(B, N)`` for batched inputs.
-        A supplied owner is returned unchanged. Missing neighbors have index -1
-        and infinite distance. Empty clouds and B=0 are supported. Warp breaks
+        A supplied owner is returned unchanged. Missing neighbors have index ``-1``
+        and infinite distance. Empty clouds and ``B = 0`` are supported. Warp breaks
         equal-distance ties by original target index; native cuBQL uses its own
         tie ordering. Warm up before capture and retain owners, inputs, and
         outputs through replay. Native cuBQL construction occurs outside capture.

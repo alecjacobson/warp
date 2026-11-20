@@ -692,7 +692,7 @@ struct CubqlPointIndex {
     PointQueryMemoryResource memory;
 };
 
-template <int Capacity, int Stride>
+template <int Capacity, int Stride, bool Batched = false>
 __global__ void cubql_point_query_kernel(
     cuBQL::bvh3f tree,
     const cuBQL::vec3f* points,
@@ -703,13 +703,23 @@ __global__ void cubql_point_query_kernel(
     float* distances,
     int* counts,
     bool indices_int64,
-    bool squared
+    bool squared,
+    const cuBQL::bvh3f* trees,
+    int target_count,
+    int batches
 )
 {
     const size_t thread = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
-    if (thread % Stride || thread / Stride >= size_t(count))
+    if (thread % Stride || thread / Stride >= size_t(count) * batches)
         return;
     const int row = int(thread / Stride);
+    if (Batched) {
+        const int batch = row / count;
+        tree = trees[batch];
+        // Avoid pointer arithmetic on nullptr for empty target clouds.
+        if (target_count)
+            points += size_t(batch) * target_count;
+    }
     const cuBQL::vec3f query = queries[row];
     cuBQL::knn::Candidate candidates[Capacity];
     int found = 0;
@@ -737,7 +747,7 @@ __global__ void cubql_point_query_kernel(
     }
 }
 
-template <int Capacity>
+template <int Capacity, bool Batched = false>
 void cubql_launch_point_query(
     const CubqlPointIndex& index,
     const wp::vec3* points,
@@ -751,15 +761,18 @@ void cubql_launch_point_query(
     int* counts,
     bool indices_int64,
     bool squared,
-    cudaStream_t stream
+    cudaStream_t stream,
+    const cuBQL::bvh3f* trees = nullptr,
+    int target_count = 0,
+    int batches = 1
 )
 {
-    const unsigned blocks = unsigned((size_t(count) * stride + block_dim - 1) / block_dim);
+    const unsigned blocks = unsigned((size_t(count) * batches * stride + block_dim - 1) / block_dim);
 #define WP_CUBQL_QUERY(Stride) \
     case Stride: \
-        cubql_point_query_kernel<Capacity, Stride><<<blocks, block_dim, 0, stream>>>( \
+        cubql_point_query_kernel<Capacity, Stride, Batched><<<blocks, block_dim, 0, stream>>>( \
             index.tree, reinterpret_cast<const cuBQL::vec3f*>(points), reinterpret_cast<const cuBQL::vec3f*>(queries), \
-            count, k, indices, distances, counts, indices_int64, squared); \
+            count, k, indices, distances, counts, indices_int64, squared, trees, target_count, batches); \
         break
     switch (stride) {
         WP_CUBQL_QUERY(1);
@@ -771,6 +784,8 @@ void cubql_launch_point_query(
     }
 #undef WP_CUBQL_QUERY
 }
+
+__global__ void cubql_pack_point_tree(cuBQL::bvh3f tree, cuBQL::bvh3f* output) { *output = tree; }
 
 }  // namespace
 #endif
@@ -896,6 +911,83 @@ bool wp_point_query_cubql_query_device(
     if (status == cudaSuccess)
         return true;
     wp::set_error_string("Direct cuBQL query launch failed: %s", cudaGetErrorString(status));
+#else
+    wp::set_error_string("Direct cuBQL point queries are disabled in this build");
+#endif
+    return false;
+}
+
+
+bool wp_point_query_cubql_pack_device(uint64_t id, void* output)
+{
+#ifndef WP_DISABLE_CUBQL
+    static_assert(sizeof(cuBQL::bvh3f) == 4 * sizeof(uint64_t), "Python descriptor storage must match cuBQL");
+    if (!id || !output) {
+        wp::set_error_string("Invalid direct cuBQL descriptor arguments");
+        return false;
+    }
+    const auto& index = *reinterpret_cast<const CubqlPointIndex*>(id);
+    ContextGuard guard(index.context);
+    const cudaStream_t stream = static_cast<cudaStream_t>(wp_cuda_context_get_stream(index.context));
+    cubql_pack_point_tree<<<1, 1, 0, stream>>>(index.tree, static_cast<cuBQL::bvh3f*>(output));
+    const cudaError_t status = cudaGetLastError();
+    if (status == cudaSuccess)
+        return true;
+    wp::set_error_string("Direct cuBQL descriptor launch failed: %s", cudaGetErrorString(status));
+#else
+    wp::set_error_string("Direct cuBQL point queries are disabled in this build");
+#endif
+    return false;
+}
+
+bool wp_point_query_cubql_query_batched_device(
+    uint64_t id,
+    const void* trees,
+    const wp::vec3* points,
+    const wp::vec3* queries,
+    int batches,
+    int target_count,
+    int count,
+    int k,
+    int stride,
+    int block_dim,
+    void* indices,
+    float* distances,
+    int* counts,
+    bool indices_int64,
+    bool squared
+)
+{
+#ifndef WP_DISABLE_CUBQL
+    if (!id || batches < 0 || target_count < 0 || count < 0 || k < 1 || k > 64 || stride < 1 || stride > 32
+        || (stride & (stride - 1)) || block_dim < 32 || block_dim > 256 || block_dim % 32
+        || (batches && count && (!trees || !queries || !indices || !distances || !counts))
+        || (batches && target_count && !points) || size_t(batches) * size_t(count) > size_t(INT_MAX)) {
+        wp::set_error_string("Invalid batched direct cuBQL query arguments");
+        return false;
+    }
+    if (!batches || !count)
+        return true;
+    const auto& index = *reinterpret_cast<const CubqlPointIndex*>(id);
+    ContextGuard guard(index.context);
+    const cudaStream_t stream = static_cast<cudaStream_t>(wp_cuda_context_get_stream(index.context));
+#define WP_CUBQL_BATCH(Capacity) \
+    cubql_launch_point_query<Capacity, true>(index, points, queries, count, k, stride, block_dim, indices, distances, counts, \
+        indices_int64, squared, stream, static_cast<const cuBQL::bvh3f*>(trees), target_count, batches)
+    if (k == 1) {
+        WP_CUBQL_BATCH(1);
+    } else if (k == 11) {
+        WP_CUBQL_BATCH(11);
+    } else if (k == 32) {
+        WP_CUBQL_BATCH(32);
+    } else {
+        WP_CUBQL_BATCH(64);
+    }
+#undef WP_CUBQL_BATCH
+    const cudaError_t status = cudaGetLastError();
+    if (status == cudaSuccess)
+        return true;
+    wp::set_error_string("Batched direct cuBQL query launch failed: %s", cudaGetErrorString(status));
 #else
     wp::set_error_string("Direct cuBQL point queries are disabled in this build");
 #endif

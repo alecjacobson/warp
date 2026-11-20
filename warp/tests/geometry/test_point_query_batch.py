@@ -21,6 +21,7 @@ def check(test, p, q, k, outputs, radius=np.inf, exclude=None, squared=True):
 
 
 def test_batch(test, device):
+    """Return padded scalar-cloud results for partial and empty inputs."""
     rng = np.random.default_rng(983)
     for n, nq, k in ((37, 13, 1), (37, 13, 5), (3, 11, 5), (0, 7, 5), (9, 0, 5)):
         p = np.round(rng.normal(size=(n, 3))).astype(np.float32)
@@ -33,6 +34,7 @@ def test_batch(test, device):
 
 
 def test_order_cutoff_reuse(test, device):
+    """Preserve filtering and output storage through ordering and refit."""
     rng = np.random.default_rng(827)
     p = rng.normal(size=(129, 3)).astype(np.float32)
     p[:, 2] = 0
@@ -93,6 +95,7 @@ def sum_distances(distances: wp.array2d[float], loss: wp.array[float]):
 
 
 def test_gradients(test, device):
+    """Differentiate gathered distances with selected neighbors held fixed."""
     p = np.array([[0, 0, 0], [2, 1, 0], [4, 0, 0], [10, 1, 0]], np.float32)
     q = np.array([[0.2, 0.1, 0], [0.3, -0.1, 0]], np.float32)
     for ordered in (False, True):
@@ -114,6 +117,9 @@ def test_gradients(test, device):
 
 
 def test_capture(test, device):
+    """Replay construction and refit with changing targets and queries."""
+    if not wp.is_mempool_enabled(device):
+        test.skipTest("CUDA capture of construction requires memory pools")
     rng = np.random.default_rng(118)
     p, q = rng.normal(size=(513, 3)).astype(np.float32), rng.normal(size=(65, 3)).astype(np.float32)
     points, queries = wp.array(p, dtype=wp.vec3, device=device), wp.array(q, dtype=wp.vec3, device=device)
@@ -121,7 +127,7 @@ def test_capture(test, device):
     with wp.ScopedStream(stream):
         for ordered in (False, True):
             warm = wp.point_query_knn_batch(points, queries, 5, ordered=ordered)
-            with wp.ScopedCapture(stream=stream) as capture:
+            with wp.ScopedCapture(stream=stream, force_module_load=False) as capture:
                 result = wp.point_query_knn_batch(points, queries, 5, ordered=ordered)
             for _ in range(3):
                 p = p * np.float32(1.1)
@@ -131,7 +137,7 @@ def test_capture(test, device):
                 wp.capture_launch(capture.graph, stream=stream)
                 check(test, p, q, 5, result)
             # Capture refit and a query writing into caller-owned output buffers.
-            with wp.ScopedCapture(stream=stream) as reuse:
+            with wp.ScopedCapture(stream=stream, force_module_load=False) as reuse:
                 result[0].refit()
                 again = wp.point_query_knn_batch(
                     points,
@@ -151,6 +157,7 @@ def test_capture(test, device):
 
 class TestPointQueryBatch(unittest.TestCase):
     def test_validation(self):
+        """Reject incompatible query arrays, options, and output buffers."""
         points = wp.zeros(3, dtype=wp.vec3, device="cpu")
         bvh = wp.Bvh(points, points)
         for k in (0, -1, 1.5, True):

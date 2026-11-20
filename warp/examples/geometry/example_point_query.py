@@ -9,7 +9,7 @@ import warp as wp
 
 
 @wp.kernel
-def neighbors(
+def neighbors_kernel(
     bvh: wp.uint64,
     points: wp.array[wp.vec3],
     queries: wp.array[wp.vec3],
@@ -40,7 +40,7 @@ def main():
         indices = wp.empty((1, 4), dtype=int)
         loss = wp.zeros(1, dtype=float, requires_grad=True)
         with wp.Tape() as tape:
-            wp.launch(neighbors, 1, inputs=[bvh.id, points, queries, indices, loss])
+            wp.launch(neighbors_kernel, 1, inputs=[bvh.id, points, queries, indices, loss])
         tape.backward(loss)
         print("Neighbor indices (padding=-1):", indices.numpy())
         print("Query gradient:", queries.grad.numpy())

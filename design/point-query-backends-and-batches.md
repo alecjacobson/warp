@@ -1,8 +1,7 @@
 # Direct cuBQL queries and independent point-cloud batches
 
-- **Status:** Initial scope implemented and validated on CPU and one CUDA device; wider tuning and application integration are follow-up work
-- **API/main revision:** [#22](https://github.com/alecjacobson/warp/issues/22), rebased onto NVIDIA main `3afdd69addbf` on November 15
-- **Issues:** [Direct cuBQL](https://github.com/alecjacobson/warp/issues/20), [fixed-size batches](https://github.com/alecjacobson/warp/issues/21)
+- **Status:** Proposed
+- **Issue:** [NVIDIA/warp#2348](https://github.com/NVIDIA/warp/issues/2348)
 
 ## Motivation
 
@@ -28,8 +27,10 @@ For symmetric Chamfer loss, build target indexes once for decoded-to-target quer
 
 ## Validation and follow-up
 
-The November 15 API revision passes the 86-test CPU/CUDA point-query and BVH suite. Coverage includes overlapping clouds with different local index ordering, singleton equivalence, empty and partial results, output/index reuse, native dispatch, unsupported configurations, ordered capture, refits/rebuilds, and squared/Euclidean gradients of both Chamfer directions against an exhaustive reference and finite differences. Build-only tests forbid query dispatch during construction, verify reuse without rebuilding, and exercise changed query counts and k. Legacy calls retain their signature and behavior with a deprecation warning.
+The core tests cover exact values, original-index ties, strict cutoffs, missing neighbors, empty clouds and batches, all available constructors, refit/rebuild, output reuse, and CUDA capture with changing coordinates. Both Chamfer directions differentiate into the original batched arrays. Euclidean distances use a zero subgradient at coincidence. Selection is discrete and does not contribute an adjoint. A forced stack-overflow test checks the exact scan restart, including that the restart actually occurred.
 
-The [API/main regression report](../reports/knn/api-revision/README.md) measures the new public API against the published pre-rebase branch and the retained engine on new main. The [current comparison report](../reports/knn/comparisons.md) preserves November 13 measurements for 24 workloads, construction/query timings, retained memory, and symmetric Chamfer forward/backward on the current 94-SM slice, separately from the historical 46-SM report. The [completion report](../reports/knn/completion/README.md) compares integrated and standalone cuBQL on matching inputs and settings, and records final API and conditional-build validation. The supplied archive is read without adding raw data to Git.
+The ASV point-query benchmark measures construction-inclusive calls, reused queries, and reused query graphs for the public configurations. The [research branch comparison report](https://github.com/alecjacobson/warp/blob/alecjacobson/knn/reports/knn/comparisons.md) retains the external-library experiments and their methodology; those experiment artifacts are not part of the library change. No changes to vendored cuBQL are required.
 
-Wider shape/hardware coverage, peak training memory, actual encoder integration, cross-batch launch fusion, and denser-query tuning remain follow-up work. They do not block the initial optional native route or linear-memory fixed-size batch contract. Ragged batches are outside this design.
+The shared ungrouped CUDA LBVH builder uses narrow Morton sort keys, parallel radix topology construction, and packed-leaf bounds reduction. These changes affect ordinary BVHs and meshes as well as point clouds, so the existing BVH and mesh query suites are included in regression validation. The group-aware construction route remains separate. The captured descriptor is initialized from kernel arguments, avoiding a replay-time reference to temporary host storage.
+
+Wider shape/hardware coverage, peak training memory, actual encoder integration, cross-batch launch fusion, and denser-query tuning remain follow-up work. Ragged batches are outside this design.

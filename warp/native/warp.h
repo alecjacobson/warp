@@ -128,6 +128,25 @@ WP_API bool wp_point_query_cubql_query_device(
     bool squared
 );
 
+WP_API bool wp_point_query_cubql_pack_device(uint64_t id, void* output);
+WP_API bool wp_point_query_cubql_query_batched_device(
+    uint64_t id,
+    const void* trees,
+    const wp::vec3* points,
+    const wp::vec3* queries,
+    int batches,
+    int target_count,
+    int count,
+    int k,
+    int stride,
+    int block_dim,
+    void* indices,
+    float* distances,
+    int* counts,
+    bool indices_int64,
+    bool squared
+);
+
 // create a user-accessible copy of the mesh, it is the
 // users responsibility to keep-alive the points/tris data for the duration of the mesh lifetime
 WP_API uint64_t wp_mesh_create_host(

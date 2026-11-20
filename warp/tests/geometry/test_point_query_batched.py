@@ -8,7 +8,7 @@ from unittest import mock
 import numpy as np
 
 import warp as wp
-import warp.geometry as geometry
+import warp.geometry
 from warp._src import context
 from warp._src import point_query as legacy_point_query
 from warp._src.geometry import point_query
@@ -17,9 +17,9 @@ from warp.tests.unittest_utils import add_function_test, get_cuda_test_devices, 
 
 
 def query_backends(device):
-    backends = [geometry.PointQueryBackend.WARP]
+    backends = [wp.geometry.PointQueryBackend.WARP]
     if device.is_cuda and wp.is_cubql_available():
-        backends.append(geometry.PointQueryBackend.CUBQL)
+        backends.append(wp.geometry.PointQueryBackend.CUBQL)
     return backends
 
 
@@ -49,16 +49,16 @@ def test_prebuilt_indexes(test, device):
                 mock.patch.object(point_query, "_query_kernel", side_effect=AssertionError("Unexpected query kernel")),
                 mock.patch.object(context.runtime.core, "wp_point_query_cubql_query_device") as native_query,
             ):
-                indexes = geometry.PointIndex(points, k=1, backend=backend)
+                indexes = wp.geometry.PointIndex(points, k=1, backend=backend)
                 native_query.assert_not_called()
-            index_type = point_query.CubqlPointIndex if backend == geometry.PointQueryBackend.CUBQL else wp.Bvh
-            test.assertIsInstance(indexes, geometry.PointIndex)
+            index_type = point_query.CubqlPointIndex if backend == wp.geometry.PointQueryBackend.CUBQL else wp.Bvh
+            test.assertIsInstance(indexes, wp.geometry.PointIndex)
             test.assertIs(indexes.points, points)
             for query_count, k in ((7, 5), (13, 1)):
                 queries = rng.normal(size=(*shape[:-1], query_count, 3)).astype(np.float32)
                 query_points = wp.array(queries, dtype=wp.vec3, device=device)
                 with mock.patch.object(index_type, "__init__", side_effect=AssertionError("Unexpected construction")):
-                    result = geometry.knn(indexes, query_points, k)
+                    result = wp.geometry.knn(indexes, query_points, k)
                 test.assertIs(result[0], indexes)
                 if len(shape) == 2:
                     check_batches(test, targets, queries, k, result)
@@ -91,19 +91,19 @@ def test_batched_values(test, device):
             points = wp.array(targets, dtype=wp.vec3, device=device)
             query_points = wp.array(queries, dtype=wp.vec3, device=device)
             ids = wp.empty((batches, query_count, k), dtype=wp.int64, device=device)
-            result = geometry.knn(points, query_points, k, backend=backend, indices=ids)
+            result = wp.geometry.knn(points, query_points, k, backend=backend, indices=ids)
             test.assertIs(result[1], ids)
             test.assertEqual(len(result[0]._indexes), batches)
             check_batches(test, targets, queries, k, result)
             old_handles = tuple(index.id for index in result[0]._indexes)
             queries = queries + np.float32(0.13)
             query_points.assign(queries)
-            reused = geometry.knn(result[0], query_points, k, indices=ids, distances=result[2], counts=result[3])
+            reused = wp.geometry.knn(result[0], query_points, k, indices=ids, distances=result[2], counts=result[3])
             test.assertIs(reused[0], result[0])
             test.assertEqual(tuple(index.id for index in reused[0]._indexes), old_handles)
             check_batches(test, targets, queries, k, reused)
             if batches == 1 and target_count and query_count:
-                single = geometry.knn(points[0], query_points[0], k, backend=backend)
+                single = wp.geometry.knn(points[0], query_points[0], k, backend=backend)
                 np.testing.assert_array_equal(single[1].numpy(), reused[1].numpy()[0])
 
 
@@ -121,25 +121,25 @@ def test_point_index_updates(test, device):
         queries = rng.normal(size=(2, 7, 3)).astype(np.float32)
         points = wp.array(targets, dtype=wp.vec3, device=device)
         query_points = wp.array(queries, dtype=wp.vec3, device=device)
-        owner = geometry.PointIndex(points, backend=backend)
+        owner = wp.geometry.PointIndex(points, backend=backend)
         test.assertFalse(hasattr(owner, "id"))
         with test.assertRaises(AttributeError):
             owner.points = wp.clone(points)
-        if backend == geometry.PointQueryBackend.CUBQL:
+        if backend == wp.geometry.PointQueryBackend.CUBQL:
             with test.assertRaisesRegex(ValueError, "Warp BVH handles"):
                 _ = owner.bvhs
             with test.assertRaisesRegex(ValueError, "rebuild"):
                 owner.refit()
         for update in ("refit", "rebuild"):
-            if update == "refit" and backend == geometry.PointQueryBackend.CUBQL:
+            if update == "refit" and backend == wp.geometry.PointQueryBackend.CUBQL:
                 continue
             targets = targets[:, ::-1].copy() * np.float32(1.7) + np.float32(0.3)
             points.assign(targets)
             getattr(owner, update)()
-            result = geometry.knn(owner, query_points, 1)
+            result = wp.geometry.knn(owner, query_points, 1)
             check_batches(test, targets, queries, 1, result)
             test.assertIs(result[0], owner)
-        if backend == geometry.PointQueryBackend.WARP:
+        if backend == wp.geometry.PointQueryBackend.WARP:
             test.assertEqual(len(owner.bvhs), 2)
             for batch, bvh in enumerate(owner.bvhs):
                 ids = wp.empty(7, dtype=int, device=device)
@@ -190,11 +190,11 @@ def test_batched_chamfer_gradients(test, device):
         for backend in query_backends(device):
             points = wp.array(targets, dtype=wp.vec3, device=device, requires_grad=True)
             query_points = wp.array(queries, dtype=wp.vec3, device=device, requires_grad=True)
-            fixed = geometry.PointIndex(points, num_queries=query_points.shape[1], k=1, backend=backend)
+            fixed = wp.geometry.PointIndex(points, num_queries=query_points.shape[1], k=1, backend=backend)
             loss = wp.zeros(1, dtype=float, device=device, requires_grad=True)
             with wp.Tape() as tape:
-                forward = geometry.knn(fixed, query_points, 1, squared=squared)
-                backward = geometry.knn(query_points, points, 1, backend=backend, squared=squared)
+                forward = wp.geometry.knn(fixed, query_points, 1, squared=squared)
+                backward = wp.geometry.knn(query_points, points, 1, backend=backend, squared=squared)
                 wp.launch(chamfer_sum_kernel, queries.shape[:2], [forward[2], loss, 1.0 / 10], device=device)
                 wp.launch(chamfer_sum_kernel, targets.shape[:2], [backward[2], loss, 1.0 / 18], device=device)
             tape.backward(loss)
@@ -204,13 +204,28 @@ def test_batched_chamfer_gradients(test, device):
             np.testing.assert_allclose(query_points.grad.numpy()[1, 2, 0], (plus - minus) / (2 * epsilon), atol=2e-4)
 
 
+def test_coincident_euclidean_gradients(test, device):
+    """Return zero Euclidean subgradients at coincident points for either backend."""
+    for backend in query_backends(device):
+        points = wp.array([[[0, 0, 0], [4, 0, 0], [0, 4, 0]]], dtype=wp.vec3, device=device, requires_grad=True)
+        queries = wp.array([[[0, 0, 0], [5, 0, 0], [1e-7, 4, 0]]], dtype=wp.vec3, device=device, requires_grad=True)
+        loss = wp.zeros(1, dtype=float, device=device, requires_grad=True)
+        with wp.Tape() as tape:
+            result = wp.geometry.knn(points, queries, 1, backend=backend, squared=False)
+            wp.launch(chamfer_sum_kernel, queries.shape, [result[2], loss, 1.0], device=device)
+        tape.backward(loss)
+        np.testing.assert_allclose(result[2].numpy(), [[[0.0], [1.0], [1e-7]]], rtol=1e-6)
+        np.testing.assert_allclose(queries.grad.numpy(), [[[0, 0, 0], [1, 0, 0], [1, 0, 0]]], rtol=1e-6)
+        np.testing.assert_allclose(points.grad.numpy(), [[[0, 0, 0], [-1, 0, 0], [-1, 0, 0]]], rtol=1e-6)
+
+
 def test_batched_filtering(test, device):
     """Apply cutoffs and exclusions within each ordered Warp query batch."""
     rng = np.random.default_rng(172)
     targets = np.round(rng.normal(size=(2, 23, 3))).astype(np.float32)
     queries = targets[:, :7].copy()
     excludes = np.tile(np.arange(7, dtype=np.int32), (2, 1))
-    result = geometry.knn(
+    result = wp.geometry.knn(
         wp.array(targets, dtype=wp.vec3, device=device),
         wp.array(queries, dtype=wp.vec3, device=device),
         4,
@@ -233,9 +248,9 @@ def test_batched_capture(test, device):
     points = wp.array(targets, dtype=wp.vec3, device=device)
     query_points = wp.array(queries, dtype=wp.vec3, device=device)
     for backend in query_backends(device):
-        result = geometry.knn(points, query_points, 11, backend=backend)
-        with wp.ScopedCapture(device=device) as capture:
-            replayed = geometry.knn(
+        result = wp.geometry.knn(points, query_points, 11, backend=backend)
+        with wp.ScopedCapture(device=device, force_module_load=False) as capture:
+            replayed = wp.geometry.knn(
                 result[0], query_points, 11, indices=result[1], distances=result[2], counts=result[3]
             )
         for _ in range(2):
@@ -243,27 +258,33 @@ def test_batched_capture(test, device):
             query_points.assign(queries)
             wp.capture_launch(capture.graph)
             check_batches(test, targets, queries, 11, replayed)
-        if backend == geometry.PointQueryBackend.CUBQL:
-            with wp.ScopedCapture(device=device):
+        if backend == wp.geometry.PointQueryBackend.CUBQL:
+            with wp.ScopedCapture(device=device, force_module_load=False):
                 with test.assertRaisesRegex(ValueError, "cannot be captured"):
-                    geometry.knn(points, query_points, 1, backend=backend)
+                    wp.geometry.knn(points, query_points, 1, backend=backend)
                 with test.assertRaisesRegex(ValueError, "cannot be captured"):
-                    geometry.PointIndex(points, backend=backend)
+                    wp.geometry.PointIndex(points, backend=backend)
                 with test.assertRaisesRegex(ValueError, "cannot be captured"):
                     result[0].rebuild()
-        else:
+            # APIC records only Warp launches, so a saved capture could not replay a native cuBQL query.
+            with wp.ScopedCapture(device=device, apic=True, force_module_load=False):
+                with test.assertRaisesRegex(NotImplementedError, "APIC capture does not support direct cuBQL queries"):
+                    wp.geometry.knn(
+                        result[0], query_points, 11, indices=result[1], distances=result[2], counts=result[3]
+                    )
+        elif wp.is_mempool_enabled(device):
             # Compile the ordered path before capturing full construction.
-            warm = geometry.knn(points, query_points, 11, ordered=True)
-            with wp.ScopedCapture(device=device) as build_capture:
-                rebuilt_indexes = geometry.PointIndex(points, num_queries=query_points.shape[1], k=11)
-                rebuilt = geometry.knn(rebuilt_indexes, query_points, 11, ordered=True)
+            warm = wp.geometry.knn(points, query_points, 11, ordered=True)
+            with wp.ScopedCapture(device=device, force_module_load=False) as build_capture:
+                rebuilt_indexes = wp.geometry.PointIndex(points, num_queries=query_points.shape[1], k=11)
+                rebuilt = wp.geometry.knn(rebuilt_indexes, query_points, 11, ordered=True)
             targets *= np.float32(1.3)
             points.assign(targets)
             wp.capture_launch(build_capture.graph)
             check_batches(test, targets, queries, 11, rebuilt)
-            with wp.ScopedCapture(device=device) as refit_capture:
+            with wp.ScopedCapture(device=device, force_module_load=False) as refit_capture:
                 warm[0].refit()
-                refitted = geometry.knn(warm[0], query_points, 11, ordered=True)
+                refitted = wp.geometry.knn(warm[0], query_points, 11, ordered=True)
             targets += np.float32(0.21)
             points.assign(targets)
             wp.capture_launch(refit_capture.graph)
@@ -279,19 +300,19 @@ def test_cubql_route(test, device):
     queries = rng.normal(size=(8, 3)).astype(np.float32)
     points = wp.array(targets, dtype=wp.vec3, device=device)
     query_points = wp.array(queries, dtype=wp.vec3, device=device)
-    for objective in geometry.PointQueryObjective:
+    for objective in wp.geometry.PointQueryObjective:
         for k in (1, 5, 11, 32, 64):
             with mock.patch.object(
                 context.runtime.core,
                 "wp_point_query_cubql_query_device",
                 wraps=context.runtime.core.wp_point_query_cubql_query_device,
             ) as native_query:
-                result = geometry.knn(
-                    points, query_points, k, backend=geometry.PointQueryBackend.CUBQL, objective=objective
+                result = wp.geometry.knn(
+                    points, query_points, k, backend=wp.geometry.PointQueryBackend.CUBQL, objective=objective
                 )
                 native_query.assert_called_once()
-            test.assertIsInstance(result[0], geometry.PointIndex)
-            test.assertEqual(result[0].backend, geometry.PointQueryBackend.CUBQL)
+            test.assertIsInstance(result[0], wp.geometry.PointIndex)
+            test.assertEqual(result[0].backend, wp.geometry.PointQueryBackend.CUBQL)
             ids, distances = reference(targets, queries, k, np.inf, [-1] * len(queries))
             np.testing.assert_array_equal(result[1].numpy(), ids)
             np.testing.assert_allclose(result[2].numpy(), distances, rtol=3e-6)
@@ -321,7 +342,7 @@ def test_cubql_route(test, device):
     targets += np.float32(0.4)
     points.assign(targets)
     result[0].rebuild()
-    rebuilt = geometry.knn(result[0], query_points, 1, squared=False)
+    rebuilt = wp.geometry.knn(result[0], query_points, 1, squared=False)
     ids, distances = reference(targets, queries, 1, np.inf, [-1] * len(queries))
     np.testing.assert_array_equal(rebuilt[1].numpy(), ids)
     np.testing.assert_allclose(rebuilt[2].numpy(), np.sqrt(distances), rtol=3e-6)
@@ -333,7 +354,7 @@ def test_cubql_route(test, device):
         {"exclude_indices": wp.full(len(queries), -1, dtype=int, device=device)},
     ):
         with test.assertRaises(ValueError):
-            geometry.knn(points, query_points, backend=geometry.PointQueryBackend.CUBQL, **({"k": 1} | kwargs))
+            wp.geometry.knn(points, query_points, backend=wp.geometry.PointQueryBackend.CUBQL, **({"k": 1} | kwargs))
     replacement = wp.clone(points)
     with test.assertRaisesRegex(ValueError, "original target allocation"):
         point_query._knn(replacement, query_points, 1, bvh=result[0]._index)
@@ -344,7 +365,7 @@ def test_cubql_route(test, device):
     stream = wp.Stream(device)
     stream.wait_stream(device.stream)
     with wp.ScopedStream(stream):
-        tied = geometry.knn(duplicates, nonfinite_queries, 11, backend=geometry.PointQueryBackend.CUBQL)
+        tied = wp.geometry.knn(duplicates, nonfinite_queries, 11, backend=wp.geometry.PointQueryBackend.CUBQL)
         np.testing.assert_array_equal(tied[3].numpy(), [11, 0, 0])
         test.assertEqual(len(np.unique(tied[1].numpy()[0])), 11)
         np.testing.assert_array_equal(tied[2].numpy()[0], 1.0)
@@ -352,22 +373,89 @@ def test_cubql_route(test, device):
         np.testing.assert_array_equal(tied[2].numpy()[1:], np.inf)
 
 
+def test_fused_batch_reuse(test, device):
+    """Reuse more than one handle chunk without per-cloud Python views or gathers."""
+    rng = np.random.default_rng(348)
+    p = rng.normal(size=(33, 17, 3)).astype(np.float32)
+    q = rng.normal(size=(33, 7, 3)).astype(np.float32)
+    for backend in query_backends(device):
+        points = wp.array(p, dtype=wp.vec3, device=device, requires_grad=True)
+        queries = wp.array(q, dtype=wp.vec3, device=device, requires_grad=True)
+        warm = wp.geometry.knn(points, queries, 5, backend=backend)
+        with mock.patch.object(point_query, "_batch_view", side_effect=AssertionError("Per-cloud view in query")):
+            result = wp.geometry.knn(warm[0], queries, 5, indices=warm[1], distances=warm[2], counts=warm[3])
+        check_batches(test, p, q, 5, result)
+        moved = p + np.float32(0.4)
+        points.assign(moved)
+        result[0].rebuild()
+        check_batches(test, moved, q, 5, wp.geometry.knn(result[0], queries, 5))
+
+
+def test_fused_construction_capture(test, device):
+    """Capture device handle packing, rebuild, fused queries, and changed-input replay."""
+    if not wp.is_mempool_enabled(device):
+        test.skipTest("Construction capture requires memory pools")
+    rng = np.random.default_rng(349)
+    p = rng.normal(size=(3, 23, 3)).astype(np.float32)
+    q = rng.normal(size=(3, 9, 3)).astype(np.float32)
+    points = wp.array(p, dtype=wp.vec3, device=device)
+    queries = wp.array(q, dtype=wp.vec3, device=device)
+    stream = wp.Stream(device)
+    stream.wait_stream(device.stream)
+    with wp.ScopedStream(stream):
+        warm = wp.geometry.knn(points, queries, 5, ordered=False)
+        with wp.ScopedCapture(stream=stream, force_module_load=False) as capture:
+            result = wp.geometry.knn(points, queries, 5, ordered=False)
+        for _ in range(2):
+            p *= np.float32(1.2)
+            q += np.float32(0.17)
+            points.assign(p)
+            queries.assign(q)
+            wp.capture_launch(capture.graph, stream=stream)
+            check_batches(test, p, q, 5, result)
+        with wp.ScopedCapture(stream=stream, force_module_load=False) as capture:
+            warm[0].refit()
+            refitted = wp.geometry.knn(warm[0], queries, 5, ordered=False)
+        p += np.float32(0.4)
+        points.assign(p)
+        wp.capture_launch(capture.graph, stream=stream)
+        check_batches(test, p, q, 5, refitted)
+        # A query-only graph retains its cached descriptor allocation even
+        # when the owner rebuilds its Warp BVHs between replays.
+        with wp.ScopedCapture(stream=stream, force_module_load=False) as capture:
+            reused = wp.geometry.knn(warm[0], queries, 5, ordered=False)
+        p *= np.float32(1.3)
+        points.assign(p)
+        warm[0].rebuild()
+        wp.capture_launch(capture.graph, stream=stream)
+        check_batches(test, p, q, 5, reused)
+
+
 class TestPointQueryBatched(unittest.TestCase):
+    def test_empty_batch_leaf_validation(self):
+        """Reject invalid leaf sizes before returning an empty batch."""
+        points = wp.zeros((0, 5), dtype=wp.vec3, device="cpu")
+        queries = wp.zeros((0, 3), dtype=wp.vec3, device="cpu")
+        for leaf_size in (0, -1, True, 1.5):
+            with self.subTest(leaf_size=leaf_size):
+                with self.assertRaisesRegex(ValueError, "leaf_size"):
+                    wp.geometry.knn(points, queries, 1, leaf_size=leaf_size)
+
     def test_owner_validation(self):
         """Reject conflicting owner settings and preserve zero-batch validation."""
         for shape in ((5,), (0, 5)):
             points = wp.zeros(shape, dtype=wp.vec3, device="cpu")
-            owner = geometry.PointIndex(points)
+            owner = wp.geometry.PointIndex(points)
             for kwargs in (
-                {"backend": geometry.PointQueryBackend.CUBQL},
-                {"objective": geometry.PointQueryObjective.BUILD_AND_QUERY},
+                {"backend": wp.geometry.PointQueryBackend.CUBQL},
+                {"objective": wp.geometry.PointQueryObjective.BUILD_AND_QUERY},
                 {"leaf_size": 4},
             ):
                 with self.assertRaises(ValueError):
-                    geometry.knn(owner, points, 1, **kwargs)
+                    wp.geometry.knn(owner, points, 1, **kwargs)
             for kwargs in ({"backend": "warp"}, {"objective": "reuse"}):
                 with self.assertRaises(TypeError):
-                    geometry.knn(owner, points, 1, **kwargs)
+                    wp.geometry.knn(owner, points, 1, **kwargs)
             self.assertIs(owner.points, points)
             self.assertEqual(len(owner.bvhs), 0 if points.ndim == 2 else 1)
 
@@ -380,7 +468,7 @@ class TestPointQueryBatched(unittest.TestCase):
             config = wp.point_query_config(len(points), len(points), "cpu")
         self.assertIsInstance(index, wp.Bvh)
         self.assertIs(test_result[0], index)
-        self.assertIsInstance(config, geometry.PointQueryConfig)
+        self.assertIsInstance(config, wp.geometry.PointQueryConfig)
         self.assertEqual(warning.call_count, 3)
         for call in warning.call_args_list:
             self.assertEqual(call.kwargs["category"], DeprecationWarning)
@@ -404,12 +492,12 @@ class TestPointQueryBatched(unittest.TestCase):
         points = wp.zeros((0, 5), dtype=wp.vec3, device="cpu")
         for kwargs in ({"num_queries": -1}, {"num_queries": True}, {"k": 0}, {"leaf_size": 0}, {"leaf_size": True}):
             with self.assertRaises(ValueError):
-                geometry.PointIndex(points, **kwargs)
+                wp.geometry.PointIndex(points, **kwargs)
         for kwargs in ({"backend": "warp"}, {"objective": "reuse"}):
             with self.assertRaises(TypeError):
-                geometry.PointIndex(points, **kwargs)
+                wp.geometry.PointIndex(points, **kwargs)
         with self.assertRaisesRegex(ValueError, "CUDA"):
-            geometry.PointIndex(points, backend=geometry.PointQueryBackend.CUBQL)
+            wp.geometry.PointIndex(points, backend=wp.geometry.PointQueryBackend.CUBQL)
 
     def test_batched_validation(self):
         """Reject mismatched batches, index sets, and aliased output storage."""
@@ -417,19 +505,25 @@ class TestPointQueryBatched(unittest.TestCase):
         queries = wp.zeros((2, 3), dtype=wp.vec3, device="cpu")
         for shape in ((3, 3), (3,), (2, 3, 1)):
             with self.assertRaises(ValueError):
-                geometry.knn(points, wp.zeros(shape, dtype=wp.vec3, device="cpu"), 1)
+                wp.geometry.knn(points, wp.zeros(shape, dtype=wp.vec3, device="cpu"), 1)
         with self.assertRaises(TypeError):
-            geometry.knn((), queries, 1)
+            wp.geometry.knn((), queries, 1)
         with self.assertRaises(TypeError):
-            geometry.knn(points, queries, 1, backend="cubql")
+            wp.geometry.knn(points, queries, 1, backend="cubql")
         with self.assertRaisesRegex(ValueError, "CUDA"):
-            geometry.knn(points, queries, 1, backend=geometry.PointQueryBackend.CUBQL)
+            wp.geometry.knn(points, queries, 1, backend=wp.geometry.PointQueryBackend.CUBQL)
         output = wp.empty((2, 3), dtype=int, device="cpu")
         with self.assertRaisesRegex(ValueError, "overlap"):
-            geometry.knn(points, queries, 1, indices=output.reshape((2, 3, 1)), counts=output)
+            wp.geometry.knn(points, queries, 1, indices=output.reshape((2, 3, 1)), counts=output)
 
 
 add_function_test(TestPointQueryBatched, "test_batched_values", test_batched_values, devices=get_test_devices())
+add_function_test(
+    TestPointQueryBatched,
+    "test_coincident_euclidean_gradients",
+    test_coincident_euclidean_gradients,
+    devices=get_test_devices(),
+)
 add_function_test(TestPointQueryBatched, "test_prebuilt_indexes", test_prebuilt_indexes, devices=get_test_devices())
 add_function_test(
     TestPointQueryBatched, "test_point_index_updates", test_point_index_updates, devices=get_test_devices()
@@ -440,6 +534,14 @@ add_function_test(
 )
 add_function_test(TestPointQueryBatched, "test_batched_capture", test_batched_capture, devices=get_cuda_test_devices())
 add_function_test(TestPointQueryBatched, "test_cubql_route", test_cubql_route, devices=get_cuda_test_devices())
+
+add_function_test(TestPointQueryBatched, "test_fused_batch_reuse", test_fused_batch_reuse, devices=get_test_devices())
+add_function_test(
+    TestPointQueryBatched,
+    "test_fused_construction_capture",
+    test_fused_construction_capture,
+    devices=get_cuda_test_devices(),
+)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -7,15 +7,52 @@ import unittest
 import numpy as np
 
 import warp as wp
-from warp.examples.benchmarks.point_query_common import (
-    make_api_query,
-    make_ordered_query,
-    make_query,
-    make_tiled,
-    make_tiled_batched,
-    query_codes,
-)
-from warp.tests.unittest_utils import add_function_test, get_test_devices
+from warp.tests.unittest_utils import add_function_test, get_cuda_test_devices, get_test_devices
+
+
+@functools.cache
+def make_sparse_query_kernel(k, euclidean64=False, query_stride=1):
+    """Build a scalar API wrapper, optionally spreading a small batch across warps.
+
+    Launch ``Q * query_stride`` threads. A stride of 32 with block_dim=32
+    gives each query its own warp; it trades inactive lanes for less divergence
+    and more blocks when the batch is too small to fill the GPU otherwise.
+    """
+    if query_stride < 1:
+        raise ValueError("query_stride must be positive")
+    index_type = wp.int64 if euclidean64 else wp.int32
+
+    @wp.kernel(module="unique", enable_backward=False)
+    def sparse_query_kernel(
+        bvh: wp.uint64,
+        points: wp.array[wp.vec3],
+        queries: wp.array[wp.vec3],
+        cutoff: float,
+        excludes: wp.array[int],
+        indices: wp.array2d[index_type],
+        distances: wp.array2d[float],
+        counts: wp.array[int],
+    ):
+        t = wp.tid()
+        if t % wp.static(query_stride) != 0:
+            return
+        t = t // wp.static(query_stride)
+        search = wp.point_query_knn(bvh, points, queries[t], cutoff, wp.static(k), excludes[t])
+        i = int(-1)
+        count = int(0)
+        while wp.point_query_next(search, i):
+            indices[t, count] = index_type(i)
+            d = wp.length_sq(queries[t] - points[i])
+            if wp.static(euclidean64):
+                d = wp.sqrt(d)
+            distances[t, count] = d
+            count += 1
+        counts[t] = count
+        for r in range(count, wp.static(k)):
+            indices[t, r] = index_type(-1)
+            distances[t, r] = wp.inf
+
+    return sparse_query_kernel
 
 
 @functools.cache
@@ -94,6 +131,7 @@ def check(test, device, p, q, k=8, radius=np.inf, exclude=None, constructor=None
 
 
 def test_clouds(test, device):
+    """Match exact neighbors across cloud shapes, capacities, and constructors."""
     rng = np.random.default_rng(741)
     for n in (0, 1, 3, 33, 513):
         p = rng.uniform(-1, 1, (n, 3)).astype(np.float32)
@@ -106,7 +144,7 @@ def test_clouds(test, device):
     outliers = clustered.copy()
     outliers[-3:] = [[100, 0, 0], [0, -100, 0], [0, 0, 100]]
     for geometry in (p, p * [1, 1, 0], p * [1, 0, 0], np.zeros_like(p), np.round(p), clustered, outliers):
-        for constructor in ("sah", "median", "lbvh", "cubql"):
+        for constructor in ("sah", "median", "lbvh") + (("cubql",) if wp.is_cubql_available() else ()):
             if device.is_cpu and constructor == "lbvh":
                 continue
             for leaf in (1, 4, 8):
@@ -114,6 +152,7 @@ def test_clouds(test, device):
 
 
 def test_boundaries(test, device):
+    """Handle strict cutoffs, nonfinite queries, exclusions, and tied distances."""
     p = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 0], [0, 0, 0]], np.float32)
     q = np.array([[0, 0, 0], [np.nan, 0, 0], [np.inf, 0, 0], [1e10, 0, 0]], np.float32)
     for radius in (
@@ -161,6 +200,7 @@ def iterators(bvh: wp.uint64, points: wp.array[wp.vec3]):
 
 
 def test_iterators(test, device):
+    """Preserve independent cursors and leave exhausted indices unchanged."""
     points = wp.array([[i, 0, 0] for i in range(10)], dtype=wp.vec3, device=device)
     bvh = wp.Bvh(points, points)
     wp.launch(iterators, 1, inputs=[bvh.id, points], device=device)
@@ -185,6 +225,7 @@ def nearest_loss(bvh: wp.uint64, points: wp.array[wp.vec3], queries: wp.array[wp
 
 
 def test_gradients(test, device):
+    """Differentiate gathered distances with selected neighbors held fixed."""
     p = np.array([[0, 0, 0], [2, 1, 0], [4, 0, 0], [10, 1, 0]], np.float32)
     q = np.array([[0.2, 0.1, 0], [0.3, -0.1, 0]], np.float32)
     for kernel, k in ((nearest_loss, 1), (fused_loss, 3)):
@@ -207,10 +248,13 @@ def test_gradients(test, device):
 
 
 def test_motion_capture(test, device):
+    """Reuse point trees after refit, rebuild, and captured refit."""
     rng = np.random.default_rng(19)
     p = rng.normal(size=(129, 3)).astype(np.float32)
     q = rng.normal(size=(17, 3)).astype(np.float32)
-    for constructor in ("sah", "median", "cubql") + (("lbvh",) if device.is_cuda else ()):
+    for constructor in (
+        ("sah", "median") + (("cubql",) if wp.is_cubql_available() else ()) + (("lbvh",) if device.is_cuda else ())
+    ):
         bvh, points, args = check(test, device, p, q, constructor=constructor)
         moved = p + rng.normal(scale=0.2, size=p.shape).astype(np.float32)
         points.assign(moved)
@@ -221,7 +265,7 @@ def test_motion_capture(test, device):
         bvh.rebuild()
         check(test, device, moved, q, bvh=bvh, points=points)
         if device.is_cuda:
-            with wp.ScopedCapture(device=device) as capture:
+            with wp.ScopedCapture(device=device, force_module_load=False) as capture:
                 bvh.refit()
                 wp.launch(query_kernel(8), len(q), inputs=args, device=device)
             for _ in range(2):
@@ -229,49 +273,43 @@ def test_motion_capture(test, device):
             np.testing.assert_array_equal(args[5].numpy(), reference(moved, q, 8, np.inf, [-1] * len(q))[0])
 
 
-def test_baselines(test, device):
+@wp.func_native("""
+    struct TrackedSelector : wp::point_query_t<8> {
+        int restarts = 0;
+        CUDA_CALLABLE TrackedSelector& operator=(const TrackedSelector& other) {
+            wp::point_query_t<8>::operator=(other);
+            ++restarts;
+            return *this;
+        }
+    };
+    TrackedSelector selected;
+    wp::point_query_traverse<1>(wp::bvh_get(bvh), points, wp::vec3(0.0f), INFINITY, -1, selected);
+    selected.finish();
+    wp::expect_eq(selected.restarts, 1);
+    wp::expect_eq(selected.count, 8);
+    for (int i = 0; i < 8; ++i) {
+        wp::expect_eq(selected.indices[i], i);
+        wp::expect_eq(selected.distances[i], 0.0f);
+    }
+""")
+def check_stack_restart(bvh: wp.uint64, points: wp.array[wp.vec3]): ...
 
-    rng = np.random.default_rng(910)
-    for n in (0, 7, 257):
-        p = rng.normal(size=(n, 3)).astype(np.float32)
-        if n > 7:
-            p[::3] = [1, 0, 0]
-        q = np.concatenate((np.zeros((1, 3), np.float32), p[:3], [[np.nan, 0, 0]])).astype(np.float32)
-        for k in (1, 8):
-            bvh, points, args = check(test, device, p, q, k)
-            args = args[:-1]
-            keys = wp.empty(2 * len(q), dtype=int, device=device)
-            order = wp.empty_like(keys)
-            wp.launch(query_codes, len(q), inputs=[bvh.id, args[2], keys, order], device=device)
-            wp.utils.radix_sort_pairs(keys, order, len(q))
-            wp.launch(make_ordered_query(k), len(q), inputs=[*args[:5], order, *args[5:]], device=device)
-            np.testing.assert_array_equal(args[5].numpy(), reference(p, q, k, np.inf, [-1] * len(q))[0])
-            # Also validate every baseline with exclusion and a partial cutoff.
-            if n > 7:
-                args[3] = 0.8
-                args[4].fill_(0)
-            expected, _ = reference(p, q, k, args[3], args[4].numpy())
-            for method in ("bvh", "bvh_sorted", "brute", "brute_sorted", "sphere"):
-                # A one-slot stack forces complete restart on the larger tree.
-                wp.launch(make_query(k, method, 1), len(q), inputs=args, device=device)
-                np.testing.assert_array_equal(args[5].numpy(), expected)
-            for bp, block in ((32, 32), (128, 64)):
-                tiled, merge = make_tiled(k, bp)
-                for partitions in (1, 3):
-                    pi = wp.empty((len(q), partitions, k), dtype=int, device=device)
-                    pd = wp.empty((len(q), partitions, k), dtype=float, device=device)
-                    wp.launch_tiled(
-                        tiled,
-                        dim=(len(q), partitions),
-                        inputs=[points, args[2], args[3], args[4], partitions, pi, pd],
-                        block_dim=block,
-                        device=device,
-                    )
-                    wp.launch(merge, len(q), inputs=[pi, pd, *args[5:]], device=device)
-                    np.testing.assert_array_equal(args[5].numpy(), expected)
+
+@wp.kernel
+def stack_restart_kernel(bvh: wp.uint64, points: wp.array[wp.vec3]):
+    check_stack_restart(bvh, points)
+
+
+def test_stack_restart(test, device):
+    """Restart exact selection when a traversal exceeds its stack capacity."""
+    points = wp.zeros(32, dtype=wp.vec3, device=device)
+    bvh = wp.Bvh(lowers=points, uppers=points, constructor="median", leaf_size=1)
+    wp.launch(stack_restart_kernel, 1, inputs=[bvh.id, points], device=device)
+    wp.synchronize_device(device)
 
 
 def test_k_diagnostics(test, device):
+    """Reject nonpositive and runtime neighbor capacities at compilation."""
     for value in (0, -2):
 
         @wp.kernel(module="unique")
@@ -298,6 +336,7 @@ def stored_loss(points: wp.array[wp.vec3], queries: wp.array[wp.vec3], ids: wp.a
 
 
 def test_stored_gradients(test, device):
+    """Match finite differences when gathering stored neighbor indices."""
     p = np.array([[0, 0, 0], [2, 1, 0]], np.float32)
     q = np.array([[0.2, 0.1, 0], [0.3, -0.1, 0]], np.float32)
     points = wp.array(p, dtype=wp.vec3, device=device, requires_grad=True)
@@ -341,7 +380,10 @@ def empty_region(bvh: wp.uint64):
 
 
 def test_empty_builders(test, device):
-    for constructor in ("sah", "median", "cubql") + (("lbvh",) if device.is_cuda else ()):
+    """Query and update empty trees through every available constructor."""
+    for constructor in (
+        ("sah", "median") + (("cubql",) if wp.is_cubql_available() else ()) + (("lbvh",) if device.is_cuda else ())
+    ):
         bvh, points, _ = check(test, device, [], [[0, 0, 0]], constructor=constructor)
         bvh.refit()
         bvh.rebuild()
@@ -351,6 +393,7 @@ def test_empty_builders(test, device):
 
 
 def test_scales_readers(test, device):
+    """Preserve exact selection across coordinate scales and concurrent readers."""
     rng = np.random.default_rng(7)
     p = rng.normal(size=(73, 3)).astype(np.float32)
     q = rng.normal(size=(17, 3)).astype(np.float32)
@@ -372,6 +415,7 @@ def test_scales_readers(test, device):
 
 
 def test_sparse_queries(test, device):
+    """Match dense results with sparse thread mapping and int64 outputs."""
     rng = np.random.default_rng(47)
     p = rng.normal(size=(37, 3)).astype(np.float32)
     q = rng.normal(size=(35, 3)).astype(np.float32)
@@ -388,7 +432,7 @@ def test_sparse_queries(test, device):
         counts = wp.empty(len(q), dtype=int, device=device)
         for stride in (4, 32):
             wp.launch(
-                make_api_query(k, True, stride),
+                make_sparse_query_kernel(k, True, stride),
                 len(q) * stride,
                 inputs=[bvh.id, points, queries, 0.8, excludes, ids, ds, counts],
                 block_dim=32,
@@ -400,6 +444,9 @@ def test_sparse_queries(test, device):
 
 
 def test_lbvh_capture_construction(test, device):
+    """Replay captured construction after changing point coordinates."""
+    if not wp.is_mempool_enabled(device):
+        test.skipTest("CUDA capture of construction requires memory pools")
     rng = np.random.default_rng(97)
     p = np.zeros((4099, 3), dtype=np.float32)
     p[::7] = rng.normal(size=p[::7].shape)
@@ -420,9 +467,9 @@ def test_lbvh_capture_construction(test, device):
     ids = wp.empty((len(q), 32), dtype=wp.int64, device=device)
     ds = wp.empty((len(q), 32), dtype=float, device=device)
     counts = wp.empty(len(q), dtype=int, device=device)
-    kernel = make_api_query(32, True, 32)
+    kernel = make_sparse_query_kernel(32, True, 32)
     wp.load_module(module=kernel.module, device=device, block_dim=32)
-    with wp.ScopedCapture(device=device) as capture:
+    with wp.ScopedCapture(device=device, force_module_load=False) as capture:
         bvh = wp.Bvh(points, points, constructor="lbvh", leaf_size=32)
         wp.launch(
             kernel,
@@ -442,36 +489,6 @@ def test_lbvh_capture_construction(test, device):
         np.testing.assert_array_equal(ids.numpy(), expected)
         np.testing.assert_allclose(ds.numpy(), np.sqrt(distances), rtol=2.0e-6)
     test.assertNotEqual(other.id, bvh.id)
-
-
-def test_query_tiles(test, device):
-    rng = np.random.default_rng(44)
-    p = rng.normal(size=(259, 3)).astype(np.float32)
-    q = rng.normal(size=(7, 3)).astype(np.float32)
-    q[-1] = np.nan
-    pw = wp.array(p, dtype=wp.vec3, device=device)
-    qw = wp.array(q, dtype=wp.vec3, device=device)
-    excludes = np.array([0, 1, -1, -1, 2, -1, -1], np.int32)
-    ew = wp.array(excludes, dtype=int, device=device)
-    for k in (1, 8):
-        expected, distances = reference(p, q, k, 0.8, excludes)
-        oi = wp.empty((len(q), k), dtype=int, device=device)
-        od = wp.empty((len(q), k), dtype=float, device=device)
-        counts = wp.empty(len(q), dtype=int, device=device)
-        for bq in (2, 4):
-            tiled, merge = make_tiled_batched(k, 128, bq)
-            pi = wp.empty((len(q), 3, k), dtype=int, device=device)
-            pd = wp.empty((len(q), 3, k), dtype=float, device=device)
-            wp.launch_tiled(
-                tiled,
-                dim=((len(q) + bq - 1) // bq, 3),
-                inputs=[pw, qw, 0.8, ew, 3, pi, pd],
-                block_dim=64,
-                device=device,
-            )
-            wp.launch(merge, len(q), inputs=[pi, pd, oi, od, counts], device=device)
-            np.testing.assert_array_equal(oi.numpy(), expected)
-            np.testing.assert_allclose(od.numpy(), distances, rtol=2.0e-6)
 
 
 def test_point_leaf_boundaries(test, device):
@@ -497,12 +514,11 @@ class TestPointQuery(unittest.TestCase):
 
 
 for name, fn in (
+    ("stack_restart", test_stack_restart),
     ("sparse_queries", test_sparse_queries),
-    ("query_tiles", test_query_tiles),
     ("stored_gradients", test_stored_gradients),
     ("empty_builders", test_empty_builders),
     ("scales_readers", test_scales_readers),
-    ("baselines", test_baselines),
     ("k_diagnostics", test_k_diagnostics),
     ("clouds", test_clouds),
     ("boundaries", test_boundaries),
@@ -516,7 +532,7 @@ add_function_test(
     TestPointQuery,
     "test_lbvh_capture_construction",
     test_lbvh_capture_construction,
-    devices=[device for device in get_test_devices() if device.is_cuda and wp.is_mempool_enabled(device)],
+    devices=get_cuda_test_devices(),
 )
 
 
@@ -524,7 +540,7 @@ add_function_test(
     TestPointQuery,
     "test_point_leaf_boundaries",
     test_point_leaf_boundaries,
-    devices=[device for device in get_test_devices() if device.is_cuda],
+    devices=get_cuda_test_devices(),
 )
 
 

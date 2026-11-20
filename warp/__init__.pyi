@@ -6793,11 +6793,11 @@ def point_query_nearest(
     max_dist: float32 | float,
     exclude_index: int32 | int = -1,
 ) -> int:
-    """Return the nearest original point index, or -1 if no point is eligible.
+    """Return the nearest original point index, or ``-1`` if no point is eligible.
 
     Eligibility uses a strict distance cutoff and excludes only ``exclude_index``.
     Equal computed squared distances prefer the smaller original index. A nonpositive
-    or NaN cutoff or a nonfinite query returns -1. Infinity means unbounded search.
+    or NaN cutoff or a nonfinite query returns ``-1``. Infinity means unbounded search.
     The BVH must enclose the supplied contiguous point array with the same index mapping.
     Keep both allocations alive, and refit after moving points. Coordinates and squared
     distances must be finite and representable in float32. Selection is nondifferentiable;
@@ -6810,11 +6810,11 @@ def point_query_nearest(
             with the same original-index mapping used to construct the bounds.
         point: Query position in the same coordinate system as the targets.
         max_dist: Strict distance cutoff in coordinate units, not squared units.
-        exclude_index: Original target index to omit, or -1 to omit none.
+        exclude_index: Original target index to omit, or ``-1`` to omit none.
 
     Returns:
-        The nearest eligible original target index, or -1 when none qualifies.
-        Check for -1 before gathering a target coordinate."""
+        The nearest eligible original target index, or ``-1`` when none qualifies.
+        Check for ``-1`` before gathering a target coordinate."""
     ...
 
 def point_query_knn(
@@ -6841,7 +6841,7 @@ def point_query_knn(
         point: Query position in the same coordinate system as the targets.
         max_dist: Strict distance cutoff in coordinate units, not squared units.
         k: Positive compile-time integer specifying the maximum neighbor count.
-        exclude_index: Original target index to omit, or -1 to omit none.
+        exclude_index: Original target index to omit, or ``-1`` to omit none.
 
     Returns:
         A local query state holding up to k eligible neighbors in distance/index
@@ -6851,9 +6851,9 @@ def point_query_knn(
     ...
 
 def point_query_next(query: Any, index: int32 | int) -> bool:
-    """Write the next final neighbor index and return True, advancing the local cursor.
+    """Write the next final neighbor index and return ``True``, advancing the local cursor.
 
-    After exhaustion return False and leave ``index`` unchanged on every call.
+    After exhaustion return ``False`` and leave ``index`` unchanged on every call.
     ``query`` must be the inferred state returned by :func:`point_query_knn`.
 
     Args:
@@ -6862,7 +6862,7 @@ def point_query_next(query: Any, index: int32 | int) -> bool:
             when a neighbor remains. Initialize it before entering the loop.
 
     Returns:
-        True when a neighbor was written to ``index``, or False after all valid
+        ``True`` when a neighbor was written to ``index``, or ``False`` after all valid
         neighbors have been consumed. Cursor updates are nondifferentiable."""
     ...
 

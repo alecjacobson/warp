@@ -1,5 +1,7 @@
 # kNN branch reports
 
+**Code sync (2026-11-20):** The kNN implementation, tests, and user guide on `alecjacobson/knn` now match `alecjacobson/knn-review` at [`25c78fe`](https://github.com/alecjacobson/warp/commit/25c78fe). This includes fused batch queries and gradient gathers, dense-batch cuBQL scheduling, and the review fixes. Existing users can stay on this branch; rebuild the native library after pulling. The reports below retain their original measured revisions and timings.
+
 **Latest review (2026-11-16): [PR validation and regression report](review-2348/README.md).** The reviewed implementation is on [`alecjacobson/knn-review`](https://github.com/alecjacobson/warp/tree/alecjacobson/knn-review); this research branch retains its experiment history.
 
 **Start here: [Current comparisons and recommended settings](comparisons.md).**

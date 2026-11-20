@@ -13,7 +13,9 @@ import warp.geometry
 
 def fused_kernel(k, stride):
     @wp.kernel(module="unique")
-    def neighbor_sum(bvh: wp.uint64, points: wp.array[wp.vec3], queries: wp.array[wp.vec3], sums: wp.array[float]):
+    def neighbor_sum_kernel(
+        bvh: wp.uint64, points: wp.array[wp.vec3], queries: wp.array[wp.vec3], sums: wp.array[float]
+    ):
         t = wp.tid()
         if t % wp.static(stride) != 0:
             return
@@ -26,7 +28,7 @@ def fused_kernel(k, stride):
             total += wp.length_sq(queries[t] - points[index])
         sums[t] = total
 
-    return neighbor_sum
+    return neighbor_sum_kernel
 
 
 def main():
