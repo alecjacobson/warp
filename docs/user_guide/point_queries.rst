@@ -281,58 +281,21 @@ Batched Chamfer performance
 
 Measure the complete workload when selecting a backend: both search directions,
 distance gathers, reduction, backward, and any changing-target index construction.
-An encoder's full training epoch also includes work outside Chamfer. Speedups
-for loss evaluation alone do not predict the same training speedup.
+Loss evaluation is only part of a training step, so a faster Chamfer loss does not
+translate into the same training speedup.
 
-A customer using an earlier branch revision (``6e7ce08ea``) reported the
-following A40 results for 32 independently subsampled pulmonary point clouds.
-These are externally reported measurements, not results reproduced by this
-repository's benchmark. The customer's chunked baseline performs direct search
-under ``torch.no_grad()`` followed by differentiable selected-pair gathers.
+Unordered batches submit one query kernel across all clouds, plus one gather kernel
+when gradients are enabled. Tree construction still runs per cloud, so once query
+dispatch is inexpensive, reusing a ``PointIndex`` for fixed targets and capturing
+steady-state work in a CUDA graph matter most.
 
-.. list-table:: Customer-reported symmetric Chamfer forward + backward (ms)
-   :header-rows: 1
-
-   * - Points per cloud
-     - cdist
-     - Chunked cdist + gathers
-     - Earlier Warp implementation
-   * - 1,024
-     - 6.1
-     - 3.2
-     - 11.0
-   * - 4,096
-     - 90.0
-     - 46.6
-     - 10.6
-   * - 16,384
-     - Out of memory
-     - 762.8
-     - 17.7
-   * - 65,536
-     - Out of memory
-     - 13,637
-     - 34.4
-
-The corresponding full training epoch times (chunked baseline versus Warp)
-were 0.55 versus 0.60 seconds at 1,024 points, 1.86 versus 1.39 at 4,096,
-14.17 versus 4.69 at 16,384, 49.23 versus 9.15 at 32,768, and approximately
-191 (estimated) versus 17.95 at 65,536. Small clouds can favor brute force;
-large clouds avoid the quadratic distance-matrix cost.
-
-That earlier implementation submitted Python query and gradient work for each
-cloud separately. The current unordered batch path fuses those launches. Tree
-construction remains per cloud, so fixed-target reuse and graph capture still
-matter. The runnable benchmark below separates reused queries, query replay,
-reused-index Chamfer, and Chamfer with a rebuilt reverse index.
-
-Backend rankings depend on query density, geometry, hardware, and launch policy.
-The customer also reported reused Warp BVHs at 29 ms versus reused cuBQL indexes
-at 46 ms for B=32 and N=M=65,536 on A40. That result contrasts with earlier
-sparse-query cuBQL wins. It is evidence against choosing a universal winner,
-not a prediction for the fused launch policy. Benchmark both backends on the
-actual shapes and device; changing reverse targets can additionally make cuBQL
-construction more expensive than Warp construction.
+Backend rankings depend on query density, geometry, hardware, and launch policy, so
+there is no universal winner; benchmark both backends on the actual shapes and
+device. Construction policy is a separate choice. When a reverse index is rebuilt on
+every call, a construction-oriented cuBQL objective (``BUILD_AND_QUERY``) or a Warp
+reverse index paired with a fixed cuBQL target index can outperform ``REUSE``, and
+the query-only winner is not necessarily the winner once construction is included.
+These policies are explicit; the API does not switch backends automatically.
 
 .. code-block:: console
 
@@ -341,75 +304,12 @@ construction more expensive than Warp construction.
         --output chamfer.json --profile
 
 The default inputs are synthetic Gaussian volumes, explicitly labeled in the
-JSON. To subsample a supplied pulmonary archive containing ``.npz`` files with
-``points`` arrays, add ``--archive /path/to/pulmonary_point_clouds.zip``. Archive
-and generated-array hashes identify the measured data. Raw customer coordinates
-are not stored in the report. This benchmark measures the loss, not encoder
-training or an A40 reproduction on a different GPU.
+JSON. To subsample your own point clouds instead, pass ``--archive`` with a
+``.zip`` of ``.npz`` files that each contain a ``points`` array. Archive and
+generated-array hashes identify the measured data, and raw coordinates are not
+stored in the report. The benchmark measures the loss, not a full training step.
 
-Pulmonary batch validation
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The supplied archive (MD5 ``ba4fee2fdce2d76e8056594c519851c3``) contains nine
-clouds, each with at least 65,536 points. The following measurements use B=32
-independent target/query subsamples without replacement, cycling through those
-clouds. Inputs match exactly between implementations. Hardware is an RTX PRO
-6000 Blackwell Server Edition MIG 1g.24gb slice with 46 SMs, rather than the
-customer's A40. Both coordinate arrays have gradients enabled; the workload is
-the sum of the two mean squared nearest distances, including backward and
-gradient clearing. It does not include encoder training.
-
-The reference loads the per-cloud Python implementation from ``ff39bfb`` and
-uses the same native binary as the fused implementation from ``739a6c9``.
-Native single-cloud traversal is unchanged. Timings are medians of seven
-synchronized wall samples after two warmups, excluding compilation and upload.
-The fixed target index is reused and the reverse index is rebuilt each call.
-
-.. list-table:: Pulmonary Chamfer forward + backward with reverse construction (ms)
-   :header-rows: 1
-
-   * - Points per cloud
-     - Per-cloud Warp
-     - Fused Warp
-     - Fused cuBQL fixed / Warp reverse
-   * - 1,024
-     - 9.084
-     - 2.602
-     - 2.573
-   * - 4,096
-     - 8.961
-     - 2.903
-     - 2.794
-   * - 16,384
-     - 10.610
-     - 8.346
-     - 7.802
-   * - 32,768
-     - 14.444
-     - 13.575
-     - 12.456
-   * - 65,536
-     - 26.699
-     - 23.797
-     - 21.243
-
-At 1,024 points, a Python profile of Warp's reverse-build Chamfer changes from
-66 recursive query calls and 196 ``wp.launch`` calls to two queries and 11
-launches. Native construction launches are additional. Per-cloud construction
-remains, which limits the improvement once query dispatch is inexpensive.
-
-For reused single-direction queries at 65,536 points, the reference takes
-6.500 ms with Warp and 10.994 ms with cuBQL. Fusion and total-batch launch
-spacing change these to 5.182 ms and 2.715 ms respectively; graph replay takes
-5.148 ms and 2.694 ms. Thus the earlier dense-query crossover is also observed
-on these inputs, and the fused scheduling changes that ranking on this GPU.
-
-Construction policy remains a separate consideration. Rebuilding a cuBQL
-reverse index with ``BUILD_AND_QUERY`` reduces the 65,536-point Chamfer time
-from 169.530 ms (``REUSE``) to 31.357 ms, but the mixed cuBQL/Warp path takes
-21.243 ms. The query-only winner is not necessarily the construction-inclusive
-winner. These policies are explicit; the API does not automatically switch
-backends. To measure the mixed path, add:
+To measure a fixed cuBQL target index with a rebuilt Warp reverse index, add:
 
 .. code-block:: console
 

@@ -3,7 +3,7 @@
 
 """Measure batched Chamfer forward/backward and fixed-index queries on CUDA.
 
-Synthetic measurements are not reproductions of customer pulmonary scans.
+The default inputs are synthetic; pass ``--archive`` to subsample supplied point clouds.
 """
 
 import argparse
