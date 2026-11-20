@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 #include "warp.h"
@@ -733,7 +733,11 @@ void bvh_refit_recursive(BVH& bvh, int index)
     }
 }
 
-void bvh_refit_host(BVH& bvh) { bvh_refit_recursive(bvh, *bvh.root); }
+void bvh_refit_host(BVH& bvh)
+{
+    if (bvh.num_items > 0)
+        bvh_refit_recursive(bvh, *bvh.root);
+}
 void bvh_rebuild_host(BVH& bvh, int constructor_type)
 {
     if (constructor_type == BVH_CONSTRUCTOR_CUBQL) {
@@ -915,5 +919,19 @@ uint64_t wp_bvh_create_device(
 void wp_bvh_refit_device(uint64_t id) { }
 void wp_bvh_destroy_device(uint64_t id) { }
 void wp_bvh_rebuild_device(uint64_t id) { }
+
+uint64_t wp_point_query_cubql_create_device(void*, const wp::vec3*, int, int, int)
+{
+    wp::set_error_string("Direct cuBQL point queries require CUDA support");
+    return 0;
+}
+void wp_point_query_cubql_destroy_device(uint64_t) { }
+bool wp_point_query_cubql_query_device(
+    uint64_t, const wp::vec3*, const wp::vec3*, int, int, int, int, void*, float*, int*, bool, bool
+)
+{
+    wp::set_error_string("Direct cuBQL point queries require CUDA support");
+    return false;
+}
 
 #endif  // !WP_ENABLE_CUDA

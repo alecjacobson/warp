@@ -16,7 +16,15 @@ import warp._src.context
 from warp._src.codegen import Var, get_arg_value
 from warp._src.logger import log_warning
 from warp._src.types import *
-from warp._src.types import _BvhQueryAabb, _BvhQueryCapsule, _BvhQueryRay, _BvhQuerySphere, _MeshQuerySphere
+from warp._src.types import (
+    _BvhQueryAabb,
+    _BvhQueryCapsule,
+    _BvhQueryRay,
+    _BvhQuerySphere,
+    _MeshQuerySphere,
+    _point_query_type,
+    _PointQuery,
+)
 
 from .context import add_builtin
 
@@ -9599,6 +9607,127 @@ add_builtin(
 
 # ---------------------------------
 # Geometry
+
+
+def point_query_knn_value_func(arg_types, arg_values):
+    if arg_types is None:
+        return Any
+    k = get_arg_value(arg_values["k"])
+    if not isinstance(k, builtins.int) or k <= 0:
+        raise ValueError("point_query_knn() k must be a compile-time positive integer")
+    return _point_query_type(k)
+
+
+def point_query_knn_dispatch_func(input_types, return_type, args):
+    return ([args[n] for n in ("bvh", "points", "point", "max_dist", "exclude_index")], [return_type.capacity])
+
+
+def point_query_next_value_func(arg_types, arg_values):
+    if arg_types is not None and (
+        not isinstance(arg_types["query"], type) or not issubclass(arg_types["query"], _PointQuery)
+    ):
+        raise TypeError("point_query_next() requires a state returned by point_query_knn()")
+    return builtins.bool
+
+
+add_builtin(
+    "point_query_nearest",
+    input_types={"bvh": uint64, "points": array[vec3], "point": vec3, "max_dist": float, "exclude_index": int},
+    defaults={"exclude_index": -1},
+    value_type=int,
+    group="Geometry",
+    doc="""Return the nearest original point index, or ``-1`` if no point is eligible.
+
+    Eligibility uses a strict distance cutoff and excludes only ``exclude_index``.
+    Equal computed squared distances prefer the smaller original index. A nonpositive
+    or NaN cutoff or a nonfinite query returns ``-1``. Infinity means unbounded search.
+    The BVH must enclose the supplied contiguous point array with the same index mapping.
+    Keep both allocations alive, and refit after moving points. Coordinates and squared
+    distances must be finite and representable in float32. Selection is nondifferentiable;
+    gather ``points[index]`` and compute distances in caller code for gradients.
+
+    Args:
+        bvh: ID of a :class:`warp.Bvh` whose primitive bounds enclose the points.
+            ``warp.Bvh(lowers=points, uppers=points)`` indexes points as zero-volume boxes.
+        points: Contiguous one-dimensional ``vec3`` target array on the BVH device,
+            with the same original-index mapping used to construct the bounds.
+        point: Query position in the same coordinate system as the targets.
+        max_dist: Strict distance cutoff in coordinate units, not squared units.
+        exclude_index: Original target index to omit, or ``-1`` to omit none.
+
+    Returns:
+        The nearest eligible original target index, or ``-1`` when none qualifies.
+        Check for ``-1`` before gathering a target coordinate.
+    """,
+    export=False,
+    is_differentiable=False,
+)
+
+add_builtin(
+    "point_query_knn",
+    input_types={
+        "bvh": uint64,
+        "points": array[vec3],
+        "point": vec3,
+        "max_dist": float,
+        "k": int,
+        "exclude_index": int,
+    },
+    defaults={"exclude_index": -1},
+    value_func=point_query_knn_value_func,
+    dispatch_func=point_query_knn_dispatch_func,
+    group="Geometry",
+    doc="""Complete exact k-nearest selection and return an inferred local iterator.
+
+    ``k`` must be a compile-time positive integer (literal or ``wp.static`` constant).
+    Consume final neighbors with :func:`point_query_next`, in ascending order of
+    (computed squared distance, original index). Fewer than k eligible points produce
+    a partial iterator, without padding. Search completes before this function returns;
+    stopping consumption early does not reduce traversal work. The input and lifetime
+    contract is the same as :func:`point_query_nearest`. Selection is nondifferentiable.
+
+    Args:
+        bvh: ID of a :class:`warp.Bvh` enclosing the supplied points.
+        points: Contiguous one-dimensional ``vec3`` target array with the BVH's
+            original-index mapping, on the same device.
+        point: Query position in the same coordinate system as the targets.
+        max_dist: Strict distance cutoff in coordinate units, not squared units.
+        k: Positive compile-time integer specifying the maximum neighbor count.
+        exclude_index: Original target index to omit, or ``-1`` to omit none.
+
+    Returns:
+        A local query state holding up to k eligible neighbors in distance/index
+        order. Consume it with ``while wp.point_query_next(query, index)``;
+        direct ``for index in query`` iteration is unsupported. Let Warp infer
+        the state type instead of declaring a public iterator class.
+    """,
+    export=False,
+    is_differentiable=False,
+)
+
+add_builtin(
+    "point_query_next",
+    input_types={"query": Any, "index": int},
+    value_func=point_query_next_value_func,
+    group="Geometry",
+    doc="""Write the next final neighbor index and return ``True``, advancing the local cursor.
+
+    After exhaustion return ``False`` and leave ``index`` unchanged on every call.
+    ``query`` must be the inferred state returned by :func:`point_query_knn`.
+
+    Args:
+        query: Local state returned by :func:`point_query_knn`; advances in place.
+        index: Integer local variable receiving the next original target index
+            when a neighbor remains. Initialize it before entering the loop.
+
+    Returns:
+        ``True`` when a neighbor was written to ``index``, or ``False`` after all valid
+        neighbors have been consumed. Cursor updates are nondifferentiable.
+    """,
+    export=False,
+    is_differentiable=False,
+)
+
 
 add_builtin(
     "bvh_query_aabb",

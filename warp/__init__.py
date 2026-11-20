@@ -37,6 +37,7 @@ from warp._src.module_registry import register_module_source as _register_module
 _register_module_source("warp.autograd", "warp._src.autograd")
 _register_module_source("warp.geometry", "warp._src.geometry.delaunay")
 _register_module_source("warp.geometry.intersect", "warp._src.geometry.intersect")
+_register_module_source("warp.geometry", "warp._src.geometry.point_query")
 _register_module_source("warp.geometry.marching_cubes", "warp._src.geometry.marching_cubes")
 _register_module_source("warp.geometry.sparse_marching_cubes", "warp._src.geometry.sparse_marching_cubes")
 _register_module_source("warp.geometry.surface_nets", "warp._src.geometry.surface_nets")
@@ -614,6 +615,14 @@ from typing import TYPE_CHECKING as _TYPE_CHECKING
 
 if _TYPE_CHECKING:
     from warp._src.geometry.marching_cubes import IsoSurfaceMarchingCubes as _IsoSurfaceMarchingCubes
+    from warp._src.point_query import PointQueryConfig as PointQueryConfig
+    from warp._src.point_query import PointQueryBackend as PointQueryBackend
+    from warp._src.point_query import PointQueryObjective as PointQueryObjective
+    from warp._src.point_query import CubqlPointIndex as CubqlPointIndex
+    from warp._src.point_query import build_point_index as build_point_index
+    from warp._src.point_query import knn as knn
+    from warp._src.point_query import point_query_config as point_query_config
+    from warp._src.point_query import point_query_knn_batch as point_query_knn_batch
 
     MarchingCubes = _IsoSurfaceMarchingCubes
 
@@ -630,6 +639,23 @@ def __getattr__(name):
         import warp.build_experimental  # noqa: PLC0415
 
         return warp.build_experimental
+
+    if name in ("knn", "build_point_index", "point_query_config", "point_query_knn_batch"):
+        from warp._src import point_query as _legacy_point_query  # noqa: PLC0415
+
+        return getattr(_legacy_point_query, name)
+
+    if name in ("PointQueryConfig", "PointQueryBackend", "PointQueryObjective", "CubqlPointIndex"):
+        from warp._src import point_query as _legacy_point_query  # noqa: PLC0415
+        from warp._src.logger import log_warning  # noqa: PLC0415
+
+        replacement = "PointIndex" if name == "CubqlPointIndex" else name
+        log_warning(
+            f"wp.{name} is deprecated; use warp.geometry.{replacement} instead.",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        return getattr(_legacy_point_query, name)
 
     # Deprecated alias of `warp.geometry.IsoSurfaceMarchingCubes`, resolved lazily
     # so that `wp.MarchingCubes` *is* the new class rather than a subclass of it.
