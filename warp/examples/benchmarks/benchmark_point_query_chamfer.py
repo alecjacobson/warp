@@ -79,7 +79,13 @@ def run(args):
         "archive_sha256": hashlib.sha256(args.archive.read_bytes()).hexdigest() if clouds else None,
         "source_sha256": {
             name: hashlib.sha256(Path(name).read_bytes()).hexdigest()
-            for name in ("warp/_src/geometry/point_query.py", "warp/native/bvh_cubql.cu", "warp/bin/warp.so", __file__)
+            for name in (
+                "warp/_src/geometry/point_query.py",
+                "warp/_src/geometry/point_query_brute_force.py",
+                "warp/native/bvh_cubql.cu",
+                "warp/bin/warp.so",
+                __file__,
+            )
         },
         "repeats": args.repeats,
         "timing": "synchronized wall; two warmups; uploads and compilation excluded",
@@ -167,6 +173,12 @@ def run(args):
                         "chamfer_reused": measure(lambda fn=chamfer: fn(True), args.repeats, device),
                         "chamfer_rebuild_reverse": measure(lambda fn=chamfer: fn(False), args.repeats, device),
                     }
+                    chamfer(True)
+                    with wp.ScopedCapture(device=device) as chamfer_capture:
+                        chamfer(True)
+                    row["chamfer_graph"] = measure(
+                        lambda graph=chamfer_capture.graph: wp.capture_launch(graph), args.repeats, device
+                    )
                     if not np.isfinite(loss.numpy()).all():
                         raise ValueError("Nonfinite Chamfer loss")
                     result["cases"].append(row)
@@ -182,6 +194,13 @@ def run(args):
                         profile = cProfile.Profile()
                         profile.runcall(chamfer, False)
                         profile.dump_stats(str(args.output.with_suffix(f".{backend_name}.prof")))
+                        with wp.ScopedTimer("chamfer", cuda_filter=wp.TIMING_ALL, print=False) as timer:
+                            chamfer(False)
+                        row["cuda_profile"] = [
+                            {"name": item.name, "filter": item.filter, "elapsed_ms": item.elapsed}
+                            for item in timer.timing_results
+                        ]
+                        args.output.write_text(json.dumps(result, indent=2) + "\n")
                     del query, chamfer, capture, outputs, buffers, fixed, query_targets
     return result
 
@@ -195,9 +214,11 @@ if __name__ == "__main__":
     )
     parser.add_argument("--points", type=int, nargs="+", default=[1024, 4096, 16384, 65536])
     parser.add_argument("--batches", type=int, nargs="+", default=[1, 8, 32])
-    parser.add_argument("--backends", nargs="+", choices=["warp", "cubql"], default=["warp", "cubql"])
+    parser.add_argument("--backends", nargs="+", choices=["warp", "cubql", "brute_force"], default=["warp", "cubql"])
     parser.add_argument(
-        "--reverse-backend", choices=["warp", "cubql"], help="Reverse index backend; defaults to the forward backend"
+        "--reverse-backend",
+        choices=["warp", "cubql", "brute_force"],
+        help="Reverse index backend; defaults to the forward backend",
     )
     parser.add_argument(
         "--reverse-objective",

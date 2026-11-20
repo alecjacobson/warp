@@ -23,11 +23,13 @@ class PointQuery:
         if not wp.is_cuda_available():
             raise NotImplementedError("Point-query benchmarks require CUDA")
         self.device = wp.get_device("cuda:0")
-        if configuration != "warp" and (not wp.is_cubql_available() or not self.device.is_mempool_supported):
+        if configuration.startswith("cubql") and (not wp.is_cubql_available() or not self.device.is_mempool_supported):
             raise NotImplementedError("Native cuBQL requires a cuBQL-enabled build and CUDA memory pools")
         self.backend = (
             wp.geometry.PointQueryBackend.WARP if configuration == "warp" else wp.geometry.PointQueryBackend.CUBQL
         )
+        if configuration == "brute_force":
+            self.backend = wp.geometry.PointQueryBackend.BRUTE_FORCE
         self.objective = (
             wp.geometry.PointQueryObjective.BUILD_AND_QUERY
             if configuration == "cubql_build"
@@ -71,4 +73,11 @@ class DensePointQuery(PointQuery):
     """Cover training-shaped batches, where sparse-query tuning need not win."""
 
     params = (["warp", "cubql_reuse"], [1, 32], [1024, 4096, 65536], [1])
+    query_count = None
+
+
+class SmallDensePointQuery(PointQuery):
+    """Compare exhaustive and indexed searches for small, changing clouds."""
+
+    params = (["warp", "brute_force"], [1, 32], [1024, 4096], [1, 11])
     query_count = None

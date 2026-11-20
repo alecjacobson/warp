@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Point-cloud queries with independent batches and optional native cuBQL traversal."""
+"""Point-cloud queries with BVH, tiled exhaustive, and native cuBQL backends."""
 
 import functools
 from dataclasses import dataclass
@@ -10,6 +10,7 @@ from enum import IntEnum
 import warp as wp
 from warp._src import context
 from warp._src.context import DeviceLike, get_device
+from warp._src.geometry import point_query_brute_force as brute_force
 from warp._src.types import type_size_in_bytes
 from warp._src.utils import ScopedDevice, radix_sort_pairs
 
@@ -21,6 +22,8 @@ class PointQueryBackend(IntEnum):
     """Use Warp traversal with deterministic original-index ties and CPU/CUDA support."""
     CUBQL = 1
     """Use native cuBQL traversal on CUDA with implementation-dependent ties."""
+    BRUTE_FORCE = 2
+    """Exhaustive CPU/CUDA search in Warp, with bounded shared tiles on CUDA and no tree construction."""
 
 
 class PointQueryObjective(IntEnum):
@@ -42,6 +45,8 @@ def _validate_backend(device, k, backend, objective, leaf_size):
     if backend == PointQueryBackend.WARP and leaf_size is not None:
         if not isinstance(leaf_size, int) or isinstance(leaf_size, bool) or leaf_size < 1:
             raise ValueError("leaf_size must be a positive Python integer")
+    if backend == PointQueryBackend.BRUTE_FORCE and leaf_size is not None:
+        raise ValueError("Brute force does not construct a BVH; leaf_size is unsupported")
     if backend == PointQueryBackend.CUBQL:
         if not device.is_cuda or not context.is_cubql_available():
             raise ValueError("Direct cuBQL requires CUDA and a Warp build with cuBQL enabled")
@@ -443,7 +448,7 @@ def _build_point_index(
     backend: PointQueryBackend = PointQueryBackend.WARP,
     objective: PointQueryObjective = PointQueryObjective.REUSE,
     leaf_size: int | None = None,
-) -> wp.Bvh | CubqlPointIndex | tuple:
+) -> wp.Bvh | CubqlPointIndex | brute_force.BruteForcePointIndex | tuple:
     """Build reusable target indexes without performing a nearest-neighbor query.
 
     This private builder serves the geometry owner and legacy compatibility API.
@@ -460,9 +465,9 @@ def _build_point_index(
             omitted, use M. Later queries may have different counts.
         k: Expected positive neighbor count, used only for tuning. Direct cuBQL
             supports counts up to 64. Later queries may use different valid k.
-        backend: Select Warp on CPU/CUDA or native cuBQL on CUDA.
+        backend: Select Warp BVH or brute force on CPU/CUDA, or native cuBQL on CUDA.
         objective: Choose construction-inclusive or reused-index cuBQL tuning.
-        leaf_size: Override the Warp BVH leaf size. Unsupported for cuBQL.
+        leaf_size: Override the Warp BVH leaf size. Unsupported for other backends.
 
     Returns:
         One :class:`warp.Bvh` or internal ``CubqlPointIndex`` for a single cloud,
@@ -479,6 +484,8 @@ def _build_point_index(
     _validate_backend(device, k, backend, objective, leaf_size)
     num_queries = points.shape[-1] if num_queries is None else num_queries
     _validate_query_count(num_queries)
+    if backend == PointQueryBackend.BRUTE_FORCE:
+        return brute_force.BruteForcePointIndex(points)
     leaf = point_query_config(points.shape[-1], num_queries, device).leaf_size if leaf_size is None else leaf_size
     with ScopedDevice(device):
         if backend == PointQueryBackend.CUBQL and device.stream.is_capturing:
@@ -498,7 +505,7 @@ def _knn(
     queries: wp.array[wp.vec3] | wp.array2d[wp.vec3],
     k: int,
     *,
-    bvh: wp.Bvh | CubqlPointIndex | tuple | None = None,
+    bvh: wp.Bvh | CubqlPointIndex | brute_force.BruteForcePointIndex | tuple | None = None,
     max_dist: float = float("inf"),
     exclude_indices: wp.array | None = None,
     indices: wp.array | None = None,
@@ -510,7 +517,7 @@ def _knn(
     ordered: bool | None = None,
     backend: PointQueryBackend | None = None,
     objective: PointQueryObjective = PointQueryObjective.REUSE,
-) -> tuple[wp.Bvh | CubqlPointIndex | tuple, wp.array, wp.array, wp.array]:
+) -> tuple[wp.Bvh | CubqlPointIndex | brute_force.BruteForcePointIndex | tuple, wp.array, wp.array, wp.array]:
     """Find exact 3D nearest neighbors in independent point clouds.
 
     The default configuration selects the BVH leaf size, query spacing and
@@ -574,7 +581,15 @@ def _knn(
     _validate_array(queries, "queries", (wp.vec3,), queries.shape, device)
     nq = queries.shape[-1]
     num_points = points.shape[-1]
-    if points.ndim == 2:
+    if isinstance(bvh, brute_force.BruteForcePointIndex):
+        if backend is None:
+            backend = PointQueryBackend.BRUTE_FORCE
+        if backend != PointQueryBackend.BRUTE_FORCE:
+            raise TypeError("The supplied index must match the requested backend")
+        if bvh.points is not points:
+            raise ValueError("A brute-force owner must reference the original target array")
+        existing = ()
+    elif points.ndim == 2:
         if bvh is not None and (not isinstance(bvh, tuple) or len(bvh) != points.shape[0]):
             raise ValueError("Batched queries require a tuple containing one index per batch")
         existing = bvh or ()
@@ -587,6 +602,12 @@ def _knn(
             PointQueryBackend.CUBQL if existing and isinstance(existing[0], CubqlPointIndex) else PointQueryBackend.WARP
         )
     _validate_backend(device, k, backend, objective, leaf_size)
+    if (
+        backend == PointQueryBackend.BRUTE_FORCE
+        and bvh is not None
+        and not isinstance(bvh, brute_force.BruteForcePointIndex)
+    ):
+        raise TypeError("The supplied index must match the requested backend")
     for batch, index in enumerate(existing):
         expected_type = CubqlPointIndex if backend == PointQueryBackend.CUBQL else wp.Bvh
         if not isinstance(index, expected_type):
@@ -611,6 +632,8 @@ def _knn(
             )
         if bvh is None and device.stream.is_capturing:
             raise ValueError("Direct cuBQL construction cannot be captured; build the index before capture")
+    if backend == PointQueryBackend.BRUTE_FORCE and (query_stride is not None or ordered is not None):
+        raise ValueError("Brute force does not support BVH query_stride or ordered overrides")
     config = point_query_config(num_points, nq, device)
     stride = config.query_stride if query_stride is None else query_stride
     if not isinstance(stride, int) or isinstance(stride, bool) or stride < 1 or stride > 32 or stride & (stride - 1):
@@ -647,6 +670,19 @@ def _knn(
             )
         if counts is None:
             counts = wp.empty(queries.shape, dtype=int, device=device)
+        if backend == PointQueryBackend.BRUTE_FORCE:
+            if bvh is None:
+                bvh = brute_force.BruteForcePointIndex(points)
+            brute_force.query(points, queries, k, max_dist, exclude_indices, indices, distances, counts, squared)
+            if queries.size and (points.requires_grad or queries.requires_grad):
+                gather = _batched_distance_kernel if points.ndim == 2 else _distance_kernel
+                wp.launch(
+                    gather(indices.dtype, squared),
+                    (*queries.shape, k),
+                    inputs=[points, queries, indices, distances],
+                    device=device,
+                )
+            return bvh, indices, distances, counts
         # APIC must see individual BVH handles as launch arguments for its
         # resource tracking; preserve that path for saved/replayable captures.
         # Legacy caller-created tuples have no owner for cached descriptors;
@@ -818,11 +854,13 @@ class PointIndex:
     Keep the owner and inputs alive through asynchronous execution and graph
     replay. Refit or rebuild after changing target coordinates in place; create
     a new owner after replacing their allocation or changing the batch layout.
+    Brute-force owners read coordinate updates directly and require no refit.
 
     The Warp backend owns ordinary :class:`warp.Bvh` objects with coincident
     lower and upper bounds. :attr:`bvhs` exposes those objects for scalar kernel
     queries. Native cuBQL handles are private and cannot be used with the scalar
-    Warp BVH query functions.
+    Warp BVH query functions. Brute-force owners retain targets without a tree
+    and perform tiled exhaustive searches in Warp.
 
     Empty clouds and zero batches are supported. Target coordinates must be
     finite, with queried squared distances representable in float32. Coordinate
@@ -836,12 +874,13 @@ class PointIndex:
             Later queries may have different counts.
         k: Positive Python integer giving the expected neighbor count, used only
             for construction tuning.
-        backend: Choose Warp on CPU/CUDA or native cuBQL on CUDA. Native cuBQL
-            supports k=1-64, requires memory pools, and constructs outside capture.
+        backend: Choose Warp BVH or brute force on CPU/CUDA, or native cuBQL
+            on CUDA. Native cuBQL supports k=1-64, requires memory pools, and
+            constructs outside capture. Brute force allocates no spatial index.
         objective: Choose construction-inclusive or reused-index cuBQL tuning.
             This does not select a backend or change Warp's construction policy.
         leaf_size: Positive Python integer overriding the Warp BVH leaf size;
-            unsupported for native cuBQL.
+            unsupported for other backends.
     """
 
     def __init__(
@@ -862,7 +901,9 @@ class PointIndex:
     def _adopt(self, points, indexes, backend, objective):
         self._points = points
         self._index = indexes
-        self._indexes = indexes if points.ndim == 2 else (indexes,)
+        self._indexes = (
+            () if backend == PointQueryBackend.BRUTE_FORCE else (indexes if points.ndim == 2 else (indexes,))
+        )
         self._backend = backend
         self._objective = objective
 
@@ -886,11 +927,11 @@ class PointIndex:
         """Return the Warp BVHs for scalar kernel queries, one per target cloud.
 
         A single cloud returns a one-element tuple. A zero-batch input returns
-        an empty tuple. Raises ``ValueError`` for native cuBQL indexes, whose
-        handles are incompatible with scalar Warp BVH queries.
+        an empty tuple. Raises ``ValueError`` for cuBQL and brute-force owners,
+        which do not expose compatible scalar Warp BVH handles.
         """
         if self._backend != PointQueryBackend.WARP:
-            raise ValueError("Native cuBQL indexes do not expose Warp BVH handles; use geometry.knn() to query them")
+            raise ValueError("This backend does not expose Warp BVH handles; use geometry.knn() to query it")
         return self._indexes
 
     def refit(self):
@@ -898,7 +939,10 @@ class PointIndex:
 
         Existing handles remain valid. CUDA refits support graph capture.
         Raises ``ValueError`` for native cuBQL indexes; use :meth:`rebuild` there.
+        Brute force reads current targets directly, so this is a no-op for it.
         """
+        if self._backend == PointQueryBackend.BRUTE_FORCE:
+            return
         if self._backend != PointQueryBackend.WARP:
             raise ValueError("Native cuBQL indexes do not support refit; call rebuild() outside capture")
         with ScopedDevice(self._points.device):
@@ -913,6 +957,7 @@ class PointIndex:
         capture and replaces native handles: finish outstanding queries first
         and capture new query graphs afterward. Neither route changes the
         retained construction policy or accepts a new target allocation.
+        Brute force reads current targets directly, so this is a no-op for it.
         """
         with ScopedDevice(self._points.device):
             if self._backend == PointQueryBackend.CUBQL and self._points.device.stream.is_capturing:
@@ -960,7 +1005,8 @@ def knn(
     Targets must be finite, with queried squared distances representable in
     float32. A nonfinite query returns zero valid neighbors, ``-1`` indices, and
     infinite distances. The Warp backend also returns no neighbors for a zero,
-    negative, or NaN cutoff. Native cuBQL requires a positive infinite cutoff.
+    negative, or NaN cutoff. Brute force has the same filtering and tie semantics.
+    Native cuBQL requires a positive infinite cutoff.
 
     Args:
         points: A reusable target owner, or contiguous float32 ``vec3`` targets
@@ -973,7 +1019,8 @@ def knn(
         max_dist: Strict distance cutoff in coordinate units, including for
             squared outputs. Native cuBQL requires infinity.
         exclude_indices: ``int32`` array matching the query shape. Each
-            entry excludes one batch-local target ID; ``-1`` excludes nothing. Warp only.
+            entry excludes one batch-local target ID; ``-1`` excludes nothing.
+            Supported by Warp BVH and brute force.
         indices: ``int32`` or ``int64`` output of shape ``(*queries.shape, k)``.
             Newly allocated outputs use ``int32``.
         distances: ``float32`` output with the same shape as ``indices``.
@@ -981,11 +1028,15 @@ def knn(
             must not overlap one another or inputs.
         squared: Return squared distances; set ``False`` for Euclidean distances.
         leaf_size: Override Warp leaf size for a new owner. Existing owners keep
-            their layout and reject this override; native cuBQL also rejects it.
+            their layout and reject this override; other backends also reject it.
         query_stride: Override threads per query with a power of two from 1 to 32.
+            Unsupported by brute force.
         ordered: Override spatial query ordering; ``None`` uses the measured policy.
-            Native cuBQL rejects ``True``.
-        backend: Choose Warp or native cuBQL when constructing targets. An
+            Native cuBQL rejects ``True``; brute force rejects any override.
+        backend: Choose Warp BVH (default), brute force, or native cuBQL. Brute
+            force streams bounded target tiles without building a tree or storing
+            pairwise distances; it is useful for small, changing clouds. Its
+            exhaustive work scales with the product of target and query counts. An
             existing owner selects its own backend; conflicting overrides raise.
         objective: Choose cuBQL construction tuning. New owners use
             :attr:`PointQueryObjective.REUSE` when omitted. Existing owners retain their objective and reject conflicts.
@@ -1000,6 +1051,8 @@ def knn(
         equal-distance ties by original target index; native cuBQL uses its own
         tie ordering. Warm up before capture and retain owners, inputs, and
         outputs through replay. Native cuBQL construction occurs outside capture.
+        Brute-force one-shot calls and queries support CUDA capture. A brute-force
+        owner retains targets without a tree and reads in-place updates directly.
     """
     owner = points if isinstance(points, PointIndex) else None
     if owner is not None:

@@ -113,8 +113,8 @@ Output buffers must not overlap inputs or one another.
 
 ``target_index.bvhs`` exposes a tuple of ordinary Warp BVHs, one per cloud,
 for applications that want to fuse kernel work. A single cloud has one entry.
-There is no ambiguous aggregate ``id``. Native cuBQL owners reject ``bvhs``
-access because their handles are incompatible with scalar Warp BVH queries.
+There is no ambiguous aggregate ``id``. Native cuBQL and brute-force owners
+reject ``bvhs`` access; only Warp BVH owners expose scalar query handles.
 
 Independent point-cloud batches
 -------------------------------
@@ -145,7 +145,8 @@ batched distance-gather kernel when gradients are enabled. CUDA graph replay
 uses retained device descriptors and reads current query coordinates. Query
 spacing is selected from the total ``B*N`` work rather than treating each cloud
 as a separate sparse launch. ``ordered=True`` retains the per-cloud ordering
-path; APIC captures retain per-cloud launches for resource tracking. Index construction, refitting, and rebuilding still process each cloud;
+path; APIC captures of BVH queries retain per-cloud launches for resource tracking.
+BVH index construction, refitting, and rebuilding still process each cloud;
 reuse a ``PointIndex`` when targets remain fixed.
 
 Backend choices and tuning
@@ -166,6 +167,31 @@ clouds, native cuBQL is an explicit alternative:
         objective=wp.geometry.PointQueryObjective.REUSE,
     )
     _, indices, distances_sq, counts = wp.geometry.knn(target_index, decoded, 1)
+
+For small or frequently changing clouds, select exhaustive search explicitly:
+
+.. code-block:: python
+
+    brute = wp.geometry.PointQueryBackend.BRUTE_FORCE
+    forward_owner, ids, distances_sq, counts = wp.geometry.knn(targets, decoded, 1, backend=brute)
+    reverse_owner, reverse_ids, reverse_sq, reverse_counts = wp.geometry.knn(decoded, targets, 1, backend=brute)
+
+Use these two distance arrays for the same symmetric Chamfer reduction and
+backward pass shown below. Brute force is implemented entirely in Warp and
+supports CPU/CUDA, arbitrary positive k, strict cutoffs, exclusions, deterministic
+original-index ties, int64 outputs, and gradients through gathered distances.
+CUDA queries share bounded target tiles across threads and retain only each
+query's best k candidates. No pairwise distance matrix is allocated. Temporary
+storage is independent of the product of point and query counts; total distance
+work remains exhaustive, so BVH search generally suits larger clouds better.
+
+A brute-force ``PointIndex`` retains the target array without building trees or
+looping over clouds in Python. It sees coordinate updates on the next query;
+``refit()`` and ``rebuild()`` are no-ops. One-shot calls and reused-owner queries
+support CUDA graph capture after warmup. Retain inputs, owners, and outputs
+through replay. The internal tile size is selected by the implementation;
+``leaf_size``, ``query_stride``, and ``ordered`` overrides are unsupported.
+The default remains ``WARP``; there is no automatic switch to brute force.
 
 Native cuBQL requires CUDA, memory pools, a build with cuBQL enabled, and k=1-64.
 It requires infinite cutoff, no exclusions, and no query reordering
@@ -274,6 +300,7 @@ From a built checkout, run:
     uv run --no-sync -m warp.examples.geometry.example_point_query --device cpu
     uv run --no-sync -m warp.examples.geometry.example_point_query_batch --device cuda:0
     uv run --no-sync -m warp.examples.geometry.example_point_query_chamfer --device cuda:0 --backend cubql --reverse-backend warp
+    uv run --no-sync -m warp.examples.geometry.example_point_query_chamfer --device cuda:0 --backend brute_force --reverse-backend brute_force
 
 
 Batched Chamfer performance
@@ -287,10 +314,11 @@ translate into the same training speedup.
 Unordered batches submit one query kernel across all clouds, plus one gather kernel
 when gradients are enabled. Tree construction still runs per cloud, so once query
 dispatch is inexpensive, reusing a ``PointIndex`` for fixed targets and capturing
-steady-state work in a CUDA graph matter most.
+steady-state work in a CUDA graph can reduce overhead. For small clouds,
+``BRUTE_FORCE`` avoids tree construction in both directions.
 
 Backend rankings depend on query density, geometry, hardware, and launch policy, so
-there is no universal winner; benchmark both backends on the actual shapes and
+there is no universal winner; benchmark the backends on the actual shapes and
 device. Construction policy is a separate choice. When a reverse index is rebuilt on
 every call, a construction-oriented cuBQL objective (``BUILD_AND_QUERY``) or a Warp
 reverse index paired with a fixed cuBQL target index can outperform ``REUSE``, and
