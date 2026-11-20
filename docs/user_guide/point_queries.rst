@@ -346,3 +346,78 @@ JSON. To subsample a supplied pulmonary archive containing ``.npz`` files with
 and generated-array hashes identify the measured data. Raw customer coordinates
 are not stored in the report. This benchmark measures the loss, not encoder
 training or an A40 reproduction on a different GPU.
+
+Pulmonary batch validation
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The supplied archive (MD5 ``ba4fee2fdce2d76e8056594c519851c3``) contains nine
+clouds, each with at least 65,536 points. The following measurements use B=32
+independent target/query subsamples without replacement, cycling through those
+clouds. Inputs match exactly between implementations. Hardware is an RTX PRO
+6000 Blackwell Server Edition MIG 1g.24gb slice with 46 SMs, rather than the
+customer's A40. Both coordinate arrays have gradients enabled; the workload is
+the sum of the two mean squared nearest distances, including backward and
+gradient clearing. It does not include encoder training.
+
+The reference loads the per-cloud Python implementation from ``ff39bfb`` and
+uses the same native binary as the fused implementation from ``739a6c9``.
+Native single-cloud traversal is unchanged. Timings are medians of seven
+synchronized wall samples after two warmups, excluding compilation and upload.
+The fixed target index is reused and the reverse index is rebuilt each call.
+
+.. list-table:: Pulmonary Chamfer forward + backward with reverse construction (ms)
+   :header-rows: 1
+
+   * - Points per cloud
+     - Per-cloud Warp
+     - Fused Warp
+     - Fused cuBQL fixed / Warp reverse
+   * - 1,024
+     - 9.084
+     - 2.602
+     - 2.573
+   * - 4,096
+     - 8.961
+     - 2.903
+     - 2.794
+   * - 16,384
+     - 10.610
+     - 8.346
+     - 7.802
+   * - 32,768
+     - 14.444
+     - 13.575
+     - 12.456
+   * - 65,536
+     - 26.699
+     - 23.797
+     - 21.243
+
+At 1,024 points, a Python profile of Warp's reverse-build Chamfer changes from
+66 recursive query calls and 196 ``wp.launch`` calls to two queries and 11
+launches. Native construction launches are additional. Per-cloud construction
+remains, which limits the improvement once query dispatch is inexpensive.
+
+For reused single-direction queries at 65,536 points, the reference takes
+6.500 ms with Warp and 10.994 ms with cuBQL. Fusion and total-batch launch
+spacing change these to 5.182 ms and 2.715 ms respectively; graph replay takes
+5.148 ms and 2.694 ms. Thus the earlier dense-query crossover is also observed
+on these inputs, and the fused scheduling changes that ranking on this GPU.
+
+Construction policy remains a separate consideration. Rebuilding a cuBQL
+reverse index with ``BUILD_AND_QUERY`` reduces the 65,536-point Chamfer time
+from 169.530 ms (``REUSE``) to 31.357 ms, but the mixed cuBQL/Warp path takes
+21.243 ms. The query-only winner is not necessarily the construction-inclusive
+winner. These policies are explicit; the API does not automatically switch
+backends. To measure the mixed path, add:
+
+.. code-block:: console
+
+    --backends cubql --reverse-backend warp --reverse-objective build_and_query
+
+For native cuBQL in both directions with a construction-oriented reverse tree,
+use ``--reverse-backend cubql --reverse-objective build_and_query``. Without
+these options the benchmark uses the forward backend and ``REUSE`` in both
+directions. Every measured configuration checks all output IDs and counts and
+compares up to eight queries per cloud and direction with exhaustive float32
+search. These are sampled correctness checks, not a full exhaustive comparison.

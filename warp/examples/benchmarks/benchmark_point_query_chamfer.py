@@ -102,10 +102,16 @@ def run(args):
                     q = rng.normal(size=(batches, n, 3)).astype(np.float32)
                 for backend_name in args.backends:
                     backend = getattr(wp.geometry.PointQueryBackend, backend_name.upper())
+                    reverse_name = getattr(args, "reverse_backend", None) or backend_name
+                    reverse_backend = getattr(wp.geometry.PointQueryBackend, reverse_name.upper())
+                    reverse_objective_name = getattr(args, "reverse_objective", "reuse")
+                    reverse_objective = getattr(wp.geometry.PointQueryObjective, reverse_objective_name.upper())
                     targets = wp.array(p, dtype=wp.vec3, requires_grad=True)
                     queries = wp.array(q, dtype=wp.vec3, requires_grad=True)
                     fixed = wp.geometry.PointIndex(targets, num_queries=n, backend=backend)
-                    query_targets = wp.geometry.PointIndex(queries, num_queries=n, backend=backend)
+                    query_targets = wp.geometry.PointIndex(
+                        queries, num_queries=n, backend=reverse_backend, objective=reverse_objective
+                    )
                     loss = wp.zeros(1, dtype=float, requires_grad=True)
                     outputs = [wp.geometry.knn(fixed, queries, 1), wp.geometry.knn(query_targets, targets, 1)]
                     buffers = [{"indices": o[1], "distances": o[2], "counts": o[3]} for o in outputs]
@@ -123,13 +129,19 @@ def run(args):
                         targets=targets,
                         loss=loss,
                         buffers=buffers,
-                        backend=backend,
+                        reverse_backend=reverse_backend,
+                        reverse_objective=reverse_objective,
                     ):
                         loss.zero_()
                         with wp.Tape() as tape:
                             first = wp.geometry.knn(fixed, queries, 1, **buffers[0])
                             second = wp.geometry.knn(
-                                query_targets if reuse else queries, targets, 1, backend=backend, **buffers[1]
+                                query_targets if reuse else queries,
+                                targets,
+                                1,
+                                backend=reverse_backend,
+                                objective=reverse_objective,
+                                **buffers[1],
                             )
                             wp.launch(mean_distance_kernel, queries.shape, [first[2], loss, 1.0 / queries.size])
                             wp.launch(mean_distance_kernel, targets.shape, [second[2], loss, 1.0 / targets.size])
@@ -143,6 +155,8 @@ def run(args):
                         "batches": batches,
                         "points": n,
                         "backend": backend_name,
+                        "reverse_backend": reverse_name,
+                        "reverse_objective": reverse_objective_name,
                         "points_sha256": hashlib.sha256(p.tobytes()).hexdigest(),
                         "queries_sha256": hashlib.sha256(q.tobytes()).hexdigest(),
                         "sampled_accuracy": "passed, up to 8 exhaustive rows per batch and direction",
@@ -182,6 +196,15 @@ if __name__ == "__main__":
     parser.add_argument("--points", type=int, nargs="+", default=[1024, 4096, 16384, 65536])
     parser.add_argument("--batches", type=int, nargs="+", default=[1, 8, 32])
     parser.add_argument("--backends", nargs="+", choices=["warp", "cubql"], default=["warp", "cubql"])
+    parser.add_argument(
+        "--reverse-backend", choices=["warp", "cubql"], help="Reverse index backend; defaults to the forward backend"
+    )
+    parser.add_argument(
+        "--reverse-objective",
+        choices=["reuse", "build_and_query"],
+        default="reuse",
+        help="Reverse construction policy; use build_and_query for changing cuBQL targets",
+    )
     parser.add_argument("--repeats", type=int, default=9)
     parser.add_argument("--profile", action="store_true")
     args = parser.parse_args()
