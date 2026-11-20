@@ -1,0 +1,131 @@
+[
+  {
+    "method": "chunked_mm",
+    "batches": 32,
+    "points": 16384,
+    "chunk_rows": 64,
+    "points_sha256": "6d5c5af15da8115cb5b93d084ce65aa0b50b3227c77eef702a154ed83c729063",
+    "queries_sha256": "0501584fb24e2c517d24ef482132c867bc34b21d32afbb9e3320204034d64605",
+    "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+    "sm_count": 46,
+    "device_memory_bytes": 25367150592,
+    "torch": "2.7.1+cu128",
+    "torch_cuda": "12.8",
+    "warp": "1.20.0.dev0",
+    "revision": "7c64938089b68920319d566e41d032890b17bce1",
+    "source_sha256": {
+      "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_cdist.py": "ba17b6d3c4a2363ec52e78090db5269ddc0c520dfcba710b64cc5185d1b661be",
+      "warp/_src/geometry/point_query.py": "59f7c28604b654c84ee7d05ea70a28d2ccca773ad9b4163bcb52afd745955da1",
+      "warp/bin/warp.so": "76a1a4b2293ea511810a4cc5cb5663aaa9231a5e630a6edee5c5f1339e65faaf"
+    },
+    "archive_sha256": "8a16347cc942777083a0c763e049a693af452a2c7bbb07ad7e8511a1457889a4",
+    "tf32": false,
+    "gradient": "decoded queries only; fixed target index outside timing; reverse index rebuilt each call",
+    "timing": "synchronized wall, two warmups, no graph replay, uploads and compilation excluded",
+    "status": "accuracy_failed",
+    "median_ms": 721.6027560643852,
+    "samples_ms": [
+      721.5393558144569,
+      722.0423547551036,
+      721.6027560643852,
+      721.9866248778999,
+      721.5862860903144
+    ],
+    "validation": {
+      "loss": 0.008145555853843689,
+      "reference_loss": 0.00814555202521646,
+      "gradient_relative_l2": 0.02593180516124458,
+      "gradient_max_error": 8.975257514975965e-07,
+      "gradient_max_tolerance": 1.1833712758525508e-08,
+      "passed": false
+    },
+    "torch_allocator_peak_bytes": 189465088,
+    "worker_exit_code": 0
+  },
+  {
+    "method": "chunked_mm",
+    "batches": 32,
+    "points": 32768,
+    "chunk_rows": 64,
+    "points_sha256": "a234102fe227257eda63fb59da5f80dfae68a599dac0a78c3834633e122ee8ee",
+    "queries_sha256": "022d384460f4dedf2736fc5d1d7381a1a50e8b6143e7de5d336c7b75c8dc5f68",
+    "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+    "sm_count": 46,
+    "device_memory_bytes": 25367150592,
+    "torch": "2.7.1+cu128",
+    "torch_cuda": "12.8",
+    "warp": "1.20.0.dev0",
+    "revision": "7c64938089b68920319d566e41d032890b17bce1",
+    "source_sha256": {
+      "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_cdist.py": "ba17b6d3c4a2363ec52e78090db5269ddc0c520dfcba710b64cc5185d1b661be",
+      "warp/_src/geometry/point_query.py": "59f7c28604b654c84ee7d05ea70a28d2ccca773ad9b4163bcb52afd745955da1",
+      "warp/bin/warp.so": "76a1a4b2293ea511810a4cc5cb5663aaa9231a5e630a6edee5c5f1339e65faaf"
+    },
+    "archive_sha256": "8a16347cc942777083a0c763e049a693af452a2c7bbb07ad7e8511a1457889a4",
+    "tf32": false,
+    "gradient": "decoded queries only; fixed target index outside timing; reverse index rebuilt each call",
+    "timing": "synchronized wall, two warmups, no graph replay, uploads and compilation excluded",
+    "status": "accuracy_failed",
+    "median_ms": 2922.2126021049917,
+    "samples_ms": [
+      2922.2126021049917,
+      2922.3962421528995,
+      2922.112031839788,
+      2922.44243202731,
+      2922.129260841757
+    ],
+    "validation": {
+      "loss": 0.003859402146190405,
+      "reference_loss": 0.0038593961782690434,
+      "gradient_relative_l2": 0.038298900545920854,
+      "gradient_max_error": 4.259773049852811e-07,
+      "gradient_max_tolerance": 1.0835192565773469e-08,
+      "passed": false
+    },
+    "torch_allocator_peak_bytes": 370344448,
+    "worker_exit_code": 0
+  },
+  {
+    "method": "chunked_mm",
+    "batches": 32,
+    "points": 65536,
+    "chunk_rows": 64,
+    "points_sha256": "9bef14c5df749bd4aa810fa6b70f4a9df63a5a86e62b9d12b1c07c2fae203e39",
+    "queries_sha256": "21461d0d7929fd3dbcd740c6d3c873d6af0c6958ddc56f19135a1748d392b146",
+    "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+    "sm_count": 46,
+    "device_memory_bytes": 25367150592,
+    "torch": "2.7.1+cu128",
+    "torch_cuda": "12.8",
+    "warp": "1.20.0.dev0",
+    "revision": "7c64938089b68920319d566e41d032890b17bce1",
+    "source_sha256": {
+      "/home/horde/Repos/warp.knn/warp/warp/examples/benchmarks/benchmark_point_query_cdist.py": "ba17b6d3c4a2363ec52e78090db5269ddc0c520dfcba710b64cc5185d1b661be",
+      "warp/_src/geometry/point_query.py": "59f7c28604b654c84ee7d05ea70a28d2ccca773ad9b4163bcb52afd745955da1",
+      "warp/bin/warp.so": "76a1a4b2293ea511810a4cc5cb5663aaa9231a5e630a6edee5c5f1339e65faaf"
+    },
+    "archive_sha256": "8a16347cc942777083a0c763e049a693af452a2c7bbb07ad7e8511a1457889a4",
+    "tf32": false,
+    "gradient": "decoded queries only; fixed target index outside timing; reverse index rebuilt each call",
+    "timing": "synchronized wall, two warmups, no graph replay, uploads and compilation excluded",
+    "status": "accuracy_failed",
+    "median_ms": 12196.845068130642,
+    "samples_ms": [
+      12196.902218274772,
+      12196.480309590697,
+      12196.845068130642,
+      12196.864839177579,
+      12196.784309111536
+    ],
+    "validation": {
+      "loss": 0.0015810010954737663,
+      "reference_loss": 0.0015809912011577423,
+      "gradient_relative_l2": 0.06245601817321306,
+      "gradient_max_error": 1.461348801967688e-07,
+      "gradient_max_tolerance": 1.021347815959416e-08,
+      "passed": false
+    },
+    "torch_allocator_peak_bytes": 732103168,
+    "worker_exit_code": 0
+  }
+]
