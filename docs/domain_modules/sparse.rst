@@ -609,3 +609,34 @@ performs no host convergence checks or work-array allocations. Eager calls
 from different CUDA streams are ordered automatically, but captured graphs
 that share one workspace must not execute concurrently. Reverse-mode
 derivatives through prepared solves are not supplied.
+
+Prepared FSAI application
+-------------------------
+
+For several vectors sharing the same factor, prepare the workspace once::
+
+    import warp as wp
+    from warp.optim.linear import FSAI
+
+    factor = FSAI(A, factor_dtype=wp.float32)
+    operator = factor.as_multi_rhs(nrhs=24, dtype=wp.float32)
+    operator.matvec(x.flatten(), y.flatten(), y.flatten(), 1.0, 0.0)
+
+Here ``x`` and ``y`` have shape ``(24, n)`` and the selected working dtype.
+The returned :class:`FSAIMultiRHS` is a :class:`LinearOperator` with independent
+RHS partitions. It owns its workspace but borrows the factor. It can also be
+passed as the preconditioner for an equivalently partitioned iterative solve.
+``operator.with_nrhs(8)`` creates a smaller workspace view for serial execution.
+The source matrix and factors are never replicated across RHSs.
+
+``algorithm="columns"``, the CUDA default, uses adjacent RHS values
+across both factor products, including the required input/output transposes.
+``algorithm="rows"`` uses one thread per factor row and RHS; it can be faster for
+small systems and is the CPU path. Exact aliases are supported;
+shifted overlap and strided arrays are rejected. Changes to existing factor
+values are visible in captured replay. Do not replace factor storage after
+capture. Eager calls from different CUDA streams are ordered automatically, but
+captured graphs sharing one workspace must not execute concurrently.
+
+Construct and warm up before capture. Captured graphs do not add a per-replay
+synchronization. Launch a captured graph once before changing its inputs.
