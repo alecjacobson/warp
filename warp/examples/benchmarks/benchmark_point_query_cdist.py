@@ -33,6 +33,8 @@ METHODS = (
     "cubql_warp",
     "warp_torch",
     "cubql_torch",
+    "warp_brute_force",
+    "warp_brute_force_torch",
     "warp_build_both",
     "warp_torch_build_both",
 )
@@ -96,7 +98,8 @@ def run_worker(args):
     device = wp.get_device("cuda:0")
     p, q = read_inputs(args)
     rows = min(args.chunk_rows, max(1, args.chunk_mib * 1024**2 // (args.batches * args.n * 4)))
-    build_both = args.method.endswith("build_both")
+    brute = args.method.startswith("warp_brute_force")
+    build_both = args.method.endswith("build_both") or brute
     record = {
         "method": args.method,
         "batches": args.batches,
@@ -113,7 +116,12 @@ def run_worker(args):
         "revision": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "source_sha256": {
             path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
-            for path in (__file__, "warp/_src/geometry/point_query.py", "warp/bin/warp.so")
+            for path in (
+                __file__,
+                "warp/_src/geometry/point_query.py",
+                "warp/_src/geometry/point_query_brute_force.py",
+                "warp/bin/warp.so",
+            )
         },
         "archive_sha256": hashlib.sha256(args.archive.read_bytes()).hexdigest(),
         "tf32": False,
@@ -122,6 +130,8 @@ def run_worker(args):
     }
     if build_both:
         record["gradient"] = "decoded queries only; both target and reverse indexes rebuilt each call"
+    if brute:
+        record["gradient"] = "decoded queries only; one-shot exhaustive searches in both directions; no spatial indexes"
     if args.method in ("cdist", "cdist_direct"):
         matrix_bytes = args.batches * args.n**2 * 4
         if matrix_bytes > record["device_memory_bytes"]:
@@ -158,13 +168,15 @@ def run_worker(args):
         del oracle_first, oracle_second
 
         is_warp = args.method.startswith(("warp", "cubql"))
-        tape_mode = args.method in ("warp", "cubql_warp", "warp_build_both")
+        tape_mode = args.method in ("warp", "cubql_warp", "warp_build_both", "warp_brute_force")
         if is_warp:
             backend = (
                 wp.geometry.PointQueryBackend.CUBQL
                 if args.method.startswith("cubql")
                 else wp.geometry.PointQueryBackend.WARP
             )
+            if brute:
+                backend = wp.geometry.PointQueryBackend.BRUTE_FORCE
             fixed = wp_points if build_both else wp.geometry.PointIndex(wp_points, num_queries=args.n, backend=backend)
             if tape_mode:
                 wp_queries = wp.from_torch(queries, dtype=wp.vec3, requires_grad=True)
@@ -189,10 +201,24 @@ def run_worker(args):
                     tape.__enter__()
                 try:
                     first = wp.geometry.knn(
-                        fixed, wp_queries, 1, indices=forward_ids, distances=forward_dist, counts=forward_count
+                        fixed,
+                        wp_queries,
+                        1,
+                        indices=forward_ids,
+                        distances=forward_dist,
+                        counts=forward_count,
+                        backend=backend,
                     )
                     second = wp.geometry.knn(
-                        wp_queries, wp_points, 1, indices=reverse_ids, distances=reverse_dist, counts=reverse_count
+                        wp_queries,
+                        wp_points,
+                        1,
+                        indices=reverse_ids,
+                        distances=reverse_dist,
+                        counts=reverse_count,
+                        backend=wp.geometry.PointQueryBackend.BRUTE_FORCE
+                        if brute
+                        else wp.geometry.PointQueryBackend.WARP,
                     )
                     if tape_mode:
                         wp.launch(mean_distance_kernel, wp_queries.shape, [first[2], loss_array, 1.0 / wp_queries.size])
