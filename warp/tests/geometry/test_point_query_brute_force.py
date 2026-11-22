@@ -104,7 +104,7 @@ def test_capture(test, device):
     # One-shot owner/output creation is capturable, including with APIC.
     wp.geometry.knn(points, queries, 3, backend=BACKEND)
     for apic in (False, True):
-        with wp.ScopedCapture(device=device, apic=apic) as capture:
+        with wp.ScopedCapture(device=device, apic=apic, force_module_load=False) as capture:
             result = wp.geometry.knn(points, queries, 3, backend=BACKEND)
         points.fill_(wp.vec3(0.0))
         queries.fill_(wp.vec3(1.0))
@@ -137,7 +137,7 @@ def test_capture_gradients(test, device):
         tape.backward(loss)
 
     operation()
-    with wp.ScopedCapture(device=device) as capture:
+    with wp.ScopedCapture(device=device, force_module_load=False) as capture:
         operation()
     q += np.float32(0.25)
     queries.assign(q)

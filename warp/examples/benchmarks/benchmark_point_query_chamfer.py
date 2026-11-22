@@ -78,12 +78,13 @@ def run(args):
         "source": "subsampled archive clouds" if clouds else "synthetic Gaussian volume",
         "archive_sha256": hashlib.sha256(args.archive.read_bytes()).hexdigest() if clouds else None,
         "source_sha256": {
-            name: hashlib.sha256(Path(name).read_bytes()).hexdigest()
+            str(name): hashlib.sha256(Path(name).read_bytes()).hexdigest()
             for name in (
                 "warp/_src/geometry/point_query.py",
                 "warp/_src/geometry/point_query_brute_force.py",
                 "warp/native/bvh_cubql.cu",
-                "warp/bin/warp.so",
+                # The core library as loaded: warp.so, libwarp.dylib or warp.dll, depending on the platform.
+                wp._src.context.runtime.core._name,
                 __file__,
             )
         },
