@@ -10,7 +10,7 @@ import numpy as np
 import warp as wp
 import warp.sparse as sp
 from warp._src.optim import fsai as fsai_module
-from warp.optim.linear import FSAI, FSAIMultiRHS, cg, cr, preconditioner
+from warp.optim.linear import FSAI, KrylovSolve, MultiRHSOperator, cg, cr, preconditioner
 from warp.tests.unittest_utils import add_function_test, get_cuda_test_devices, get_test_devices
 
 
@@ -922,147 +922,198 @@ def test_float16_capture_refit(test, device):
     np.testing.assert_array_equal(y.numpy(), before)
 
 
-def _multi_rhs_algorithms(device):
-    """Return the FSAI multiple-RHS strategies available on ``device``."""
+def _batch_algorithms(device):
+    """Return the FSAI batch strategies available on ``device``."""
     if wp.get_device(device).is_cuda:
         return ("rows", "columns")
     return ("rows",)
 
 
-def test_multi_rhs(test, device, dtype):
-    """Check multiple-RHS application across factor types, widths, strategies and aliases."""
-    # Odd rows/widths exercise both transpose and RHS tile tails. References use
+def test_batch(test, device, dtype):
+    """Check batched application across factor types, batch sizes, strategies and aliases."""
+    # Odd rows and batch sizes exercise both transpose and RHS tile tails. References use
     # the stored coefficients, so factor quantization is not application error.
     rng = np.random.default_rng(37)
+    tolerance = {"rtol": 5e-5, "atol": 2e-6} if dtype == wp.float32 else {"rtol": 1e-12, "atol": 1e-13}
     for factor_dtype in (wp.float16, wp.float32, wp.float64):
         pre = FSAI(
             _matrix(_path(41), device, wp.float16 if factor_dtype == wp.float16 else wp.float64),
             max_row_size=8,
             factor_dtype=factor_dtype,
-            reuse_pattern=True,
         )
         g = _dense(pre.G).astype(np.float64)
-        expected = "columns" if wp.get_device(device).is_cuda else "rows"
-        test.assertEqual(pre.as_multi_rhs(4, dtype=dtype).algorithm, expected)
-        for nrhs in (1, 4, 7, 24, 33):
-            host = rng.normal(size=(nrhs, 41))
-            for algorithm in _multi_rhs_algorithms(device):
-                action = pre.as_multi_rhs(33, dtype=dtype, algorithm=algorithm).with_nrhs(nrhs)
-                test.assertEqual(action.algorithm, algorithm)
-                test.assertEqual(action.shape, (nrhs * 41, nrhs * 41))
-                np.testing.assert_array_equal(action.batch_offsets.numpy(), np.arange(nrhs + 1) * 41)
+        for algorithm in _batch_algorithms(device):
+            test.assertIs(pre.reserve_batch(33, algorithm=algorithm, dtype=dtype), pre)
+            test.assertEqual(pre.batch_algorithm, algorithm)
+            for count in (1, 2, 7, 24, 33):
+                host = rng.normal(size=(count, 41))
                 for alias in (False, True):
-                    x = wp.array(host.ravel(), dtype=dtype, device=device)
+                    x = wp.array(host, dtype=dtype, device=device)
                     out = x if alias else wp.empty_like(x)
-                    y = wp.array((host * 0.3).ravel(), dtype=dtype, device=device)
-                    action.matvec(x, y, out, 0.75, -0.25)
+                    y = wp.array(host * 0.3, dtype=dtype, device=device)
+                    pre.matvec(x, y, out, 0.75, -0.25)
                     expected = 0.75 * (host @ g.T @ g) - 0.25 * host * 0.3
-                    np.testing.assert_allclose(
-                        out.numpy().reshape(host.shape),
-                        expected,
-                        rtol=5e-5 if dtype == wp.float32 else 1e-12,
-                        atol=2e-6 if dtype == wp.float32 else 1e-13,
-                    )
+                    np.testing.assert_allclose(out.numpy(), expected, **tolerance)
+                # Zero coefficients do not read the corresponding inputs.
                 x.fill_(float("nan"))
                 y.fill_(2)
-                action.matvec(x, y, out, 0, 0.5)
-                np.testing.assert_array_equal(out.numpy(), np.ones(out.size))
+                pre.matvec(x, y, out, 0, 0.5)
+                np.testing.assert_array_equal(out.numpy(), np.ones(host.shape))
                 y.fill_(float("nan"))
-                action.matvec(x, y, out, 0, 0)
-                np.testing.assert_array_equal(out.numpy(), np.zeros(out.size))
+                pre.matvec(x, y, out, 0, 0)
+                np.testing.assert_array_equal(out.numpy(), np.zeros(host.shape))
                 x.fill_(1)
-                action.matvec(x, y, out, 1, 0)
-                np.testing.assert_allclose(
-                    out.numpy().reshape(host.shape), np.ones(host.shape) @ g.T @ g, rtol=5e-5, atol=2e-6
-                )
+                pre.matvec(x, y, out, 1, 0)
+                np.testing.assert_allclose(out.numpy(), np.ones(host.shape) @ g.T @ g, rtol=5e-5, atol=2e-6)
 
 
-def test_multi_rhs_capture(test, device):
-    """Check captured replay observes factor value updates for compact and padded factors."""
-    pre = FSAI(_matrix(_path(41), device), max_row_size=8, factor_dtype=wp.float32, reuse_pattern=True)
+def test_batch_auto(test, device):
+    """Check that the automatic batch strategy follows the prepared batched product rule."""
+    is_cuda = wp.get_device(device).is_cuda
+    short = FSAI(_matrix(_path(41), device), max_row_size=8)
+    long = FSAI(_matrix(_path(41), device), max_row_size=32, kap_tolerance=0.0)
+    test.assertLessEqual(short.G.mean_row_count_sync(), 16)
+    test.assertGreater(long.G.mean_row_count_sync(), 16)
+    test.assertIsNone(long.batch_algorithm)
+    test.assertEqual(short.reserve_batch(24).batch_algorithm, "rows")
+    test.assertEqual(long.reserve_batch(2).batch_algorithm, "rows")
+    # Without a named strategy, a larger reservation keeps the current one.
+    test.assertEqual(long.reserve_batch(24).batch_algorithm, "rows")
+    test.assertEqual(long.reserve_batch(24, algorithm="auto").batch_algorithm, "columns" if is_cuda else "rows")
+    # MultiRHSOperator keeps a pinned strategy unless it names another one.
+    long.reserve_batch(4, algorithm="rows")
+    operator = MultiRHSOperator(long, 8)
+    test.assertEqual(operator.algorithm, "rows")
+    if is_cuda:
+        MultiRHSOperator(long, 8, algorithm="columns")
+        test.assertEqual(long.batch_algorithm, "columns")
+        test.assertEqual(operator.algorithm, "columns")
+
+
+def test_batch_multi_rhs_operator(test, device):
+    """Check that MultiRHSOperator and KrylovSolve apply FSAI to whole batches, not one RHS at a time."""
+    a = _path(41)
+    pre = FSAI(_matrix(a, device), max_row_size=8)
+    g = _dense(pre.G)
+    rhs = np.random.default_rng(11).normal(size=(5, 41))
+    x = wp.array(rhs.ravel(), dtype=wp.float64, device=device)
+    loop = MultiRHSOperator(pre, 5, algorithm="loop")
+    test.assertEqual(loop.algorithm, "loop")
+    expected = wp.empty_like(x)
+    loop.matvec(x, expected, expected, 1, 0)
+    np.testing.assert_allclose(expected.numpy().reshape(5, 41), rhs @ g.T @ g, rtol=1e-12, atol=1e-13)
+    # The single-vector product runs only when FSAI is applied one RHS at a time.
+    with mock.patch.object(fsai_module, "_matvec", side_effect=AssertionError("FSAI applied one RHS at a time")):
+        operator = MultiRHSOperator(pre, 5)
+        test.assertEqual(operator.algorithm, pre.batch_algorithm)
+        out = wp.empty_like(x)
+        operator.matvec(x, out, out, 1, 0)
+        np.testing.assert_allclose(out.numpy(), expected.numpy(), rtol=1e-12, atol=1e-13)
+        solver = KrylovSolve(_matrix(a, device), 5, method="cg", M=pre, tol=1e-10)
+        b = wp.array(rhs, dtype=wp.float64, device=device)
+        solution = wp.empty_like(b)
+        solver.solve(b, solution)
+    np.testing.assert_array_equal(solver.converged.numpy(), np.ones(5))
+    np.testing.assert_allclose(solution.numpy(), np.linalg.solve(a, rhs.T).T, rtol=1e-8, atol=1e-8)
+
+
+def test_batch_capture(test, device):
+    """Check that captured batches observe factor updates and survive a larger reservation."""
     # Deferred construction keeps padded factor rows, covering both formats.
     for deferred in (False, True):
-        if deferred:
-            pre = FSAI(
-                _matrix(_path(41), device),
-                max_row_size=8,
-                factor_dtype=wp.float32,
-                reuse_pattern=True,
-                defer_pattern=True,
-            )
-        action = pre.as_multi_rhs(7, dtype=wp.float64)
-        x = wp.ones(7 * 41, dtype=wp.float64, device=device)
+        pre = FSAI(
+            _matrix(_path(41), device),
+            max_row_size=8,
+            factor_dtype=wp.float32,
+            reuse_pattern=True,
+            defer_pattern=deferred,
+        )
+        pre.reserve_batch(7, dtype=wp.float64)
+        x = wp.ones((7, 41), dtype=wp.float64, device=device)
         out = wp.empty_like(x)
-        action.matvec(x, out, out, 1, 0)
+        pre.matvec(x, out, out, 1, 0)
         wp.synchronize_device(device)
         with wp.ScopedCapture(device=device, force_module_load=False) as capture:
-            action.matvec(x, out, out, 1, 0)
+            pre.matvec(x, out, out, 1, 0)
+        with wp.ScopedCapture(device=device, force_module_load=False):
+            with test.assertRaises(RuntimeError):
+                pre.reserve_batch(8, dtype=wp.float64)
+        # The graph keeps addressing its original scratch, so new allocations must not reuse it.
+        pre.reserve_batch(33, dtype=wp.float64)
+        others = [wp.full((7, 41), 7.0, dtype=wp.float64, device=device) for _ in range(4)]
         for scale in (1.0, 2.0, 0.5):
             # Complete the first launch before changing inputs.
             x.fill_(scale)
             wp.capture_launch(capture.graph)
             g = _dense(pre.G).astype(np.float64)
             gt = _dense(pre.GT).astype(np.float64)
-            np.testing.assert_allclose(
-                out.numpy().reshape(7, 41), np.full((7, 41), scale) @ g.T @ gt.T, rtol=1e-12, atol=1e-13
-            )
+            np.testing.assert_allclose(out.numpy(), np.full((7, 41), scale) @ g.T @ gt.T, rtol=1e-12, atol=1e-13)
             pre.G.values.fill_(0.125)
             pre.GT.values.fill_(0.25)
+        for other in others:
+            np.testing.assert_array_equal(other.numpy(), np.full((7, 41), 7.0))
 
 
-def test_multi_rhs_validation(test, device):
-    """Check that invalid arguments and arrays are rejected before output mutation."""
+def test_batch_validation(test, device):
+    """Check that invalid reservations and batches raise before output mutation."""
     pre = FSAI(_matrix(_path(5), device))
-    invalid = ({"nrhs": 0}, {"nrhs": 2, "dtype": wp.float16}, {"nrhs": 2, "algorithm": "loop"})
-    for kwargs in (*invalid, {"nrhs": 2, "algorithm": "ROWS"}):
+    x = wp.ones((2, 5), dtype=wp.float64, device=device)
+    out = wp.full((2, 5), 123.0, dtype=wp.float64, device=device)
+    with test.assertRaises(ValueError):
+        pre.matvec(x, out, out, 1, 0)
+    invalid = ({"count": 0}, {"count": 2, "dtype": wp.float16}, {"count": 2, "algorithm": "loop"})
+    for kwargs in (*invalid, {"count": 2, "algorithm": "ROWS"}):
         with test.assertRaises(ValueError):
-            pre.as_multi_rhs(**kwargs)
+            pre.reserve_batch(**kwargs)
     if not wp.get_device(device).is_cuda:
         with test.assertRaises(ValueError):
-            pre.as_multi_rhs(2, algorithm="columns")
-    with test.assertRaises(TypeError):
-        pre.as_multi_rhs(True)
-    # Direct construction and the factory resolve the same default working dtype.
-    test.assertEqual(FSAIMultiRHS(pre, 2).dtype, pre.as_multi_rhs(2).dtype)
-    # Python float means float32, as elsewhere in Warp.
-    test.assertEqual(pre.as_multi_rhs(2, dtype=float).dtype, wp.float32)
-    test.assertEqual(FSAIMultiRHS(pre, 2, float).dtype, wp.float32)
-    action = pre.as_multi_rhs(2)
-    x = wp.ones(10, dtype=wp.float64, device=device)
-    out = wp.full(10, 123.0, dtype=wp.float64, device=device)
-    for bad in (
-        wp.ones(9, dtype=wp.float64, device=device),
-        wp.ones(10, dtype=wp.float32, device=device),
-        wp.ones(20, dtype=wp.float64, device=device)[::2],
+            pre.reserve_batch(2, algorithm="columns")
+    for count in (True, 2.5):
+        with test.assertRaises(TypeError):
+            pre.reserve_batch(count)
+    test.assertIsNone(pre.batch_algorithm)
+    pre.reserve_batch(2)
+    storage = wp.ones((3, 5), dtype=wp.float64, device=device)
+    for args in (
+        (wp.ones((2, 5), dtype=wp.float32, device=device), out, out),
+        (wp.ones((2, 10), dtype=wp.float64, device=device)[:, ::2], out, out),
+        (x, wp.ones((2, 4), dtype=wp.float64, device=device), out),
+        (wp.ones((3, 5), dtype=wp.float64, device=device), storage, storage),
+        (storage[:2], x, storage[1:]),
     ):
+        before = [a.numpy().copy() for a in args]
         with test.assertRaises(ValueError):
-            action.matvec(bad, out, out, 1, 0)
-        np.testing.assert_array_equal(out.numpy(), np.full(10, 123.0))
-    storage = wp.ones(11, dtype=wp.float64, device=device)
-    with test.assertRaises(ValueError):
-        action.matvec(storage[:10], x, storage[1:], 1, 0)
+            pre.matvec(*args, 1, 0)
+        for a, value in zip(args, before, strict=True):
+            np.testing.assert_array_equal(a.numpy(), value)
+    # Python float means float32, as elsewhere in Warp.
+    pre.reserve_batch(2, dtype=float)
+    single = wp.ones((2, 5), dtype=wp.float32, device=device)
+    pre.matvec(single, single, single, 1, 0)
+    g = _dense(pre.G)
+    np.testing.assert_allclose(single.numpy(), np.ones((2, 5)) @ g.T @ g, rtol=1e-6)
 
 
-def test_multi_rhs_streams(test, device):
-    """Check that eager application from different streams shares scratch safely."""
-    pre = FSAI(_matrix(_path(41), device), max_row_size=8)
-    action = pre.as_multi_rhs(7)
-    smaller = action.with_nrhs(3)
-    x = wp.ones(7 * 41, dtype=wp.float64, device=device)
-    y = wp.full(3 * 41, 2.0, dtype=wp.float64, device=device)
-    a, b = wp.empty_like(x), wp.empty_like(y)
-    action.matvec(x, a, a, 1, 0)
-    smaller.matvec(y, b, b, 1, 0)
+def test_batch_streams(test, device):
+    """Check that eager batches and single vectors from different streams share scratch safely."""
+    pre = FSAI(_matrix(_path(41), device), max_row_size=8).reserve_batch(7)
+    x = wp.ones((7, 41), dtype=wp.float64, device=device)
+    y = wp.full((3, 41), 2.0, dtype=wp.float64, device=device)
+    v = wp.full(41, 3.0, dtype=wp.float64, device=device)
+    a, b, c = wp.empty_like(x), wp.empty_like(y), wp.empty_like(v)
+    pre.matvec(x, a, a, 1, 0)
+    pre.matvec(y, b, b, 1, 0)
+    pre.matvec(v, c, c, 1, 0)
     wp.synchronize_device(device)
-    first, second = wp.Stream(device), wp.Stream(device)
-    with wp.ScopedStream(first):
-        action.matvec(x, a, a, 1, 0)
-    with wp.ScopedStream(second):
-        smaller.matvec(y, b, b, 1, 0)
+    streams = [wp.Stream(device) for _ in range(3)]
+    for stream, (source, result) in zip(streams, ((x, a), (y, b), (v, c)), strict=True):
+        with wp.ScopedStream(stream):
+            pre.matvec(source, result, result, 1, 0)
     wp.synchronize_device(device)
     g = _dense(pre.G)
-    np.testing.assert_allclose(a.numpy().reshape(7, 41), np.ones((7, 41)) @ g.T @ g, rtol=1e-12, atol=1e-13)
-    np.testing.assert_allclose(b.numpy().reshape(3, 41), np.full((3, 41), 2.0) @ g.T @ g, rtol=1e-12, atol=1e-13)
+    np.testing.assert_allclose(a.numpy(), np.ones((7, 41)) @ g.T @ g, rtol=1e-12, atol=1e-13)
+    np.testing.assert_allclose(b.numpy(), np.full((3, 41), 2.0) @ g.T @ g, rtol=1e-12, atol=1e-13)
+    np.testing.assert_allclose(c.numpy(), np.full(41, 3.0) @ g.T @ g, rtol=1e-12, atol=1e-13)
 
 
 class TestFSAI(unittest.TestCase):
@@ -1174,11 +1225,11 @@ for func in (test_float16_factors, test_float16_pivot_guard):
 add_function_test(TestFSAI, "test_float16_capture_refit", test_float16_capture_refit, devices=get_cuda_test_devices())
 
 for dtype in (wp.float32, wp.float64):
-    add_function_test(TestFSAI, f"test_multi_rhs_{dtype.__name__}", test_multi_rhs, devices=devices, dtype=dtype)
-add_function_test(TestFSAI, "test_multi_rhs_capture", test_multi_rhs_capture, devices=get_cuda_test_devices())
-add_function_test(TestFSAI, "test_multi_rhs_validation", test_multi_rhs_validation, devices=devices)
-
-add_function_test(TestFSAI, "test_multi_rhs_streams", test_multi_rhs_streams, devices=get_cuda_test_devices())
+    add_function_test(TestFSAI, f"test_batch_{dtype.__name__}", test_batch, devices=devices, dtype=dtype)
+for func in (test_batch_auto, test_batch_multi_rhs_operator, test_batch_validation):
+    add_function_test(TestFSAI, func.__name__, func, devices=devices)
+for func in (test_batch_capture, test_batch_streams):
+    add_function_test(TestFSAI, func.__name__, func, devices=get_cuda_test_devices())
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

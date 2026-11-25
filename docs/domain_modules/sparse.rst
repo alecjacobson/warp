@@ -601,8 +601,9 @@ a reusable object needs:
 
 ``M`` is a fixed linear preconditioner, either a single-system operator or a
 prepared operator with independent RHS partitions, such as a
-:class:`MultiRHSOperator` or an FSAI application prepared for several RHSs. When
-the preconditioner is partitioned, pass a matching ``M=`` to ``with_nrhs``.
+:class:`MultiRHSOperator`. A single-system :class:`FSAI` preconditions all RHSs
+at once, as described below. When the preconditioner is partitioned, pass a
+matching ``M=`` to ``with_nrhs``.
 
 Construct and warm up actions outside CUDA graph capture. Prepared replay
 performs no host convergence checks or work-array allocations. Eager calls
@@ -610,33 +611,38 @@ from different CUDA streams are ordered automatically, but captured graphs
 that share one workspace must not execute concurrently. Reverse-mode
 derivatives through prepared solves are not supplied.
 
-Prepared FSAI application
--------------------------
+Batched FSAI application
+------------------------
 
-For several vectors sharing the same factor, prepare the workspace once::
+An :class:`FSAI` preconditioner also applies to a batch of vectors, one per
+row, once :meth:`FSAI.reserve_batch` has allocated scratch for the largest
+batch::
 
     import warp as wp
     from warp.optim.linear import FSAI
 
     factor = FSAI(A, factor_dtype=wp.float32)
-    operator = factor.as_multi_rhs(nrhs=24, dtype=wp.float32)
-    operator.matvec(x.flatten(), y.flatten(), y.flatten(), 1.0, 0.0)
+    factor.reserve_batch(24, dtype=wp.float32)
+    factor.matvec(x, y, y, 1.0, 0.0)  # y[i] = G.T @ G @ x[i]
 
-Here ``x`` and ``y`` have shape ``(24, n)`` and the selected working dtype.
-The returned :class:`FSAIMultiRHS` is a :class:`LinearOperator` with independent
-RHS partitions. It owns its workspace but borrows the factor. It can also be
-passed as the preconditioner for an equivalently partitioned iterative solve.
-``operator.with_nrhs(8)`` creates a smaller workspace view for serial execution.
-The source matrix and factors are never replicated across RHSs.
+Here ``x`` and ``y`` are contiguous ``(24, n)`` float32 arrays; smaller batches
+reuse the same scratch. The vector dtype is independent of the factor storage
+type. A :class:`MultiRHSOperator` or :class:`KrylovSolve` given an FSAI
+preconditioner reserves batches of the matrix scalar type itself, so
+``KrylovSolve(A, 24, M=factor, method="cg")`` applies the preconditioner to all
+RHSs at once.
 
-``algorithm="columns"``, the CUDA default, uses adjacent RHS values
-across both factor products, including the required input/output transposes.
-``algorithm="rows"`` uses one thread per factor row and RHS; it can be faster for
-small systems and is the CPU path. Exact aliases are supported;
-shifted overlap and strided arrays are rejected. Changes to existing factor
-values are visible in captured replay. Do not replace factor storage after
-capture. Eager calls from different CUDA streams are ordered automatically, but
-captured graphs sharing one workspace must not execute concurrently.
+``algorithm="rows"`` uses one thread per factor row and vector.
+``algorithm="columns"``, on CUDA, keeps the batch transposed across both factor
+products so that adjacent threads read adjacent vectors, which suits long
+factor rows. ``"auto"`` chooses as a prepared batched :func:`warp.sparse.bsr_mv`
+does, from the device, the batch size and the mean factor row length. One
+strategy applies to all batches of a preconditioner; :attr:`FSAI.batch_algorithm`
+reports it.
 
-Construct and warm up before capture. Captured graphs do not add a per-replay
-synchronization. Launch a captured graph once before changing its inputs.
+Reserve outside CUDA graph capture, and apply once eagerly before capturing.
+Changes to existing factor values, including :meth:`FSAI.update`, are visible in
+captured replay. Reserving a larger batch allocates new scratch, but graphs
+captured earlier remain valid. Eager calls from different CUDA streams are
+ordered automatically, but captured graphs that apply the same preconditioner
+must not execute concurrently.

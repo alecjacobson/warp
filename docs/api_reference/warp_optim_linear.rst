@@ -17,7 +17,6 @@ API
    CG
    CR
    FSAI
-   FSAIMultiRHS
    GMRES
    KrylovSolve
    LinearOperator

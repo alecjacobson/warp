@@ -14,14 +14,16 @@ FSAI algorithm. This implementation uses a row-size cap rather than a step cap.
 
 import types
 from functools import lru_cache
+from operator import index
 from typing import Literal
 
 import numpy as np
 
 import warp as wp
 from warp._src import sparse as sp
-from warp._src.optim._fsai_multi_rhs import FSAIMultiRHS
+from warp._src import sparse_multi_rhs as batch
 from warp._src.optim.linear import LinearOperator
+from warp._src.types import type_size_in_bytes, type_to_warp
 from warp._src.utils import array_scan
 
 __all__ = ["FSAI"]
@@ -243,6 +245,7 @@ class FSAI(LinearOperator):
 
     This :class:`warp.optim.linear.LinearOperator` applies ``G.T @ G`` and can be
     passed as ``M`` to :func:`warp.optim.linear.cg` or :func:`warp.optim.linear.cr`.
+    After :meth:`reserve_batch`, it also applies to batches of vectors, one per row.
     Rows of the lower-triangular factor ``G`` are built independently on the matrix
     device. Square blocks are expanded into scalar entries, so this is scalar FSAI
     even when the input uses block storage. No host numerical backend is used.
@@ -474,6 +477,11 @@ class FSAI(LinearOperator):
         self._tmp_event = wp.Event(device) if device.is_cuda else None
         self._last_stream = None
         self._views = {}
+        # Batch scratch per vector dtype, allocated by reserve_batch(). Replaced scratch
+        # stays referenced because graphs captured earlier still address it.
+        self._batch_scratch = {}
+        self._retired_batch_scratch = []
+        self._batch_algorithm = None
         super().__init__(A.shape, A.dtype, device, self._apply)
 
     def _flat(self, vector):
@@ -528,47 +536,122 @@ class FSAI(LinearOperator):
         self.source = A
         return self
 
-    def as_multi_rhs(
-        self, nrhs: int, dtype: type | None = None, algorithm: Literal["auto", "rows", "columns"] = "auto"
-    ) -> FSAIMultiRHS:
-        """Prepare a shared-factor operator for independent right-hand sides.
+    @property
+    def batch_algorithm(self) -> str | None:
+        """Strategy of batched applications, ``"rows"`` or ``"columns"``, or ``None`` before :meth:`reserve_batch`."""
+        return self._batch_algorithm
 
-        The returned :class:`LinearOperator` acts on contiguous scalar arrays of
-        length ``nrhs * n``, representing ``(nrhs, n)`` rows. It supplies batch
-        offsets for independent Krylov reductions, without copying the matrix or
-        factors. ``matvec(x, y, z, alpha, beta)`` applies ``G.T @ G`` to each row.
-        Exact aliases among x, y and z are supported; partial output overlap and
-        strided arrays are rejected before launching work. Zero coefficients do
-        not read the corresponding input values.
+    def reserve_batch(
+        self,
+        count: int,
+        algorithm: Literal["auto", "rows", "columns"] | None = None,
+        dtype: type | None = None,
+    ) -> "FSAI":
+        """Allocate scratch so that ``matvec`` accepts batches of up to ``count`` vectors.
 
-        Prepare outside capture and run once eagerly before capturing. All work
-        and stopping-independent application remain on device. Factor value
-        updates in the same buffers are visible on replay; changing topology or
-        buffer identities requires recapture. Each prepared operator owns its
-        workspaces. Its ``with_nrhs(nrhs)`` method prepares a smaller capacity
-        sharing that scratch, for mutually exclusive solves. Eager calls on
-        changing streams are ordered with an event; concurrent graph executions
-        sharing this operator require caller ordering.
+        A batch is a contiguous ``(count, n)`` array with one vector per row, as accepted
+        by :func:`warp.sparse.bsr_mv`; ``matvec(x, y, z, alpha, beta)`` then applies
+        ``G.T @ G`` to each row. Exact aliases among ``x``, ``y`` and ``z`` are supported;
+        partially overlapping and strided arrays are rejected. A zero ``alpha`` or
+        ``beta`` does not read the corresponding input. Batches of ``dtype`` with at most
+        ``count`` rows then allocate nothing and can be captured in a CUDA graph.
+        :class:`warp.optim.linear.MultiRHSOperator`, and therefore
+        :class:`warp.optim.linear.KrylovSolve`, call this method to apply this
+        preconditioner to all right-hand sides at once.
+
+        Every batched application of this instance uses one strategy, whatever its dtype.
+        A call that names a strategy replaces it for later applications and captures.
+        Reserving a larger count for a dtype allocates new scratch. Graphs captured
+        before keep their strategy and scratch, which stays allocated as long as this
+        instance exists. Batches use the stream ordering and the restrictions on
+        concurrent graphs described for single vectors.
 
         Args:
-            nrhs: Positive number of independent right-hand sides.
-            dtype: Scalar working precision, float32 or float64. Defaults to the
-                source matrix scalar type (float32 for a float16 source). Stored
-                factors are cast during products.
-            algorithm: Product strategy, as in :func:`warp.sparse.bsr_mv`.
-                ``"columns"`` retains adjacent RHS values across both factor
-                products on CUDA. ``"rows"`` uses one thread per factor row and RHS
-                and can be faster for small systems. ``"auto"`` selects
-                ``"columns"`` on CUDA and ``"rows"`` on CPU. Explicit choices that
-                the device cannot run raise :class:`ValueError`.
+            count: Largest number of vectors per batch.
+            algorithm: Product strategy, as in :func:`warp.sparse.bsr_mv`. ``"rows"`` uses
+                one thread per factor row and vector. ``"columns"``, on CUDA only, keeps
+                the batch transposed across both factor products so that adjacent threads
+                read adjacent vectors. ``"auto"`` chooses from the device, ``count`` and the
+                mean factor row length, like a prepared batched sparse product. ``None``
+                keeps the current strategy, or selects ``"auto"`` on the first reservation.
+            dtype: Scalar type of the batch vectors, float32 or float64, independent of
+                ``factor_dtype``. ``None`` selects the matrix scalar type, or float32 for a
+                float16 matrix.
 
         Returns:
-            A reusable :class:`LinearOperator` with preallocated scratch storage.
+            This preconditioner.
+
+        Raises:
+            TypeError: ``count`` is not an integer.
+            ValueError: ``count`` is not positive, ``algorithm`` is unknown or cannot run
+                on this device, or ``dtype`` is not float32 or float64.
+            RuntimeError: Called during CUDA graph capture.
         """
-        return FSAIMultiRHS(self, nrhs, dtype, algorithm)
+        if isinstance(count, bool):
+            raise TypeError("count must be an integer, not bool")
+        count = index(count)
+        if count < 1:
+            raise ValueError("count must be a positive integer")
+        if algorithm is not None:
+            batch.validate(algorithm)
+            if algorithm == "loop":
+                raise ValueError("FSAI batches support algorithm='auto', 'rows' and 'columns'")
+            if algorithm == "columns" and not self.device.is_cuda:
+                raise ValueError("algorithm='columns' requires a CUDA device")
+        if dtype is None:
+            dtype = wp.float32 if self.scalar_type == wp.float16 else self.scalar_type
+        dtype = type_to_warp(dtype)
+        if dtype not in (wp.float32, wp.float64):
+            raise ValueError("Batch dtype must be float32 or float64")
+        device = self.device
+        if device.is_cuda and device.is_capturing:
+            raise RuntimeError("reserve_batch() allocates scratch and cannot run during graph capture")
+        n = self.G.nrow
+        scratch = self._batch_scratch.get(dtype)
+        if algorithm is None:
+            algorithm = self._batch_algorithm or "auto"
+        if algorithm == "auto":
+            largest = max([count] + [first.size // n for first, _ in self._batch_scratch.values()])
+            mean_row_count = self.G.mean_row_count_sync() if device.is_cuda else None
+            algorithm = batch.auto_strategy(self.G.block_shape, largest, device.is_cuda, mean_row_count)
+        if scratch is None or scratch[0].size < count * n:
+            if scratch is not None:
+                self._retired_batch_scratch.append(scratch)
+            first = wp.empty(count * n, dtype=dtype, device=device)
+            self._batch_scratch[dtype] = (first, wp.empty_like(first))
+            if device.is_cuda:
+                # Finish the allocation before an application on another stream uses it.
+                wp.synchronize_stream(device.stream)
+        self._batch_algorithm = algorithm
+        return self
+
+    def _check_batch(self, x, y, z):
+        """Validate ``(count, n)`` batch arrays against the reserved scratch before any launch."""
+        scratch = self._batch_scratch.get(x.dtype)
+        if scratch is None:
+            raise ValueError(f"No batch scratch is reserved for {x.dtype.__name__} vectors; call reserve_batch() first")
+        for a in (y, z):
+            if a.shape != x.shape or a.dtype != x.dtype:
+                raise ValueError("Batched FSAI application expects x, y and z with matching shapes and dtypes")
+        for a in (x, y, z):
+            if a.device != self.device or not a.is_contiguous:
+                raise ValueError("Batched FSAI application expects contiguous arrays on the preconditioner device")
+        capacity = scratch[0].size // x.shape[1]
+        if x.shape[0] > capacity:
+            raise ValueError(f"A batch of {x.shape[0]} vectors exceeds the reserved {capacity}; call reserve_batch()")
+        size = x.size * type_size_in_bytes(x.dtype)
+        for a in (x, y):
+            if a.ptr != z.ptr and max(a.ptr, z.ptr) < min(a.ptr + size, z.ptr + size):
+                raise ValueError("Partially overlapping output arrays are unsupported")
 
     def _apply(self, x, y, z, alpha, beta):
-        x, y, z = (self._flat(v) for v in (x, y, z))
+        # A (count, n) array is a batch, one vector per row. A single row of the matrix
+        # scalar type also flattens to one vector, so it keeps the single-vector path.
+        batched = x.ndim == 2 and x.shape[1] == self.G.nrow and not (x.shape[0] == 1 and x.dtype == self.scalar_type)
+        if batched:
+            self._check_batch(x, y, z)
+        else:
+            x, y, z = (self._flat(v) for v in (x, y, z))
         # Outside graph capture, order this application after the previous one on any
         # other stream, since both share the scratch vector. Inside capture on this
         # stream the graph's own dependencies apply and events must not be recorded or
@@ -582,10 +665,68 @@ class FSAI(LinearOperator):
                 last.record_event(self._tmp_event)
                 stream.wait_event(self._tmp_event)
             self._last_stream = stream
+        if batched:
+            self._apply_batch(x, y, z, alpha, beta)
+            return
         if alpha != 0.0:
             _matvec(self.G, x, self._tmp, self._tmp, 1.0, 0.0)
         # x is fully consumed before writing z, including when x, y, z alias.
         _matvec(self.GT, self._tmp, y, z, alpha, beta)
+
+    def _apply_batch(self, x, y, z, alpha, beta):
+        """Apply ``G.T @ G`` to each row of validated ``(count, n)`` arrays; ``x`` is consumed before ``z`` is written."""
+        count, n = x.shape
+        device = self.device
+        if alpha == 0.0:
+            wp.launch(
+                batch._combine,
+                z.size,
+                [x.flatten(), y.flatten(), z.flatten(), wp.float64(0.0), wp.float64(beta)],
+                device=device,
+            )
+            return
+        first, second = (s[: count * n] for s in self._batch_scratch[x.dtype])
+        if self._batch_algorithm == "rows":
+            rows = first.reshape((count, n)), second.reshape((count, n))
+            for factor, source, result in ((self.G, x, rows[0]), (self.GT, rows[0], rows[1])):
+                wp.launch(
+                    batch.thread_rows_kernel(x.dtype, 1, factor.scalar_type),
+                    (count, n),
+                    [factor.offsets, factor.row_counts, factor.columns, factor.scalar_values, source, result],
+                    device=device,
+                )
+            wp.launch(
+                batch._combine,
+                z.size,
+                [second, y.flatten(), z.flatten(), wp.float64(alpha), wp.float64(beta)],
+                device=device,
+            )
+            return
+        # Transpose once, keep the vectors transposed across both factor products, then
+        # transpose back while combining with y.
+        first, second = first.reshape((n, count)), second.reshape((n, count))
+        wp.launch_tiled(
+            batch.transpose_rows,
+            dim=((count + 31) // 32, (n + 31) // 32),
+            inputs=[x, first],
+            block_dim=128,
+            device=device,
+        )
+        for factor, source, result in ((self.G, first, second), (self.GT, second, first)):
+            wp.launch_tiled(
+                batch.columns_kernel(factor.values.dtype, x.dtype),
+                dim=((count + 7) // 8, n),
+                inputs=[factor.offsets, factor.row_counts, factor.columns, factor.values, source, result],
+                block_dim=32,
+                device=device,
+            )
+        wp.launch_tiled(
+            batch.transpose_axpby,
+            dim=((n + 31) // 32, (count + 31) // 32),
+            inputs=[first, y, z, wp.float64(alpha), wp.float64(beta)],
+            block_dim=128,
+            device=device,
+        )
 
 
 @lru_cache(None)

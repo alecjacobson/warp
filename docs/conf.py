@@ -146,11 +146,6 @@ nitpick_ignore_regex = [
         "py:obj",
         r"warp\.optim\.linear\.MultiRHSOperator\.(batch_count|batch_offsets|device|dtype|matvec|max_batch_length|scalar_type|shape)",
     ),
-    # FSAIMultiRHS inherits these documented LinearOperator attributes.
-    (
-        "py:obj",
-        r"warp\.optim\.linear\.FSAIMultiRHS\.(batch_count|batch_offsets|device|dtype|matvec|max_batch_length|scalar_type|shape)",
-    ),
     # FSAI inherits these attributes; their documentation is on LinearOperator.
     (
         r"py:obj",

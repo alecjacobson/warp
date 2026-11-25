@@ -8,7 +8,7 @@ from ..benchmarks_utils import setup_once
 from ._rhs_problem import problem
 
 
-class FSAIMultiRHS:
+class FSAIBatch:
     params = [(4, 8, 24, 33), ("cpu", "cuda:0")]
     param_names = ["nrhs", "device"]
     number = 1
@@ -17,14 +17,14 @@ class FSAIMultiRHS:
 
     @setup_once
     def setup(self, nrhs, device):
-        if not hasattr(getattr(linear, "FSAI", None), "as_multi_rhs"):
-            raise NotImplementedError("Multiple-RHS FSAI application is not available")
+        if not hasattr(getattr(linear, "FSAI", None), "reserve_batch"):
+            raise NotImplementedError("Batched FSAI application is not available")
         self.device = wp.get_device(device)
         with wp.ScopedDevice(self.device):
             # A captured graph addresses these arrays, so they must stay alive.
             self.a, self.b = problem(nrhs)
             self.out = wp.empty_like(self.b)
-            self.action = linear.FSAI(self.a, max_row_size=16, factor_dtype=wp.float32).as_multi_rhs(nrhs)
+            self.factor = linear.FSAI(self.a, max_row_size=16, factor_dtype=wp.float32).reserve_batch(nrhs)
             self._run()
             wp.synchronize_device(self.device)
             self.graph = None
@@ -36,9 +36,9 @@ class FSAIMultiRHS:
                 wp.synchronize_device(self.device)
 
     def _run(self):
-        self.action.matvec(self.b.flatten(), self.out.flatten(), self.out.flatten(), 1.0, 0.0)
+        self.factor.matvec(self.b, self.out, self.out, 1.0, 0.0)
 
-    def time_prepared(self, nrhs, device):
+    def time_batch(self, nrhs, device):
         if self.graph:
             wp.capture_launch(self.graph)
         else:

@@ -53,9 +53,11 @@ class MultiRHSOperator(LinearOperator):
 
     This is a logical block-diagonal operator, with no duplicated matrix storage.
     Inputs to ``matvec`` are contiguous flat scalar arrays representing ``(nrhs, n)``.
-    Sparse matrices use the batched :func:`warp.sparse.bsr_mv` strategies; other
-    operators are applied to each RHS row in turn. Exact aliases are supported;
-    shifted output overlap and strided storage are rejected before launching.
+    Sparse matrices use the batched :func:`warp.sparse.bsr_mv` strategies. A
+    :class:`FSAI` preconditioner receives the whole batch, using scratch reserved
+    with :meth:`FSAI.reserve_batch`. Other operators are applied to each RHS row in
+    turn. Exact aliases are supported; shifted output overlap and strided storage
+    are rejected before launching.
 
     Each object owns its scratch. ``with_nrhs`` creates smaller capacities sharing
     it. Eager applications issued from different CUDA streams are ordered with an
@@ -72,9 +74,10 @@ class MultiRHSOperator(LinearOperator):
             reads back the mean row length once, so unlike per-call
             :func:`warp.sparse.bsr_mv` it can also choose ``"columns"`` for CSR rows
             averaging more than 16 entries. Explicit strategies pin a kernel and
-            raise :class:`ValueError` where unsupported. Other operators accept only
-            ``"auto"`` or ``"loop"``. The chosen strategy is available as
-            ``algorithm``.
+            raise :class:`ValueError` where unsupported. For a :class:`FSAI` ``A``,
+            ``"rows"`` and ``"columns"`` set its batch strategy, ``"auto"`` keeps a
+            strategy it already has, and ``"loop"`` applies it to one RHS row at a
+            time. Other operators accept only ``"auto"`` or ``"loop"``.
     """
 
     def __init__(self, A, nrhs: int, algorithm: Literal["auto", "loop", "rows", "columns"] = "auto"):
@@ -97,20 +100,27 @@ class MultiRHSOperator(LinearOperator):
             raise ValueError("A must have float32 or float64 scalar type")
         device = self.single.device
         self.sparse = isinstance(A, sp.BsrMatrix)
+        # An operator that applies whole batches, such as FSAI, receives each batch and
+        # owns the scratch and strategy for it.
+        self._delegate = not self.sparse and algorithm != "loop" and hasattr(self.single, "reserve_batch")
+        self._work = None
         if self.sparse:
             mean_row_count = None
             if algorithm == "auto" and device.is_cuda and not device.is_capturing:
                 # Preparation may read back the row lengths once, which per-call AUTO cannot.
                 mean_row_count = A.mean_row_count_sync()
-            self.algorithm = batch.resolve(algorithm, A, self.nrhs, device, False, mean_row_count=mean_row_count)
+            self._algorithm = batch.resolve(algorithm, A, self.nrhs, device, False, mean_row_count=mean_row_count)
+        elif self._delegate:
+            self.single.reserve_batch(self.nrhs, algorithm=None if algorithm == "auto" else algorithm, dtype=dtype)
         elif algorithm in ("auto", "loop"):
-            self.algorithm = "loop"
+            self._algorithm = "loop"
         else:
-            raise ValueError(f"algorithm={algorithm!r} requires a sparse matrix")
-        size = self.n * self.nrhs
-        if self.algorithm != "loop":
-            size = max(size, batch.scratch_size(self.algorithm, A, self.nrhs))
-        self._work = wp.empty(size, dtype=dtype, device=device)
+            raise ValueError(f"algorithm={algorithm!r} requires a sparse matrix or an FSAI preconditioner")
+        if not self._delegate:
+            size = self.n * self.nrhs
+            if self._algorithm != "loop":
+                size = max(size, batch.scratch_size(self._algorithm, A, self.nrhs))
+            self._work = wp.empty(size, dtype=dtype, device=device)
         offsets = wp.empty(self.nrhs + 1, dtype=int, device=device)
         wp.launch(_offsets, self.nrhs + 1, [offsets, self.n], device=device)
         stream = device.stream if device.is_cuda else None
@@ -128,6 +138,14 @@ class MultiRHSOperator(LinearOperator):
             batch_offsets=offsets,
             max_batch_length=self.n,
         )
+
+    @property
+    def algorithm(self) -> str:
+        """Batched product strategy, ``"loop"``, ``"rows"`` or ``"columns"``.
+
+        For a :class:`FSAI` ``A``, this is its current :attr:`FSAI.batch_algorithm`.
+        """
+        return self.single.batch_algorithm if self._delegate else self._algorithm
 
     def with_nrhs(self, nrhs: int):
         """Prepare a smaller capacity sharing scratch, strategy and stream ordering.
@@ -168,9 +186,12 @@ class MultiRHSOperator(LinearOperator):
         if alpha == 0:
             wp.launch(_combine, z.size, [x, y, z, wp.float64(0), wp.float64(beta)], device=self.device)
             return
-        if self.algorithm != "loop":
+        if self._delegate:
+            self.single.matvec(x.reshape(shape), y.reshape(shape), z.reshape(shape), alpha, beta)
+            return
+        if self._algorithm != "loop":
             batch.product(
-                self.algorithm,
+                self._algorithm,
                 self.source,
                 x.reshape(shape),
                 y.reshape(shape),
