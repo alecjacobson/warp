@@ -205,8 +205,10 @@ class EigenSolverState:
         self.result = EigenResult(self)
         self._order = wp.empty(k, dtype=int, device=self.device)
         self._identity_order = wp.array(list(range(k)), dtype=int, device=self.device)
-        self._ax = wp.empty((k, self.n), dtype=wp.float64, device=self.device)
-        self._mx = self._core.eigenvectors if self._identity_metric else wp.empty_like(self._ax)
+        # Fresh validation overwrites the previous operator images only after
+        # iteration has finished. Initialization rebuilds them on the next call.
+        self._ax = self._core.ax[:k]
+        self._mx = self._core.eigenvectors if self._identity_metric else self._core.bx[:k]
         self._norms = wp.zeros((k, 3), dtype=wp.float64, device=self.device)
         self._mass_norms = wp.zeros(k, dtype=wp.float64, device=self.device)
         self._mass_gram = wp.zeros((k, k), dtype=wp.float64, device=self.device)

@@ -211,7 +211,14 @@ def test_fem_pencil(test, device):
             M=linear.FSAI(stiffness, max_row_size=8, factor_dtype=wp.float32),
             working_dtype=wp.float32,
         )
-        result = eigen.lobpcg(stiffness, modes, mass=mass, preconditioner=inverse, maxiter=100).check()
+        with patch(
+            "warp._src.optim.eigen._operators.MultiRHSOperator",
+            side_effect=AssertionError("Unexpected generic sparse batch workspace"),
+        ):
+            state = eigen.LOBPCG(stiffness, modes, mass=mass, preconditioner=inverse, maxiter=100)
+        test.assertEqual(state._ax.ptr, state._core.ax.ptr)
+        test.assertEqual(state._mx.ptr, state._core.bx.ptr)
+        result = state.prepare()().check()
     angles = np.arange(resolution + 1) * np.pi / resolution
     one_dimensional = 6 * resolution**2 * (1 - np.cos(angles)) / (2 + np.cos(angles))
     expected = np.sort((1 + one_dimensional[:, None] + one_dimensional[None, :]).ravel())[:modes]

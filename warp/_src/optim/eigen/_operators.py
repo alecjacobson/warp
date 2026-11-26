@@ -6,7 +6,7 @@
 import warp as wp
 from warp._src.optim._multi_rhs import MultiRHSOperator, _scalar_shape
 from warp._src.optim.linear import aslinearoperator
-from warp._src.sparse import BsrMatrix
+from warp._src.sparse import BsrMatrix, bsr_mv
 
 
 @wp.kernel(enable_backward=False)
@@ -41,11 +41,22 @@ class RowsOperator:
         if self.single.batch_offsets is not None:
             raise ValueError("Eigen operators must describe one system, not partitioned systems")
         self.n, self.device = shape[0], self.single.device
+        self._direct_rows = isinstance(source, BsrMatrix) and source.block_shape[0] == source.block_shape[1]
+        if self._direct_rows:
+            return
         self._root = MultiRHSOperator(source, capacity)
         self._capacities = {count: self._root.with_nrhs(count) for count in range(1, capacity)}
         self._capacities[capacity] = self._root
 
     def apply(self, x, y):
+        if self._direct_rows:
+            if x.ptr == y.ptr:
+                raise ValueError("Eigen sparse products require distinct input and output arrays")
+            # Unit-scale products with distinct arrays write directly to y.
+            # The upstream row strategy therefore does not use its scratch;
+            # lending y avoids allocating a full maximum-width batch buffer.
+            bsr_mv(self.source, x, y, alpha=1.0, beta=0.0, algorithm="rows", work_buffer=y.flatten())
+            return
         width = x.shape[0]
         action = self._capacities.get(width)
         if action is None:
