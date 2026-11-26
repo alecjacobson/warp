@@ -777,6 +777,33 @@ def test_multiple_rhs_block_diagonal(test, device):
     np.testing.assert_allclose(out.numpy(), np.linalg.solve(a, rhs.T).T, rtol=1e-8, atol=1e-8)
 
 
+def test_mixed_precision_fsai(test, device):
+    """Reuse FP64-source FSAI in FP32 Krylov batches and shared smaller capacities."""
+    from warp.optim.linear import FSAI  # noqa: PLC0415
+
+    a = np.diag(np.linspace(3.0, 5.0, 15)) + np.diag(np.full(14, -0.5), 1) + np.diag(np.full(14, -0.5), -1)
+    matrix = _matrix(a, device, wp.float64, 1)
+    factor = FSAI(matrix, max_row_size=8, factor_dtype=wp.float32)
+    factor_values = factor.G.values.ptr
+    parent = _cg(matrix, 4, M=factor, working_dtype=wp.float32, tol=1e-5, maxiter=30, residual="fresh")
+    test.assertIsNotNone(factor.batch_algorithm)
+    test.assertEqual(factor.G.values.ptr, factor_values)
+    test.assertEqual(factor.source.scalar_type, wp.float64)
+    test.assertTrue(parent.state._M._delegate)
+    test.assertEqual(parent.state._M.dtype, wp.float32)
+    for action in (parent, parent.with_nrhs(2), parent.with_nrhs(1)):
+        rhs = np.random.default_rng(action.nrhs).normal(size=(action.nrhs, 15))
+        b = wp.array(rhs, dtype=wp.float64, device=device)
+        out = wp.empty_like(b)
+        action.solve(b, out)
+        if device.is_cuda:
+            with wp.ScopedCapture(device=device) as capture:
+                action.solve(b, out)
+            wp.capture_launch(capture.graph)
+        np.testing.assert_allclose(out.numpy(), np.linalg.solve(a, rhs.T).T, atol=1e-5, rtol=1e-5)
+        np.testing.assert_array_equal(action.converged.numpy(), np.ones(action.nrhs))
+
+
 class TestSolveAction(unittest.TestCase):
     pass
 
@@ -818,6 +845,7 @@ for func in (
     test_solver_state_rhs_norm,
     test_multiple_rhs_storage_change,
     test_multiple_rhs_default_tolerance,
+    test_mixed_precision_fsai,
 ):
     add_function_test(TestSolveAction, func.__name__, func, devices=get_test_devices())
 for func in (

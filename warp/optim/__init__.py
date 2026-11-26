@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Optimization algorithms for gradient descent and linear systems.
+"""Optimization algorithms, linear systems and symmetric eigenproblems.
 
 This module provides gradient-based optimizers (:class:`Adam`, :class:`SGD`) for
 updating arrays based on computed gradients. The :mod:`warp.optim.linear` submodule
@@ -22,3 +22,4 @@ from warp._src.optim.adam import Adam as Adam
 from warp._src.optim.sgd import SGD as SGD
 
 from . import linear as linear
+from . import eigen as eigen

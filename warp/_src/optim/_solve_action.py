@@ -409,12 +409,12 @@ class KrylovSolve(_SolveAction):
             if M.device != self.device:
                 raise ValueError("M must be on the system device")
             if M.batch_offsets is None:
-                if M.scalar_type != self.working_dtype:
+                if M.scalar_type != self.working_dtype and not hasattr(M, "reserve_batch"):
                     raise ValueError("Single-system M must use the working dtype; supply a prepared operator otherwise")
                 if _scalar_shape(M) not in ((self.n,), (self.n, self.n)):
                     raise ValueError("Single-system M must match the system dimension")
-                if self._batched:
-                    M = MultiRHSOperator(M, self.nrhs)
+                if self._batched or M.scalar_type != self.working_dtype:
+                    M = MultiRHSOperator(M, self.nrhs, dtype=self.working_dtype)
             elif not self._batched:
                 raise ValueError("A partitioned M requires nrhs > 1")
             elif M.shape != self.operator.shape or M.batch_count != self.nrhs or M.max_batch_length != self.n:
