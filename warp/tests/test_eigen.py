@@ -11,7 +11,7 @@ import numpy as np
 import warp as wp
 import warp.fem as fem
 from warp.optim import eigen, linear
-from warp.tests.unittest_utils import add_function_test, get_cpu_test_devices, get_cuda_test_devices, get_test_devices
+from warp.tests.unittest_utils import add_function_test, get_cuda_test_devices, get_test_devices
 
 
 @fem.integrand
@@ -267,16 +267,6 @@ def test_indefinite_shift(test, device):
     _check(test, result, diagonal * mass, [6.0, 7.0, 8.0], mass)
 
 
-def test_cpu_capture_rejection(test, device):
-    """Reject CPU capture before reading convergence or recording partial work."""
-    matrix = _array(np.arange(1.0, 17.0), device)
-    state = eigen.LOBPCG(matrix, 3).prepare()
-    for operation in (lambda: eigen.LOBPCG(matrix, 3), state.prepare, state):
-        with wp.ScopedCapture(device=device, apic=True):
-            with test.assertRaisesRegex(RuntimeError, "capture"):
-                operation()
-
-
 def test_prepared_inverse_warmup(test, device):
     """Warm one prepared inverse application before the first captured solve."""
     if wp.get_cuda_driver_version() < (12, 3):
@@ -300,7 +290,15 @@ def test_prepared_inverse_warmup(test, device):
 
 
 class TestEigen(unittest.TestCase):
-    pass
+    def test_cpu_capture_rejection(self):
+        """Reject CPU capture before reading convergence or recording partial work."""
+        device = wp.get_device("cpu")
+        matrix = _array(np.arange(1.0, 17.0), device)
+        state = eigen.LOBPCG(matrix, 3).prepare()
+        for operation in (lambda: eigen.LOBPCG(matrix, 3), state.prepare, state):
+            with wp.ScopedCapture(device=device, apic=True):
+                with self.assertRaisesRegex(RuntimeError, "capture"):
+                    operation()
 
 
 for test_function in (
@@ -318,7 +316,6 @@ for test_function in (
     add_function_test(TestEigen, test_function.__name__, test_function, devices=get_test_devices())
 add_function_test(TestEigen, "test_clustered_block", test_clustered_block, devices=get_test_devices())
 add_function_test(TestEigen, "test_indefinite_shift", test_indefinite_shift, devices=get_test_devices())
-add_function_test(TestEigen, "test_cpu_capture_rejection", test_cpu_capture_rejection, devices=get_cpu_test_devices())
 add_function_test(
     TestEigen, "test_prepared_inverse_warmup", test_prepared_inverse_warmup, devices=get_cuda_test_devices()
 )
