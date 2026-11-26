@@ -211,6 +211,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
     from warp.tests.test_cpu_vectorization import TestCpuVectorization
     from warp.tests.test_ctypes import TestCTypes
     from warp.tests.test_cuda_profiler import TestCudaProfiler
+    from warp.tests.test_cudss import TestCuDSS
     from warp.tests.test_dense import TestDense
     from warp.tests.test_devices import TestDevices
     from warp.tests.test_diagnostics import TestDiagnostics
@@ -388,6 +389,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
         TestCTypes,
         TestCudaArchSuffix,
         TestCudaProfiler,
+        TestCuDSS,
         TestCustomAllocator,
         TestCutileDeclaration,
         TestCutileHelpers,
