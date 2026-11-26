@@ -16,6 +16,7 @@ API
    BiCGSTAB
    CG
    CR
+   CuDSS
    FSAI
    GMRES
    KrylovSolve
