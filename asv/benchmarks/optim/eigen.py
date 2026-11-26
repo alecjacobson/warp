@@ -20,6 +20,16 @@ def _mass_form(s: fem.Sample, u: fem.Field, v: fem.Field):
     return u(s) * v(s)
 
 
+@fem.integrand
+def _vector_stiffness_form(s: fem.Sample, u: fem.Field, v: fem.Field):
+    return wp.ddot(fem.grad(u, s), fem.grad(v, s)) + wp.dot(u(s), v(s))
+
+
+@fem.integrand
+def _vector_mass_form(s: fem.Sample, u: fem.Field, v: fem.Field):
+    return wp.dot(u(s), v(s))
+
+
 class SymmetricEigen:
     params = [(8, 24), (4, 12), ("lobpcg", "shift-invert"), ("cpu", "cuda:0")]
     param_names = ["resolution", "modes", "algorithm", "device"]
@@ -27,18 +37,23 @@ class SymmetricEigen:
     repeat = 5
     rounds = 2
     timeout = 600
+    field_dtype = wp.float64
+    stiffness_form = _stiffness_form
+    mass_form = _mass_form
 
     @setup_once
     def setup(self, resolution, modes, algorithm, device):
         self.device = wp.get_device(device)
         with wp.ScopedDevice(self.device):
             geometry = fem.Grid2D(res=wp.vec2i(resolution), scalar_type=wp.float64)
-            space = fem.make_polynomial_space(geometry, degree=1, dtype=wp.float64)
+            space = fem.make_polynomial_space(geometry, degree=1, dtype=self.field_dtype)
             domain = fem.Cells(geometry)
             test = fem.make_test(space, domain=domain)
             trial = fem.make_trial(space, domain=domain)
-            self.stiffness = fem.integrate(_stiffness_form, fields={"u": trial, "v": test}, output_dtype=wp.float64)
-            self.mass = fem.integrate(_mass_form, fields={"u": trial, "v": test}, output_dtype=wp.float64)
+            self.stiffness = fem.integrate(
+                type(self).stiffness_form, fields={"u": trial, "v": test}, output_dtype=wp.float64
+            )
+            self.mass = fem.integrate(type(self).mass_form, fields={"u": trial, "v": test}, output_dtype=wp.float64)
             self.preconditioner = linear.preconditioner(self.stiffness, "diag")
             self.modes, self.algorithm = modes, algorithm
             self.solver = self._make_solver().prepare()
@@ -74,3 +89,12 @@ class SymmetricEigen:
 
     def track_relative_residual(self, resolution, modes, algorithm, device):
         return float(self.solver.result.relative_residuals.numpy().max())
+
+
+class VectorFEMEigen(SymmetricEigen):
+    """Exercise wide 3x3 sparse products in a consistent-mass vector FEM pencil."""
+
+    params = [(8, 24), (6, 24), ("lobpcg",), ("cpu", "cuda:0")]
+    field_dtype = wp.vec3d
+    stiffness_form = _vector_stiffness_form
+    mass_form = _vector_mass_form

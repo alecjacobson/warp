@@ -28,7 +28,7 @@ def _record_inner_failure_kernel(converged: wp.array[int], failure: wp.array[int
 class RowsOperator:
     """Prepare fixed row capacities for one upstream operator."""
 
-    def __init__(self, source, capacity):
+    def __init__(self, source, capacity, *, allow_columns=False):
         self.source = source
         self.single = aslinearoperator(source)
         shape = _scalar_shape(self.single)
@@ -42,6 +42,16 @@ class RowsOperator:
             raise ValueError("Eigen operators must describe one system, not partitioned systems")
         self.n, self.device = shape[0], self.single.device
         self._direct_rows = isinstance(source, BsrMatrix) and source.block_shape[0] == source.block_shape[1]
+        if (
+            self._direct_rows
+            and allow_columns
+            and self.device.is_cuda
+            and source.block_shape == (3, 3)
+            and capacity > 4
+        ):
+            # Wide FEM blocks benefit from upstream's coalesced column strategy.
+            # Single-vector Krylov products and CPU execution keep direct rows.
+            self._direct_rows = False
         if self._direct_rows:
             return
         self._root = MultiRHSOperator(source, capacity)
@@ -70,13 +80,14 @@ class RowsOperator:
 class SparseOperator(RowsOperator):
     """Retain sparse metadata for qualified eigen optimizations."""
 
-    def __init__(self, matrix, capacity):
-        super().__init__(matrix, capacity)
+    def __init__(self, matrix, capacity, *, allow_columns=False):
+        super().__init__(matrix, capacity, allow_columns=allow_columns)
         self.matrix = matrix
 
 
-def rows_operator(source, capacity):
-    return SparseOperator(source, capacity) if isinstance(source, BsrMatrix) else RowsOperator(source, capacity)
+def rows_operator(source, capacity, *, allow_columns=False):
+    operator_type = SparseOperator if isinstance(source, BsrMatrix) else RowsOperator
+    return operator_type(source, capacity, allow_columns=allow_columns)
 
 
 class SolveAction:

@@ -510,8 +510,8 @@ class LOBPCG(EigenSolverState):
         _validate_rows(initial_vectors, n, device, "initial_vectors", width)
         _validate_rows(deflation, n, device, "deflation", n - width)
         capacity = max(3 * width, 0 if deflation is None else deflation.shape[0])
-        operator = rows_operator(A, capacity)
-        metric = Identity(n, device) if mass is None else rows_operator(mass, capacity)
+        operator = rows_operator(A, capacity, allow_columns=True)
+        metric = Identity(n, device) if mass is None else rows_operator(mass, capacity, allow_columns=True)
         correction = None
         if preconditioner is not None:
             correction = (

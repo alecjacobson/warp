@@ -10,6 +10,7 @@ import numpy as np
 
 import warp as wp
 import warp.fem as fem
+from warp._src import sparse_multi_rhs
 from warp.optim import eigen, linear
 from warp.tests.unittest_utils import add_function_test, get_cuda_test_devices, get_test_devices
 
@@ -22,6 +23,16 @@ def _fem_stiffness(s: fem.Sample, u: fem.Field, v: fem.Field):
 @fem.integrand
 def _fem_mass(s: fem.Sample, u: fem.Field, v: fem.Field):
     return u(s) * v(s)
+
+
+@fem.integrand
+def _fem_vector_stiffness(s: fem.Sample, u: fem.Field, v: fem.Field):
+    return wp.ddot(fem.grad(u, s), fem.grad(v, s)) + wp.dot(u(s), v(s))
+
+
+@fem.integrand
+def _fem_vector_mass(s: fem.Sample, u: fem.Field, v: fem.Field):
+    return wp.dot(u(s), v(s))
 
 
 def _array(values, device):
@@ -231,6 +242,34 @@ def test_fem_pencil(test, device):
     test.assertLess(float(result.relative_residuals.numpy().max()), 1e-8)
 
 
+def test_vector_fem_product_strategy(test, device):
+    """Retain coalesced CUDA block products and solve a vector FEM pencil."""
+    resolution, modes, width = 4, 9, 12
+    with wp.ScopedDevice(device):
+        geometry = fem.Grid2D(res=wp.vec2i(resolution), scalar_type=wp.float64)
+        space = fem.make_polynomial_space(geometry, degree=1, dtype=wp.vec3d)
+        domain = fem.Cells(geometry)
+        trial, test_field = fem.make_trial(space, domain=domain), fem.make_test(space, domain=domain)
+        stiffness = fem.integrate(_fem_vector_stiffness, fields={"u": trial, "v": test_field}, output_dtype=wp.float64)
+        mass = fem.integrate(_fem_vector_mass, fields={"u": trial, "v": test_field}, output_dtype=wp.float64)
+        test.assertEqual(stiffness.block_shape, (3, 3))
+        state = eigen.LOBPCG(stiffness, modes, block_size=width, mass=mass, maxiter=150)
+        for operator in (state._operator, state._mass):
+            test.assertEqual(operator._direct_rows, not wp.get_device(device).is_cuda)
+        with patch.object(sparse_multi_rhs, "product", wraps=sparse_multi_rhs.product) as products:
+            state.prepare()
+        for matrix in (stiffness, mass):
+            strategies = {call.args[0] for call in products.call_args_list if call.args[1] is matrix}
+            test.assertEqual(strategies, {"columns" if wp.get_device(device).is_cuda else "rows"})
+        angles = np.arange(resolution + 1) * np.pi / resolution
+        one_dimensional = 6 * resolution**2 * (1 - np.cos(angles)) / (2 + np.cos(angles))
+        expected = np.repeat(np.sort((1 + one_dimensional[:, None] + one_dimensional[None, :]).ravel()), 3)[:modes]
+        for _ in range(2):
+            result = state().check()
+            np.testing.assert_allclose(result.eigenvalues.numpy(), expected, rtol=2e-7, atol=1e-8)
+            test.assertLess(float(result.relative_residuals.numpy().max()), 1e-8)
+
+
 def test_nonfinite_and_exhaustion(test, device):
     """Distinguish an exhausted iteration budget from nonfinite input failure."""
     matrix = _array(np.arange(1.0, 33.0), device)
@@ -313,6 +352,7 @@ for test_function in (
     test_inner_failure_and_reset,
     test_nonfinite_and_exhaustion,
     test_fem_pencil,
+    test_vector_fem_product_strategy,
 ):
     add_function_test(TestEigen, test_function.__name__, test_function, devices=get_test_devices())
 add_function_test(TestEigen, "test_clustered_block", test_clustered_block, devices=get_test_devices())
