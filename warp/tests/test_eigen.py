@@ -120,6 +120,10 @@ def test_shift_invert(test, device):
                 with patch.object(state._core.mass, "apply", side_effect=AssertionError("Unexpected identity copy")):
                     result = state.prepare()()
         _check(test, result, matrix, diagonal[:3], metric if generalized else None)
+        # Reuse the fresh original-equation images from Krylov finalization.
+        with patch.object(state._operator, "apply", side_effect=AssertionError("Repeated original product")):
+            state._finalize()
+        _check(test, result, matrix, diagonal[:3], metric if generalized else None)
 
 
 def test_deflation(test, device):
@@ -273,6 +277,28 @@ def test_cpu_capture_rejection(test, device):
                 operation()
 
 
+def test_prepared_inverse_warmup(test, device):
+    """Warm one prepared inverse application before the first captured solve."""
+    if wp.get_cuda_driver_version() < (12, 3):
+        test.skipTest("Kernel loading during capture requires CUDA driver 12.3")
+    values = np.arange(1.0, 17.0)
+    inverse = linear.KrylovSolve(_array(values + 1.0, device), method="cg", tol=1e-12, residual="fresh")
+    state = eigen.KrylovSchur(_array(values, device), 3, inverse=inverse, sigma=-1.0, ncv=12)
+    eager_calls = []
+    solve = inverse.solve
+
+    def record_solve(*args, **kwargs):
+        if not wp.get_device(device).is_capturing:
+            eager_calls.append(1)
+        return solve(*args, **kwargs)
+
+    with patch.object(inverse, "solve", side_effect=record_solve):
+        with patch.object(state._core, "solve", side_effect=AssertionError("Unexpected full warmup solve")):
+            state.prepare()
+    test.assertEqual(len(eager_calls), 1)
+    _check(test, state(), values, values[:3])
+
+
 class TestEigen(unittest.TestCase):
     pass
 
@@ -293,6 +319,9 @@ for test_function in (
 add_function_test(TestEigen, "test_clustered_block", test_clustered_block, devices=get_test_devices())
 add_function_test(TestEigen, "test_indefinite_shift", test_indefinite_shift, devices=get_test_devices())
 add_function_test(TestEigen, "test_cpu_capture_rejection", test_cpu_capture_rejection, devices=get_cpu_test_devices())
+add_function_test(
+    TestEigen, "test_prepared_inverse_warmup", test_prepared_inverse_warmup, devices=get_cuda_test_devices()
+)
 add_function_test(TestEigen, "test_graph_reuse", test_graph_reuse, devices=get_cuda_test_devices())
 
 if __name__ == "__main__":

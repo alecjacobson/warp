@@ -273,8 +273,8 @@ class GlobalJacobi:
         if self.graph is None:
             wp.load_module(module=K.jacobi_init.module, device=self.device)
             wp.load_module(module=global_jacobi_update.module, device=self.device, block_dim=128)
-            # Keep setup graph upload behind pending initialization on drivers
-            # affected by #61. No synchronization is performed on later calls.
+            # Order setup graph upload after pending initialization to avoid
+            # driver upload races. Later calls do not synchronize.
             with capture_scope(self.device) as capture:
                 self._capture()
             self.graph = capture.graph

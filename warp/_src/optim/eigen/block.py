@@ -293,7 +293,7 @@ class BlockLOBPCG:
     used concurrently on independent streams. Inputs and solver must stay live.
 
     ``status == 0`` and ``converged == k`` report finite original-equation
-    residuals below tol, normalized by max(1, ||Kx|| + |lambda| ||Mx||). They are
+    residuals bounded by atol + tol (||Kx|| + |lambda| ||Mx||). They are
     not a global requested-spectrum certificate for an arbitrary supplied start.
     In particular, an exact invariant warm block can omit newly lower modes
     after eigenvalue crossings. ``initial_perturbation`` adds seeded random

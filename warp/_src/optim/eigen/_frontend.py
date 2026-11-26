@@ -217,9 +217,13 @@ class EigenSolverState:
 
     def _finalize(self):
         core, result = self._core, self.result
-        self._operator.apply(core.eigenvectors, self._ax)
-        if not self._identity_metric:
-            self._mass.apply(core.eigenvectors, self._mx)
+        # Generalized Krylov finalization has just evaluated the original
+        # operators into these shared images. Other cores retain rotated images
+        # and need fresh products for independent acceptance.
+        if not isinstance(core, GeneralizedKrylovSchur):
+            self._operator.apply(core.eigenvectors, self._ax)
+            if not self._identity_metric:
+                self._mass.apply(core.eigenvectors, self._mx)
         self._norms.zero_()
         self._mass_norms.zero_()
         self._mass_gram.zero_()
@@ -287,7 +291,18 @@ class EigenSolverState:
             return self
         core = self._core
         if self.device.is_cuda:
-            core.solve(1)
+            if (
+                isinstance(core, _KrylovSchur)
+                and getattr(self, "_inverse", None) is not None
+                and wp.get_cuda_driver_version() >= (12, 3)
+            ):
+                # The borrowed inverse already owns prepared solve workspace.
+                # Warm its vendor/operator state once; kernels can load during
+                # capture without executing a full Krylov cycle in preparation.
+                core.views[0].zero_()
+                core.op.apply(core.views[0], core.zviews[0])
+            else:
+                core.solve(1)
             if isinstance(core, BlockLOBPCG) and core._search is not None:
                 core._search.warm()
             self._finalize()
