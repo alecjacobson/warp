@@ -128,6 +128,7 @@ class GeneralizedKrylovSchur(KrylovSchur):
         mode="shift-invert",
         which="LM",
         initial_vector=None,
+        identity_metric=False,
     ):
         if mode not in ("shift-invert", "regular"):
             raise ValueError("mode must be shift-invert or regular")
@@ -140,9 +141,10 @@ class GeneralizedKrylovSchur(KrylovSchur):
         if getattr(inverse, "width", 1) != 1:
             raise ValueError("generalized Krylov requires a one-RHS inverse")
         self.original, self.mass = operator, mass
+        self._identity_metric = identity_metric
         self.shift, self.mode = target, mode
         rhs_operator = mass if mode == "shift-invert" else operator
-        iteration = _Composition(rhs_operator, inverse)
+        iteration = inverse if identity_metric and mode == "shift-invert" else _Composition(rhs_operator, inverse)
         # The original operator also participates in finalization, and mass
         # products in metric orthogonalization, beyond the iteration product.
         # Preserve every operand's restriction, including implicit operators
@@ -183,6 +185,8 @@ class GeneralizedKrylovSchur(KrylovSchur):
         )
 
     def _orthogonalize_column(self, j, check):
+        if self._identity_metric:
+            return super()._orthogonalize_column(j, check)
         for pass_index in range(2):
             self.mass.apply(self.views[j], self.metric_vector)
             rows = j + int(pass_index == 0)
@@ -235,6 +239,8 @@ class GeneralizedKrylovSchur(KrylovSchur):
             None. Results are written to the documented device arrays.
         """
         self.op.reset_history()
+        if self._identity_metric:
+            return super().initialize(seed)
         self.recoveries.zero_()
         self.g.zero_()
         self.status.zero_()
@@ -248,6 +254,8 @@ class GeneralizedKrylovSchur(KrylovSchur):
             self.expand(j)
 
     def complete_projection(self):
+        if self._identity_metric:
+            return super().complete_projection()
         self.mass.apply(self.zviews[-1], self.metric_vector)
         wp.launch_tiled(
             KR.last_projection,
@@ -272,12 +280,14 @@ class GeneralizedKrylovSchur(KrylovSchur):
         """
         wp.copy(self.eigenvectors, self.retained, count=self.k * self.n)
         self.original.apply(self.eigenvectors, self.ax)
-        self.mass.apply(self.eigenvectors, self.bx)
+        metric_vectors = self.eigenvectors if self._identity_metric else self.bx
+        if not self._identity_metric:
+            self.mass.apply(self.eigenvectors, metric_vectors)
         self.sums.zero_()
         wp.launch_tiled(
             quotient_parts,
             dim=(self.k, (self.n + 255) // 256),
-            inputs=[self.eigenvectors, self.ax, self.bx, self.sums],
+            inputs=[self.eigenvectors, self.ax, metric_vectors, self.sums],
             block_dim=128,
             device=self.device,
         )
@@ -291,7 +301,7 @@ class GeneralizedKrylovSchur(KrylovSchur):
             inputs=[
                 self.eigenvectors,
                 self.ax,
-                self.bx,
+                metric_vectors,
                 self.physical_values,
                 self.physical_order,
                 self.general_norms,

@@ -4,13 +4,14 @@
 """Check symmetric eigen selection, metrics and prepared execution."""
 
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
 import warp as wp
 import warp.fem as fem
 from warp.optim import eigen, linear
-from warp.tests.unittest_utils import add_function_test, get_cuda_test_devices, get_test_devices
+from warp.tests.unittest_utils import add_function_test, get_cpu_test_devices, get_cuda_test_devices, get_test_devices
 
 
 @fem.integrand
@@ -100,7 +101,7 @@ def test_shift_invert(test, device):
         matrix = diagonal * metric
         system = _array(matrix + metric, device)
         inverse = linear.KrylovSolve(system, method="cg", tol=1e-12, residual="fresh")
-        result = eigen.krylov_schur(
+        state = eigen.KrylovSchur(
             _array(matrix, device),
             3,
             mass=_array(metric, device) if generalized else None,
@@ -109,6 +110,13 @@ def test_shift_invert(test, device):
             ncv=12,
             maxiter=30,
         )
+        if generalized:
+            result = state.prepare()()
+        else:
+            # A standard shifted problem must not fall back to mass products.
+            with patch.object(state._core, "_metric_norm", side_effect=AssertionError("Unexpected metric path")):
+                with patch.object(state._core.mass, "apply", side_effect=AssertionError("Unexpected identity copy")):
+                    result = state.prepare()()
         _check(test, result, matrix, diagonal[:3], metric if generalized else None)
 
 
@@ -224,10 +232,36 @@ def test_nonfinite_and_exhaustion(test, device):
 
 def test_clustered_block(test, device):
     """Recover a repeated low eigenspace across projected block-width boundaries."""
-    n, k = 108, 25
+    n, k = 180, 45
     diagonal = np.concatenate((np.ones(5), np.arange(2.0, n - 3.0)))
-    state = eigen.LOBPCG(_array(diagonal, device), k, block_size=28, maxiter=150)
+    state = eigen.LOBPCG(_array(diagonal, device), k, block_size=48, maxiter=150)
     _check(test, state.prepare()(), diagonal, diagonal[:k], tolerance=1e-6)
+    if device.is_cuda and device.arch == 89:
+        test.assertIsNotNone(state._core._second_whitening_usage)
+        test.assertGreater(int(state._core._second_whitening_usage.numpy()[0]), 0)
+
+
+def test_indefinite_shift(test, device):
+    """Recover interior modes using GMRES on an indefinite shifted system."""
+    diagonal = np.arange(1.0, 21.0)
+    mass = np.linspace(0.5, 2.0, 20)
+    sigma = 7.25
+    matrix = _array(diagonal * mass, device)
+    inverse = linear.KrylovSolve(
+        _array((diagonal - sigma) * mass, device), method="gmres", restart=20, maxiter=40, tol=1e-11, residual="fresh"
+    )
+    result = eigen.krylov_schur(matrix, 3, mass=_array(mass, device), inverse=inverse, sigma=sigma, ncv=20, maxiter=3)
+    _check(test, result, diagonal * mass, [6.0, 7.0, 8.0], mass)
+
+
+def test_cpu_capture_rejection(test, device):
+    """Reject CPU capture before reading convergence or recording partial work."""
+    matrix = _array(np.arange(1.0, 17.0), device)
+    state = eigen.LOBPCG(matrix, 3).prepare()
+    for operation in (lambda: eigen.LOBPCG(matrix, 3), state.prepare, state):
+        with wp.ScopedCapture(device=device, apic=True):
+            with test.assertRaisesRegex(RuntimeError, "capture"):
+                operation()
 
 
 class TestEigen(unittest.TestCase):
@@ -248,6 +282,8 @@ for test_function in (
 ):
     add_function_test(TestEigen, test_function.__name__, test_function, devices=get_test_devices())
 add_function_test(TestEigen, "test_clustered_block", test_clustered_block, devices=get_test_devices())
+add_function_test(TestEigen, "test_indefinite_shift", test_indefinite_shift, devices=get_test_devices())
+add_function_test(TestEigen, "test_cpu_capture_rejection", test_cpu_capture_rejection, devices=get_cpu_test_devices())
 add_function_test(TestEigen, "test_graph_reuse", test_graph_reuse, devices=get_cuda_test_devices())
 
 if __name__ == "__main__":

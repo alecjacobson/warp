@@ -19,7 +19,8 @@ preconditioning is allowed.
 Construct and prepare outside CUDA capture. Preparation allocates workspace,
 compiles kernels and uploads the graph. Calling a prepared CUDA state returns
 device arrays without reading convergence on the host. CPU execution uses
-Warp numerical kernels and stops eagerly. A prepared CUDA call can also be
+Warp numerical kernels and stops eagerly; CPU graph capture is rejected.
+A prepared CUDA call can also be
 recorded in a caller-owned graph::
 
     import warp as wp

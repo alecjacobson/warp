@@ -197,6 +197,7 @@ class EigenSolverState:
         self.n, self.device, self.k = operator.n, operator.device, k
         self.tol, self.atol, self.maxiter = tol, atol, maxiter
         self._operator, self._mass = operator, mass
+        self._identity_metric = isinstance(mass, Identity)
         self._prepared = False
         self._graph = None
         self._stream_order = _StreamOrder(self.device)
@@ -204,7 +205,7 @@ class EigenSolverState:
         self._order = wp.empty(k, dtype=int, device=self.device)
         self._identity_order = wp.array(list(range(k)), dtype=int, device=self.device)
         self._ax = wp.empty((k, self.n), dtype=wp.float64, device=self.device)
-        self._mx = wp.empty_like(self._ax)
+        self._mx = self._core.eigenvectors if self._identity_metric else wp.empty_like(self._ax)
         self._norms = wp.zeros((k, 3), dtype=wp.float64, device=self.device)
         self._mass_norms = wp.zeros(k, dtype=wp.float64, device=self.device)
         self._mass_gram = wp.zeros((k, k), dtype=wp.float64, device=self.device)
@@ -214,7 +215,8 @@ class EigenSolverState:
     def _finalize(self):
         core, result = self._core, self.result
         self._operator.apply(core.eigenvectors, self._ax)
-        self._mass.apply(core.eigenvectors, self._mx)
+        if not self._identity_metric:
+            self._mass.apply(core.eigenvectors, self._mx)
         self._norms.zero_()
         self._mass_norms.zero_()
         self._mass_gram.zero_()
@@ -276,8 +278,8 @@ class EigenSolverState:
             This state, ready for eager calls or caller-owned CUDA capture.
         """
         self._reject_tape()
-        if self.device.is_cuda and self.device.is_capturing:
-            raise RuntimeError("Prepare eigen state outside CUDA capture")
+        if self.device.is_capturing:
+            raise RuntimeError("Prepare eigen state outside capture")
         if self._prepared:
             return self
         core = self._core
@@ -350,6 +352,8 @@ class EigenSolverState:
         self._reject_tape()
         if not self._prepared:
             raise RuntimeError("Call prepare() before solving")
+        if not self.device.is_cuda and self.device.is_capturing:
+            raise RuntimeError("CPU eigen execution is eager; CPU graph capture is not supported")
         self._stream_order.acquire(self.device)
         if self.device.is_cuda:
             if self.device.is_capturing:
@@ -397,8 +401,8 @@ def _validate_problem(A, k, tol, atol, maxiter):
     tol, atol = float(1e-8 if tol is None else tol), float(atol)
     if not math.isfinite(tol) or tol <= 0 or not math.isfinite(atol) or atol < 0:
         raise ValueError("Require finite tol > 0 and atol >= 0")
-    if operator.device.is_cuda and operator.device.is_capturing:
-        raise RuntimeError("Construct eigen state outside CUDA capture")
+    if operator.device.is_capturing:
+        raise RuntimeError("Construct eigen state outside capture")
     return n, k, tol, atol, maxiter
 
 
@@ -593,6 +597,7 @@ class KrylovSchur(EigenSolverState):
                 mode="regular" if sigma is None else "shift-invert",
                 which=which,
                 initial_vector=initial_vector,
+                identity_metric=mass is None,
             )
         else:
             self._core = _KrylovSchur(operator, k, ncv=dimension, which=which, tol=tol, initial_vector=initial_vector)
