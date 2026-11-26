@@ -246,9 +246,8 @@ class KrylovSchur(ProjectedState):
     Unless sparse products are explicitly reapplied after restart, residuals
     use rotated cached operator images (including inverse and generic callback
     operators). At tight tolerances these are estimates, not fresh applications of
-    the operator. ``EigenpairEvaluation(..., eigenvalues=solver.eigenvalues)``
-    checks the returned pairs with fresh products; use ``rhs_width=1`` for a
-    one-RHS inverse. This optional final check does not alter iteration stopping.
+    the operator. The public frontend independently validates returned pairs
+    with fresh original-operator products before reporting acceptance.
 
     Args:
         operator: Real symmetric operator exposing n, device and apply(x, y) on FP64 row arrays.
@@ -257,7 +256,7 @@ class KrylovSchur(ProjectedState):
             after clipping.
         which: Selection: LM/SM (largest/smallest magnitude), LA/SA (largest/smallest
             algebraic), or BE (both ends).
-        tol: Positive tolerance for ||A*x-lambda*x|| / max(1, abs(lambda)); cached-product
+        tol: Positive tolerance for ||A*x-lambda*x|| / (||A*x||+abs(lambda)*||x||); cached-product
             residuals are estimates.
         initial_vector: Optional finite nonzero FP64 device array of shape (n,). Read on each
             initialization; not modified.

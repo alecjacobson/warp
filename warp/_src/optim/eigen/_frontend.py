@@ -3,6 +3,7 @@
 
 """Expose reusable symmetric eigensolvers with device results."""
 
+import ctypes
 import math
 from enum import IntEnum
 from operator import index
@@ -291,9 +292,15 @@ class EigenSolverState:
             with capture_scope(self.device) as capture:
                 self._record()
             self._graph = capture.graph
-            # capture_end uploads the graph; finish that setup before new inputs
-            # can be queued, without charging a complete eigen solve to setup.
-            wp.synchronize_device(self.device)
+            executable = ctypes.c_void_p()
+            if not context.runtime.core.wp_cuda_graph_create_exec(
+                self.device.context,
+                self.device.stream.cuda_stream,
+                self._graph.graph,
+                ctypes.byref(executable),
+            ):
+                raise RuntimeError(f"Eigen graph preparation failed: {context.runtime.get_error_string()}")
+            self._graph.graph_exec = executable
         else:
             core.initialize()
             core.step()
@@ -305,6 +312,8 @@ class EigenSolverState:
         self.result.converged.zero_()
         self.result.iterations.zero_()
         if self.device.is_cuda:
+            # Finish graph upload and status initialization without executing a
+            # full eigen solve as part of preparation.
             wp.synchronize_device(self.device)
         self._prepared = True
         return self

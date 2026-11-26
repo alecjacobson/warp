@@ -52,6 +52,8 @@ def test_low_modes(test, device):
             with test.assertRaisesRegex(RuntimeError, "prepare"):
                 state()
             test.assertIs(state.prepare(), state)
+            if device.is_cuda:
+                test.assertIsNotNone(state._graph.graph_exec)
             result = state()
             _check(test, result, diagonal, np.arange(1.0, 4.0))
             test.assertIs(state(), result)
