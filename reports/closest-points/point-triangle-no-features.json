@@ -1,0 +1,127 @@
+{
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+  "kernel_properties": {
+    "native": {
+      "register_count": 34,
+      "local_memory_size": 0
+    },
+    "newton": {
+      "register_count": 35,
+      "local_memory_size": 0
+    },
+    "warp": {
+      "register_count": 46,
+      "local_memory_size": 0
+    }
+  },
+  "cpu_before": {
+    "cpu.max": "400000 100000",
+    "cpu.stat": "usage_usec 13476182993\nuser_usec 11145465236\nsystem_usec 2330717757\ncore_sched.force_idle_usec 0\nnr_periods 1938529\nnr_throttled 7801\nthrottled_usec 46587125999\nnr_bursts 0\nburst_usec 0"
+  },
+  "cpu_after": {
+    "cpu.max": "400000 100000",
+    "cpu.stat": "usage_usec 13479392157\nuser_usec 11148171556\nsystem_usec 2331220600\ncore_sched.force_idle_usec 0\nnr_periods 1938561\nnr_throttled 7801\nthrottled_usec 46587125999\nnr_bursts 0\nburst_usec 0"
+  },
+  "timing": "median CUDA graph event intervals; events captured inside graph",
+  "newton_commit": "f39d8199f18d5117f9dd8073c1eb71c9a196f020",
+  "newton_original_imported": true,
+  "warp_commit": "994126406d3c737a6d91b7d53e62c1ae68eba264",
+  "implementation_sha256": "f1e09f332c5189b2c3659067d52c10144f7bf11f904801dedc184461fef63a9d",
+  "benchmark_sha256": "b3537beeee732e6d7ba4cf647f448f446e96d80fa3cf38dd097dcafb8de4ede4",
+  "count": 262144,
+  "samples": 21,
+  "launches": 30,
+  "features": false,
+  "rows": [
+    {
+      "workload": "random",
+      "microseconds": {
+        "native": 8.93333355585734,
+        "newton": 8.969600001970926,
+        "warp": 9.002666672070822
+      },
+      "accuracy": {}
+    },
+    {
+      "workload": "near",
+      "microseconds": {
+        "native": 8.726400136947632,
+        "newton": 8.730666836102804,
+        "warp": 8.805333574612936
+      },
+      "accuracy": {}
+    },
+    {
+      "workload": "face",
+      "microseconds": {
+        "native": 8.748799562454224,
+        "newton": 8.738133311271667,
+        "warp": 8.818133672078451
+      },
+      "accuracy": {}
+    },
+    {
+      "workload": "edge",
+      "microseconds": {
+        "native": 8.658132950464884,
+        "newton": 8.664533495903015,
+        "warp": 8.866133292516073
+      },
+      "accuracy": {}
+    },
+    {
+      "workload": "vertex",
+      "microseconds": {
+        "native": 8.648533622423807,
+        "newton": 8.599467078844706,
+        "warp": 8.831999699274698
+      },
+      "accuracy": {}
+    },
+    {
+      "workload": "thin",
+      "microseconds": {
+        "native": 8.807466427485148,
+        "newton": 8.825600147247314,
+        "warp": 9.252267082532247
+      },
+      "accuracy": {}
+    },
+    {
+      "workload": "degenerate",
+      "microseconds": {
+        "native": 8.724266290664673,
+        "newton": 8.753066261609396,
+        "warp": 9.0421328941981
+      },
+      "accuracy": {}
+    },
+    {
+      "workload": "small",
+      "microseconds": {
+        "native": 8.867200215657553,
+        "newton": 8.904533584912619,
+        "warp": 9.028266867001852
+      },
+      "accuracy": {}
+    },
+    {
+      "workload": "large",
+      "microseconds": {
+        "native": 8.99733304977417,
+        "newton": 9.100799759229025,
+        "warp": 9.026133020718893
+      },
+      "accuracy": {}
+    },
+    {
+      "workload": "boundary",
+      "microseconds": {
+        "native": 8.728532989819845,
+        "newton": 8.734933535257975,
+        "warp": 8.802133798599243
+      },
+      "accuracy": {}
+    }
+  ]
+}

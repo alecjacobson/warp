@@ -1,0 +1,407 @@
+{
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+  "kernel_properties": {
+    "native": {
+      "register_count": 34,
+      "local_memory_size": 0
+    },
+    "newton": {
+      "register_count": 38,
+      "local_memory_size": 0
+    },
+    "warp": {
+      "register_count": 46,
+      "local_memory_size": 0
+    }
+  },
+  "cpu_before": {
+    "cpu.max": "400000 100000",
+    "cpu.stat": "usage_usec 13459864193\nuser_usec 11131854133\nsystem_usec 2328010059\ncore_sched.force_idle_usec 0\nnr_periods 1937785\nnr_throttled 7801\nthrottled_usec 46587125999\nnr_bursts 0\nburst_usec 0"
+  },
+  "cpu_after": {
+    "cpu.max": "400000 100000",
+    "cpu.stat": "usage_usec 13463979119\nuser_usec 11135333254\nsystem_usec 2328645865\ncore_sched.force_idle_usec 0\nnr_periods 1937826\nnr_throttled 7801\nthrottled_usec 46587125999\nnr_bursts 0\nburst_usec 0"
+  },
+  "timing": "median CUDA graph event intervals; events captured inside graph",
+  "newton_commit": "f39d8199f18d5117f9dd8073c1eb71c9a196f020",
+  "newton_original_imported": true,
+  "warp_commit": "994126406d3c737a6d91b7d53e62c1ae68eba264",
+  "implementation_sha256": "f1e09f332c5189b2c3659067d52c10144f7bf11f904801dedc184461fef63a9d",
+  "benchmark_sha256": "b3537beeee732e6d7ba4cf647f448f446e96d80fa3cf38dd097dcafb8de4ede4",
+  "count": 262144,
+  "samples": 21,
+  "launches": 30,
+  "features": true,
+  "rows": [
+    {
+      "workload": "random",
+      "microseconds": {
+        "native": 9.691733121871948,
+        "newton": 9.551999966303507,
+        "warp": 9.549867113431295
+      },
+      "accuracy": {
+        "native": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 13,
+          "max_normalized_distance_squared_error": 8.867157119887442e-08,
+          "max_normalized_witness_error": 1.5692345881950753e-07,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 30
+        },
+        "newton": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 6.453137347816561e-08,
+          "max_normalized_witness_error": 1.5692345881950753e-07,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        },
+        "warp": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 8.867157119887442e-08,
+          "max_normalized_witness_error": 1.5692345881950753e-07,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        }
+      }
+    },
+    {
+      "workload": "near",
+      "microseconds": {
+        "native": 9.483733773231506,
+        "newton": 9.417600433031717,
+        "warp": 9.374933441480001
+      },
+      "accuracy": {
+        "native": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 5.908049025095846e-11,
+          "max_normalized_witness_error": 7.689105398386396e-06,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        },
+        "newton": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 5.8081434650639366e-11,
+          "max_normalized_witness_error": 7.689486391991024e-06,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        },
+        "warp": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 5.829264920504997e-11,
+          "max_normalized_witness_error": 7.689486391991024e-06,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        }
+      }
+    },
+    {
+      "workload": "face",
+      "microseconds": {
+        "native": 9.476266304651896,
+        "newton": 9.409067034721375,
+        "warp": 9.338666995366415
+      },
+      "accuracy": {
+        "native": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 1.618031188716774e-07,
+          "max_normalized_witness_error": 1.3394445525739458e-07,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        },
+        "newton": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 1.811635600287935e-07,
+          "max_normalized_witness_error": 1.3271314135933918e-07,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        },
+        "warp": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 1.4056017853123074e-07,
+          "max_normalized_witness_error": 1.1131253197516602e-07,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        }
+      }
+    },
+    {
+      "workload": "edge",
+      "microseconds": {
+        "native": 9.46026643117269,
+        "newton": 9.347200393676758,
+        "warp": 9.409067034721375
+      },
+      "accuracy": {
+        "native": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 14,
+          "max_normalized_distance_squared_error": 9.327256776325097e-08,
+          "max_normalized_witness_error": 5.462462977706462e-08,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 59
+        },
+        "newton": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 8.65208494664669e-08,
+          "max_normalized_witness_error": 6.703626756956344e-08,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        },
+        "warp": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 1.1313639200288974e-07,
+          "max_normalized_witness_error": 8.605661634328666e-08,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        }
+      }
+    },
+    {
+      "workload": "vertex",
+      "microseconds": {
+        "native": 9.319466352462769,
+        "newton": 9.211732943852743,
+        "warp": 9.341866771380106
+      },
+      "accuracy": {
+        "native": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 1.1078087701846259e-07,
+          "max_normalized_witness_error": 0.0,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        },
+        "newton": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 1.1078087701846259e-07,
+          "max_normalized_witness_error": 0.0,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        },
+        "warp": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 1.1078087701846259e-07,
+          "max_normalized_witness_error": 0.0,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        }
+      }
+    },
+    {
+      "workload": "thin",
+      "microseconds": {
+        "native": 9.548800190289816,
+        "newton": 9.46453313032786,
+        "warp": 9.872000416119894
+      },
+      "accuracy": {
+        "native": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 2,
+          "max_normalized_distance_squared_error": 2.6139265303894285e-10,
+          "max_normalized_witness_error": 1.656809710539233e-05,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 140
+        },
+        "newton": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 3.503975059501806e-10,
+          "max_normalized_witness_error": 1.656809710539233e-05,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 177
+        },
+        "warp": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 1.7552252633810576e-11,
+          "max_normalized_witness_error": 6.912420988082067e-07,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        }
+      }
+    },
+    {
+      "workload": "degenerate",
+      "microseconds": {
+        "native": 9.480533003807068,
+        "newton": 9.366400043169657,
+        "warp": 9.67039962609609
+      },
+      "accuracy": {
+        "native": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 13,
+          "max_normalized_distance_squared_error": 1.414558860064296e-07,
+          "max_normalized_witness_error": 4.003724256776309e-08,
+          "unique_feature_samples": 0,
+          "feature_mismatches": 0
+        },
+        "newton": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 1.3498589598562252e-07,
+          "max_normalized_witness_error": 7.007321254778911e-08,
+          "unique_feature_samples": 0,
+          "feature_mismatches": 0
+        },
+        "warp": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 1.414558860064296e-07,
+          "max_normalized_witness_error": 7.007321254778911e-08,
+          "unique_feature_samples": 0,
+          "feature_mismatches": 0
+        }
+      }
+    },
+    {
+      "workload": "small",
+      "microseconds": {
+        "native": 9.609599908192953,
+        "newton": 9.476266304651896,
+        "warp": 9.51573352018992
+      },
+      "accuracy": {
+        "native": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 21,
+          "max_normalized_distance_squared_error": 0.8297133556638155,
+          "max_normalized_witness_error": 0.9096566812518622,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 138
+        },
+        "newton": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 0.8297133556638155,
+          "max_normalized_witness_error": 0.9096566812518622,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 126
+        },
+        "warp": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 8.254382294399889e-08,
+          "max_normalized_witness_error": 1.425805561264259e-07,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        }
+      }
+    },
+    {
+      "workload": "large",
+      "microseconds": {
+        "native": 9.735467036565145,
+        "newton": 9.62559978167216,
+        "warp": 9.547733267148336
+      },
+      "accuracy": {
+        "native": {
+          "samples": 256,
+          "nonfinite": 81,
+          "invalid_barycentrics": 98,
+          "max_normalized_distance_squared_error": 0.7915710193023133,
+          "max_normalized_witness_error": 0.8479703196161275,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 135
+        },
+        "newton": {
+          "samples": 256,
+          "nonfinite": 81,
+          "invalid_barycentrics": 81,
+          "max_normalized_distance_squared_error": 0.7915710193023133,
+          "max_normalized_witness_error": 0.8479703296733104,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 120
+        },
+        "warp": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 1.057899766883791e-07,
+          "max_normalized_witness_error": 1.3363988264558455e-07,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 0
+        }
+      }
+    },
+    {
+      "workload": "boundary",
+      "microseconds": {
+        "native": 9.479467074076334,
+        "newton": 9.412266810735067,
+        "warp": 9.365333120028177
+      },
+      "accuracy": {
+        "native": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 6,
+          "max_normalized_distance_squared_error": 5.2233891464187197e-14,
+          "max_normalized_witness_error": 1.1141788200921444e-07,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 105
+        },
+        "newton": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 3.8015019833308155e-14,
+          "max_normalized_witness_error": 9.114187111010191e-08,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 19
+        },
+        "warp": {
+          "samples": 256,
+          "nonfinite": 0,
+          "invalid_barycentrics": 0,
+          "max_normalized_distance_squared_error": 5.295299414393042e-15,
+          "max_normalized_witness_error": 1.6151814672465967e-07,
+          "unique_feature_samples": 256,
+          "feature_mismatches": 19
+        }
+      }
+    }
+  ]
+}
