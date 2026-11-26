@@ -51,7 +51,7 @@ class SymmetricEigen:
             self.modes if self.algorithm == "lobpcg" else 1,
             method="cg",
             M=self.preconditioner,
-            tol=0.01 if self.algorithm == "lobpcg" else 1e-12,
+            tol=0.01 if self.algorithm == "lobpcg" else 1e-11,
             maxiter=200,
             residual="fresh",
         )
