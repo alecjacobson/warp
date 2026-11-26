@@ -45,6 +45,7 @@ _register_module_source("warp.sparse", "warp._src.sparse")
 _register_module_source("warp.utils", "warp._src.utils")
 
 _register_module_source("warp.optim.adam", "warp._src.optim.adam")
+_register_module_source("warp.optim.eigen", "warp._src.optim.eigen._frontend")
 _register_module_source("warp.optim.linear", "warp._src.optim.linear")
 _register_module_source("warp.optim.sgd", "warp._src.optim.sgd")
 

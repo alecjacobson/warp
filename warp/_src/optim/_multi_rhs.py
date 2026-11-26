@@ -78,9 +78,14 @@ class MultiRHSOperator(LinearOperator):
             ``"rows"`` and ``"columns"`` set its batch strategy, ``"auto"`` keeps a
             strategy it already has, and ``"loop"`` applies it to one RHS row at a
             time. Other operators accept only ``"auto"`` or ``"loop"``.
+        dtype: Optional vector arithmetic type for an FSAI batch, independent
+            of its source and factor storage types. Other operators require
+            their own scalar type. Mixed-type FSAI requires a batch strategy.
     """
 
-    def __init__(self, A, nrhs: int, algorithm: Literal["auto", "loop", "rows", "columns"] = "auto"):
+    def __init__(
+        self, A, nrhs: int, algorithm: Literal["auto", "loop", "rows", "columns"] = "auto", *, dtype: type | None = None
+    ):
         if isinstance(nrhs, bool):
             raise TypeError("nrhs must be an integer, not bool")
         if index(nrhs) < 1:
@@ -95,7 +100,7 @@ class MultiRHSOperator(LinearOperator):
             or self.single.batch_offsets is not None
         ):
             raise ValueError("Expected one nonempty square system")
-        dtype = self.single.scalar_type
+        dtype = self.single.scalar_type if dtype is None else dtype
         if dtype not in (wp.float32, wp.float64):
             raise ValueError("A must have float32 or float64 scalar type")
         device = self.single.device
@@ -103,6 +108,8 @@ class MultiRHSOperator(LinearOperator):
         # An operator that applies whole batches, such as FSAI, receives each batch and
         # owns the scratch and strategy for it.
         self._delegate = not self.sparse and algorithm != "loop" and hasattr(self.single, "reserve_batch")
+        if dtype != self.single.scalar_type and not self._delegate:
+            raise ValueError("A different vector dtype requires a batched FSAI operator")
         self._work = None
         if self.sparse:
             mean_row_count = None

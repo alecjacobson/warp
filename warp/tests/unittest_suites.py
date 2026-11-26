@@ -214,6 +214,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
     from warp.tests.test_dense import TestDense
     from warp.tests.test_devices import TestDevices
     from warp.tests.test_diagnostics import TestDiagnostics
+    from warp.tests.test_eigen import TestEigen
     from warp.tests.test_enum import TestEnum
     from warp.tests.test_examples import (
         TestCoreExamples,
@@ -425,6 +426,7 @@ def default_suite(test_loader: unittest.TestLoader = unittest.defaultTestLoader)
         TestFixedArray,
         TestFp16,
         TestFSAI,
+        TestEigen,
         TestFunc,
         TestFuncInline,
         TestFuncParameterTargets,

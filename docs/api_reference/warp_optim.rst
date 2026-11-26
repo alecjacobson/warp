@@ -9,6 +9,7 @@ warp.optim
 .. toctree::
    :hidden:
 
+   warp_optim_eigen
    warp_optim_linear
 
 Submodules
@@ -16,6 +17,7 @@ Submodules
 
 These modules are automatically available when you ``import warp.optim``.
 
+- :mod:`warp.optim.eigen`
 - :mod:`warp.optim.linear`
 
 API
