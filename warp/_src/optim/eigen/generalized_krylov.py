@@ -154,7 +154,7 @@ class GeneralizedKrylovSchur(KrylovSchur):
         )
         super().__init__(iteration, k, ncv=ncv, which=which, tol=tol, initial_vector=initial_vector)
         self.metric_vector = wp.empty((1, self.n), dtype=wp.float64, device=self.device)
-        self.bx = wp.empty_like(self.eigenvectors)
+        self.bx = self.eigenvectors if identity_metric else wp.empty_like(self.eigenvectors)
         self.physical_values = wp.empty_like(self.eigenvalues)
         self.physical_order = wp.empty(self.k, dtype=wp.int32, device=self.device)
         self.sums = wp.zeros((self.k, 2), dtype=wp.float64, device=self.device)

@@ -115,6 +115,7 @@ def test_shift_invert(test, device):
         if generalized:
             result = state.prepare()()
         else:
+            test.assertEqual(state._core.bx.ptr, state._core.eigenvectors.ptr)
             # A standard shifted problem must not fall back to mass products.
             with patch.object(state._core, "_metric_norm", side_effect=AssertionError("Unexpected metric path")):
                 with patch.object(state._core.mass, "apply", side_effect=AssertionError("Unexpected identity copy")):
