@@ -54,6 +54,12 @@ def test_direct_categories(test, device):
                 elif category == "general":
                     a[0, 1] = 0.3
                 solver = linear.CuDSS(_matrix(a, device, dtype), 3, matrix_type=category)
+                if category == "spd":
+                    test.assertEqual(solver._rhs.ptr, solver._native_rhs.ptr)
+                    test.assertEqual(solver._solution.ptr, solver._native_solution.ptr)
+                else:
+                    test.assertNotEqual(solver._rhs.ptr, solver._native_rhs.ptr)
+                    test.assertNotEqual(solver._solution.ptr, solver._native_solution.ptr)
                 rhs = np.random.default_rng(24).normal(size=(3, 12))
                 storage = wp.array(rhs, dtype=dtype, device=device)
                 solver.solve(storage, storage)
@@ -170,6 +176,14 @@ def test_block_storage_and_invalidation(test, device):
     blocks = np.array([np.eye(3) * i + 0.1 for i in range(2, 6)])
     indices = wp.array(np.arange(4), dtype=int, device=device)
     a = bsr_from_triplets(4, 4, indices, indices, wp.array(blocks, dtype=wp.mat33d, device=device))
+    single = linear.CuDSS(a)
+    test.assertEqual(single._operator.algorithm, "rows")
+    single_rhs = wp.ones(12, dtype=wp.float64, device=device)
+    single_out = wp.empty_like(single_rhs)
+    single.solve(single_rhs, single_out)
+    expected = np.concatenate([np.linalg.solve(block, np.ones(3)) for block in blocks])
+    np.testing.assert_allclose(single_out.numpy(), expected, atol=1e-12)
+    single.close()
     solver = linear.CuDSS(a, 2)
     rhs = wp.ones((2, 12), dtype=wp.float64, device=device)
     out = wp.empty_like(rhs)

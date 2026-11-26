@@ -127,13 +127,15 @@ class CuDSS(_SolveAction):
         self._workspace = None
         self._storage = self._storage_identity()
         self._rhs = wp.zeros((nrhs, self.n), dtype=self.dtype, device=self.device)
-        self._native_rhs = wp.empty_like(self._rhs)
+        # Refinement overwrites the native RHS with a correction residual and
+        # therefore needs a separate preserved original. Plain solves do not.
+        self._native_rhs = wp.empty_like(self._rhs) if refinement_steps else self._rhs
         self._native_solution = wp.empty_like(self._rhs)
-        self._solution = wp.empty_like(self._rhs)
+        self._solution = wp.empty_like(self._rhs) if refinement_steps else self._native_solution
         self._ax = wp.empty_like(self._rhs)
         self._threshold_sq = wp.zeros(nrhs, dtype=wp.float64, device=self.device)
         self._phases = wp.full(1, 1 + refinement_steps, dtype=int, device=self.device)
-        self._operator = MultiRHSOperator(A, nrhs)
+        self._operator = MultiRHSOperator(A, nrhs, algorithm="rows" if nrhs == 1 else "auto")
         try:
             self._provider = CudssSolver(mtype=matrix_type, device=self.device)
             self._workspace = Workspace(self._provider)
@@ -237,9 +239,11 @@ class CuDSS(_SolveAction):
                 raise RuntimeError("Warm the CuDSS solve before capture")
             self._retain_capture()
         wp.copy(self._rhs, rows)
-        wp.copy(self._native_rhs, self._rhs)
+        if self.refinement_steps:
+            wp.copy(self._native_rhs, self._rhs)
         self._provider.solve()
-        wp.copy(self._solution, self._native_solution)
+        if self.refinement_steps:
+            wp.copy(self._solution, self._native_solution)
         for _ in range(self.refinement_steps):
             self._operator.matvec(self._solution.flatten(), self._ax.flatten(), self._ax.flatten(), 1.0, 0.0)
             wp.launch(
